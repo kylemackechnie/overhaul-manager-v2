@@ -1,0 +1,329 @@
+import { useAppStore } from '../../store/appStore'
+import { useAuth } from '../../hooks/useAuth'
+import { useState } from 'react'
+
+interface RibbonButton {
+  icon: string
+  label: string
+  panel: string
+}
+
+interface RibbonGroup {
+  label: string
+  buttons: RibbonButton[]
+}
+
+interface RibbonTab {
+  key: string
+  label: string
+  groups: RibbonGroup[]
+}
+
+const RIBBON_MODULES: RibbonTab[] = [
+  {
+    key: 'project', label: 'Project',
+    groups: [
+      { label: 'Overview', buttons: [
+        { icon: '📊', label: 'Dashboard', panel: 'dashboard' },
+        { icon: '📅', label: 'Calendar', panel: 'calendar' },
+        { icon: '📋', label: 'Gantt', panel: 'gantt' },
+        { icon: '📝', label: 'Variations', panel: 'variations' },
+      ]},
+      { label: 'Setup', buttons: [
+        { icon: '⚙️', label: 'Settings', panel: 'project-settings' },
+        { icon: '🗓️', label: 'Holidays', panel: 'public-holidays' },
+        { icon: '📍', label: 'WBS', panel: 'wbs-list' },
+      ]},
+    ],
+  },
+  {
+    key: 'cost', label: 'Cost Tracking',
+    groups: [
+      { label: 'Tracking', buttons: [
+        { icon: '💰', label: 'Dashboard', panel: 'cost-dashboard' },
+        { icon: '📈', label: 'Forecast', panel: 'cost-forecast' },
+        { icon: '📉', label: 'S-Curve', panel: 'cost-scurve' },
+      ]},
+      { label: 'Records', buttons: [
+        { icon: '🧾', label: 'Expenses', panel: 'expenses' },
+        { icon: '📄', label: 'Purchase Orders', panel: 'purchase-orders' },
+        { icon: '💳', label: 'Invoices', panel: 'invoices' },
+        { icon: '🔄', label: 'SAP Recon', panel: 'sap-recon' },
+      ]},
+      { label: 'Reports', buttons: [
+        { icon: '📑', label: 'Cost Report', panel: 'cost-report' },
+        { icon: '📦', label: 'Reports DB', panel: 'reports-db' },
+      ]},
+    ],
+  },
+  {
+    key: 'personnel', label: 'Personnel',
+    groups: [
+      { label: 'People', buttons: [
+        { icon: '👥', label: 'Dashboard', panel: 'hr-dashboard' },
+        { icon: '👤', label: 'Resources', panel: 'hr-resources' },
+        { icon: '💲', label: 'Rate Cards', panel: 'hr-ratecards' },
+      ]},
+      { label: 'Timesheets', buttons: [
+        { icon: '⏱️', label: 'Trades', panel: 'hr-timesheets-trades' },
+        { icon: '⏱️', label: 'Management', panel: 'hr-timesheets-mgmt' },
+        { icon: '⏱️', label: 'SE AG', panel: 'hr-timesheets-seag' },
+        { icon: '⏱️', label: 'Subcon', panel: 'hr-timesheets-subcon' },
+        { icon: '🏢', label: 'Back Office', panel: 'hr-backoffice' },
+      ]},
+      { label: 'Accommodation', buttons: [
+        { icon: '🚗', label: 'Cars', panel: 'hr-cars' },
+        { icon: '🏨', label: 'Accommodation', panel: 'hr-accommodation' },
+      ]},
+    ],
+  },
+  {
+    key: 'hse', label: 'HSE',
+    groups: [
+      { label: 'HSE', buttons: [
+        { icon: '🦺', label: 'Dashboard', panel: 'hse-dashboard' },
+        { icon: '📋', label: 'Inductions', panel: 'hr-inductions' },
+        { icon: '🌿', label: 'CO₂ Tracking', panel: 'hse-co2' },
+      ]},
+    ],
+  },
+  {
+    key: 'subcon', label: 'Subcontractors',
+    groups: [
+      { label: 'Subcontractors', buttons: [
+        { icon: '🤝', label: 'RFQ Register', panel: 'subcon-rfq' },
+        { icon: '📃', label: 'Contracts', panel: 'subcon-contracts' },
+      ]},
+    ],
+  },
+  {
+    key: 'logistics', label: 'Logistics',
+    groups: [
+      { label: 'Shipping', buttons: [
+        { icon: '📦', label: 'Inbound', panel: 'shipping-inbound' },
+        { icon: '🚚', label: 'Outbound', panel: 'shipping-outbound' },
+      ]},
+    ],
+  },
+  {
+    key: 'hardware', label: 'Hardware',
+    groups: [
+      { label: 'Hardware', buttons: [
+        { icon: '🔧', label: 'Contract', panel: 'hardware-contract' },
+        { icon: '🛒', label: 'Carts', panel: 'hardware-carts' },
+        { icon: '🔩', label: 'Spare Parts', panel: 'parts-list' },
+      ]},
+    ],
+  },
+  {
+    key: 'tooling', label: 'Tooling',
+    groups: [
+      { label: 'SE AG Tooling', buttons: [
+        { icon: '🧰', label: 'TV Register', panel: 'tooling-tvs' },
+        { icon: '📦', label: 'Kollos', panel: 'tooling-kollos' },
+        { icon: '💶', label: 'Costings', panel: 'tooling-costings' },
+        { icon: '🏢', label: 'Departments', panel: 'tooling-departments' },
+      ]},
+      { label: 'Equipment Hire', buttons: [
+        { icon: '🚜', label: 'Dry Hire', panel: 'hire-dry' },
+        { icon: '🏗️', label: 'Wet Hire', panel: 'hire-wet' },
+        { icon: '🧰', label: 'Local Hire', panel: 'hire-local' },
+      ]},
+    ],
+  },
+  {
+    key: 'site', label: 'Site Specific',
+    groups: [
+      { label: 'Work Orders', buttons: [
+        { icon: '📋', label: 'Work Orders', panel: 'work-orders' },
+      ]},
+      { label: 'NRG Gladstone', buttons: [
+        { icon: '📊', label: 'NRG Dashboard', panel: 'nrg-dashboard' },
+        { icon: '📋', label: 'TCE Register', panel: 'nrg-tce' },
+        { icon: '📈', label: 'OHF Forecast', panel: 'nrg-ohf' },
+      ]},
+    ],
+  },
+  {
+    key: 'global', label: 'Global',
+    groups: [
+      { label: 'Global Registers', buttons: [
+        { icon: '🧰', label: 'Tooling', panel: 'global-tooling' },
+        { icon: '🔩', label: 'Parts', panel: 'global-parts' },
+        { icon: '📦', label: 'Kits', panel: 'global-kits' },
+      ]},
+    ],
+  },
+]
+
+export function Ribbon() {
+  const { activePanel, setActivePanel, activeRibbonTab, setActiveRibbonTab, activeProject } = useAppStore()
+  const { signOut, currentUser } = useAuth()
+  const [fileMenuOpen, setFileMenuOpen] = useState(false)
+
+  if (!activeProject) return null
+
+  const activeTab = RIBBON_MODULES.find(t => t.key === activeRibbonTab) || RIBBON_MODULES[0]
+
+  return (
+    <div style={{
+      background: 'var(--bg)', borderBottom: '1px solid var(--border)',
+      position: 'sticky', top: 0, zIndex: 100,
+    }}>
+      {/* Title bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '12px',
+        padding: '8px 16px', borderBottom: '1px solid var(--border)',
+        background: 'var(--bg2)'
+      }}>
+        {/* File button */}
+        <div style={{ position: 'relative' }}>
+          <button
+            className="btn btn-sm"
+            style={{ background: 'var(--purple)', color: '#fff', border: 'none', fontWeight: 600 }}
+            onClick={() => setFileMenuOpen(o => !o)}
+          >
+            ☰ File
+          </button>
+          {fileMenuOpen && (
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 199 }}
+                onClick={() => setFileMenuOpen(false)}
+              />
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: '8px', boxShadow: 'var(--shadow-md)',
+                minWidth: '200px', zIndex: 200, overflow: 'hidden'
+              }}>
+                {[
+                  { icon: '👥', label: 'User Management', panel: 'user-management' },
+                  { icon: '📋', label: 'Audit Trail', panel: 'audit-trail' },
+                  { icon: '📑', label: 'Reports Database', panel: 'reports-db' },
+                ].map(item => (
+                  <button
+                    key={item.panel}
+                    className="btn"
+                    style={{ width: '100%', borderRadius: 0, border: 'none', justifyContent: 'flex-start', borderBottom: '1px solid var(--border)' }}
+                    onClick={() => { setActivePanel(item.panel); setFileMenuOpen(false) }}
+                  >
+                    {item.icon} {item.label}
+                  </button>
+                ))}
+                <button
+                  className="btn"
+                  style={{ width: '100%', borderRadius: 0, border: 'none', justifyContent: 'flex-start', color: 'var(--red)' }}
+                  onClick={() => { signOut(); setFileMenuOpen(false) }}
+                >
+                  🚪 Sign Out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Project name */}
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+          fontSize: '13px', fontWeight: 600, color: 'var(--text)'
+        }}>
+          <span style={{
+            background: 'var(--accent)', color: '#fff', padding: '2px 8px',
+            borderRadius: '4px', fontSize: '11px'
+          }}>
+            {activeProject.name}
+          </span>
+        </div>
+
+        {/* User */}
+        <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+          👤 {currentUser?.name || currentUser?.email}
+        </div>
+      </div>
+
+      {/* Tab row */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: '2px',
+        padding: '4px 12px 0', background: 'var(--bg2)'
+      }}>
+        {RIBBON_MODULES.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveRibbonTab(tab.key)}
+            style={{
+              padding: '5px 12px',
+              background: activeRibbonTab === tab.key ? 'var(--bg)' : 'transparent',
+              border: '1px solid transparent',
+              borderBottom: activeRibbonTab === tab.key ? '1px solid var(--bg)' : '1px solid transparent',
+              borderTop: activeRibbonTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
+              borderRadius: '4px 4px 0 0',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: activeRibbonTab === tab.key ? 600 : 400,
+              color: activeRibbonTab === tab.key ? 'var(--accent)' : 'var(--text2)',
+              transition: 'all 150ms',
+              marginBottom: '-1px',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Ribbon strip */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: '0',
+        padding: '6px 12px', borderTop: '1px solid var(--border)',
+        minHeight: '52px', alignItems: 'flex-start',
+      }}>
+        {activeTab.groups.map((group, gi) => (
+          <div key={gi} style={{ display: 'flex', alignItems: 'flex-start', gap: '2px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                {group.buttons.map(btn => (
+                  <button
+                    key={btn.panel}
+                    onClick={() => setActivePanel(btn.panel)}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      gap: '2px', padding: '4px 8px',
+                      background: activePanel === btn.panel ? 'var(--accent)' : 'transparent',
+                      border: '1px solid transparent',
+                      borderRadius: '6px', cursor: 'pointer',
+                      color: activePanel === btn.panel ? '#fff' : 'var(--text)',
+                      transition: 'all 150ms',
+                      minWidth: '52px',
+                    }}
+                    onMouseEnter={e => {
+                      if (activePanel !== btn.panel) {
+                        (e.currentTarget as HTMLElement).style.background = 'var(--bg3)'
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (activePanel !== btn.panel) {
+                        (e.currentTarget as HTMLElement).style.background = 'transparent'
+                      }
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>{btn.icon}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{btn.label}</span>
+                  </button>
+                ))}
+              </div>
+              <span style={{
+                fontSize: '10px', color: 'var(--text3)', borderTop: '1px solid var(--border)',
+                paddingTop: '2px', width: '100%', textAlign: 'center',
+              }}>
+                {group.label}
+              </span>
+            </div>
+            {gi < activeTab.groups.length - 1 && (
+              <div style={{ width: '1px', background: 'var(--border)', margin: '4px 6px', alignSelf: 'stretch' }} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
