@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/appStore'
 import type { Project, Site } from '../../types'
 import { toast } from '../ui/Toast'
 
-export function ProjectSelector() {
+export function ProjectSelector({ onProjectSelected }: { onProjectSelected?: () => void }) {
   const { activeProject, setActiveProject, currentUser } = useAppStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [sites, setSites] = useState<Site[]>([])
@@ -137,7 +137,7 @@ export function ProjectSelector() {
               {group.projects.map(proj => (
                 <button
                   key={proj.id}
-                  onClick={() => setActiveProject(proj)}
+                  onClick={() => { setActiveProject(proj); onProjectSelected?.() }}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'flex-start',
                     gap: '8px', padding: '8px 14px',
