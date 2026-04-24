@@ -63,7 +63,7 @@ import type { Session } from '@supabase/supabase-js'
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
-  const { activePanel, activeProject, setActivePanel } = useAppStore()
+  const { activePanel, activeProject, setActivePanel, setActiveProject } = useAppStore()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
 
@@ -74,10 +74,16 @@ export default function App() {
       if (session && !activeProject) setPickerOpen(true)
       else if (!session) setPickerOpen(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
-      if (s && !activeProject) setPickerOpen(true)
-      else if (!s) setPickerOpen(false)
+      if (!s) {
+        // Session expired or signed out — clear project so picker opens fresh on next login
+        setActiveProject(null)
+        setPickerOpen(false)
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // Fresh login or token refresh — open picker if no project loaded
+        if (!useAppStore.getState().activeProject) setPickerOpen(true)
+      }
     })
     return () => subscription.unsubscribe()
   }, [])
