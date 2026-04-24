@@ -1,8 +1,5 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/sb/:path*",
-      "destination": "https://ewcbruqxhiehpdkaoimy.supabase.co/:path*"
-    }
-  ]
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite"
 }

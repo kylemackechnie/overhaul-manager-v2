@@ -28,6 +28,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   const [projects, setProjects] = useState<Project[]>([])
   const [sites, setSites] = useState<Site[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string|null>(null)
   const [activeSiteKey, setActiveSiteKey] = useState('__all__')
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -51,21 +52,19 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
   async function load() {
     setLoading(true)
+    setLoadError(null)
     try {
-      // AbortController timeout — never hang forever
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 8000)
-
-      const [projData, siteData] = await Promise.all([
-        supabase.from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false }).abortSignal(controller.signal),
-        supabase.from('sites').select('*').order('name').abortSignal(controller.signal),
-      ])
-      clearTimeout(timer)
-      if (projData.data) setProjects(projData.data as Project[])
-      if (siteData.data) setSites(siteData.data as Site[])
-      if (projData.error) console.error('Projects error:', projData.error)
-      if (siteData.error) console.error('Sites error:', siteData.error)
-    } catch (e) {
+      const { data: projData, error: projErr } = await supabase
+        .from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false })
+      const { data: siteData, error: siteErr } = await supabase
+        .from('sites').select('*').order('name')
+      if (projErr) throw projErr
+      if (siteErr) throw siteErr
+      setProjects((projData || []) as Project[])
+      setSites((siteData || []) as Site[])
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setLoadError(msg)
       console.error('Picker load error:', e)
     } finally {
       setLoading(false)
@@ -330,12 +329,20 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
       {/* Body */}
       {loading ? (
-        <div className="loading-center" style={{ flexDirection: 'column', gap: '16px' }}>
-          <span className="spinner" style={{ width: '32px', height: '32px' }} />
-          <span style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading projects...</span>
-          {activeProject && (
-            <button className="btn" onClick={onClose}>← Back to {activeProject.name}</button>
+        <div className="loading-center" style={{ flexDirection: 'column', gap: '12px' }}>
+          {loadError ? (
+            <>
+              <div style={{ color: 'var(--red)', fontSize: '14px', fontWeight: 600 }}>Failed to load projects</div>
+              <div style={{ color: 'var(--text3)', fontSize: '12px', maxWidth: '300px', textAlign: 'center' }}>{loadError}</div>
+              <button className="btn btn-primary" onClick={load}>Retry</button>
+            </>
+          ) : (
+            <>
+              <span className="spinner" style={{ width: '32px', height: '32px' }} />
+              <span style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading projects...</span>
+            </>
           )}
+          {activeProject && <button className="btn" onClick={onClose}>← Back to {activeProject.name}</button>}
         </div>
       ) : (
         <div className="picker-body">
