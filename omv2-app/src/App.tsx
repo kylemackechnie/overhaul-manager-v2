@@ -74,37 +74,42 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    let handled = false
+
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession()
       setSession(session)
+      handled = true
+
       if (!session) { setPickerOpen(false); return }
 
-      // Restore previously active project from persisted ID
+      // Try to restore the previously active project silently
       const store = useAppStore.getState()
-      if (store.activeProjectId && !store.activeProject) {
+      if (store.activeProjectId) {
         try {
-          // 5 second timeout — if Supabase is slow, fall through to picker
-          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
-          const query = supabase.from('projects').select('*,site:sites(id,name)').eq('id', store.activeProjectId).single()
-          const { data } = await Promise.race([query, timeout.then(() => ({ data: null, error: null }))]) as { data: unknown; error: unknown }
+          const { data } = await supabase
+            .from('projects').select('*,site:sites(id,name)')
+            .eq('id', store.activeProjectId).single()
           if (data) {
             store.setActiveProject(data as Parameters<typeof store.setActiveProject>[0])
-            return
+            return // restored — no picker needed
           }
-        } catch (e) {
-          console.warn('Project restore failed:', e)
-        }
+        } catch (_) {}
       }
 
-      // No persisted project or restore failed — open picker
-      if (!useAppStore.getState().activeProject) setPickerOpen(true)
-    })
+      // No project to restore — open picker
+      setPickerOpen(true)
+    }
+
+    init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
       if (!s) {
         setActiveProject(null)
         setPickerOpen(false)
-      } else if (event === 'SIGNED_IN') {
+      } else if (event === 'SIGNED_IN' && handled) {
+        // Only open picker from auth change if init() already ran and found no project
         if (!useAppStore.getState().activeProject) setPickerOpen(true)
       }
     })
