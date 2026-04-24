@@ -28,12 +28,18 @@ export function ProjectSelector({ onProjectSelected }: { onProjectSelected?: () 
 
   async function loadProjects() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*, site:sites(id,name)')
-      .order('created_at', { ascending: false })
-    if (!error && data) setProjects(data as Project[])
-    setLoading(false)
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*, site:sites(id,name)')
+        .order('created_at', { ascending: false })
+      if (error) console.error('loadProjects error:', error)
+      if (data) setProjects(data as Project[])
+    } catch(e) {
+      console.error('loadProjects exception:', e)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function loadSites() {
