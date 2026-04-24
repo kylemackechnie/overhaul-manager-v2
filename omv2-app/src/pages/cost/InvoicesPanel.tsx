@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { downloadCSV } from '../../lib/csv'
 import type { Invoice, PurchaseOrder, InvoiceStatus } from '../../types'
 
 const STATUS_FLOW: InvoiceStatus[] = ['received','checked','approved','paid']
@@ -97,6 +98,16 @@ export function InvoicesPanel() {
 
   const filtered = invoices.filter(i => statusFilter === 'all' || i.status === statusFilter)
   const totalValue = filtered.reduce((s, i) => s + (i.amount || 0), 0)
+  function exportCSV() {
+    downloadCSV(
+      [
+        ['Invoice #','Vendor','Date','Due Date','Amount','Currency','Status','Notes'],
+        ...invoices.map(i => [i.invoice_number||'', i.vendor_ref||'', i.invoice_date||'', i.due_date||'', i.amount||0, i.currency||'AUD', i.status||'', i.notes||''])
+      ],
+      'invoices_'+(activeProject?.name||'project')
+    )
+  }
+
   const fmtMoney = (n: number) => '$' + n.toLocaleString('en-AU', {minimumFractionDigits:0,maximumFractionDigits:0})
 
   function nextStatus(status: InvoiceStatus): InvoiceStatus|null {
@@ -111,7 +122,7 @@ export function InvoicesPanel() {
           <h1 style={{fontSize:'18px',fontWeight:700}}>Invoices</h1>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{invoices.length} invoices · {fmtMoney(invoices.reduce((s,i)=>s+(i.amount||0),0))} total</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>+ New Invoice</button>
+        <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><button className="btn btn-primary" onClick={openNew}>+ New Invoice</button></div>
       </div>
 
       {/* Status filter + summary */}

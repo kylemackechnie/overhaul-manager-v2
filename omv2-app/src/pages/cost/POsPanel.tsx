@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { downloadCSV } from '../../lib/csv'
 import type { PurchaseOrder } from '../../types'
 
 const STATUSES = ['draft','quoted','raised','active','closed','cancelled'] as const
@@ -81,6 +82,16 @@ export function POsPanel() {
     .filter(p => statusFilter === 'all' || p.status === statusFilter)
     .filter(p => !search || p.po_number.toLowerCase().includes(search.toLowerCase()) || p.vendor.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase()))
 
+  function exportCSV() {
+    downloadCSV(
+      [
+        ['PO Number','Vendor','Description','Status','Currency','PO Value','Invoiced Total','Notes'],
+        ...pos.map(p => [p.po_number||'', p.vendor||'', p.description||'', p.status||'', p.currency||'AUD', p.po_value||0, p.invoiced_total||0, p.notes||''])
+      ],
+      'pos_'+(activeProject?.name||'project')
+    )
+  }
+
   const fmtMoney = (n: number|null) => n != null ? '$' + n.toLocaleString('en-AU', {minimumFractionDigits:0}) : '—'
 
   return (
@@ -91,6 +102,7 @@ export function POsPanel() {
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{pos.length} POs on this project</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ New PO</button>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
 
       <div style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>
