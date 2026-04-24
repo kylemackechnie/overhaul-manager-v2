@@ -121,6 +121,13 @@ export interface Resource {
   allow_meal: boolean
   linked_po_id: string | null
   rate_card_id: string | null
+  company: string
+  phone: string
+  email: string
+  home_city: string
+  transport_mode: string
+  drive_km: number
+  meal_break_adj: boolean
   flags: Record<string, unknown>
   notes: string
   created_at: string
