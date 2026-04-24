@@ -70,12 +70,14 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      // Show picker on first load if no active project
+      // Only open picker after we have confirmed a valid session
       if (session && !activeProject) setPickerOpen(true)
+      else if (!session) setPickerOpen(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       if (s && !activeProject) setPickerOpen(true)
+      else if (!s) setPickerOpen(false)
     })
     return () => subscription.unsubscribe()
   }, [])

@@ -35,19 +35,12 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    // Start on active project's site
+    // Session is guaranteed by App.tsx before this component renders
+    load()
     if (activeProject) {
       const siteId = (activeProject as Project & { site_id?: string }).site_id
       if (siteId) setActiveSiteKey(siteId)
     }
-    // Wait for auth session before querying (RLS blocks unauthenticated requests)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        load()
-      } else {
-        setLoading(false)
-      }
-    })
   }, [])
 
   async function load() {
