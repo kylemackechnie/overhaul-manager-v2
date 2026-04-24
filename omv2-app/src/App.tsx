@@ -3,8 +3,10 @@ import { supabase } from './lib/supabase'
 import { useAppStore } from './store/appStore'
 import { useAuth } from './hooks/useAuth'
 import { LoginPage } from './pages/LoginPage'
+import { Header } from './components/layout/Header'
 import { Ribbon } from './components/layout/Ribbon'
-import { ProjectSelector } from './components/layout/ProjectSelector'
+import { ProjectPicker } from './components/layout/ProjectPicker'
+import { CommandPalette } from './components/layout/CommandPalette'
 import { ToastContainer } from './components/ui/Toast'
 import { DashboardPanel } from './pages/dashboard/DashboardPanel'
 import { PlaceholderPanel } from './pages/PlaceholderPanel'
@@ -61,12 +63,30 @@ import type { Session } from '@supabase/supabase-js'
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
-  const { activePanel, activeProject, sidebarOpen, setSidebarOpen } = useAppStore()
+  const { activePanel, activeProject, setActivePanel } = useAppStore()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [cmdOpen, setCmdOpen] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      // Show picker on first load if no active project
+      if (session && !activeProject) setPickerOpen(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s)
+      if (s && !activeProject) setPickerOpen(true)
+    })
     return () => subscription.unsubscribe()
+  }, [])
+
+  // Ctrl+K handler
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
   }, [])
 
   useAuth()
@@ -78,35 +98,46 @@ export default function App() {
   )
   if (!session) return <><LoginPage /><ToastContainer /></>
 
-  const showSidebar = !activeProject || sidebarOpen
-
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
+
+      {/* Full-screen project picker overlay */}
+      {pickerOpen && (
+        <ProjectPicker onClose={() => {
+          setPickerOpen(false)
+          if (!activeProject) setPickerOpen(true) // keep open if no project selected
+        }} />
+      )}
+
+      {/* Command palette */}
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+
+      {/* Header — always visible when logged in */}
+      <Header
+        onOpenPicker={() => setPickerOpen(true)}
+        onOpenSearch={() => setCmdOpen(true)}
+        onOpenSettings={() => setActivePanel('project-settings')}
+      />
+
+      {/* Ribbon — only when project selected */}
       {activeProject && <Ribbon />}
-      <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
-        {showSidebar && <ProjectSelector onProjectSelected={() => setSidebarOpen(false)} />}
-        <div style={{ flex:1, overflow:'auto', background:'var(--bg2)', position:'relative' }}>
-          {!activeProject ? (
-            <div className="empty-state" style={{ paddingTop:'80px' }}>
-              <div className="icon">⚙️</div>
-              <h3>Select a project</h3>
-              <p>Choose a project from the sidebar or create a new one.</p>
-            </div>
-          ) : (
-            <>
-              {!sidebarOpen && (
-                <button onClick={() => setSidebarOpen(true)} style={{
-                  position:'absolute', top:'10px', left:'10px', zIndex:10,
-                  background:'var(--bg)', border:'1px solid var(--border)',
-                  borderRadius:'6px', padding:'4px 10px', cursor:'pointer',
-                  fontSize:'12px', color:'var(--text2)', display:'flex', alignItems:'center', gap:'6px',
-                }}>☰ {activeProject.name}</button>
-              )}
-              <PanelRouter panel={activePanel} />
-            </>
-          )}
-        </div>
+
+      {/* Main panel */}
+      <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
+        {!activeProject ? (
+          <div className="empty-state" style={{ paddingTop:'80px' }}>
+            <div className="icon">⚙️</div>
+            <h3>Select a project</h3>
+            <p>Click the project pill in the header or the SE logo to open the project picker.</p>
+            <button className="btn btn-primary" style={{ marginTop:'16px' }} onClick={() => setPickerOpen(true)}>
+              Open Project Picker
+            </button>
+          </div>
+        ) : (
+          <PanelRouter panel={activePanel} />
+        )}
       </div>
+
       <ToastContainer />
     </div>
   )

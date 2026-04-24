@@ -39,10 +39,11 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [sheets, setSheets] = useState<WeeklyTimesheet[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [wbsList, setWbsList] = useState<{id:string;code:string;name:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [activeWeek, setActiveWeek] = useState<WeeklyTimesheet|null>(null)
   const [showNewModal, setShowNewModal] = useState(false)
-  const [newForm, setNewForm] = useState({ week_start: getMon(new Date().toISOString().slice(0,10)), regime: 'lt12', wbs: '', vendor: '', po_id: '' })
+  const [newForm, setNewForm] = useState({ week_start: getMon(new Date().toISOString().slice(0,10)), wbs: '', notes: '', vendor: '', po_id: '' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, type])
@@ -57,10 +58,12 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       supabase.from('weekly_timesheets').select('*').eq('project_id', pid).eq('type', type).order('week_start', { ascending: false }),
       supabase.from('resources').select('*').eq('project_id', pid).in('category', catMap[type]).order('name'),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).order('po_number'),
+      supabase.from('wbs_list').select('id,code,name').eq('project_id',pid).order('sort_order'),
     ])
     setSheets((sheetData.data || []) as WeeklyTimesheet[])
     setResources((resData.data || []) as Resource[])
     setPos((poData.data || []) as PurchaseOrder[])
+    setWbsList((arguments[3]?.data || []) as {id:string;code:string;name:string}[])
     setLoading(false)
   }
 
@@ -78,7 +81,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
     const payload = {
       project_id: activeProject!.id, type, week_start: ws,
-      regime: newForm.regime, status: 'draft', wbs: newForm.wbs,
+      regime: 'lt12', status: 'draft', wbs: newForm.wbs, notes: newForm.notes,
       vendor: newForm.vendor || null, po_id: newForm.po_id || null, crew,
     }
     const { data, error } = await supabase.from('weekly_timesheets').insert(payload).select().single()
@@ -291,15 +294,15 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 <p style={{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}}>Will be adjusted to Monday: {getMon(newForm.week_start)}</p>
               </div>
               <div className="fg">
-                <label>Regime</label>
-                <select className="input" value={newForm.regime} onChange={e=>setNewForm(f=>({...f,regime:e.target.value}))}>
-                  <option value="lt12">Less than 12 hr shifts</option>
-                  <option value="ge12">12 hr shifts or greater</option>
+                <label>WBS (default for this week)</label>
+                <select className="input" value={newForm.wbs} onChange={e=>setNewForm(f=>({...f,wbs:e.target.value}))}>
+                  <option value="">— Select WBS —</option>
+                  {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name ? ' — '+w.name : ''}</option>)}
                 </select>
               </div>
               <div className="fg">
-                <label>WBS Code</label>
-                <input className="input" value={newForm.wbs} onChange={e=>setNewForm(f=>({...f,wbs:e.target.value}))} placeholder="Default WBS for this week" />
+                <label>Notes</label>
+                <input className="input" value={newForm.notes} onChange={e=>setNewForm(f=>({...f,notes:e.target.value}))} placeholder="Optional — e.g. Week 3, commissioning phase" />
               </div>
               {type === 'subcon' && (
                 <>
