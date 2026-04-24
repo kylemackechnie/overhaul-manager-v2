@@ -35,12 +35,19 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    load()
     // Start on active project's site
     if (activeProject) {
       const siteId = (activeProject as Project & { site_id?: string }).site_id
       if (siteId) setActiveSiteKey(siteId)
     }
+    // Wait for auth session before querying (RLS blocks unauthenticated requests)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        load()
+      } else {
+        setLoading(false)
+      }
+    })
   }, [])
 
   async function load() {
@@ -54,8 +61,9 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
       if (siteData.data) setSites(siteData.data as Site[])
     } catch (e) {
       console.error('Picker load error:', e)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function selectProject(p: Project) {
