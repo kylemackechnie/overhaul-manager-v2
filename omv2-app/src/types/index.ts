@@ -32,6 +32,13 @@ export interface Project {
   end_date: string | null
   notes: string
   default_gm: number
+  unit: string
+  pm: string
+  site_contact: string
+  site_phone: string
+  client: string
+  currency: string
+  scope_tracking: string
   rates: { currency: string; currencies: CurrencyRate[] }
   public_holidays: PublicHoliday[]
   ph_state: string | null
@@ -453,7 +460,7 @@ export interface SubconContract {
 
 export interface WbsItem {
   id: string; project_id: string; code: string; name: string
-  level: string | null; pm100: number | null; source: string | null
+  level: string | null; pm100: number | null; pm80: number | null; source: string | null
   sort_order: number; created_at: string
 }
 

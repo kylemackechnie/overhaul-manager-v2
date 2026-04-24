@@ -9,9 +9,12 @@ export function WBSPanel() {
   const [items, setItems] = useState<WbsItem[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | WbsItem>(null)
-  const [form, setForm] = useState({ code:'', name:'' })
+  const [form, setForm] = useState({ code: '', name: '', pm100: '', pm80: '' })
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const [bulkText, setBulkText] = useState('')
+  const [showBulk, setShowBulk] = useState(false)
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -26,14 +29,20 @@ export function WBSPanel() {
   async function save() {
     if (!form.code.trim()) return toast('WBS code required', 'error')
     setSaving(true)
-    const payload = { project_id: activeProject!.id, code: form.code.trim(), name: form.name.trim(), sort_order: items.length }
+    const payload = {
+      project_id: activeProject!.id,
+      code: form.code.trim(), name: form.name.trim(),
+      pm100: form.pm100 ? parseFloat(form.pm100) : null,
+      pm80: form.pm80 ? parseFloat(form.pm80) : null,
+      sort_order: modal === 'new' ? items.length : (modal as WbsItem).sort_order,
+    }
     if (modal === 'new') {
       const { error } = await supabase.from('wbs_list').insert(payload)
-      if (error) { toast(error.message,'error'); setSaving(false); return }
+      if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('WBS added', 'success')
     } else {
-      const { error } = await supabase.from('wbs_list').update({code:form.code.trim(),name:form.name.trim()}).eq('id',(modal as WbsItem).id)
-      if (error) { toast(error.message,'error'); setSaving(false); return }
+      const { error } = await supabase.from('wbs_list').update(payload).eq('id', (modal as WbsItem).id)
+      if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('Saved', 'success')
     }
     setSaving(false); setModal(null); load()
@@ -45,68 +54,146 @@ export function WBSPanel() {
     toast('Deleted', 'info'); load()
   }
 
-  const filtered = items.filter(i => !search || i.code.toLowerCase().includes(search.toLowerCase()) || i.name.toLowerCase().includes(search.toLowerCase()))
+  async function bulkImport() {
+    const lines = bulkText.trim().split('\n').filter(l => l.trim())
+    if (!lines.length) return toast('No data to import', 'error')
+    setBulkSaving(true)
+    const existing = new Set(items.map(i => i.code))
+    const toAdd = []
+    let skipped = 0
+    for (let i = 0; i < lines.length; i++) {
+      const parts = lines[i].split(/\t|,/).map(p => p.trim())
+      const code = parts[0]; const name = parts[1] || ''
+      if (!code) continue
+      if (existing.has(code)) { skipped++; continue }
+      toAdd.push({ project_id: activeProject!.id, code, name, sort_order: items.length + i })
+    }
+    if (toAdd.length === 0) { toast(`Nothing new to add (${skipped} already exist)`, 'info'); setBulkSaving(false); return }
+    const { error } = await supabase.from('wbs_list').insert(toAdd)
+    if (error) { toast(error.message, 'error'); setBulkSaving(false); return }
+    toast(`Added ${toAdd.length} WBS codes${skipped ? ` (${skipped} skipped — already exist)` : ''}`, 'success')
+    setBulkSaving(false); setBulkText(''); setShowBulk(false); load()
+  }
+
+  function exportCSV() {
+    const rows = [['Code', 'Description', 'PM80', 'PM100']]
+    items.forEach(i => rows.push([i.code, i.name || '', String(i.pm80 ?? ''), String(i.pm100 ?? '')]))
+    const csv = rows.map(r => r.map(c => c.includes(',') ? `"${c}"` : c).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = `wbs_${activeProject?.name || 'project'}.csv`
+    a.click()
+  }
+
+  const filtered = items.filter(i =>
+    !search || i.code.toLowerCase().includes(search.toLowerCase()) || (i.name || '').toLowerCase().includes(search.toLowerCase())
+  )
+  const fmt = (n: number | null | undefined) => n ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
 
   return (
-    <div style={{padding:'24px',maxWidth:'900px'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
+    <div style={{ padding: '24px', maxWidth: '960px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>WBS List</h1>
-          <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{items.length} WBS codes</p>
+          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>WBS List</h1>
+          <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{items.length} WBS codes for this project</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setForm({code:'',name:''}); setModal('new') }}>+ Add WBS</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
+          <button className="btn btn-sm" onClick={() => setShowBulk(b => !b)}>📋 Bulk Import</button>
+          <button className="btn btn-primary" onClick={() => { setForm({ code: '', name: '', pm100: '', pm80: '' }); setModal('new') }}>+ Add WBS</button>
+        </div>
       </div>
 
-      <input className="input" style={{maxWidth:'300px',marginBottom:'16px'}} placeholder="Search code or name..." value={search} onChange={e=>setSearch(e.target.value)} />
+      <input className="input" style={{ maxWidth: '300px', marginBottom: '16px' }} placeholder="Search code or name..." value={search} onChange={e => setSearch(e.target.value)} />
 
-      {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
-      : filtered.length === 0 ? (
-        <div className="empty-state">
-          <div className="icon">📍</div>
-          <h3>No WBS codes</h3>
-          <p>Add WBS codes for cost allocation.</p>
-        </div>
-      ) : (
-        <div className="card" style={{padding:0,overflow:'hidden'}}>
-          <table>
-            <thead><tr><th>WBS Code</th><th>Description</th><th></th></tr></thead>
-            <tbody>
-              {filtered.map(item => (
-                <tr key={item.id}>
-                  <td style={{fontFamily:'var(--mono)',fontSize:'12px',fontWeight:500}}>{item.code}</td>
-                  <td style={{color:'var(--text2)'}}>{item.name || '—'}</td>
-                  <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
-                    <button className="btn btn-sm" onClick={() => { setForm({code:item.code,name:item.name}); setModal(item) }}>Edit</button>
-                    <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={() => del(item)}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Bulk import */}
+      {showBulk && (
+        <div className="card" style={{ marginBottom: '16px' }}>
+          <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '8px' }}>Bulk Import</div>
+          <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '8px' }}>
+            One WBS per line. Tab or comma separated: <code>50OP-00138.P.01.02.01, SEA Labour</code>
+          </p>
+          <textarea className="input" rows={8} value={bulkText} onChange={e => setBulkText(e.target.value)}
+            placeholder={'50OP-00138.P.01.02.01\tSEA Labour & Allowances\n50OP-00138.P.01.02.02\tSEA Equipment Hire'} style={{ fontFamily: 'var(--mono)', fontSize: '12px', resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <button className="btn btn-primary" onClick={bulkImport} disabled={bulkSaving}>
+              {bulkSaving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Import
+            </button>
+            <button className="btn" onClick={() => { setShowBulk(false); setBulkText('') }}>Cancel</button>
+          </div>
         </div>
       )}
 
+      {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
+        : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="icon">📍</div>
+            <h3>No WBS codes</h3>
+            <p>Add WBS codes to allocate costs across this project. Use Bulk Import to add many at once.</p>
+          </div>
+        ) : (
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>WBS Code</th>
+                  <th>Description</th>
+                  <th style={{ textAlign: 'right' }}>PM80 Budget</th>
+                  <th style={{ textAlign: 'right' }}>PM100 Budget</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(item => (
+                  <tr key={item.id}>
+                    <td style={{ fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: 600, color: 'var(--accent)' }}>{item.code}</td>
+                    <td style={{ color: 'var(--text2)' }}>{item.name || '—'}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{fmt(item.pm80)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text2)', fontWeight: item.pm100 ? 600 : 400 }}>{fmt(item.pm100)}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm" onClick={() => { setForm({ code: item.code, name: item.name, pm100: item.pm100?.toString() || '', pm80: item.pm80?.toString() || '' }); setModal(item) }}>Edit</button>
+                      <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(item)}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal" style={{maxWidth:'480px'}} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add WBS Code' : 'Edit WBS Code'}</h3>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div className="fg">
-                <label>WBS Code</label>
-                <input className="input" value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder="e.g. 50OP-00138.P.01.02.01" autoFocus />
+                <label>WBS Code *</label>
+                <input className="input" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
+                  placeholder="e.g. 50OP-00138.P.01.02.01" autoFocus style={{ fontFamily: 'var(--mono)' }} />
               </div>
               <div className="fg">
                 <label>Description</label>
-                <input className="input" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. SEA Labour & Allowances" />
+                <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. SEA Labour & Allowances" />
+              </div>
+              <div className="fg-row">
+                <div className="fg">
+                  <label>PM80 Budget ($)</label>
+                  <input type="number" className="input" value={form.pm80} onChange={e => setForm(f => ({ ...f, pm80: e.target.value }))} placeholder="0" />
+                </div>
+                <div className="fg">
+                  <label>PM100 Budget ($)</label>
+                  <input type="number" className="input" value={form.pm100} onChange={e => setForm(f => ({ ...f, pm100: e.target.value }))} placeholder="0" />
+                </div>
               </div>
             </div>
             <div className="modal-footer">
+              {modal !== 'new' && <button className="btn" style={{ color: 'var(--red)', marginRight: 'auto' }} onClick={() => { del(modal as WbsItem); setModal(null) }}>Delete</button>}
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null} Save
+                {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
             </div>
           </div>

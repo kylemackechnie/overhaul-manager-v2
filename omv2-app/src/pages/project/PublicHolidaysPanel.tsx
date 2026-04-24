@@ -5,6 +5,51 @@ import { toast } from '../../components/ui/Toast'
 
 interface PHEntry { id: string; project_id: string; date: string; name: string; created_at: string }
 
+const NSW_STANDARD = [
+  { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
+  { date:'2026-04-03', name:'Good Friday' }, { date:'2026-04-04', name:'Easter Saturday' },
+  { date:'2026-04-06', name:'Easter Monday' }, { date:'2026-04-25', name:'Anzac Day' },
+  { date:'2026-06-08', name:"King's Birthday (NSW)" }, { date:'2026-08-03', name:'Bank Holiday (NSW)' },
+  { date:'2026-10-05', name:'Labour Day (NSW)' }, { date:'2026-12-25', name:'Christmas Day' },
+  { date:'2026-12-26', name:'Boxing Day' },
+]
+const SA_STANDARD = [
+  { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
+  { date:'2026-03-09', name:'Adelaide Cup' }, { date:'2026-04-03', name:'Good Friday' },
+  { date:'2026-04-06', name:'Easter Monday' }, { date:'2026-04-25', name:'Anzac Day' },
+  { date:'2026-06-08', name:"King's Birthday (SA)" }, { date:'2026-10-05', name:'Labour Day (SA)' },
+  { date:'2026-12-25', name:'Christmas Day' }, { date:'2026-12-26', name:'Proclamation Day' },
+]
+const WA_STANDARD = [
+  { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
+  { date:'2026-03-02', name:'Labour Day (WA)' }, { date:'2026-04-03', name:'Good Friday' },
+  { date:'2026-04-25', name:'Anzac Day' }, { date:'2026-06-01', name:'Western Australia Day' },
+  { date:'2026-09-28', name:"King's Birthday (WA)" }, { date:'2026-12-25', name:'Christmas Day' },
+  { date:'2026-12-26', name:'Boxing Day' },
+]
+const TAS_STANDARD = [
+  { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
+  { date:'2026-03-09', name:'Eight Hours Day (TAS)' }, { date:'2026-04-03', name:'Good Friday' },
+  { date:'2026-04-04', name:'Easter Saturday' }, { date:'2026-04-06', name:'Easter Monday' },
+  { date:'2026-04-25', name:'Anzac Day' }, { date:'2026-06-08', name:"King's Birthday (TAS)" },
+  { date:'2026-12-25', name:'Christmas Day' }, { date:'2026-12-26', name:'Boxing Day' },
+]
+const NT_STANDARD = [
+  { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
+  { date:'2026-04-03', name:'Good Friday' }, { date:'2026-04-04', name:'Easter Saturday' },
+  { date:'2026-04-06', name:'Easter Monday' }, { date:'2026-04-25', name:'Anzac Day' },
+  { date:'2026-05-04', name:'May Day (NT)' }, { date:'2026-06-08', name:"King's Birthday (NT)" },
+  { date:'2026-08-10', name:'Picnic Day (NT)' }, { date:'2026-12-25', name:'Christmas Day' },
+  { date:'2026-12-26', name:'Boxing Day' },
+]
+const ACT_STANDARD = [
+  { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
+  { date:'2026-03-09', name:'Canberra Day' }, { date:'2026-04-03', name:'Good Friday' },
+  { date:'2026-04-04', name:'Easter Saturday' }, { date:'2026-04-06', name:'Easter Monday' },
+  { date:'2026-04-25', name:'Anzac Day' }, { date:'2026-06-08', name:"King's Birthday (ACT)" },
+  { date:'2026-08-03', name:'Family & Community Day' }, { date:'2026-10-05', name:'Labour Day (ACT)' },
+  { date:'2026-12-25', name:'Christmas Day' }, { date:'2026-12-26', name:'Boxing Day' },
+]
 const QLD_STANDARD = [
   { date:'2026-01-01', name:"New Year's Day" }, { date:'2026-01-26', name:'Australia Day' },
   { date:'2026-04-03', name:'Good Friday' }, { date:'2026-04-04', name:'Easter Saturday' },
@@ -74,9 +119,17 @@ export function PublicHolidaysPanel() {
           <h1 style={{ fontSize:'18px', fontWeight:700 }}>Public Holidays</h1>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>{holidays.length} holidays configured</p>
         </div>
-        <div style={{ display:'flex', gap:'8px' }}>
-          <button className="btn btn-sm" onClick={() => importPreset(QLD_STANDARD)}>Import QLD 2026</button>
-          <button className="btn btn-sm" onClick={() => importPreset(VIC_STANDARD)}>Import VIC 2026</button>
+<div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+          {[
+            { label:'QLD', data:QLD_STANDARD }, { label:'NSW', data:NSW_STANDARD },
+            { label:'VIC', data:VIC_STANDARD }, { label:'SA',  data:SA_STANDARD  },
+            { label:'WA',  data:WA_STANDARD  }, { label:'TAS', data:TAS_STANDARD },
+            { label:'NT',  data:NT_STANDARD  }, { label:'ACT', data:ACT_STANDARD },
+          ].map(({ label, data }) => (
+            <button key={label} className="btn btn-sm" onClick={() => importPreset(data)}>
+              {label} 2026
+            </button>
+          ))}
         </div>
       </div>
 
