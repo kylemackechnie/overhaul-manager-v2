@@ -436,7 +436,7 @@ export interface Variation {
   id: string; project_id: string; number: string; title: string
   status: string; value: number | null; scope: string
   submitted_date: string | null; approved_date: string | null
-  notes: string; created_at: string; updated_at: string
+  notes: string; line_items: unknown[] | null; customer_ref?: string; created_at: string; updated_at: string
 }
 
 export interface WorkOrder {
