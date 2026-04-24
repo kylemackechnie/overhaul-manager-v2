@@ -154,14 +154,16 @@ export interface CrewMember {
   role: string
   wbs: string
   days: Record<string, DayEntry>
+  mealBreakAdj?: boolean
 }
 
 export interface DayEntry {
-  dayType: 'weekday' | 'saturday' | 'sunday' | 'publicHoliday'
+  dayType: string
   shiftType: 'day' | 'night'
   hours: number
   laha?: boolean
   meal?: boolean
+  [key: string]: unknown
 }
 
 export interface BackOfficeHour {
