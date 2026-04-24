@@ -11,6 +11,7 @@ interface AppStore {
   activeProjectId: string | null
   activeProject: Project | null
   setActiveProject: (project: Project | null) => void
+  restoreProject: (project: Project | null) => void
 
   // UI state
   activePanel: string
@@ -37,6 +38,12 @@ export const useAppStore = create<AppStore>()(
         activeProjectId: project?.id ?? null,
         activePanel: 'dashboard',
         activeRibbonTab: 'project',
+      }),
+
+      // Restore project without resetting panel (used on page reload)
+      restoreProject: (project: Project | null) => set({
+        activeProject: project,
+        activeProjectId: project?.id ?? null,
       }),
 
       activePanel: 'dashboard',

@@ -73,20 +73,35 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
-      // Only open picker after we have confirmed a valid session
-      if (session && !activeProject) setPickerOpen(true)
-      else if (!session) setPickerOpen(false)
+      if (!session) { setPickerOpen(false); return }
+
+      // Restore previously active project from persisted ID
+      const store = useAppStore.getState()
+      if (store.activeProjectId && !store.activeProject) {
+        try {
+          const { data } = await supabase
+            .from('projects').select('*,site:sites(id,name)')
+            .eq('id', store.activeProjectId).single()
+          if (data) {
+            (store as typeof store & { restoreProject: typeof store.setActiveProject }).restoreProject(data as Parameters<typeof store.setActiveProject>[0])
+            // Restore active panel (don't reset to dashboard)
+            return
+          }
+        } catch (_) { /* project not found — fall through to picker */ }
+      }
+
+      // No persisted project or restore failed — open picker
+      if (!useAppStore.getState().activeProject) setPickerOpen(true)
     })
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
       if (!s) {
-        // Session expired or signed out — clear project so picker opens fresh on next login
         setActiveProject(null)
         setPickerOpen(false)
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // Fresh login or token refresh — open picker if no project loaded
+      } else if (event === 'SIGNED_IN') {
         if (!useAppStore.getState().activeProject) setPickerOpen(true)
       }
     })
