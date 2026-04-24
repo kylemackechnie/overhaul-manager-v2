@@ -336,6 +336,8 @@ export interface HireItem {
   calendar: WetHireCalendarDay[]
   crew: WetHireCrewMember[]
   daa_rate: number
+  daily_rate: number | null
+  weekly_rate: number | null
   notes: string
   created_at: string
   updated_at: string

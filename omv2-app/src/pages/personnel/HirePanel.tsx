@@ -13,6 +13,7 @@ type HireForm = {
   name: string; vendor: string; description: string
   start_date: string; end_date: string
   hire_cost: number; customer_total: number; gm_pct: number
+  daily_rate: number; weekly_rate: number
   currency: string; transport_in: number; transport_out: number
   linked_po_id: string; notes: string
 }
@@ -20,7 +21,7 @@ type HireForm = {
 const EMPTY: HireForm = {
   name: '', vendor: '', description: '',
   start_date: '', end_date: '',
-  hire_cost: 0, customer_total: 0, gm_pct: 15,
+  hire_cost: 0, customer_total: 0, gm_pct: 15, daily_rate: 0, weekly_rate: 0,
   currency: 'AUD', transport_in: 0, transport_out: 0,
   linked_po_id: '', notes: '',
 }
@@ -61,6 +62,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       hire_cost: h.hire_cost, customer_total: h.customer_total, gm_pct: h.gm_pct,
       currency: h.currency, transport_in: h.transport_in, transport_out: h.transport_out,
       linked_po_id: h.linked_po_id || '', notes: h.notes,
+      daily_rate: (h as {daily_rate?:number|null}).daily_rate || 0, weekly_rate: (h as {weekly_rate?:number|null}).weekly_rate || 0,
     })
     setModal(h)
   }
@@ -81,6 +83,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       name: form.name.trim(), vendor: form.vendor, description: form.description,
       start_date: form.start_date || null, end_date: form.end_date || null,
       hire_cost: form.hire_cost, customer_total: form.customer_total, gm_pct: form.gm_pct,
+      daily_rate: form.daily_rate || null, weekly_rate: form.weekly_rate || null,
       currency: form.currency, transport_in: form.transport_in, transport_out: form.transport_out,
       linked_po_id: form.linked_po_id || null, notes: form.notes,
     }
@@ -102,6 +105,15 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
     toast('Deleted', 'info'); load()
   }
 
+  function exportCSV() {
+    const rows = [['Name','Vendor','Start','End','Daily Rate','Weekly Rate','Cost','Sell','GM%']]
+    items.forEach(h => rows.push([h.name, h.vendor||'', h.start_date||'', h.end_date||'',
+      String(h.daily_rate||''), String(h.weekly_rate||''), String(h.hire_cost||0), String(h.customer_total||0), String(h.gm_pct||0)]))
+    const csv = rows.map(r => r.map(c => c.includes(',') ? '+c+' : c).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}))
+    a.download = TYPE_LABELS[hireType].toLowerCase().replace(' ','-')+'_'+activeProject?.name+'.csv'; a.click()
+  }
+
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0 })
   const totalCost = items.reduce((s, h) => s + (h.hire_cost || 0), 0)
   const totalSell = items.reduce((s, h) => s + (h.customer_total || 0), 0)
@@ -115,7 +127,10 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
             {items.length} items · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>+ Add Item</button>
+        <div style={{display:'flex',gap:'8px'}}>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
+          <button className="btn btn-primary" onClick={openNew}>+ Add Item</button>
+        </div>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
@@ -130,7 +145,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
             <table>
               <thead>
                 <tr>
-                  <th>Name</th><th>Vendor</th><th>Start</th><th>End</th>
+                  <th>Name</th><th>Vendor</th><th>Start</th><th>End</th><th style={{textAlign:'right'}}>Daily</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
                   <th style={{ textAlign: 'right' }}>Sell</th>
                   <th>PO</th><th></th>
@@ -145,6 +160,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                       <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{h.vendor || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.start_date || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.end_date || '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{(h as {daily_rate?:number|null}).daily_rate ? fmt((h as {daily_rate?:number|null}).daily_rate as number) : '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(h.hire_cost || 0)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{fmt(h.customer_total || 0)}</td>
                       <td style={{ fontSize: '11px', color: 'var(--text3)' }}>{po ? po.po_number || po.vendor : '—'}</td>
@@ -192,6 +208,12 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                   <input type="date" className="input" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} />
                 </div>
               </div>
+              {hireType === 'dry' && (
+                <div className="fg-row">
+                  <div className="fg"><label>Daily Rate</label><input type="number" className="input" value={form.daily_rate||''} onChange={e=>setForm(f=>({...f,daily_rate:parseFloat(e.target.value)||0}))} placeholder="$/day" /></div>
+                  <div className="fg"><label>Weekly Rate</label><input type="number" className="input" value={form.weekly_rate||''} onChange={e=>setForm(f=>({...f,weekly_rate:parseFloat(e.target.value)||0}))} placeholder="$/week" /></div>
+                </div>
+              )}
               <div className="fg-row">
                 <div className="fg">
                   <label>Hire Cost</label>
@@ -235,6 +257,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               </div>
             </div>
             <div className="modal-footer">
+              {modal !== 'new' && <button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{del(modal as HireItem);setModal(null)}}>Delete</button>}
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save

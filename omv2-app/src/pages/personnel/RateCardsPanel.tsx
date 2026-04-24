@@ -89,6 +89,22 @@ export function RateCardsPanel() {
     toast('Deleted', 'info'); load()
   }
 
+  async function duplicate(rc: RateCard) {
+    const cost = { ...emptyRates(), ...(rc.rates?.cost as Record<string,number> || {}) }
+    const sell = { ...emptyRates(), ...(rc.rates?.sell as Record<string,number> || {}) }
+    const { error } = await supabase.from('rate_cards').insert({
+      project_id: activeProject!.id,
+      role: rc.role + ' (copy)', category: rc.category,
+      subcon_vendor: rc.subcon_vendor || null,
+      rates: { cost, sell },
+      laha_cost: rc.laha_cost, laha_sell: rc.laha_sell,
+      fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
+      meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
+    })
+    if (error) { toast(error.message, 'error'); return }
+    toast('Duplicated', 'success'); load()
+  }
+
   function setRate(mode: 'cost'|'sell', bucket: string, val: number) {
     setForm(f => ({
       ...f,
@@ -162,6 +178,7 @@ export function RateCardsPanel() {
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>${(rc.meal_cost||0).toFixed(2)}</td>
                     <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={() => openEdit(rc)}>Edit</button>
+                      <button className="btn btn-sm" style={{marginLeft:'4px'}} title="Duplicate" onClick={() => duplicate(rc)}>⧉</button>
                       <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={() => del(rc)}>✕</button>
                     </td>
                   </tr>
@@ -242,6 +259,7 @@ export function RateCardsPanel() {
               </div>
             </div>
             <div className="modal-footer">
+              {modal !== 'new' && <button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{del(modal as RateCard);setModal(null)}}>Delete</button>}
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null} Save

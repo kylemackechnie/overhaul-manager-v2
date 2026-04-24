@@ -59,6 +59,10 @@ import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
+import { HireDashboard } from './pages/hire/HireDashboard'
+import { WODashboard } from './pages/site/WODashboard'
+import { ShippingDashboard } from './pages/shipping/ShippingDashboard'
+import { SubconDashboard } from './pages/subcon/SubconDashboard'
 import type { Session } from '@supabase/supabase-js'
 
 export default function App() {
@@ -171,6 +175,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'expenses':              return <ExpensesPanel />
     case 'sap-recon':             return <SapReconPanel />
     case 'subcon-rfq':            return <SubconRFQPanel />
+    case 'subcon-dashboard':      return <SubconDashboard />
     case 'subcon-contracts':      return <SubconRFQPanel />
     case 'hr-dashboard':          return <HRDashboardPanel />
     case 'hr-ratecards':          return <RateCardsPanel />
@@ -182,14 +187,17 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hr-backoffice':         return <BackOfficePanel />
     case 'hr-cars':               return <CarsPanel />
     case 'hr-accommodation':      return <AccommodationPanel />
+    case 'hire-dashboard':        return <HireDashboard />
     case 'hire-dry':              return <HirePanel hireType="dry" />
     case 'hire-wet':              return <HirePanel hireType="wet" />
     case 'hire-local':            return <HirePanel hireType="local" />
     case 'hr-inductions':         return <InductionsPanel />
     case 'hse-dashboard':         return <HSEDashboardPanel />
     case 'hse-co2':               return <Co2TrackingPanel />
+    case 'shipping-dashboard':    return <ShippingDashboard />
     case 'shipping-inbound':      return <ShipmentsPanel direction="import" />
     case 'shipping-outbound':     return <ShipmentsPanel direction="export" />
+    case 'wo-dashboard':          return <WODashboard />
     case 'work-orders':           return <WorkOrdersPanel />
     case 'nrg-dashboard':         return <NrgDashboardPanel />
     case 'nrg-tce':               return <NrgTcePanel />

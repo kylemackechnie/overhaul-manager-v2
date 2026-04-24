@@ -125,6 +125,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '🏢', label: 'Departments', panel: 'tooling-departments' },
       ]},
       { label: 'Equipment Hire', buttons: [
+        { icon: '📊', label: 'Dashboard', panel: 'hire-dashboard' },
         { icon: '🚜', label: 'Dry Hire', panel: 'hire-dry' },
         { icon: '🏗️', label: 'Wet Hire', panel: 'hire-wet' },
         { icon: '🧰', label: 'Local Hire', panel: 'hire-local' },
@@ -135,6 +136,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     key: 'site', label: 'Site Specific',
     groups: [
       { label: 'Work Orders', buttons: [
+        { icon: '📊', label: 'WO Dashboard', panel: 'wo-dashboard' },
         { icon: '📋', label: 'Work Orders', panel: 'work-orders' },
       ]},
       { label: 'NRG Gladstone', buttons: [
