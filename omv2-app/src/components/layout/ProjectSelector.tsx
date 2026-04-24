@@ -15,8 +15,15 @@ export function ProjectSelector() {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    loadProjects()
-    loadSites()
+    // Wait for auth session before querying (RLS requires authenticated user)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        loadProjects()
+        loadSites()
+      } else {
+        setLoading(false)
+      }
+    })
   }, [])
 
   async function loadProjects() {
