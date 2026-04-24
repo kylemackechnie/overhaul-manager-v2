@@ -10,6 +10,10 @@ import { DashboardPanel } from './pages/dashboard/DashboardPanel'
 import { PlaceholderPanel } from './pages/PlaceholderPanel'
 // Cost
 import { CostDashboardPanel } from './pages/cost/CostDashboardPanel'
+import { ForecastPanel } from './pages/cost/ForecastPanel'
+import { SCurvePanel } from './pages/cost/SCurvePanel'
+import { CostReportPanel } from './pages/cost/CostReportPanel'
+import { ReportsDatabasePanel } from './pages/cost/ReportsDatabasePanel'
 import { POsPanel } from './pages/cost/POsPanel'
 import { InvoicesPanel } from './pages/cost/InvoicesPanel'
 import { VariationsPanel } from './pages/cost/VariationsPanel'
@@ -42,6 +46,7 @@ import { NrgTcePanel } from './pages/site/NrgTcePanel'
 import { NrgOhfPanel } from './pages/site/NrgOhfPanel'
 import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
 import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
+import { SparePartsPanel } from './pages/site/SparePartsPanel'
 // Tooling
 import { TVRegisterPanel } from './pages/tooling/TVRegisterPanel'
 import { KollosPanel } from './pages/tooling/KollosPanel'
@@ -118,6 +123,10 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'public-holidays':       return <PublicHolidaysPanel />
     case 'variations':            return <VariationsPanel />
     case 'cost-dashboard':        return <CostDashboardPanel />
+    case 'cost-forecast':         return <ForecastPanel />
+    case 'cost-scurve':           return <SCurvePanel />
+    case 'cost-report':           return <CostReportPanel />
+    case 'reports-db':            return <ReportsDatabasePanel />
     case 'purchase-orders':       return <POsPanel />
     case 'invoices':              return <InvoicesPanel />
     case 'expenses':              return <ExpensesPanel />
@@ -148,6 +157,8 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'nrg-ohf':               return <NrgOhfPanel />
     case 'hardware-contract':     return <HardwareContractPanel />
     case 'hardware-carts':        return <HardwareCartsPanel />
+    case 'parts-list':            return <SparePartsPanel />
+    case 'global-parts':          return <SparePartsPanel />
     case 'tooling-tvs':           return <TVRegisterPanel />
     case 'tooling-kollos':        return <KollosPanel />
     case 'tooling-departments':   return <DepartmentsPanel />
@@ -156,12 +167,6 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
     case 'audit-trail':           return <AuditTrailPanel />
-    case 'cost-forecast':         return p('📈','Forecast','Coming soon')
-    case 'cost-scurve':           return p('📉','S-Curve','Coming soon')
-    case 'cost-report':           return p('📑','Cost Report','Coming soon')
-    case 'reports-db':            return p('📦','Reports Database','Coming soon')
-    case 'parts-list':            return p('🔩','Spare Parts','Coming soon')
-    case 'global-parts':          return p('🔩','Global Parts','Coming soon')
     default:                      return p('🚧', panel, 'Coming soon')
   }
 }
