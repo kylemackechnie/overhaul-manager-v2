@@ -143,6 +143,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📊', label: 'NRG Dashboard', panel: 'nrg-dashboard' },
         { icon: '📋', label: 'TCE Register', panel: 'nrg-tce' },
         { icon: '📈', label: 'OHF Forecast', panel: 'nrg-ohf' },
+        { icon: '📊', label: 'Actuals', panel: 'nrg-actuals' },
       ]},
     ],
   },

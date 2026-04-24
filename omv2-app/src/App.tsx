@@ -46,6 +46,7 @@ import { WorkOrdersPanel } from './pages/site/WorkOrdersPanel'
 import { NrgDashboardPanel } from './pages/site/NrgDashboardPanel'
 import { NrgTcePanel } from './pages/site/NrgTcePanel'
 import { NrgOhfPanel } from './pages/site/NrgOhfPanel'
+import { NrgActualsPanel } from './pages/site/NrgActualsPanel'
 import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
 import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
 import { SparePartsPanel } from './pages/site/SparePartsPanel'
@@ -202,6 +203,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'nrg-dashboard':         return <NrgDashboardPanel />
     case 'nrg-tce':               return <NrgTcePanel />
     case 'nrg-ohf':               return <NrgOhfPanel />
+    case 'nrg-actuals':           return <NrgActualsPanel />
     case 'hardware-contract':     return <HardwareContractPanel />
     case 'hardware-carts':        return <HardwareCartsPanel />
     case 'parts-list':            return <SparePartsPanel />
