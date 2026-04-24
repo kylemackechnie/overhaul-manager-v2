@@ -68,6 +68,7 @@ import type { Session } from '@supabase/supabase-js'
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
+
   const { activePanel, activeProject, setActivePanel, setActiveProject } = useAppStore()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
@@ -81,15 +82,17 @@ export default function App() {
       const store = useAppStore.getState()
       if (store.activeProjectId && !store.activeProject) {
         try {
-          const { data } = await supabase
-            .from('projects').select('*,site:sites(id,name)')
-            .eq('id', store.activeProjectId).single()
+          // 5 second timeout — if Supabase is slow, fall through to picker
+          const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+          const query = supabase.from('projects').select('*,site:sites(id,name)').eq('id', store.activeProjectId).single()
+          const { data } = await Promise.race([query, timeout.then(() => ({ data: null, error: null }))]) as { data: unknown; error: unknown }
           if (data) {
-            (store as typeof store & { restoreProject: typeof store.setActiveProject }).restoreProject(data as Parameters<typeof store.setActiveProject>[0])
-            // Restore active panel (don't reset to dashboard)
+            store.setActiveProject(data as Parameters<typeof store.setActiveProject>[0])
             return
           }
-        } catch (_) { /* project not found — fall through to picker */ }
+        } catch (e) {
+          console.warn('Project restore failed:', e)
+        }
       }
 
       // No persisted project or restore failed — open picker
@@ -119,11 +122,17 @@ export default function App() {
 
   useAuth()
 
-  if (session === undefined) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
-      <span className="spinner" style={{ width:'32px', height:'32px' }} />
-    </div>
-  )
+  // Only block render if session is truly unknown (first frame)
+  // If we have a persisted project, show a minimal loading state rather than blank
+  if (session === undefined) {
+    const hasPersistedProject = !!useAppStore.getState().activeProjectId
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:'12px' }}>
+        <span className="spinner" style={{ width:'32px', height:'32px' }} />
+        {hasPersistedProject && <span style={{ fontSize:'13px', color:'var(--text3)' }}>Resuming session...</span>}
+      </div>
+    )
+  }
   if (!session) return <><LoginPage /><ToastContainer /></>
 
   return (
