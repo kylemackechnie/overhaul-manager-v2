@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { downloadCSV } from '../../lib/csv'
 import type { WorkOrder, WbsItem } from '../../types'
 
 const STATUSES = ['open','in_progress','complete','on_hold','cancelled'] as const
@@ -63,6 +64,14 @@ export function WorkOrdersPanel() {
     setSaving(false); setModal(null); load()
   }
 
+  function exportCSV() {
+    downloadCSV(
+      [['WO Number','Description','Status','WBS','Budget Hrs','Actual Hrs','Notes'],
+       ...wos.map(w => [w.wo_number, w.description||'', w.status, w.wbs_code||'', w.budget_hours||0, w.actual_hours||0, w.notes||''])],
+      'work_orders_'+(activeProject?.name||'project')
+    )
+  }
+
   async function del(wo: WorkOrder) {
     if (!confirm(`Delete WO ${wo.wo_number}?`)) return
     await supabase.from('work_orders').delete().eq('id',wo.id)
@@ -76,7 +85,7 @@ export function WorkOrdersPanel() {
           <h1 style={{ fontSize:'18px', fontWeight:700 }}>Work Orders</h1>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>{wos.length} work orders</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>+ New WO</button>
+        <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><button className="btn btn-primary" onClick={openNew}>+ New WO</button></div>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>

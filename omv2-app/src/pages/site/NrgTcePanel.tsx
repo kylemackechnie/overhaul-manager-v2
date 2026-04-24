@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { downloadCSV } from '../../lib/csv'
 import type { NrgTceLine } from '../../types'
 
 const SOURCES = ['overhead','skilled'] as const
@@ -55,6 +56,14 @@ export function NrgTcePanel() {
     setSaving(false); setModal(null); load()
   }
 
+  function exportCSV() {
+    downloadCSV(
+      [['Item ID','Description','Source','WBS','TCE Total'],
+       ...lines.map(l => [l.item_id||'', l.description||'', l.source||'', l.wbs_code||'', l.tce_total||0])],
+      'nrg_tce_'+(activeProject?.name||'project')
+    )
+  }
+
   async function del(l: NrgTceLine) {
     if (!confirm(`Delete "${l.description}"?`)) return
     await supabase.from('nrg_tce_lines').delete().eq('id',l.id)
@@ -75,7 +84,7 @@ export function NrgTcePanel() {
           <h1 style={{fontSize:'18px',fontWeight:700}}>NRG TCE Register</h1>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{lines.length} lines · Total {fmt(totalTce)}</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>+ Add Line</button>
+        <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><button className="btn btn-primary" onClick={openNew}>+ Add Line</button></div>
       </div>
 
       <div style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>
