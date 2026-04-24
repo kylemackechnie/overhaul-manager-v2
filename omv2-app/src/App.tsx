@@ -8,14 +8,50 @@ import { ProjectSelector } from './components/layout/ProjectSelector'
 import { ToastContainer } from './components/ui/Toast'
 import { DashboardPanel } from './pages/dashboard/DashboardPanel'
 import { PlaceholderPanel } from './pages/PlaceholderPanel'
-import { RateCardsPanel } from './pages/personnel/RateCardsPanel'
-import { ResourcesPanel } from './pages/personnel/ResourcesPanel'
-import { WBSPanel } from './pages/project/WBSPanel'
-import { ProjectSettingsPanel } from './pages/project/ProjectSettingsPanel'
+// Cost
+import { CostDashboardPanel } from './pages/cost/CostDashboardPanel'
 import { POsPanel } from './pages/cost/POsPanel'
 import { InvoicesPanel } from './pages/cost/InvoicesPanel'
 import { VariationsPanel } from './pages/cost/VariationsPanel'
+import { ExpensesPanel } from './pages/cost/ExpensesPanel'
+import { SapReconPanel } from './pages/cost/SapReconPanel'
+import { SubconRFQPanel } from './pages/cost/SubconRFQPanel'
+// Personnel
+import { RateCardsPanel } from './pages/personnel/RateCardsPanel'
+import { ResourcesPanel } from './pages/personnel/ResourcesPanel'
 import { TimesheetsPanel } from './pages/personnel/TimesheetsPanel'
+import { CarsPanel } from './pages/personnel/CarsPanel'
+import { AccommodationPanel } from './pages/personnel/AccommodationPanel'
+import { BackOfficePanel } from './pages/personnel/BackOfficePanel'
+import { HirePanel } from './pages/personnel/HirePanel'
+import { HRDashboardPanel } from './pages/personnel/HRDashboardPanel'
+import { InductionsPanel } from './pages/personnel/InductionsPanel'
+import { HSEDashboardPanel } from './pages/personnel/HSEDashboardPanel'
+import { Co2TrackingPanel } from './pages/personnel/Co2TrackingPanel'
+// Project
+import { WBSPanel } from './pages/project/WBSPanel'
+import { ProjectSettingsPanel } from './pages/project/ProjectSettingsPanel'
+import { PublicHolidaysPanel } from './pages/project/PublicHolidaysPanel'
+import { CalendarPanel } from './pages/project/CalendarPanel'
+import { GanttPanel } from './pages/project/GanttPanel'
+// Site
+import { ShipmentsPanel } from './pages/site/ShipmentsPanel'
+import { WorkOrdersPanel } from './pages/site/WorkOrdersPanel'
+import { NrgDashboardPanel } from './pages/site/NrgDashboardPanel'
+import { NrgTcePanel } from './pages/site/NrgTcePanel'
+import { NrgOhfPanel } from './pages/site/NrgOhfPanel'
+import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
+import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
+// Tooling
+import { TVRegisterPanel } from './pages/tooling/TVRegisterPanel'
+import { KollosPanel } from './pages/tooling/KollosPanel'
+import { DepartmentsPanel } from './pages/tooling/DepartmentsPanel'
+import { GlobalKitsPanel } from './pages/tooling/GlobalKitsPanel'
+import { ToolingCostingsPanel } from './pages/tooling/ToolingCostingsPanel'
+import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
+// Settings
+import { UserManagementPanel } from './pages/settings/UserManagementPanel'
+import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import type { Session } from '@supabase/supabase-js'
 
 export default function App() {
@@ -31,51 +67,37 @@ export default function App() {
   useAuth()
 
   if (session === undefined) return (
-    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh' }}>
-      <span className="spinner" style={{width:'32px',height:'32px'}} />
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
+      <span className="spinner" style={{ width:'32px', height:'32px' }} />
     </div>
   )
   if (!session) return <><LoginPage /><ToastContainer /></>
 
-  // When a project is active, sidebar is hidden by default (like HTML app)
   const showSidebar = !activeProject || sidebarOpen
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
       {activeProject && <Ribbon />}
-      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        {/* Sidebar */}
+      <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
         {showSidebar && <ProjectSelector onProjectSelected={() => setSidebarOpen(false)} />}
-
-        {/* Main panel area */}
-        <div style={{flex:1,overflow:'auto',background:'var(--bg2)',position:'relative'}}>
+        <div style={{ flex:1, overflow:'auto', background:'var(--bg2)', position:'relative' }}>
           {!activeProject ? (
-            <div className="empty-state" style={{paddingTop:'80px'}}>
+            <div className="empty-state" style={{ paddingTop:'80px' }}>
               <div className="icon">⚙️</div>
               <h3>Select a project</h3>
               <p>Choose a project from the sidebar or create a new one.</p>
             </div>
           ) : (
             <>
-              {/* Show project picker button when sidebar is hidden */}
               {!sidebarOpen && (
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  style={{
-                    position:'absolute',top:'10px',left:'10px',zIndex:10,
-                    background:'var(--bg)',border:'1px solid var(--border)',
-                    borderRadius:'6px',padding:'4px 10px',cursor:'pointer',
-                    fontSize:'12px',color:'var(--text2)',display:'flex',
-                    alignItems:'center',gap:'6px',
-                  }}
-                  title="Switch project"
-                >
-                  ☰ {activeProject.name}
-                </button>
+                <button onClick={() => setSidebarOpen(true)} style={{
+                  position:'absolute', top:'10px', left:'10px', zIndex:10,
+                  background:'var(--bg)', border:'1px solid var(--border)',
+                  borderRadius:'6px', padding:'4px 10px', cursor:'pointer',
+                  fontSize:'12px', color:'var(--text2)', display:'flex', alignItems:'center', gap:'6px',
+                }}>☰ {activeProject.name}</button>
               )}
-              <div style={{paddingTop: !sidebarOpen ? '0' : '0'}}>
-                <PanelRouter panel={activePanel} />
-              </div>
+              <PanelRouter panel={activePanel} />
             </>
           )}
         </div>
@@ -88,58 +110,58 @@ export default function App() {
 function PanelRouter({ panel }: { panel: string }) {
   const p = (icon: string, title: string, sub?: string) => <PlaceholderPanel icon={icon} title={title} subtitle={sub} />
   switch (panel) {
-    case 'dashboard':              return <DashboardPanel />
-    case 'hr-ratecards':           return <RateCardsPanel />
-    case 'hr-resources':           return <ResourcesPanel />
-    case 'wbs-list':               return <WBSPanel />
-    case 'project-settings':       return <ProjectSettingsPanel />
-    case 'purchase-orders':        return <POsPanel />
-    case 'invoices':               return <InvoicesPanel />
-    case 'variations':             return <VariationsPanel />
-    case 'hr-timesheets-trades':   return <TimesheetsPanel type="trades" />
-    case 'hr-timesheets-mgmt':     return <TimesheetsPanel type="mgmt" />
-    case 'hr-timesheets-seag':     return <TimesheetsPanel type="seag" />
-    case 'hr-timesheets-subcon':   return <TimesheetsPanel type="subcon" />
-    case 'cost-dashboard':         return p('💰','Cost Dashboard')
-    case 'cost-forecast':          return p('📈','Forecast')
-    case 'cost-scurve':            return p('📉','S-Curve')
-    case 'expenses':               return p('🧾','Expenses')
-    case 'sap-recon':              return p('🔄','SAP Reconciliation')
-    case 'cost-report':            return p('📑','Cost Report')
-    case 'reports-db':             return p('📦','Reports Database')
-    case 'hr-dashboard':           return p('👥','HR Dashboard')
-    case 'hr-backoffice':          return p('🏢','Back Office Hours')
-    case 'hr-cars':                return p('🚗','Cars')
-    case 'hr-accommodation':       return p('🏨','Accommodation')
-    case 'hse-dashboard':          return p('🦺','HSE Dashboard')
-    case 'hr-inductions':          return p('📋','Inductions')
-    case 'hse-co2':                return p('🌿','CO₂ Tracking')
-    case 'subcon-rfq':             return p('🤝','RFQ Register')
-    case 'subcon-contracts':       return p('📃','Contracts')
-    case 'shipping-inbound':       return p('📦','Inbound Shipping')
-    case 'shipping-outbound':      return p('🚚','Outbound Shipping')
-    case 'hardware-contract':      return p('🔧','Hardware Contract')
-    case 'hardware-carts':         return p('🛒','Hardware Carts')
-    case 'parts-list':             return p('🔩','Spare Parts')
-    case 'tooling-tvs':            return p('🧰','TV Register')
-    case 'tooling-kollos':         return p('📦','Kollos')
-    case 'tooling-costings':       return p('💶','Tooling Costings')
-    case 'tooling-departments':    return p('🏢','Departments')
-    case 'hire-dry':               return p('🚜','Dry Hire')
-    case 'hire-wet':               return p('🏗️','Wet Hire')
-    case 'hire-local':             return p('🧰','Local Hire')
-    case 'work-orders':            return p('📋','Work Orders')
-    case 'nrg-dashboard':          return p('📊','NRG Dashboard')
-    case 'nrg-tce':                return p('📋','TCE Register')
-    case 'nrg-ohf':                return p('📈','Overhead Forecast')
-    case 'global-tooling':         return p('🧰','Global Tooling')
-    case 'global-parts':           return p('🔩','Global Parts')
-    case 'global-kits':            return p('📦','Global Kits')
-    case 'calendar':               return p('📅','Calendar')
-    case 'gantt':                  return p('📋','Gantt Chart')
-    case 'public-holidays':        return p('🗓️','Public Holidays')
-    case 'user-management':        return p('👥','User Management')
-    case 'audit-trail':            return p('📋','Audit Trail')
-    default:                       return p('🚧', panel, 'Coming soon')
+    case 'dashboard':             return <DashboardPanel />
+    case 'calendar':              return <CalendarPanel />
+    case 'gantt':                 return <GanttPanel />
+    case 'project-settings':      return <ProjectSettingsPanel />
+    case 'wbs-list':              return <WBSPanel />
+    case 'public-holidays':       return <PublicHolidaysPanel />
+    case 'variations':            return <VariationsPanel />
+    case 'cost-dashboard':        return <CostDashboardPanel />
+    case 'purchase-orders':       return <POsPanel />
+    case 'invoices':              return <InvoicesPanel />
+    case 'expenses':              return <ExpensesPanel />
+    case 'sap-recon':             return <SapReconPanel />
+    case 'subcon-rfq':            return <SubconRFQPanel />
+    case 'subcon-contracts':      return <SubconRFQPanel />
+    case 'hr-dashboard':          return <HRDashboardPanel />
+    case 'hr-ratecards':          return <RateCardsPanel />
+    case 'hr-resources':          return <ResourcesPanel />
+    case 'hr-timesheets-trades':  return <TimesheetsPanel type="trades" />
+    case 'hr-timesheets-mgmt':    return <TimesheetsPanel type="mgmt" />
+    case 'hr-timesheets-seag':    return <TimesheetsPanel type="seag" />
+    case 'hr-timesheets-subcon':  return <TimesheetsPanel type="subcon" />
+    case 'hr-backoffice':         return <BackOfficePanel />
+    case 'hr-cars':               return <CarsPanel />
+    case 'hr-accommodation':      return <AccommodationPanel />
+    case 'hire-dry':              return <HirePanel hireType="dry" />
+    case 'hire-wet':              return <HirePanel hireType="wet" />
+    case 'hire-local':            return <HirePanel hireType="local" />
+    case 'hr-inductions':         return <InductionsPanel />
+    case 'hse-dashboard':         return <HSEDashboardPanel />
+    case 'hse-co2':               return <Co2TrackingPanel />
+    case 'shipping-inbound':      return <ShipmentsPanel direction="import" />
+    case 'shipping-outbound':     return <ShipmentsPanel direction="export" />
+    case 'work-orders':           return <WorkOrdersPanel />
+    case 'nrg-dashboard':         return <NrgDashboardPanel />
+    case 'nrg-tce':               return <NrgTcePanel />
+    case 'nrg-ohf':               return <NrgOhfPanel />
+    case 'hardware-contract':     return <HardwareContractPanel />
+    case 'hardware-carts':        return <HardwareCartsPanel />
+    case 'tooling-tvs':           return <TVRegisterPanel />
+    case 'tooling-kollos':        return <KollosPanel />
+    case 'tooling-departments':   return <DepartmentsPanel />
+    case 'tooling-costings':      return <ToolingCostingsPanel />
+    case 'global-tooling':        return <GlobalToolingPanel />
+    case 'global-kits':           return <GlobalKitsPanel />
+    case 'user-management':       return <UserManagementPanel />
+    case 'audit-trail':           return <AuditTrailPanel />
+    case 'cost-forecast':         return p('📈','Forecast','Coming soon')
+    case 'cost-scurve':           return p('📉','S-Curve','Coming soon')
+    case 'cost-report':           return p('📑','Cost Report','Coming soon')
+    case 'reports-db':            return p('📦','Reports Database','Coming soon')
+    case 'parts-list':            return p('🔩','Spare Parts','Coming soon')
+    case 'global-parts':          return p('🔩','Global Parts','Coming soon')
+    default:                      return p('🚧', panel, 'Coming soon')
   }
 }
