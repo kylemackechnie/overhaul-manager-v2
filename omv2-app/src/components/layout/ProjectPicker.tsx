@@ -52,12 +52,19 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   async function load() {
     setLoading(true)
     try {
+      // AbortController timeout — never hang forever
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+
       const [projData, siteData] = await Promise.all([
-        supabase.from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false }),
-        supabase.from('sites').select('*').order('name'),
+        supabase.from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false }).abortSignal(controller.signal),
+        supabase.from('sites').select('*').order('name').abortSignal(controller.signal),
       ])
+      clearTimeout(timer)
       if (projData.data) setProjects(projData.data as Project[])
       if (siteData.data) setSites(siteData.data as Site[])
+      if (projData.error) console.error('Projects error:', projData.error)
+      if (siteData.error) console.error('Sites error:', siteData.error)
     } catch (e) {
       console.error('Picker load error:', e)
     } finally {
