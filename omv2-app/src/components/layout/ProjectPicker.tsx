@@ -41,6 +41,12 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
       const siteId = (activeProject as Project & { site_id?: string }).site_id
       if (siteId) setActiveSiteKey(siteId)
     }
+    // Escape key to close when project already selected
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && activeProject) onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
   }, [])
 
   async function load() {
@@ -317,7 +323,13 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
       {/* Body */}
       {loading ? (
-        <div className="loading-center"><span className="spinner" /> Loading projects...</div>
+        <div className="loading-center" style={{ flexDirection: 'column', gap: '16px' }}>
+          <span className="spinner" style={{ width: '32px', height: '32px' }} />
+          <span style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading projects...</span>
+          {activeProject && (
+            <button className="btn" onClick={onClose}>← Back to {activeProject.name}</button>
+          )}
+        </div>
       ) : (
         <div className="picker-body">
           {renderSidebar()}
