@@ -105,7 +105,7 @@ export function MigrationPanel() {
           role: rc.role || rc.name || '',
           category: rc.category || 'trades',
           subcon_vendor: rc.subconVendor || rc.vendor || null,
-          rates: { cost: rc.rates?.cost || {}, sell: rc.rates?.sell || {} },
+          rates: { cost: (rc.rates as {cost?:unknown})?.cost || {}, sell: (rc.rates as {sell?:unknown})?.sell || {} },
           regime: rc.regime || null,
           laha_cost: Number(rc.lahaCost || rc.laha_cost || 0),
           laha_sell: Number(rc.lahaSell || rc.laha_sell || 0),
@@ -254,7 +254,7 @@ export function MigrationPanel() {
           const row = {
             project_id: pid,
             hire_type: String(h._type) as 'dry'|'wet'|'local',
-            name: String(h.name || ''),
+            name: String((h as Record<string,unknown>).name || ''),
             vendor: String(h.vendor || ''),
             description: String(h.description || ''),
             start_date: (h.startDate || h.start_date || null) as string|null,
