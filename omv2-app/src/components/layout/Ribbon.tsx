@@ -181,9 +181,12 @@ export function Ribbon() {
       supabase.from('variations').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['variations',r.count||0]),
       supabase.from('work_orders').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['work-orders',r.count||0]),
       supabase.from('wosit_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['parts-list',r.count||0]),
+      supabase.from('wosit_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['parts-dashboard',r.count||0]),
+      supabase.from('hire_items').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hire-dashboard',r.count||0]),
       supabase.from('hire_items').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hire-dry',r.count||0]),
       supabase.from('nrg_tce_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['nrg-tce',r.count||0]),
       supabase.from('shipments').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['shipping-inbound',r.count||0]),
+      supabase.from('subcon_contracts').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['subcon-dashboard',r.count||0]),
     ]).then(results => {
       const c: Record<string,number> = {}
       results.forEach(([panel, count]) => { c[panel as string] = count as number })

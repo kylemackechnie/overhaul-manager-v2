@@ -120,6 +120,15 @@ export function BackOfficePanel() {
   const seTotalSell=seEntries.reduce((s,e)=>s+(e.sell_price||0),0)
   const fmt=(n:number)=>'$'+n.toLocaleString('en-AU',{maximumFractionDigits:0})
 
+  const byPerson = filtered.reduce((acc, e) => {
+    const name = e.name || 'Unknown'
+    if (!acc[name]) acc[name] = { hours: 0, cost: 0, sell: 0 }
+    acc[name].hours += e.hours || 0
+    acc[name].cost += e.cost || 0
+    acc[name].sell += e.sell || 0
+    return acc
+  }, {} as Record<string, { hours: number; cost: number; sell: number }>)
+
   return (
     <div style={{padding:'24px',maxWidth:'1000px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
@@ -154,6 +163,17 @@ export function BackOfficePanel() {
         ) : (
           <div className="card" style={{padding:0,overflow:'hidden'}}>
             <table>
+              {Object.keys(byPerson).length > 1 && (
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'8px',marginBottom:'12px'}}>
+                  {Object.entries(byPerson).sort((a,b)=>b[1].hours-a[1].hours).map(([name, t]) => (
+                    <div key={name} className="card" style={{padding:'10px 12px',borderTop:'3px solid #0891b2'}}>
+                      <div style={{fontWeight:600,fontSize:'12px',marginBottom:'4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
+                      <div style={{fontFamily:'var(--mono)',fontSize:'13px',fontWeight:700,color:'#0891b2'}}>{t.hours.toFixed(1)}h</div>
+                      {t.sell > 0 && <div style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--green)'}}>{fmt(t.sell)}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
               <thead><tr><th>Date</th><th>Name</th><th>Role</th><th style={{textAlign:'right'}}>Hours</th><th style={{textAlign:'right'}}>Cost</th><th style={{textAlign:'right'}}>Sell</th><th>WBS</th><th></th></tr></thead>
               <tbody>
                 {filtered.map(e=>(
