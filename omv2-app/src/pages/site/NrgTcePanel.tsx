@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import type { NrgTceLine } from '../../types'
 
 const SOURCES = ['overhead','skilled'] as const
@@ -21,6 +22,7 @@ export function NrgTcePanel() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -76,7 +78,48 @@ export function NrgTcePanel() {
     .filter(l => !search || l.description.toLowerCase().includes(search.toLowerCase()) || l.wbs_code.toLowerCase().includes(search.toLowerCase()))
 
   const totalTce = filtered.reduce((s,l) => s+(l.tce_total||0), 0)
-  const fmt = (n:number) => '$'+n.toLocaleString('en-AU',{minimumFractionDigits:0})
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      const existingIds = new Set(lines.map(l => l.item_id).filter(Boolean) as string[])
+      const result = parseNrgTceFile(buffer, existingIds)
+      if (result.errors.length > 0) { toast(result.errors[0], 'error'); setImporting(false); return }
+      const pid = activeProject!.id
+      if (result.added.length > 0) {
+        const rows = result.added.map(l => ({
+          project_id: pid, item_id: l.item_id, description: l.description, source: l.source,
+          work_order: l.work_order, contract_scope: l.contract_scope, unit_type: l.unit_type,
+          estimated_qty: l.estimated_qty, tce_rate: l.tce_rate, tce_total: l.tce_total,
+          kpi_included: l.kpi_included, line_type: l.line_type,
+          wbs_code: '', category: '', forecast_enabled: true,
+        }))
+        const { error } = await supabase.from('nrg_tce_lines').insert(rows)
+        if (error) { toast(error.message, 'error'); setImporting(false); return }
+      }
+      let updatedCount = 0
+      for (const { item_id, fields } of result.toUpdate) {
+        const existing = lines.find(l => l.item_id === item_id)
+        if (!existing) continue
+        const patch: Record<string, unknown> = {}
+        if (fields.work_order && !existing.work_order) patch.work_order = fields.work_order
+        if (fields.contract_scope && !existing.contract_scope) patch.contract_scope = fields.contract_scope
+        if (Object.keys(patch).length > 0) { await supabase.from('nrg_tce_lines').update(patch).eq('id', existing.id); updatedCount++ }
+      }
+      const parts = []
+      if (result.added.length) parts.push(result.added.length + ' added')
+      if (updatedCount) parts.push(updatedCount + ' back-filled')
+      if (result.skipped) parts.push(result.skipped + ' unchanged')
+      toast('TCE import: ' + parts.join(', '), 'success')
+      load()
+    } catch (e2) { toast((e2 as Error).message, 'error') }
+    setImporting(false)
+    e.target.value = ''
+  }
+
+    const fmt = (n:number) => '$'+n.toLocaleString('en-AU',{minimumFractionDigits:0})
 
   return (
     <div style={{padding:'24px',maxWidth:'1100px'}}>
@@ -85,7 +128,7 @@ export function NrgTcePanel() {
           <h1 style={{fontSize:'18px',fontWeight:700}}>NRG TCE Register</h1>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{lines.length} lines · Total {fmt(totalTce)}</p>
         </div>
-        <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><button className="btn btn-primary" onClick={openNew}>+ Add Line</button></div>
+        <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><label className="btn btn-sm" style={{cursor:"pointer"}}>{importing ? <span className="spinner" style={{width:"14px",height:"14px"}}/> : "📥"} Import XLSX<input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleImportFile} /></label><button className="btn btn-primary" onClick={openNew}>+ Add Line</button></div>
       </div>
 
       <div style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>

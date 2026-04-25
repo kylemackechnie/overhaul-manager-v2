@@ -48,6 +48,9 @@ export function ResourcesPanel() {
   const [modal, setModal] = useState<null|'new'|Resource>(null)
   const [form, setForm] = useState<Partial<Resource>>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
   const [catFilter, setCatFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -112,7 +115,51 @@ export function ResourcesPanel() {
     toast('Removed', 'info'); load()
   }
 
-  function exportCSV() {
+  async function handleImportCSV(text: string) {
+    const lines = text.trim().split('\n').filter(l => l.trim())
+    if (lines.length < 2) { toast('No data to import', 'error'); return }
+    setImporting(true)
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase())
+    const col = (...terms: string[]) => headers.findIndex(h => terms.some(t => h.includes(t)))
+    const nameI = col('name', 'full name', 'employee')
+    const roleI = col('role', 'position', 'trade', 'classification')
+    const catI  = col('category', 'type', 'cat')
+    const compI = col('company', 'employer', 'contractor')
+    const emailI= col('email')
+    const phoneI= col('phone', 'mobile')
+    const mobInI= col('mob in', 'mobilisation', 'start', 'mob_in')
+    const mobOutI=col('mob out', 'demob', 'end', 'mob_out')
+    if (nameI < 0) { toast('Could not find Name column', 'error'); setImporting(false); return }
+    let added = 0, skipped = 0
+    for (const line of lines.slice(1)) {
+      const cols = line.split(',').map(c2 => c2.trim().replace(/^"|"$/g, ''))
+      const name = cols[nameI]?.trim()
+      if (!name) continue
+      // Skip if already exists by name
+      if (resources.some(r => r.name.toLowerCase() === name.toLowerCase())) { skipped++; continue }
+      const payload = {
+        project_id: activeProject!.id,
+        name,
+        role: roleI >= 0 ? (cols[roleI] || '') : '',
+        category: catI >= 0 ? (cols[catI] || 'trades') : 'trades',
+        company: compI >= 0 ? (cols[compI] || '') : '',
+        email: emailI >= 0 ? (cols[emailI] || '') : '',
+        phone: phoneI >= 0 ? (cols[phoneI] || '') : '',
+        mob_in: mobInI >= 0 ? (cols[mobInI] || null) : null,
+        mob_out: mobOutI >= 0 ? (cols[mobOutI] || null) : null,
+        status: 'active',
+      }
+      const { error } = await supabase.from('resources').insert(payload)
+      if (!error) added++
+    }
+    toast(`Imported ${added} people${skipped ? ` (${skipped} already exist)` : ''}`, 'success')
+    setImporting(false)
+    setShowImport(false)
+    setImportText('')
+    load()
+  }
+
+    function exportCSV() {
     const rows = [['Name','Role','Category','Company','Shift','Mob In','Mob Out','Phone','Email','WBS','Status','LAHA','Meal','FSA']]
     filtered.forEach(r => rows.push([
       r.name, r.role||'', r.category, r.company||'', r.shift||'',
@@ -178,11 +225,32 @@ export function ResourcesPanel() {
         </div>
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
+          <button className="btn btn-sm" onClick={() => setShowImport(s => !s)}>📥 Import CSV</button>
           <button className="btn btn-primary" onClick={openNew}>+ Add Person</button>
         </div>
       </div>
 
       {/* Filters */}
+      {showImport && (
+        <div className="card" style={{marginBottom:'16px'}}>
+          <div style={{fontWeight:600,fontSize:'13px',marginBottom:'6px'}}>Bulk Import from CSV</div>
+          <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'8px'}}>
+            Paste CSV with a header row. Recognised columns: <code>Name, Role, Category, Company, Email, Phone, Mob In, Mob Out</code>
+          </p>
+          <textarea className="input" rows={6} value={importText} onChange={e=>setImportText(e.target.value)}
+            placeholder={'Name,Role,Category,Company\nJohn Smith,Fitter,trades,Acme Co\nJane Doe,Supervisor,management,'} style={{fontFamily:'var(--mono)',fontSize:'12px',resize:'vertical'}} />
+          <div style={{display:'flex',gap:'8px',marginTop:'10px'}}>
+            <button className="btn btn-primary" onClick={()=>handleImportCSV(importText)} disabled={importing||!importText.trim()}>
+              {importing?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Import
+            </button>
+            <label className="btn" style={{cursor:'pointer'}}>
+              📂 From File<input type="file" accept=".csv,.txt" style={{display:'none'}} onChange={async e=>{const f=e.target.files?.[0];if(f){const t=await f.text();setImportText(t)}}} />
+            </label>
+            <button className="btn" onClick={()=>{setShowImport(false);setImportText('')}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       <div style={{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap',alignItems:'center'}}>
         <input className="input" style={{maxWidth:'220px'}} placeholder="Search name, role, company..." value={search} onChange={e=>setSearch(e.target.value)} />
         {(['all',...CATEGORIES] as string[]).map(cat => (
