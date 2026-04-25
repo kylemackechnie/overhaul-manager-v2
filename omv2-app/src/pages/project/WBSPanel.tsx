@@ -4,8 +4,6 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { aggregateByWbs } from '../../engines/forecastEngine'
 import type { WbsCostRow } from '../../engines/forecastEngine'
-import type { HireItem, Car, Accommodation, WeeklyTimesheet, RateCard, BackOfficeEntry } from '../../types'
-import type { HireItem, Car, Accommodation, WeeklyTimesheet, RateCard, BackOfficeEntry } from '../../types'
 import type { WbsItem } from '../../types'
 
 export function WBSPanel() {
@@ -40,7 +38,7 @@ export function WBSPanel() {
       supabase.from('back_office_hours').select('*').eq('project_id',pid),
     ])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = aggregateByWbs(data||[], (hireData.data||[]) as HireItem[], (carData.data||[]) as Car[], (acData.data||[]) as Accommodation[], (tsData.data||[]) as WeeklyTimesheet[], (rcData.data||[]) as RateCard[], (boData.data||[]) as BackOfficeEntry[], [])
+    const rows = aggregateByWbs(data||[], (hireData.data||[]) as never[], (carData.data||[]) as never[], (acData.data||[]) as never[], (tsData.data||[]) as never[], (rcData.data||[]) as never[], (boData.data||[]) as never[], [])
     const actualMap: Record<string,number> = {}
     for (const row of rows as WbsCostRow[]) { if (row.code && row.total) actualMap[row.code] = row.total }
     setActuals(actualMap)

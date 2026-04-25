@@ -156,7 +156,7 @@ export function VariationsPanel() {
                 <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'12px 16px',cursor:'pointer'}} onClick={()=>setExpandedId(isExpanded?null:v.id)}>
                   <span style={{fontFamily:'var(--mono)',fontWeight:700,color:'var(--accent)',minWidth:'80px'}}>{v.number}</span>
                   <span style={{flex:1,fontWeight:500}}>{v.title||'—'}</span>
-                  <span className="badge" style={sc}>{v.status}</span>
+                  <span className="badge" style={{...sc,cursor:'pointer'}} title="Click to advance" onClick={()=>cycleStatus(v)}>{v.status}</span>
                   {sell > 0 && <span style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--green)'}}>{fmt(sell)}</span>}
                   {cost > 0 && cost !== sell && <span style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>cost {fmt(cost)}</span>}
                   <span style={{fontSize:'12px',color:'var(--text3)'}}>{v.submitted_date||'—'}</span>

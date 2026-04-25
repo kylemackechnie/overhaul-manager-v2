@@ -243,7 +243,18 @@ export function SparePartsPanel() {
             {STATUSES.map(s=><option key={s} value={s}>{STATUS_STYLE[s]?.label||s}</option>)}
           </select>
         </div>
-        {filtered.length===0 ? (
+        {selected.size > 0 && (
+                  <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 10px',background:'var(--bg3)',borderBottom:'1px solid var(--border)',marginBottom:'8px',borderRadius:'6px'}}>
+                    <span style={{fontSize:'12px',fontWeight:600,color:'var(--accent)'}}>{selected.size} selected</span>
+                    <select className="input" style={{width:'160px',fontSize:'12px'}} value={bulkStatus} onChange={e=>setBulkStatus(e.target.value)}>
+                      <option value="">Set status...</option>
+                      {STATUSES.map(s=><option key={s} value={s}>{STATUS_STYLE[s].label}</option>)}
+                    </select>
+                    <button className="btn btn-sm btn-primary" onClick={applyBulkStatus} disabled={bulkSaving||!bulkStatus}>{bulkSaving?<span className="spinner" style={{width:'12px',height:'12px'}}/>:null} Apply</button>
+                    <button className="btn btn-sm" onClick={()=>{setSelected(new Set());setBulkStatus('')}}>Clear</button>
+                  </div>
+                )}
+   {filtered.length===0 ? (
           <div className="empty-state"><div className="icon">📦</div><h3>No parts</h3><p>Add parts manually or use the TV/Kollo/WOSIT import (coming soon).</p></div>
         ) : (
           <div className="card" style={{padding:0,overflow:'auto'}}>
@@ -261,7 +272,8 @@ export function SparePartsPanel() {
                   const ss=STATUS_STYLE[p.status]||STATUS_STYLE.required
                   const needsAttn = p.qty_received < p.qty_required && p.status!=='not_required'
                   return (
-                    <tr key={p.id} style={{background:isSel?'rgba(var(--accent-rgb,59,130,246),0.05)':'transparent'}} style={{background:needsAttn?'rgba(251,191,36,0.04)':''}}>
+                    <tr key={p.id} style={{background:selected.has(p.id)?'rgba(59,130,246,0.06)':needsAttn?'rgba(251,191,36,0.04)':''}}>
+                      <td><input type="checkbox" checked={selected.has(p.id)} onChange={e=>{const ns=new Set(selected);e.target.checked?ns.add(p.id):ns.delete(p.id);setSelected(ns)}}/></td>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{p.item_no||'—'}</td>
                       <td style={{fontWeight:500,maxWidth:'220px'}}><div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.description}</div>
                         {p.install_location&&<div style={{fontSize:'10px',color:'var(--text3)'}}>{p.install_location}</div>}
@@ -295,7 +307,8 @@ export function SparePartsPanel() {
           <input className="input" style={{maxWidth:'280px'}} placeholder="Search parts to receive..." value={recvSearch} onChange={e=>setRecvSearch(e.target.value)} />
           <button className="btn btn-sm" onClick={() => {
             const all: Record<string,number> = {}
-            pendingRecv.forEach(p => { all[p.id] = p.qty_required - p.qty_received })
+            parts.filter(p => p.qty_received < p.qty_required && p.status !== 'not_required')
+              .forEach(p => { all[p.id] = Math.max(0, p.qty_required - p.qty_received) })
             setRecvQty(all)
           }}>✓ Fill All Qtys</button>
         </div>

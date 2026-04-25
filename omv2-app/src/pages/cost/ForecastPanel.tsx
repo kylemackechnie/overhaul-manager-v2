@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/appStore'
 import { buildForecast, weekKey, bucketTotal } from '../../engines/forecastEngine'
 import type { ForecastData } from '../../engines/forecastEngine'
 import { downloadCSV } from '../../lib/csv'
-import { BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from 'recharts'
+import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from 'recharts'
 
 interface WeekRow { week: string; trades: number; mgmt: number; seag: number; hire: number; tooling: number; cars: number; accom: number; total: number; actual?: number }
 
@@ -18,7 +18,6 @@ export function ForecastPanel() {
   const [weekRows, setWeekRows] = useState<WeekRow[]>([])
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState<'cost'|'sell'>('sell')
-  const [actuals, setActuals] = useState<Record<string,number>>({})
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -44,8 +43,6 @@ export function ForecastPanel() {
       const wk = weekKey(inv.invoice_date)
       actualsByWk[wk] = (actualsByWk[wk] || 0) + (inv.amount || 0)
     }
-    setActuals(actualsByWk)
-
     const stdHours = activeProject!.std_hours as { day: Record<string,number>; night: Record<string,number> } || { day:{}, night:{} }
     const publicHolidays = (activeProject!.public_holidays as {date:string}[]) || []
 
