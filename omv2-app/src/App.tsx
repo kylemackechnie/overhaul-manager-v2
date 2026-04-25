@@ -94,10 +94,25 @@ export default function App() {
   useEffect(() => {
     // Get session — if we have one, show app immediately
     // Project restore happens in ProjectPicker if needed
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session ?? null)
-      if (session && !useAppStore.getState().activeProject) {
-        setPickerOpen(true)
+      if (session) {
+        const store = useAppStore.getState()
+        if (!store.activeProject && store.activeProjectId) {
+          // Restore persisted project from Supabase
+          const { data } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', store.activeProjectId)
+            .single()
+          if (data) {
+            store.restoreProject(data as import('./types').Project)
+          } else {
+            setPickerOpen(true)
+          }
+        } else if (!store.activeProject) {
+          setPickerOpen(true)
+        }
       }
     })
 
