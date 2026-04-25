@@ -319,11 +319,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     if (!newForm.week_start) return toast('Date required', 'error')
     setSaving(true)
     const ws = getMon(newForm.week_start)
-    const crew = resources.filter(r => catMap[type].includes(r.category || 'trades') && r.mob_in && (!r.mob_out || r.mob_out >= ws))
-      .map(r => ({ personId: r.id, name: r.name, role: r.role || '', wbs: r.wbs || newForm.wbs, days: {} as Record<string, unknown>, mealBreakAdj: false }))
     const { data, error } = await supabase.from('weekly_timesheets').insert({
       project_id: activeProject!.id, type, week_start: ws, wbs: newForm.wbs, notes: newForm.notes,
-      regime: 'lt12', status: 'draft', vendor: newForm.vendor || null, po_id: newForm.po_id || null, crew,
+      regime: 'lt12', status: 'draft', vendor: newForm.vendor || null, po_id: newForm.po_id || null, crew: [],
     }).select('*').single()
     if (error) { toast(error.message, 'error'); setSaving(false); return }
     toast('Week created', 'success'); setSaving(false); setShowNewModal(false)
