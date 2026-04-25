@@ -229,6 +229,29 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         sheets.length === 0 ? (
           <div className="empty-state"><div className="icon">⏱️</div><h3>No timesheets yet</h3><p>Click + New Week to create the first weekly timesheet.</p></div>
         ) : (
+          <>
+          {(() => {
+            const totals = sheets.reduce((acc, s) => {
+              const t = weekTotals(s)
+              return { hours: acc.hours + t.hours, sell: acc.sell + t.sell, cost: acc.cost + t.cost }
+            }, { hours: 0, sell: 0, cost: 0 })
+            const approved = sheets.filter(s => s.status === 'approved').length
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '14px' }}>
+                {[
+                  { label: 'Weeks', value: sheets.length, color: TYPE_COLOR[type] },
+                  { label: 'Approved', value: `${approved}/${sheets.length}`, color: 'var(--green)' },
+                  { label: 'Total Hours', value: totals.hours.toFixed(1) + 'h', color: TYPE_COLOR[type] },
+                  { label: 'Total Sell', value: totals.sell > 0 ? fmt(totals.sell) : '—', color: 'var(--green)' },
+                ].map(t => (
+                  <div key={t.label} className="card" style={{ padding: '12px', borderTop: `3px solid ${t.color}` }}>
+                    <div style={{ fontSize: '16px', fontWeight: 700, fontFamily: 'var(--mono)', color: t.color }}>{t.value}</div>
+                    <div style={{ fontSize: '11px', marginTop: '3px' }}>{t.label}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {sheets.map(s => {
               const sc = STATUS_COLORS[s.status] || STATUS_COLORS.draft
@@ -248,6 +271,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     {cost > 0 && cost !== sell && <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{fmt(cost)}</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Cost</div></div>}
                     <span className="badge" style={sc}>{s.status}</span>
                     <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                      {s.status !== 'approved' && <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Quick approve" onClick={async()=>{
+                        await supabase.from('weekly_timesheets').update({status:'approved'}).eq('id',s.id)
+                        load()
+                      }}>✓ Approve</button>}
                       <button className="btn btn-sm" title="Duplicate week" onClick={() => duplicateWeek(s)}>⧉</button>
                       <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => del(s)}>✕</button>
                     </div>
@@ -256,6 +283,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               )
             })}
           </div>
+          </>
         )
       ) : (
         // ── ACTIVE WEEK GRID ──
