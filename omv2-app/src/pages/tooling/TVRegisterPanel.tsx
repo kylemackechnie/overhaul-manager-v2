@@ -11,6 +11,7 @@ export function TVRegisterPanel() {
   const [costings, setCostings] = useState<ToolingCosting[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
   const [addModal, setAddModal] = useState(false)
   const [newTvNo, setNewTvNo] = useState('')
   const [costModal, setCostModal] = useState<GlobalTV|null>(null)
@@ -81,7 +82,7 @@ export function TVRegisterPanel() {
     toast('Costings saved','success'); setSaving(false); setCostModal(null); load()
   }
 
-  const myTVs = allTVs.filter(tv => projectTVs.includes(tv.tv_no))
+  const myTVs = allTVs.filter(tv => projectTVs.includes(tv.tv_no) && (!search || String(tv.tv_no).includes(search) || (tv.header_name||'').toLowerCase().includes(search.toLowerCase())))
   const availableTVs = allTVs.filter(tv => !projectTVs.includes(tv.tv_no))
 
   return (
@@ -91,6 +92,7 @@ export function TVRegisterPanel() {
           <h1 style={{ fontSize:'18px', fontWeight:700 }}>SE AG Tooling — TV Register</h1>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>{projectTVs.length} TVs on this project</p>
         </div>
+        <input className="input" style={{maxWidth:'200px',fontSize:'12px'}} placeholder="Search TVs..." value={search} onChange={e=>setSearch(e.target.value)} />
         <button className="btn btn-primary" onClick={() => setAddModal(true)}>+ Add TV</button>
       </div>
 

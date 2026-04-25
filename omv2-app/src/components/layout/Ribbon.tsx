@@ -283,7 +283,13 @@ export function Ribbon() {
         {RIBBON_MODULES.map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveRibbonTab(tab.key)}
+            onClick={() => {
+              setActiveRibbonTab(tab.key)
+              // Auto-navigate to first button of this tab
+              const firstGroup = tab.groups[0]
+              const firstBtn = firstGroup?.buttons[0]
+              if (firstBtn) setActivePanel(firstBtn.panel)
+            }}
             style={{
               padding: '5px 12px',
               background: activeRibbonTab === tab.key ? 'var(--bg)' : 'transparent',

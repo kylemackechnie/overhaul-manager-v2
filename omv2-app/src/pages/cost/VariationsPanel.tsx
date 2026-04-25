@@ -46,7 +46,11 @@ export function VariationsPanel() {
   }
 
   function openNew() {
-    const nextNum = 'VN-' + String(variations.length + 1).padStart(3, '0')
+    const maxNum = variations.reduce((m, v) => {
+      const n = parseInt(String(v.number || '').replace(/\D/g, '')) || 0
+      return Math.max(m, n)
+    }, 0)
+    const nextNum = `VN_${String(maxNum + 1).padStart(3, '0')}`
     setForm({ ...EMPTY, number: nextNum, lines: [mkLine()] })
     setModal('new')
   }

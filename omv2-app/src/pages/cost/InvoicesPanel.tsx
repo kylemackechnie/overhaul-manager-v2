@@ -60,7 +60,15 @@ export function InvoicesPanel() {
     load()
   }
 
-  function openNew() { setForm({ ...EMPTY }); setModal('new') }
+  function openNew() {
+    const maxNum = invoices.reduce((m, i) => {
+      const n = parseInt(String(i.invoice_number || '').replace(/\D/g, '')) || 0
+      return Math.max(m, n)
+    }, 0)
+    const today = new Date().toISOString().slice(0, 10)
+    setForm({ ...EMPTY, invoice_number: String(maxNum + 1).padStart(4, '0'), invoice_date: today })
+    setModal('new')
+  }
   function openEdit(inv: Invoice) {
     setForm({
       po_id: inv.po_id || '', invoice_number: inv.invoice_number,
