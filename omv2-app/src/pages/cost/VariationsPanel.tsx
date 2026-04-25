@@ -124,6 +124,7 @@ export function VariationsPanel() {
           </p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
+          <button className="btn btn-sm" onClick={() => window.print()}>🖨 Print</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
           <button className="btn btn-primary" onClick={openNew}>+ New Variation</button>
         </div>

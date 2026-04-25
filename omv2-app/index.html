@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Overhaul Manager</title>
+    <style>
+      @media print {
+        .no-print, nav, header, .ribbon, .sidebar, .modal-overlay, .toast-container { display: none !important; }
+        .print-area { display: block !important; }
+        body { background: white !important; color: black !important; font-size: 11px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 4px 6px; }
+        th { background: #f3f4f6 !important; }
+        .card { border: 1px solid #ccc; break-inside: avoid; margin-bottom: 12px; }
+        @page { margin: 15mm; size: A4 landscape; }
+      }
+    </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   </head>
   <body>
