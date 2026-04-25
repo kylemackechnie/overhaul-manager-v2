@@ -15,6 +15,7 @@ import { CostDashboardPanel } from './pages/cost/CostDashboardPanel'
 import { ForecastPanel } from './pages/cost/ForecastPanel'
 import { SCurvePanel } from './pages/cost/SCurvePanel'
 import { CostReportPanel } from './pages/cost/CostReportPanel'
+import { CustomerReportPanel } from './pages/cost/CustomerReportPanel'
 import { ReportsDatabasePanel } from './pages/cost/ReportsDatabasePanel'
 import { POsPanel } from './pages/cost/POsPanel'
 import { InvoicesPanel } from './pages/cost/InvoicesPanel'
@@ -187,6 +188,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'cost-forecast':         return <ForecastPanel />
     case 'cost-scurve':           return <SCurvePanel />
     case 'cost-report':           return <CostReportPanel />
+    case 'cost-customer-report':  return <CustomerReportPanel />
     case 'reports-db':            return <ReportsDatabasePanel />
     case 'purchase-orders':       return <POsPanel />
     case 'invoices':              return <InvoicesPanel />
