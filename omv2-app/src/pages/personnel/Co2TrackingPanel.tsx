@@ -52,6 +52,40 @@ export function Co2TrackingPanel() {
     setEntries(newEntries)
   }
 
+  async function autoEstimate() {
+    if (!activeProject) return
+    setSaving(true)
+    const pid = activeProject.id
+    const [accomData, carData] = await Promise.all([
+      supabase.from('accommodation').select('nights,total_cost').eq('project_id', pid),
+      supabase.from('cars').select('start_date,end_date').eq('project_id', pid),
+    ])
+    const newEntries: Co2Entry[] = [...entries]
+    // Accommodation hotel nights
+    const totalNights = (accomData.data || []).reduce((s: number, a: {nights: number}) => s + (a.nights || 0), 0)
+    if (totalNights > 0) {
+      const preset = DEFAULT_FACTORS.hotel
+      newEntries.push({ category:'hotel', description:'Accommodation (from project data)', quantity:totalNights, unit:preset.unit, factor:preset.factor, kgCo2:totalNights*preset.factor })
+    }
+    // Car hire — estimate km from duration (assume 100km/day average)
+    const carDays = (carData.data || []).reduce((s: number, c: {start_date:string|null;end_date:string|null}) => {
+      if (!c.start_date || !c.end_date) return s
+      return s + Math.ceil((new Date(c.end_date).getTime() - new Date(c.start_date).getTime()) / 86400000)
+    }, 0)
+    if (carDays > 0) {
+      const km = carDays * 100
+      const preset = DEFAULT_FACTORS.petrol_car
+      newEntries.push({ category:'petrol_car', description:`Car hire ~${km}km estimate (${carDays} days × 100km/day)`, quantity:km, unit:preset.unit, factor:preset.factor, kgCo2:km*preset.factor })
+    }
+    const { data, error } = await supabase.from('projects').update({ co2_config:{ entries:newEntries } })
+      .eq('id', pid).select('*,site:sites(id,name)').single()
+    if (error) { toast(error.message,'error'); setSaving(false); return }
+    setActiveProject(data as typeof activeProject)
+    setEntries(newEntries)
+    toast(`Auto-estimated: ${totalNights} hotel nights, ~${carDays*100}km car hire added`, 'success')
+    setSaving(false)
+  }
+
   const totalKg = entries.reduce((s,e)=>s+(e.kgCo2||0),0)
   const totalT = totalKg / 1000
 
@@ -79,6 +113,9 @@ export function Co2TrackingPanel() {
       )}
 
       {/* Add entry */}
+      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:'8px'}}>
+        <button className="btn btn-sm" onClick={autoEstimate} disabled={saving}>✨ Auto-estimate from project data</button>
+      </div>
       <div className="card" style={{marginBottom:'16px'}}>
         <div style={{fontWeight:600,marginBottom:'12px',fontSize:'13px'}}>Add Emission Entry</div>
         <div className="fg-row" style={{alignItems:'flex-end'}}>
