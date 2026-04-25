@@ -18,6 +18,7 @@ import { ForecastPanel } from './pages/cost/ForecastPanel'
 import { MikaPanel } from './pages/cost/MikaPanel'
 import { PrePlanningReportPanel } from './pages/cost/PrePlanningReportPanel'
 import { SubconVendorSnapshot } from './pages/subcon/SubconVendorSnapshot'
+import { SubconRFQRegisterPanel } from './pages/subcon/SubconRFQRegisterPanel'
 import { WOProgressPanel } from './pages/site/WOProgressPanel'
 import { PartsSiteInventoryPanel } from './pages/site/PartsSiteInventoryPanel'
 import { SCurvePanel } from './pages/cost/SCurvePanel'
@@ -234,6 +235,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'subcon-rfq':            return <SubconRFQPanel />
     case 'subcon-dashboard':      return <SubconDashboard />
     case 'subcon-vendor-snapshot': return <SubconVendorSnapshot />
+    case 'subcon-rfq-register':    return <SubconRFQRegisterPanel />
     case 'subcon-contracts':      return <SubconRFQPanel />
     case 'hr-dashboard':          return <HRDashboardPanel />
     case 'hr-ratecards':          return <RateCardsPanel />
