@@ -30,12 +30,14 @@ export function CalendarPanel() {
     const pid = activeProject!.id
     const ev: CalEvent[] = []
 
-    const [resData, hireData, shipData, varData, invData] = await Promise.all([
+    const [resData, hireData, shipData, varData, invData, accomData, carsData] = await Promise.all([
       supabase.from('resources').select('name,mob_in,mob_out').eq('project_id',pid),
       supabase.from('hire_items').select('name,start_date,end_date,hire_type').eq('project_id',pid),
       supabase.from('shipments').select('reference,eta,shipped_date,direction').eq('project_id',pid),
       supabase.from('variations').select('number,title,submitted_date,approved_date').eq('project_id',pid),
       supabase.from('invoices').select('invoice_number,invoice_date').eq('project_id',pid),
+      supabase.from('accommodation').select('property,room,check_in,check_out').eq('project_id',pid),
+      supabase.from('cars').select('vehicle_type,rego,start_date,end_date').eq('project_id',pid),
     ])
 
     // Resources mob in/out
@@ -65,6 +67,20 @@ export function CalendarPanel() {
     // Invoices
     for (const i of invData.data||[]) {
       if (i.invoice_date) ev.push({ date:i.invoice_date, label:`INV ${i.invoice_number||'—'}`, module:'invoices', color:MOD_COLORS.invoices, panel:'invoices' })
+    }
+
+    // Accommodation
+    for (const a of accomData.data||[]) {
+      const label = `${a.property||'Accom'}${a.room?' R'+a.room:''}`
+      if (a.check_in) ev.push({ date:a.check_in, label:`🏨 ${label}`, module:'accom', color:MOD_COLORS.accom, panel:'hr-accommodation', sub:'Check in' })
+      if (a.check_out) ev.push({ date:a.check_out, label:`🏨 ${label} out`, module:'accom', color:'#c4b5fd', panel:'hr-accommodation', sub:'Check out' })
+    }
+
+    // Cars
+    for (const c of carsData.data||[]) {
+      const label = `${c.vehicle_type||'Car'}${c.rego?' ('+c.rego+')':''}`
+      if (c.start_date) ev.push({ date:c.start_date, label:`🚗 ${label}`, module:'cars', color:MOD_COLORS.cars, panel:'hr-cars', sub:'Car hire starts' })
+      if (c.end_date) ev.push({ date:c.end_date, label:`🚗 ${label} rtn`, module:'cars', color:'#f9a8d4', panel:'hr-cars', sub:'Car return' })
     }
 
     // Public holidays
