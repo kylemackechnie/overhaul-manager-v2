@@ -426,6 +426,10 @@ export interface NrgTceLine {
   forecast_resources: string[]
   hire_links: string[]
   details: Record<string, unknown>
+  work_order: string | null
+  contract_scope: string | null
+  line_type: string | null
+  kpi_included: boolean
   created_at: string
   updated_at: string
 }

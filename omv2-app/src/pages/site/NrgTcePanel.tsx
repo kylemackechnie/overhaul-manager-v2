@@ -9,7 +9,7 @@ const SOURCES = ['overhead','skilled'] as const
 
 const EMPTY = {
   wbs_code:'', description:'', category:'', source:'overhead' as 'overhead'|'skilled',
-  tce_total:0, item_id:'', details:{} as Record<string,unknown>
+  tce_total:0, item_id:'', work_order:'', contract_scope:'', line_type:'', kpi_included:false, details:{} as Record<string,unknown>
 }
 
 export function NrgTcePanel() {
@@ -35,7 +35,8 @@ export function NrgTcePanel() {
   function openNew() { setForm(EMPTY); setModal('new') }
   function openEdit(l: NrgTceLine) {
     setForm({ wbs_code:l.wbs_code, description:l.description, category:l.category,
-      source:l.source, tce_total:l.tce_total, item_id:l.item_id||'', details:l.details as Record<string,unknown> })
+      source:l.source, tce_total:l.tce_total, item_id:l.item_id||'', details:l.details as Record<string,unknown>,
+      work_order:l.work_order||'', contract_scope:l.contract_scope||'', line_type:l.line_type||'', kpi_included:!!l.kpi_included })
     setModal(l)
   }
 
@@ -43,7 +44,7 @@ export function NrgTcePanel() {
     if (!form.description.trim() && !form.wbs_code.trim()) return toast('Description or WBS required','error')
     setSaving(true)
     const payload = { project_id:activeProject!.id, wbs_code:form.wbs_code, description:form.description,
-      category:form.category, source:form.source, tce_total:form.tce_total, item_id:form.item_id||null }
+      category:form.category, source:form.source, tce_total:form.tce_total, item_id:form.item_id||null, work_order:form.work_order||null, contract_scope:form.contract_scope||null, line_type:form.line_type||null, kpi_included:form.kpi_included }
     if (modal==='new') {
       const { error } = await supabase.from('nrg_tce_lines').insert(payload)
       if (error) { toast(error.message,'error'); setSaving(false); return }
@@ -149,7 +150,7 @@ export function NrgTcePanel() {
                 <div className="fg"><label>WBS Code</label><input className="input" value={form.wbs_code} onChange={e=>setForm(f=>({...f,wbs_code:e.target.value}))} /></div>
                 <div className="fg"><label>Category</label><input className="input" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} placeholder="e.g. Mechanical, Electrical" /></div>
               </div>
-              <div className="fg"><label>TCE Total ($)</label><input type="number" className="input" value={form.tce_total||''} onChange={e=>setForm(f=>({...f,tce_total:parseFloat(e.target.value)||0}))} /></div>
+              <div className="fg"><label>TCE Total ($)</label><input type="number" className="input" value={form.tce_total||''} onChange={e=>setForm(f=>({...f,tce_total:parseFloat(e.target.value)||0}))} /></div><div className="fg-row"><div className="fg"><label>Work Order</label><input className="input" value={form.work_order} onChange={e=>setForm(f=>({...f,work_order:e.target.value}))} placeholder="WO number" /></div><div className="fg"><label>Contract Scope</label><input className="input" value={form.contract_scope} onChange={e=>setForm(f=>({...f,contract_scope:e.target.value}))} placeholder="Service order / scope ref" /></div></div><div className="fg-row"><div className="fg"><label>Line Type</label><input className="input" value={form.line_type} onChange={e=>setForm(f=>({...f,line_type:e.target.value}))} placeholder="e.g. Labour, Materials, Overhead" /></div><div className="fg" style={{display:'flex',alignItems:'center',gap:'8px',paddingTop:'20px'}}><label style={{marginBottom:0}}><input type="checkbox" checked={form.kpi_included} onChange={e=>setForm(f=>({...f,kpi_included:e.target.checked}))} style={{marginRight:'6px',accentColor:'var(--accent)'}}/>KPI Included</label></div></div>
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={()=>setModal(null)}>Cancel</button>
