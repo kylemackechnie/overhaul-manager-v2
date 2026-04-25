@@ -107,6 +107,8 @@ export function CostReportPanel() {
                   <th style={{ textAlign:'right' }}>Trades</th>
                   <th style={{ textAlign:'right' }}>Mgmt</th>
                   <th style={{ textAlign:'right' }}>SE AG</th>
+                  <th style={{ textAlign:'right' }}>Subcon</th>
+                  <th style={{ textAlign:'right' }}>Back Office</th>
                   <th style={{ textAlign:'right' }}>Hire</th>
                   <th style={{ textAlign:'right' }}>Cars</th>
                   <th style={{ textAlign:'right' }}>Accom</th>
