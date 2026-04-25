@@ -250,7 +250,8 @@ export function MigrationPanel() {
       if (hireAll.length) {
         addLog('info', `Migrating ${hireAll.length} hire items...`)
         let ok = 0
-        for (const h of hireAll) {
+        for (const _h of hireAll) {
+          const h = _h as Record<string,unknown>
           const row = {
             project_id: pid,
             hire_type: String(h._type) as 'dry'|'wet'|'local',
