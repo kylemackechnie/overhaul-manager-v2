@@ -18,7 +18,7 @@ export function CostReportPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [wbsData, hireData, carData, acData, tsData, rcData, boData, tcData] = await Promise.all([
+    const [wbsData, hireData, carData, acData, tsData, rcData, boData, tcData, crossTcData] = await Promise.all([
       supabase.from('wbs_list').select('*').eq('project_id',pid).order('sort_order'),
       supabase.from('hire_items').select('*').eq('project_id',pid),
       supabase.from('cars').select('*').eq('project_id',pid),
@@ -26,11 +26,14 @@ export function CostReportPanel() {
       supabase.from('weekly_timesheets').select('*').eq('project_id',pid),
       supabase.from('rate_cards').select('*').eq('project_id',pid),
       supabase.from('back_office_hours').select('*').eq('project_id',pid),
+      // Own costings + cross-project costings where this project appears in a split
       supabase.from('tooling_costings').select('*').eq('project_id',pid),
+      supabase.from('tooling_costings').select('*').neq('project_id',pid).filter('splits','cs',`[{"projectId":"${pid}"}]`),
     ])
+    const allTc = [...(tcData.data||[]), ...(crossTcData.data||[])]
     const agg = aggregateByWbs(
       wbsData.data||[], hireData.data||[], carData.data||[], acData.data||[],
-      tsData.data||[], rcData.data||[], boData.data||[], tcData.data||[], [], pid
+      tsData.data||[], rcData.data||[], boData.data||[], allTc, [], pid
     )
     setRows(agg)
     setLoading(false)

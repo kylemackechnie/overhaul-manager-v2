@@ -21,6 +21,7 @@ interface Split {
 }
 
 type CostingRow = ToolingCosting & {
+  _crossProject?: boolean
   tv?: GlobalTV & { header_name?: string; replacement_value_eur?: number; department_id?: string }
   splits: Split[]
 }
@@ -46,19 +47,32 @@ export function ToolingCostingsPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [cData, tvData, deptData, wbsData, projData] = await Promise.all([
+    // Fetch both owned costings AND costings from other projects that have splits for this project
+    const [cData, crossData, tvData, deptData, wbsData, projData] = await Promise.all([
       supabase.from('tooling_costings').select('*').eq('project_id', pid).order('tv_no'),
+      supabase.from('tooling_costings').select('*').neq('project_id', pid).filter('splits', 'cs', `[{"projectId":"${pid}"}]`).order('tv_no'),
       supabase.from('global_tvs').select('tv_no,header_name,replacement_value_eur,department_id').order('tv_no'),
       supabase.from('global_departments').select('*').order('name'),
       supabase.from('wbs_list').select('code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('projects').select('id,name').order('name'),
     ])
     const tvMap = Object.fromEntries((tvData.data || []).map(tv => [tv.tv_no, tv]))
-    setCostings((cData.data || []).map((c: ToolingCosting) => ({
+    const ownedRows = (cData.data || []).map((c: ToolingCosting) => ({
       ...c,
       splits: (c as unknown as { splits?: Split[] }).splits || [],
       tv: tvMap[c.tv_no],
-    })))
+      _crossProject: false,
+    }))
+    // Cross-project: read-only view, filtered to splits relevant to this project
+    const crossRows = (crossData.data || []).map((c: ToolingCosting) => ({
+      ...c,
+      splits: ((c as unknown as { splits?: Split[] }).splits || []).filter(s => s.type === 'project' && s.projectId === pid),
+      tv: tvMap[c.tv_no],
+      _crossProject: true,
+    }))
+    // Deduplicate — don't show cross-project row if we already own it
+    const ownedTvNos = new Set(ownedRows.map(r => r.tv_no))
+    setCostings([...ownedRows, ...crossRows.filter(r => !ownedTvNos.has(r.tv_no))])
     setDepts((deptData.data || []) as Department[])
     setWbsList((wbsData.data || []) as WbsItem[])
     setProjects((projData.data || []) as ProjectRef[])
@@ -66,6 +80,8 @@ export function ToolingCostingsPanel() {
   }
 
   async function updateField(id: string, field: string, value: unknown) {
+    const row = costings.find(c => c.id === id)
+    if ((row as CostingRow)?._crossProject) { toast('Edit this TV on its owning project', 'error'); return }
     const { error } = await supabase.from('tooling_costings').update({ [field]: value }).eq('id', id)
     if (error) { toast(error.message, 'error'); return }
     setCostings(cs => cs.map(c => c.id === id ? { ...c, [field]: value } : c))
@@ -75,6 +91,22 @@ export function ToolingCostingsPanel() {
     const { error } = await supabase.from('tooling_costings').update({ splits }).eq('id', id)
     if (error) { toast(error.message, 'error'); return }
     setCostings(cs => cs.map(c => c.id === id ? { ...c, splits } : c))
+
+    // Auto-create project_tvs rows for any cross-project splits
+    // so the TV shows up in those projects' TV Registers
+    const costing = costings.find(c => c.id === id)
+    if (!costing) return
+    const crossProjects = splits
+      .filter(s => s.type === 'project' && s.projectId && s.projectId !== activeProject!.id)
+      .map(s => s.projectId!)
+      .filter((v, i, a) => a.indexOf(v) === i) // dedupe
+    for (const projId of crossProjects) {
+      await supabase.from('project_tvs').upsert({
+        project_id: projId, tv_no: costing.tv_no,
+        header_name: costing.tv?.header_name || null,
+        replacement_value_eur: costing.tv?.replacement_value_eur || null,
+      }, { onConflict: 'project_id,tv_no', ignoreDuplicates: true })
+    }
   }
 
   function addSplit(costing: CostingRow, type: SplitType) {
@@ -163,6 +195,11 @@ export function ToolingCostingsPanel() {
                   <span style={{ fontFamily: 'var(--mono)', fontSize: '15px', fontWeight: 700, color: 'var(--mod-tooling)' }}>TV{c.tv_no}</span>
                   <span style={{ fontSize: '14px', fontWeight: 600 }}>{c.tv?.header_name || <em style={{ color: 'var(--text3)', fontWeight: 400 }}>unnamed</em>}</span>
                   {dept && <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '3px', background: '#e0e7ff', color: '#3730a3', fontWeight: 600 }}>{dept.name}</span>}
+                  {(c as CostingRow)._crossProject && (
+                    <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '3px', background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+                      📋 Cross-project — edit on owning project
+                    </span>
+                  )}
                 </div>
                 <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>
                   {replVal > 0 ? fmtEur(replVal) + ' repl. value' : '—'}
