@@ -210,10 +210,10 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hr-dashboard':          return <HRDashboardPanel />
     case 'hr-ratecards':          return <RateCardsPanel />
     case 'hr-resources':          return <ResourcesPanel />
-    case 'hr-timesheets-trades':  return <TimesheetsPanel type="trades" />
-    case 'hr-timesheets-mgmt':    return <TimesheetsPanel type="mgmt" />
-    case 'hr-timesheets-seag':    return <TimesheetsPanel type="seag" />
-    case 'hr-timesheets-subcon':  return <TimesheetsPanel type="subcon" />
+    case 'hr-timesheets-trades':  return <TimesheetsPanel key="trades" type="trades" />
+    case 'hr-timesheets-mgmt':    return <TimesheetsPanel key="mgmt" type="mgmt" />
+    case 'hr-timesheets-seag':    return <TimesheetsPanel key="seag" type="seag" />
+    case 'hr-timesheets-subcon':  return <TimesheetsPanel key="subcon" type="subcon" />
     case 'hr-backoffice':         return <BackOfficePanel />
     case 'hr-cars':               return <CarsPanel />
     case 'hr-accommodation':      return <AccommodationPanel />
