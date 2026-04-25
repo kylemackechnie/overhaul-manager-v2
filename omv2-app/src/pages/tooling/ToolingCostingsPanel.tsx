@@ -101,8 +101,9 @@ export function ToolingCostingsPanel() {
       .map(s => s.projectId!)
       .filter((v, i, a) => a.indexOf(v) === i) // dedupe
     for (const projId of crossProjects) {
+      const siteId = (activeProject as typeof activeProject & {site_id?:string}).site_id || null
       await supabase.from('project_tvs').upsert({
-        project_id: projId, tv_no: costing.tv_no,
+        project_id: projId, tv_no: costing.tv_no, site_id: siteId,
         header_name: costing.tv?.header_name || null,
         replacement_value_eur: costing.tv?.replacement_value_eur || null,
       }, { onConflict: 'project_id,tv_no', ignoreDuplicates: true })

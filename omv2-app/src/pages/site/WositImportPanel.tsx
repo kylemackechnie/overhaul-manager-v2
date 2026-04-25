@@ -147,7 +147,8 @@ export function WositImportPanel() {
     try {
       // Import TVs → global_tvs + project_tvs
       for (const tv of tvRows) {
-        const { data: existing } = await supabase.from('global_tvs').select('id').eq('tv_no', tv.tvNo).single()
+        const siteId = (activeProject as typeof activeProject & {site_id?:string}).site_id || null
+        const { data: existing } = await supabase.from('global_tvs').select('id').eq('tv_no', tv.tvNo).eq('site_id', siteId || '').maybeSingle()
         if (existing) {
           await supabase.from('global_tvs').update({
             header_name: tv.tvName || undefined, hawb: tv.hawb, mawb: tv.mawb, flight: tv.flight,
@@ -155,7 +156,7 @@ export function WositImportPanel() {
             kanlog_price: tv.kanlogPrice || null, has_dg: tv.hasDg, tv_comment: tv.comment,
           }).eq('id', existing.id)
         } else {
-          const { data: newTv } = await supabase.from('global_tvs').insert({
+          const { data: newTv } = await supabase.from('global_tvs').insert({ site_id: siteId,
             tv_no: tv.tvNo, header_name: tv.tvName, hawb: tv.hawb, mawb: tv.mawb, flight: tv.flight,
             departure_date: tv.departure || null, eta_pod: tv.eta || null,
             kanlog_price: tv.kanlogPrice || null, kanlog_currency: tv.currency,
@@ -164,7 +165,7 @@ export function WositImportPanel() {
           if (newTv) tvAdded++
         }
         // Link to project
-        await supabase.from('project_tvs').upsert({ project_id: pid, tv_no: parseInt(tv.tvNo) || 0 }, { onConflict: 'project_id,tv_no' })
+        await supabase.from('project_tvs').upsert({ project_id: pid, tv_no: parseInt(tv.tvNo) || 0, site_id: siteId }, { onConflict: 'project_id,tv_no' })
       }
 
       // Import Kollos → global_kollos + project_kollos

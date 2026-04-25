@@ -133,13 +133,16 @@ export function ShippingImportPanel() {
       await supabase.from('global_tvs').upsert({
         tv_no: tv.tvNo, header_name: tv.headerName,
         replacement_value_eur: tv.replValue || null,
+        site_id: (activeProject as typeof activeProject & { site_id?: string }).site_id || null,
         gross_kg: null, net_kg: null, pack_items: '',
         extra: {},
-      }, { onConflict: 'tv_no' })
+      }, { onConflict: 'site_id,tv_no' })
 
       // 2. Upsert project_tvs (links TV to this project)
+      const siteId = (activeProject as typeof activeProject & { site_id?: string }).site_id || null
       const { error: tvErr } = await supabase.from('project_tvs').upsert({
-        project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName,
+        project_id: pid, tv_no: tv.tvNo, site_id: siteId,
+        header_name: tv.headerName,
         replacement_value_eur: tv.replValue || null,
         departure_date: tv.departure || null, eta_pod: tv.eta || null,
       }, { onConflict: 'project_id,tv_no' })

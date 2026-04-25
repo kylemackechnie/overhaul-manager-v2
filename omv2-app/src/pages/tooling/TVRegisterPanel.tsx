@@ -40,10 +40,11 @@ export function TVRegisterPanel() {
     if (!newTvNo.trim()) return toast('TV number required','error')
     const tvNo = newTvNo.trim()
     // Ensure global_tv exists
-    const { error: tvErr } = await supabase.from('global_tvs').upsert({ tv_no: tvNo, header_name:'' }, { onConflict:'tv_no', ignoreDuplicates:true })
+    const siteId = (activeProject as typeof activeProject & {site_id?:string}).site_id || null
+    const { error: tvErr } = await supabase.from('global_tvs').upsert({ tv_no: tvNo, header_name:'', site_id: siteId }, { onConflict:'site_id,tv_no', ignoreDuplicates:true })
     if (tvErr) { toast(tvErr.message,'error'); return }
     // Link to project
-    const { error } = await supabase.from('project_tvs').upsert({ project_id:activeProject!.id, tv_no:tvNo }, { onConflict:'project_id,tv_no', ignoreDuplicates:true })
+    const { error } = await supabase.from('project_tvs').upsert({ project_id:activeProject!.id, tv_no:tvNo, site_id: siteId }, { onConflict:'project_id,tv_no', ignoreDuplicates:true })
     if (error) { toast(error.message,'error'); return }
     toast(`TV${tvNo} added to project`,'success')
     setNewTvNo(''); setAddModal(false); load()
