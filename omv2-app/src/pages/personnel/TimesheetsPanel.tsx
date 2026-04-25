@@ -40,33 +40,116 @@ function autoType(dateStr: string, holidays: Set<string>): string {
   if (dow === 6) return 'saturday'
   return 'weekday'
 }
-function splitHours(hrs: number, dayType: string, shiftType: string, regime: string) {
-  if (hrs <= 0) return { dnt: 0, dt15: 0, ddt: 0, nnt: 0, ndt: 0 }
-  if (dayType === 'sunday' || dayType === 'public_holiday') return { dnt: 0, dt15: 0, ddt: hrs, nnt: 0, ndt: 0 }
-  if (dayType === 'saturday') {
-    if (regime === 'ge12') return { dnt: 0, dt15: 0, ddt: hrs, nnt: 0, ndt: 0 }
-    return { dnt: 0, dt15: Math.min(hrs, 2), ddt: Math.max(0, hrs - 2), nnt: 0, ndt: 0 }
+// Exact port of HTML splitHours() — all 8 day types, all 7 buckets, regimeConfig from rate card
+type HourSplit = { dnt:number; dt15:number; ddt:number; ddt15:number; nnt:number; ndt:number; ndt15:number }
+type RegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
+
+function splitHours(hrs: number, dayType: string, shiftType: string, regime: string, regimeConfig?: RegimeConfig): HourSplit {
+  const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
+  if (hrs <= 0) return zero
+
+  const night = shiftType === 'night'
+  const rc = regimeConfig || {}
+  const WD_NT    = (rc as {wdNT?:number}).wdNT    ?? 7.2
+  const WD_T15   = (rc as {wdT15?:number}).wdT15   ?? 3.3
+  const SAT_T15  = (rc as {satT15?:number}).satT15  ?? 3
+  const NIGHT_NT = (rc as {nightNT?:number}).nightNT ?? 7.2
+  const REST_NT  = (rc as {restNT?:number}).restNT  ?? 7.2
+
+  // Public holiday — all hours at DT1.5 (day→ddt15, night→ndt15)
+  if (dayType === 'public_holiday') {
+    return night
+      ? { ...zero, ndt15: hrs }
+      : { ...zero, ddt15: hrs }
   }
-  if (shiftType === 'night') return { dnt: 0, dt15: 0, ddt: 0, nnt: Math.min(hrs, 8), ndt: Math.max(0, hrs - 8) }
-  if (regime === 'ge12') return { dnt: Math.min(hrs, 8), dt15: Math.min(Math.max(0, hrs - 8), 2), ddt: Math.max(0, hrs - 10), nnt: 0, ndt: 0 }
-  return { dnt: Math.min(hrs, 7.6), dt15: Math.min(Math.max(0, hrs - 7.6), 2.4), ddt: Math.max(0, hrs - 10), nnt: 0, ndt: 0 }
+
+  // Rest/fatigue — flat NT
+  if (dayType === 'rest') {
+    return night
+      ? { ...zero, nnt: REST_NT }
+      : { ...zero, dnt: REST_NT }
+  }
+
+  // Travel and mob/demob — flat day NT
+  if (dayType === 'travel' || dayType === 'mob') {
+    return { ...zero, dnt: hrs }
+  }
+
+  // Night work
+  if (night) {
+    if (dayType === 'saturday' || dayType === 'sunday') {
+      return { ...zero, ndt: hrs }
+    }
+    // Weekday night: NT up to NIGHT_NT, then DT
+    const nnt = Math.min(hrs, NIGHT_NT)
+    const ndt = Math.max(0, hrs - NIGHT_NT)
+    return { ...zero, nnt, ndt }
+  }
+
+  // Day — Saturday
+  if (dayType === 'saturday') {
+    if (regime === 'ge12') return { ...zero, ddt: hrs }
+    const t15 = Math.min(hrs, SAT_T15)
+    const ddt = Math.max(0, hrs - SAT_T15)
+    return { ...zero, dt15: t15, ddt }
+  }
+
+  // Day — Sunday (all DT, not DT1.5 — Sunday is ddt not ddt15)
+  if (dayType === 'sunday') {
+    return { ...zero, ddt: hrs }
+  }
+
+  // Weekday day — LT12: NT → T1.5 → DT
+  if (regime === 'lt12') {
+    const dnt  = Math.min(hrs, WD_NT)
+    const dt15 = Math.min(Math.max(0, hrs - WD_NT), WD_T15)
+    const ddt  = Math.max(0, hrs - WD_NT - WD_T15)
+    return { ...zero, dnt, dt15, ddt }
+  }
+
+  // Weekday day — GE12: NT → DT (no T1.5)
+  const dnt = Math.min(hrs, WD_NT)
+  const ddt = Math.max(0, hrs - WD_NT)
+  return { ...zero, dnt, ddt }
 }
+// Exact port of HTML calcCrewMemberTotal() — handles all allowances, mealBreakAdj, rc.regime
 function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc: RateCard | null) {
-  let hours = 0, sell = 0, cost = 0, allowances = 0
-  const rates = rc?.rates as { cost: Record<string, number>; sell: Record<string, number> } | null
+  let hours = 0, sell = 0, cost = 0, allowances = 0, allowCost = 0
+  const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
   const cr = rates?.cost || {}; const sr = rates?.sell || {}
-  Object.values(member.days || {}).forEach(d => {
-    const day = d as { dayType?: string; shiftType?: string; hours?: number; laha?: boolean; meal?: boolean }
-    const h = day.hours || 0; if (h <= 0) return
-    hours += h
-    const split = splitHours(h, day.dayType || 'weekday', day.shiftType || 'day', regime)
-    Object.entries(split).forEach(([b, bh]) => { if (bh > 0) { cost += bh * (cr[b] || 0); sell += bh * (sr[b] || 0) } })
-    if (day.laha) { cost += (rc as { laha_cost?: number })?.laha_cost || 0; sell += (rc as { laha_sell?: number })?.laha_sell || 0; allowances += (rc as { laha_sell?: number })?.laha_sell || 0 }
-    if (day.meal) { cost += (rc as { meal_cost?: number })?.meal_cost || 0; sell += (rc as { meal_sell?: number })?.meal_sell || 0; allowances += (rc as { meal_sell?: number })?.meal_sell || 0 }
+  const rcX = rc as unknown as Record<string,unknown>
+  const isMgmt = rc && (rcX.category === 'management' || rcX.category === 'seag')
+  const rcRegime = rcX.regime as RegimeConfig
+
+  Object.entries(member.days || {}).forEach(([, d]) => {
+    const day = d as { dayType?:string; shiftType?:string; hours?:number; laha?:boolean; meal?:boolean; fsa?:boolean; camp?:boolean }
+
+    // Allowances apply even on rest/zero-hour days (e.g. LAHA on a rest day)
+    if (isMgmt) {
+      if (day.fsa)       { allowances += (rcX.fsa_sell as number || 183);  allowCost += (rcX.fsa_cost as number || 130) }
+      else if (day.camp) { allowances += (rcX.camp as number || 199);      allowCost += (rcX.camp_cost as number || 165.20) }
+      else if (day.laha) { allowances += (rcX.fsa_sell as number || 183);  allowCost += (rcX.fsa_cost as number || 130) } // legacy laha = FSA for mgmt
+    } else {
+      if (day.laha)  { allowances += (rcX.laha_sell as number || rcX.laha as number || 212); allowCost += (rcX.laha_cost as number || rcX.laha as number || 212) }
+      if (day.meal)  { allowances += (rcX.meal_sell as number || rcX.meal as number || 94);  allowCost += (rcX.meal_cost as number || rcX.meal as number || 94) }
+    }
+
+    const h = day.hours || 0
+    if (h <= 0) return // skip hour calcs for rest/zero days
+
+    // mealBreakAdj: +0.5h to cost/sell calc (not payroll) per HTML
+    const adjH = (member.mealBreakAdj && h > 0) ? 0.5 : 0
+    const effH = h + adjH
+    hours += effH
+
+    const split = splitHours(effH, day.dayType || 'weekday', day.shiftType || 'day', regime, rcRegime)
+    Object.entries(split).forEach(([b, bh]) => {
+      if (bh > 0) { cost += bh * (cr[b] || 0); sell += bh * (sr[b] || 0) }
+    })
   })
-  const workedDays = Object.values(member.days || {}).filter((d: unknown) => ((d as { hours?: number }).hours || 0) > 0).length
-  const fsaSell = (rc as { fsa_sell?: number })?.fsa_sell || 0; const fsaCost = (rc as { fsa_cost?: number })?.fsa_cost || 0
-  if (fsaSell > 0) { sell += workedDays * fsaSell; cost += workedDays * fsaCost; allowances += workedDays * fsaSell }
+
+  sell += allowances
+  cost += allowCost
   return { hours, sell, cost, allowances }
 }
 

@@ -1,4 +1,4 @@
-import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, WeeklyTimesheet, ToolingCosting, WbsItem } from '../types'
+import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, WeeklyTimesheet, ToolingCosting, WbsItem, Expense } from '../types'
 
 export interface DayBucket {
   trades:    { cost: number; sell: number; headcount: number; hours: number }
@@ -18,6 +18,7 @@ export interface ForecastData {
   days: string[]
   totalCost: number
   totalSell: number
+  accomWarnings: { property: string; room: string; person: string; personStart: string; personEnd: string; bookStart: string; bookEnd: string; outsideBefore: boolean; outsideAfter: boolean }[]
 }
 
 // ---------- helpers ----------
@@ -54,40 +55,44 @@ function emptyDay(): DayBucket {
   }
 }
 
-function splitHours(totalHrs: number, dayType: 'weekday'|'saturday'|'sunday', shiftType: 'day'|'night', regime: 'lt12'|'ge12') {
-  // Simplified split matching HTML app's splitHours logic
-  const split: Record<string, number> = { dnt:0, dt15:0, ddt:0, nnt:0, ndt:0 }
-  if (totalHrs <= 0) return split
+// Full 7-bucket split with regimeConfig — mirrors HTML splitHours() exactly
+type FcHourSplit = Record<string, number>
+type FcRegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
 
-  if (dayType === 'sunday') {
-    split.ddt = totalHrs
-  } else if (dayType === 'saturday') {
-    if (regime === 'ge12') {
-      split.ddt = totalHrs
-    } else {
-      split.dt15 = Math.min(totalHrs, 2)
-      split.ddt  = Math.max(0, totalHrs - 2)
-    }
-  } else {
-    // Weekday
-    if (shiftType === 'night') {
-      split.nnt = Math.min(totalHrs, 8)
-      split.ndt = Math.max(0, totalHrs - 8)
-    } else if (regime === 'ge12') {
-      split.dnt = Math.min(totalHrs, 8)
-      split.dt15 = Math.min(Math.max(0, totalHrs - 8), 2)
-      split.ddt  = Math.max(0, totalHrs - 10)
-    } else {
-      split.dnt = Math.min(totalHrs, 7.6)
-      split.dt15 = Math.min(Math.max(0, totalHrs - 7.6), 2.4)
-      split.ddt  = Math.max(0, totalHrs - 10)
-    }
+function splitHours(totalHrs: number, dayType: string, shiftType: 'day'|'night', regime: 'lt12'|'ge12', regimeConfig?: FcRegimeConfig): FcHourSplit {
+  const zero: FcHourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
+  if (totalHrs <= 0) return { ...zero }
+  const night = shiftType === 'night'
+  const rc = regimeConfig || {}
+  const WD_NT    = (rc as {wdNT?:number}).wdNT    ?? 7.2
+  const WD_T15   = (rc as {wdT15?:number}).wdT15   ?? 3.3
+  const SAT_T15  = (rc as {satT15?:number}).satT15  ?? 3
+  const NIGHT_NT = (rc as {nightNT?:number}).nightNT ?? 7.2
+  const REST_NT  = (rc as {restNT?:number}).restNT  ?? 7.2
+
+  if (dayType === 'public_holiday') return night ? { ...zero, ndt15: totalHrs } : { ...zero, ddt15: totalHrs }
+  if (dayType === 'rest')  return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
+  if (dayType === 'travel' || dayType === 'mob') return { ...zero, dnt: totalHrs }
+  if (night) {
+    if (dayType === 'saturday' || dayType === 'sunday') return { ...zero, ndt: totalHrs }
+    return { ...zero, nnt: Math.min(totalHrs, NIGHT_NT), ndt: Math.max(0, totalHrs - NIGHT_NT) }
   }
-  return split
+  if (dayType === 'saturday') {
+    if (regime === 'ge12') return { ...zero, ddt: totalHrs }
+    return { ...zero, dt15: Math.min(totalHrs, SAT_T15), ddt: Math.max(0, totalHrs - SAT_T15) }
+  }
+  if (dayType === 'sunday') return { ...zero, ddt: totalHrs }
+  if (regime === 'lt12') {
+    const dnt  = Math.min(totalHrs, WD_NT)
+    const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
+    const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
+    return { ...zero, dnt, dt15, ddt }
+  }
+  return { ...zero, dnt: Math.min(totalHrs, WD_NT), ddt: Math.max(0, totalHrs - WD_NT) }
 }
 
-function getDayType(d: string, holidays: Set<string>): 'weekday'|'saturday'|'sunday' {
-  if (holidays.has(d)) return 'sunday' // PH treated as double-time like Sunday
+function getDayType(d: string, holidays: Set<string>): string {
+  if (holidays.has(d)) return 'public_holiday'
   const dow = new Date(d + 'T12:00:00').getDay()
   if (dow === 0) return 'sunday'
   if (dow === 6) return 'saturday'
@@ -114,6 +119,8 @@ export function buildForecast(
   _projStart: string | null,
   projEnd: string | null,
   fxRates: { code: string; rate: number }[] = [],
+  expenses: Expense[] = [],
+  dailyExpenseEstimate: number = 0,
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
@@ -162,7 +169,8 @@ export function buildForecast(
         const h = stdHours.day?.[dow] ?? 0
         if (h > 0) {
           const regime: 'lt12'|'ge12' = h >= 12 ? 'ge12' : 'lt12'
-          const split = splitHours(h, dayType, 'day', regime)
+          const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
+          const split = splitHours(h, dayType, 'day', regime, rcRegime)
           labCost += costForSplit(split, rcCost)
           labSell += costForSplit(split, rcSell)
           hours += h
@@ -172,19 +180,24 @@ export function buildForecast(
         const h = stdHours.night?.[dow] ?? 0
         if (h > 0) {
           const regime: 'lt12'|'ge12' = h >= 12 ? 'ge12' : 'lt12'
-          const split = splitHours(h, dayType, 'night', regime)
+          const rcRegime2 = (rc as RateCard & { regime?: FcRegimeConfig }).regime
+          const split = splitHours(h, dayType, 'night', regime, rcRegime2)
           labCost += costForSplit(split, rcCost)
           labSell += costForSplit(split, rcSell)
           hours += h
         }
       }
 
-      // Allowances
+      // Allowances — only apply if resource has them enabled (mirrors HTML fcAggregate)
       const isTrades = catKey === 'trades'
-      labCost += isTrades ? (rc.laha_cost || 0) : (rc.fsa_cost || 0)
-      labSell += isTrades ? (rc.laha_sell || 0) : (rc.fsa_sell || 0)
-      labCost += rc.meal_cost || 0
-      labSell += rc.meal_sell || 0
+      const rX = r as Resource & { allow_laha?: boolean; allow_meal?: boolean; allow_fsa?: boolean }
+      if (isTrades) {
+        if (rX.allow_laha !== false) { labCost += rc.laha_cost || 0; labSell += rc.laha_sell || 0 }
+        if (rX.allow_meal !== false) { labCost += rc.meal_cost || 0; labSell += rc.meal_sell || 0 }
+      } else {
+        // mgmt/seag — FSA by default unless explicitly disabled
+        if (rX.allow_fsa !== false && rX.allow_laha !== false) { labCost += rc.fsa_cost || 0; labSell += rc.fsa_sell || 0 }
+      }
 
       if (labCost || labSell) {
         const day = ensure(d)
@@ -234,10 +247,21 @@ export function buildForecast(
   spreadHire(hireItems.filter(h => h.hire_type === 'wet'), 'wetHire')
   spreadHire(hireItems.filter(h => h.hire_type === 'local'), 'localHire')
 
-  // ── Cars ──
+  // ── Cars — spread over assigned person's mob dates (HTML fcAggregate behaviour) ──
   for (const c of cars) {
     if (!c.start_date) continue
-    const days = dateRange(c.start_date, c.end_date || c.start_date)
+    const cX = c as Car & { person_id?: string }
+    let spreadStart = c.start_date
+    let spreadEnd   = c.end_date || c.start_date
+    // If car is assigned to a person, use their mob dates
+    if (cX.person_id) {
+      const person = resources.find(r => r.id === cX.person_id)
+      if (person?.mob_in) {
+        spreadStart = person.mob_in
+        spreadEnd   = (person as Resource & { mob_out?: string }).mob_out || person.mob_in
+      }
+    }
+    const days = dateRange(spreadStart, spreadEnd)
     if (!days.length) continue
     const perDayCost = (c.total_cost || 0) / days.length
     const perDaySell = (c.customer_total || c.total_cost || 0) / days.length
@@ -248,10 +272,27 @@ export function buildForecast(
     }
   }
 
-  // ── Accommodation ──
+  const accomWarnings: ForecastData['accomWarnings'] = []
+
+  // ── Accommodation — spread over occupant mob dates (HTML fcAggregate behaviour) ──
   for (const a of accom) {
     if (!a.check_in) continue
-    const nights = dateRange(a.check_in, a.check_out || a.check_in)
+    const aX = a as Accommodation & { occupant_ids?: string[] }
+    let spreadStart = a.check_in
+    let spreadEnd   = a.check_out || a.check_in
+    // If occupants assigned, spread over their mob date range
+    if (aX.occupant_ids?.length) {
+      const occupantResources = aX.occupant_ids
+        .map(id => resources.find(r => r.id === id))
+        .filter((r): r is Resource => !!r && !!r.mob_in)
+      if (occupantResources.length) {
+        const mobIns  = occupantResources.map(r => r.mob_in!).sort()
+        const mobOuts = occupantResources.map(r => (r as Resource & {mob_out?:string}).mob_out || r.mob_in!).sort()
+        spreadStart = mobIns[0]
+        spreadEnd   = mobOuts[mobOuts.length - 1]
+      }
+    }
+    const nights = dateRange(spreadStart, spreadEnd)
     if (!nights.length) continue
     const perNightCost = (a.total_cost || 0) / nights.length
     const perNightSell = (a.customer_total || a.total_cost || 0) / nights.length
@@ -260,17 +301,60 @@ export function buildForecast(
       day.accom.cost += perNightCost
       day.accom.sell += perNightSell
     }
+
+    // Flag occupants whose mob dates fall outside the booking window
+    if (aX.occupant_ids?.length && (a.check_in || a.check_out)) {
+      const occupantResources = aX.occupant_ids
+        .map(id => resources.find(r => r.id === id))
+        .filter((r): r is Resource => !!r && !!r.mob_in)
+      for (const occ of occupantResources) {
+        const personStart = occ.mob_in!
+        const personEnd = (occ as Resource & {mob_out?:string}).mob_out || occ.mob_in!
+        const bookStart = a.check_in || ''
+        const bookEnd = a.check_out || ''
+        const outsideBefore = !!bookStart && personStart < bookStart
+        const outsideAfter  = !!bookEnd && personEnd > bookEnd
+        if (outsideBefore || outsideAfter) {
+          accomWarnings.push({
+            property: (a as Accommodation & {property?:string}).property || 'Unknown',
+            room: (a as Accommodation & {room?:string}).room || '',
+            person: (occ as Resource & {name?:string}).name || '',
+            personStart, personEnd, bookStart, bookEnd, outsideBefore, outsideAfter,
+          })
+        }
+      }
+    }
   }
 
-  // ── Tooling ──
+  // ── Expenses — exact date entries + daily estimate fill for gaps ──
+  for (const e of expenses) {
+    const eDate = (e as Expense & {date?:string}).date
+    if (!eDate) continue
+    const day = ensure(eDate)
+    const cost = (e as Expense & {cost_ex_gst?:number}).cost_ex_gst || e.amount || 0
+    const sell = (e as Expense & {sell_price?:number}).sell_price || cost
+    day.expenses.cost += cost
+    day.expenses.sell += sell
+  }
+  // Fill gaps with daily estimate (HTML fcAggregate cfg.expenses.dailyEstimate)
+  if (dailyExpenseEstimate > 0 && _projStart && projEnd) {
+    for (const d of dateRange(_projStart, projEnd)) {
+      const day = ensure(d)
+      if (day.expenses.cost === 0) {
+        day.expenses.cost += dailyExpenseEstimate
+        day.expenses.sell += dailyExpenseEstimate
+      }
+    }
+  }
+
+  // ── Tooling — use project FX rate for EUR→base conversion ──
+  const eurRate = fxRates.find(r => r.code === 'EUR')?.rate ?? 1.65 // fallback if no FX configured
   for (const tc of toolingCostings) {
     if (!tc.charge_start) continue
     const days = dateRange(tc.charge_start, tc.charge_end || tc.charge_start)
     if (!days.length) continue
-    // cost_eur/sell_eur — use a fixed rough AUD rate for display (1 EUR ≈ 1.65 AUD)
-    const AUD_RATE = 1.65
-    const totalCost = (tc.cost_eur || 0) * AUD_RATE
-    const totalSell = (tc.sell_eur || 0) * AUD_RATE
+    const totalCost = (tc.cost_eur || 0) * eurRate
+    const totalSell = (tc.sell_eur || 0) * eurRate
     const perDayCost = totalCost / days.length
     const perDaySell = totalSell / days.length
     for (const d of days) {
@@ -290,7 +374,7 @@ export function buildForecast(
     }
   }
 
-  return { byDay, days, totalCost, totalSell }
+  return { byDay, days, totalCost, totalSell, accomWarnings }
 }
 
 // Aggregate by week key (YYYY-WNN)
@@ -329,6 +413,7 @@ export function aggregateByWbs(
   rateCards: RateCard[],
   backOffice: BackOfficeHour[],
   toolingCostings: ToolingCosting[],
+  fxRates: { code: string; rate: number }[] = [],
 ): WbsCostRow[] {
   const rows: Record<string, WbsCostRow> = {}
 
@@ -406,8 +491,9 @@ export function aggregateByWbs(
     const wbs = (tc as unknown as {wbs_code?:string}).wbs_code || ''
     if (!wbs) continue
     const r = get(wbs)
-    const cost = (tc.cost_eur || 0) * 1.65
-    const sell = (tc.sell_eur || 0) * 1.65
+    const _eurRate = fxRates.find ? fxRates.find((r: {code:string;rate:number}) => r.code === 'EUR')?.rate ?? 1.65 : 1.65
+    const cost = (tc.cost_eur || 0) * _eurRate
+    const sell = (tc.sell_eur || 0) * _eurRate
     r.tooling += cost
     r.total += cost
     r.totalSell += sell

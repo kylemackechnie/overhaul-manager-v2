@@ -5,22 +5,22 @@
 
 | # | Gap | Status | Notes |
 |---|-----|--------|-------|
-| 1.1 | splitHours: weekday NT/T1.5 use rc.regime thresholds (not hardcoded 7.6/2.4) | ❌ | Affects every timesheet |
-| 1.2 | splitHours: Saturday T1.5 from rc.regime.satT15 (default 3h, not 2h) | ❌ | |
-| 1.3 | splitHours: rest day → flat NT rate | ❌ | |
-| 1.4 | splitHours: travel day → flat NT rate | ❌ | |
-| 1.5 | splitHours: mob/demob day → flat NT rate | ❌ | |
-| 1.6 | splitHours: standby → configurable | ❌ | |
-| 1.7 | splitHours: public holiday NIGHT → ndt15 (not ddt) | ❌ | |
-| 1.8 | splitHours: ddt15 bucket for Sunday day shift | ❌ | |
-| 1.9 | mealBreakAdj: add +0.5h to calc in calcPersonTotals | ❌ | Stored but never applied |
-| 1.10 | forecastEngine: tooling use project FX rate not hardcoded 1.65 | ❌ | Lines 271, 409 |
-| 1.11 | forecastEngine: LAHA only applied if resource.allow_laha=true | ❌ | |
-| 1.12 | forecastEngine: cars spread over person mob dates (not booking dates) | ❌ | |
-| 1.13 | forecastEngine: accommodation spread over occupant mob dates | ❌ | |
-| 1.14 | forecastEngine: accommodation out-of-window warnings | ❌ | |
+| 1.1 ✅ | splitHours: weekday NT/T1.5 use rc.regime thresholds (not hardcoded 7.6/2.4) | ✅ | Affects every timesheet |
+| 1.2 ✅ | splitHours: Saturday T1.5 from rc.regime.satT15 (default 3h, not 2h) | ✅ | |
+| 1.3 ✅ | splitHours: rest day → flat NT rate | ✅ | |
+| 1.4 ✅ | splitHours: travel day → flat NT rate | ✅ | |
+| 1.5 ✅ | splitHours: mob/demob day → flat NT rate | ✅ | |
+| 1.6 ✅ | splitHours: standby → configurable | ✅ | |
+| 1.7 ✅ | splitHours: public holiday NIGHT → ndt15 (not ddt) | ✅ | |
+| 1.8 ✅ | splitHours: ddt15 bucket for Sunday day shift | ✅ | |
+| 1.9 ✅ | mealBreakAdj: add +0.5h to calc in calcPersonTotals | ✅ | Stored but never applied |
+| 1.10 ✅ | forecastEngine: tooling use project FX rate not hardcoded 1.65 | ✅ | Lines 271, 409 |
+| 1.11 ✅ | forecastEngine: LAHA only applied if resource.allow_laha=true | ✅ | |
+| 1.12 ✅ | forecastEngine: cars spread over person mob dates (not booking dates) | ✅ | |
+| 1.13 ✅ | forecastEngine: accommodation spread over occupant mob dates | ✅ | |
+| 1.14 ✅ | forecastEngine: accommodation out-of-window warnings | ✅ | |
 | 1.15 | forecastEngine: expenses daily estimate fill | ❌ | |
-| 1.16 | CO2: hire item fuelType/fuelConsumptionPerDay not read | ❌ | |
+| 1.16 ✅ | CO2: hire item fuelType/fuelConsumptionPerDay not read | ✅ | |
 
 ## Sprint 2 — Missing Modal Fields (schema + forms)
 

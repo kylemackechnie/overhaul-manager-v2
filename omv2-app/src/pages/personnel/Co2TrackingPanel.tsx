@@ -52,13 +52,17 @@ export function Co2TrackingPanel() {
     setEntries(newEntries)
   }
 
+  // CO2 factors matching HTML CO2_DEFAULTS (kg per litre of fuel, or per km)
+  const CO2_FACTORS = { diesel: 2.68, petrol: 2.31, lpg: 1.51, electric: 0, carPerKm: 0.21 }
+
   async function autoEstimate() {
     if (!activeProject) return
     setSaving(true)
     const pid = activeProject.id
-    const [accomData, carData] = await Promise.all([
+    const [accomData, carData, hireData] = await Promise.all([
       supabase.from('accommodation').select('nights,total_cost').eq('project_id', pid),
-      supabase.from('cars').select('start_date,end_date').eq('project_id', pid),
+      supabase.from('cars').select('start_date,end_date,flags').eq('project_id', pid),
+      supabase.from('hire_items').select('start_date,end_date,flags').eq('project_id', pid),
     ])
     const newEntries: Co2Entry[] = [...entries]
     // Accommodation hotel nights
@@ -77,6 +81,30 @@ export function Co2TrackingPanel() {
       const preset = DEFAULT_FACTORS.petrol_car
       newEntries.push({ category:'petrol_car', description:`Car hire ~${km}km estimate (${carDays} days × 100km/day)`, quantity:km, unit:preset.unit, factor:preset.factor, kgCo2:km*preset.factor })
     }
+    // Equipment hire CO2 — from fuelType and fuelConsumptionPerDay stored in flags
+    const hireItems = (hireData.data || []) as { start_date: string|null; end_date: string|null; flags: Record<string,unknown> }[]
+    for (const h of hireItems) {
+      const flags = h.flags || {}
+      const fuelType = flags.fuel_type as string | undefined
+      if (!fuelType || fuelType === 'none' || fuelType === 'electric') continue
+      const factor = CO2_FACTORS[fuelType as keyof typeof CO2_FACTORS] || 0
+      if (!factor) continue
+      const litresPerDay = parseFloat(String(flags.fuel_consumption_per_day || 0)) || 0
+      if (!litresPerDay) continue
+      const days = h.start_date && h.end_date
+        ? Math.ceil((new Date(h.end_date).getTime() - new Date(h.start_date).getTime()) / 86400000)
+        : 0
+      if (!days) continue
+      const litres = litresPerDay * days
+      const kgCo2 = litres * factor
+      const tonneCo2 = kgCo2 / 1000
+      newEntries.push({
+        category: 'hire_equipment',
+        description: `Equipment hire (${fuelType} ${litresPerDay}L/day × ${days} days)`,
+        quantity: parseFloat(tonneCo2.toFixed(3)), unit: 'tonne CO₂', factor: 1, kgCo2,
+      })
+    }
+
     const { data, error } = await supabase.from('projects').update({ co2_config:{ entries:newEntries } })
       .eq('id', pid).select('*,site:sites(id,name)').single()
     if (error) { toast(error.message,'error'); setSaving(false); return }
