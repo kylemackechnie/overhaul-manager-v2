@@ -113,6 +113,7 @@ export function buildForecast(
   publicHolidays: { date: string }[],
   _projStart: string | null,
   projEnd: string | null,
+  fxRates: { code: string; rate: number }[] = [],
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
@@ -204,14 +205,21 @@ export function buildForecast(
     day.mgmt.hours += bo.hours
   }
 
+  // FX conversion helper — converts amount to base currency
+  function toBase(amount: number, currency?: string): number {
+    if (!currency || !fxRates.length) return amount
+    const rate = fxRates.find(r => r.code === currency)?.rate
+    return rate ? amount * rate : amount
+  }
+
   // ── Equipment Hire ──
   function spreadHire(items: HireItem[], catKey: 'dryHire'|'wetHire'|'localHire') {
     for (const item of items) {
       if (!item.start_date) continue
       const days = dateRange(item.start_date, item.end_date || item.start_date)
       if (!days.length) continue
-      const totalCost = item.hire_cost || 0
-      const totalSell = item.customer_total || calcGm(totalCost, item.gm_pct || 0)
+      const totalCost = toBase(item.hire_cost || 0, (item as HireItem & {currency?:string}).currency)
+      const totalSell = toBase(item.customer_total || calcGm(item.hire_cost || 0, item.gm_pct || 0), (item as HireItem & {currency?:string}).currency)
       const perDayCost = totalCost / days.length
       const perDaySell = totalSell / days.length
       for (const d of days) {

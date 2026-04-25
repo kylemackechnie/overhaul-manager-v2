@@ -88,6 +88,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [woAllocRows, setWoAllocRows] = useState<{woId:string;woNumber:string;hours:number}[]>([])
   const [workOrders, setWorkOrders] = useState<{id:string;wo_number:string;description:string}[]>([])
   const catMap: Record<TsType, string[]> = { trades: ['trades', 'subcontractor'], mgmt: ['management'], seag: ['seag'], subcon: ['subcontractor'] }
+  const scopeMode = activeProject?.scope_tracking || 'none' // 'none' | 'work_orders' | 'nrg_tce'
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, type])
   useEffect(() => {
@@ -446,7 +447,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
                             </label>
                             </div>
-                            {workOrders.length > 0 && (() => {
+                            {(scopeMode === 'work_orders' || scopeMode === 'nrg_tce') && (() => {
                               const allocs = ((raw.woAllocations as {woId:string;woNumber:string;hours:number}[]) || []).filter(a=>a.hours>0)
                               return (
                                 <button onClick={() => openWoAlloc(member.personId, d, cellHrs, member.name)}

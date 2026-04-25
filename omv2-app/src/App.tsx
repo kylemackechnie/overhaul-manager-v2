@@ -222,6 +222,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'shipping-outbound':     return <ShipmentsPanel direction="export" />
     case 'wo-dashboard':          return <WODashboard />
     case 'wo-actuals':            return <WOActualsPanel />
+    case 'wo-progress':           return <WOActualsPanel />
     case 'work-orders':           return <WorkOrdersPanel />
     case 'nrg-dashboard':         return <NrgDashboardPanel />
     case 'nrg-tce':               return <NrgTcePanel />

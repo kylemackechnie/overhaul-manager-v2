@@ -43,7 +43,7 @@ export function CostDashboardPanel() {
       supabase.from('expenses').select('cost_ex_gst').eq('project_id',pid),
       supabase.from('cars').select('total_cost').eq('project_id',pid),
       supabase.from('accommodation').select('total_cost').eq('project_id',pid),
-      supabase.from('hire_items').select('hire_cost').eq('project_id',pid),
+      supabase.from('hire_items').select('hire_cost,currency').eq('project_id',pid),
       supabase.from('variations').select('value,status').eq('project_id',pid),
       supabase.from('weekly_timesheets').select('type,regime,crew').eq('project_id',pid),
       supabase.from('rate_cards').select('role,rates,laha_cost,laha_sell,fsa_cost,fsa_sell,meal_cost,meal_sell').eq('project_id',pid),
@@ -92,7 +92,13 @@ export function CostDashboardPanel() {
       expenseTotal: (expData.data||[]).reduce((s,e)=>s+(e.cost_ex_gst||0),0),
       carTotal: (carData.data||[]).reduce((s,c)=>s+(c.total_cost||0),0),
       accomTotal: (acData.data||[]).reduce((s,a)=>s+(a.total_cost||0),0),
-      hireTotal: (hireData.data||[]).reduce((s,h)=>s+(h.hire_cost||0),0),
+      hireTotal: (hireData.data||[]).reduce((s,h) => {
+        const curr = (h as {hire_cost:number;currency?:string}).currency
+        const rate = curr && curr !== (activeProject?.currency || 'AUD')
+          ? ((activeProject?.currency_rates as {code:string;rate:number}[])||[]).find(r=>r.code===curr)?.rate || 1
+          : 1
+        return s + (h.hire_cost||0) * rate
+      }, 0),
       variationTotal: vars.filter(v=>v.status==='approved').reduce((s,v)=>s+(v.value||0),0),
       approvedVariations: vars.filter(v=>v.status==='approved').length,
       boTotal: (boData.data||[]).reduce((s,b)=>s+(b.cost||0),0),
