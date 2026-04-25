@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Accommodation, Resource, PurchaseOrder } from '../../types'
+import { downloadCSV } from '../../lib/csv'
 
 type AccomForm = {
   property: string; room: string; vendor: string
@@ -126,6 +127,16 @@ export function AccommodationPanel() {
   }
 
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0 })
+
+  function exportCSV() {
+    downloadCSV(
+      [
+        ['Property', 'Room', 'Vendor', 'Check In', 'Check Out', 'Nights', 'Cost', 'Sell', 'WBS', 'Notes'],
+        ...accomList.map(a => [a.property||'', a.room||'', a.vendor||'', a.check_in||'', a.check_out||'', a.nights||0, a.total_cost||0, a.customer_total||0, '', a.notes||''])
+      ],
+      'accommodation_' + (activeProject?.name || 'project')
+    )
+  }
   const totalCost = accomList.reduce((s, a) => s + (a.total_cost || 0), 0)
   const totalSell = accomList.reduce((s, a) => s + (a.customer_total || 0), 0)
   const resMap = Object.fromEntries(resources.map(r => [r.id, r.name]))
@@ -141,6 +152,7 @@ export function AccommodationPanel() {
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ Add Room</button>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>

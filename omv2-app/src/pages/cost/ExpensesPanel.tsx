@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Expense, Resource, WbsItem } from '../../types'
+import { downloadCSV } from '../../lib/csv'
 
 const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Other']
 
@@ -107,6 +108,16 @@ export function ExpensesPanel() {
     toast('Deleted', 'info'); load()
   }
 
+
+  function exportCSV() {
+    downloadCSV(
+      [
+        ['Date', 'Category', 'Description', 'Amount', 'Cost ex GST', 'Sell', 'Currency', 'WBS', 'Notes'],
+        ...expenses.map(e => [e.date||'', e.category||'', e.description||'', e.amount||0, e.cost_ex_gst||0, e.sell_price||0, e.currency||'AUD', e.wbs||'', e.notes||''])
+      ],
+      'expenses_' + (activeProject?.name || 'project')
+    )
+  }
   const filtered = expenses.filter(e =>
     !search || [e.description, e.category, e.wbs].some(f => (f||'').toLowerCase().includes(search.toLowerCase()))
   )
@@ -124,6 +135,7 @@ export function ExpensesPanel() {
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ Add Expense</button>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
 
       <input className="input" style={{ maxWidth: '280px', marginBottom: '16px' }}

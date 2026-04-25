@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Car, Resource, PurchaseOrder } from '../../types'
+import { downloadCSV } from '../../lib/csv'
 
 type CarForm = {
   vehicle_type: string; rego: string; vendor: string
@@ -117,6 +118,16 @@ export function CarsPanel() {
   }
 
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+
+  function exportCSV() {
+    downloadCSV(
+      [
+        ['Vehicle Type', 'Rego', 'Vendor', 'Start', 'End', 'Cost', 'Sell', 'Notes'],
+        ...cars.map(c => [c.vehicle_type||'', c.rego||'', c.vendor||'', c.start_date||'', c.end_date||'', c.total_cost||0, c.customer_total||0, c.notes||''])
+      ],
+      'cars_' + (activeProject?.name || 'project')
+    )
+  }
   const totalCost = cars.reduce((s, c) => s + (c.total_cost || 0), 0)
   const totalSell = cars.reduce((s, c) => s + (c.customer_total || 0), 0)
   const resMap = Object.fromEntries(resources.map(r => [r.id, r.name]))
@@ -133,6 +144,7 @@ export function CarsPanel() {
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ Add Vehicle</button>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
