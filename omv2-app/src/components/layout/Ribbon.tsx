@@ -2,6 +2,7 @@ import { useAppStore } from '../../store/appStore'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useState, useEffect } from 'react'
+import { GlobalSearch } from '../GlobalSearch'
 
 interface RibbonButton {
   icon: string
