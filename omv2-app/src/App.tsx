@@ -240,6 +240,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hardware-dashboard':    return <HardwareDashboard />
     case 'hardware-reports':      return <HardwareReportsPanel />
     case 'hardware-escalation':   return <HardwareDashboard />
+    case 'hardware-import':       return <HardwareReportsPanel />
     case 'hardware-contract':     return <HardwareContractPanel />
     case 'hardware-carts':        return <HardwareCartsPanel />
     case 'parts-dashboard':       return <PartsDashboardPanel />
