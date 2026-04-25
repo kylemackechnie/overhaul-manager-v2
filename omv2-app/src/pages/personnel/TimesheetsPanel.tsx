@@ -261,7 +261,6 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [woAllocModal, setWoAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [woAllocRows, setWoAllocRows] = useState<{woId:string;woNumber:string;hours:number}[]>([])
   const [workOrders, setWorkOrders] = useState<{id:string;wo_number:string;description:string}[]>([])
-  const catMap: Record<TsType, string[]> = { trades: ['trades', 'subcontractor'], mgmt: ['management'], seag: ['seag'], subcon: ['subcontractor'] }
   const scopeMode = activeProject?.scope_tracking || 'none'
 
   // Mirror HTML getTsRoleType logic
