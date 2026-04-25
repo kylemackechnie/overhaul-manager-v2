@@ -12,7 +12,11 @@ const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
   closed:{bg:'#e5e7eb',color:'#374151'}, cancelled:{bg:'#fee2e2',color:'#7f1d1d'},
 }
 
-const EMPTY = { po_number:'', internal_ref:'', vendor:'', description:'', status:'draft' as const, currency:'AUD', po_value:'', raised_date:'', notes:'' }
+
+interface PoLine { id: string; description: string; quantity: number; unit_price: number; total: number }
+const mkPoLine = (): PoLine => ({ id: Math.random().toString(36).slice(2), description: '', quantity: 1, unit_price: 0, total: 0 })
+
+const EMPTY = { po_number:'', internal_ref:'', vendor:'', description:'', status:'draft' as const, currency:'AUD', po_value:'', raised_date:'', notes:'', lines:[mkPoLine()] as PoLine[] }
 
 export function POsPanel() {
   const { activeProject } = useAppStore()
@@ -35,6 +39,19 @@ export function POsPanel() {
   }
 
   function openNew() { setForm(EMPTY); setModal('new') }
+  function setPoLine(idx: number, field: keyof PoLine, value: string | number) {
+    setForm(f => {
+      const lines = f.lines.map((l, i) => {
+        if (i !== idx) return l
+        const updated = { ...l, [field]: value }
+        updated.total = updated.quantity * updated.unit_price
+        return updated
+      })
+      const totalVal = lines.reduce((s, l) => s + l.total, 0)
+      return { ...f, lines, po_value: totalVal > 0 ? totalVal.toFixed(2) : f.po_value }
+    })
+  }
+
   function openEdit(po: PurchaseOrder) {
     setForm({
       po_number: po.po_number, internal_ref: po.internal_ref,
@@ -42,6 +59,7 @@ export function POsPanel() {
       status: po.status as typeof EMPTY['status'],
       currency: po.currency, po_value: po.po_value?.toString() || '',
       raised_date: po.raised_date || '', notes: po.notes,
+      lines: ((po as PurchaseOrder & {line_items?: PoLine[]}).line_items || []).length ? (po as PurchaseOrder & {line_items?: PoLine[]}).line_items as PoLine[] : [mkPoLine()]
     })
     setModal(po)
   }
@@ -59,6 +77,7 @@ export function POsPanel() {
       po_value: form.po_value ? parseFloat(form.po_value) : null,
       raised_date: form.raised_date || null,
       notes: form.notes,
+      line_items: form.lines.filter(l => l.description.trim()),
     }
     if (modal === 'new') {
       const { error } = await supabase.from('purchase_orders').insert(payload)
@@ -202,7 +221,40 @@ export function POsPanel() {
                   <input type="date" className="input" value={form.raised_date} onChange={e=>setForm(f=>({...f,raised_date:e.target.value}))} />
                 </div>
               </div>
-              <div className="fg">
+              <div style={{marginTop:'14px'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
+                  <div style={{fontWeight:600,fontSize:'12px',color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Line Items</div>
+                  <button className="btn btn-sm" onClick={()=>setForm(f=>({...f,lines:[...(f.lines||[]),mkPoLine()]}))}>+ Add Line</button>
+                </div>
+                <table style={{fontSize:'12px',width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr style={{background:'var(--bg3)'}}>
+                    <th style={{padding:'5px 8px',textAlign:'left'}}>Description</th>
+                    <th style={{padding:'5px 8px',width:'60px',textAlign:'right'}}>Qty</th>
+                    <th style={{padding:'5px 8px',width:'110px',textAlign:'right'}}>Unit Price</th>
+                    <th style={{padding:'5px 8px',width:'100px',textAlign:'right'}}>Total</th>
+                    <th style={{width:'28px'}}></th>
+                  </tr></thead>
+                  <tbody>
+                    {(form.lines||[]).map((l,i)=>(
+                      <tr key={l.id}>
+                        <td style={{padding:'2px 3px'}}><input className="input" style={{padding:'3px 6px',fontSize:'12px'}} value={l.description} onChange={e=>setPoLine(i,'description',e.target.value)} placeholder="Description" /></td>
+                        <td style={{padding:'2px 3px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.quantity||''} onChange={e=>setPoLine(i,'quantity',parseFloat(e.target.value)||0)} /></td>
+                        <td style={{padding:'2px 3px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_price||''} onChange={e=>setPoLine(i,'unit_price',parseFloat(e.target.value)||0)} /></td>
+                        <td style={{padding:'2px 3px',textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--green)'}}>{l.total>0?'$'+l.total.toLocaleString('en-AU',{maximumFractionDigits:0}):'—'}</td>
+                        <td><button className="btn btn-sm" style={{color:'var(--red)',padding:'1px 4px'}} onClick={()=>setForm(f=>({...f,lines:(f.lines||[]).filter((_,j)=>j!==i)}))}>✕</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {(form.lines||[]).some(l=>l.description) && (
+                    <tfoot><tr style={{background:'var(--bg3)',fontWeight:600}}>
+                      <td colSpan={3} style={{padding:'5px 8px'}}>Total</td>
+                      <td style={{padding:'5px 8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--green)'}}>${(form.lines||[]).reduce((s,l)=>s+l.total,0).toLocaleString('en-AU',{maximumFractionDigits:0})}</td>
+                      <td/>
+                    </tr></tfoot>
+                  )}
+                </table>
+              </div>
+              <div className="fg" style={{marginTop:'12px'}}>
                 <label>Notes</label>
                 <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} />
               </div>
