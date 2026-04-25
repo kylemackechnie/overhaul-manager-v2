@@ -65,20 +65,20 @@
 
 | # | Gap | Status | Notes |
 |---|-----|--------|-------|
-| 4.1 ✅| Resources: bulk edit (dates, shift, WBS, allowances) | ✅ | |
+| 4.1 | Resources: bulk edit (dates, shift, WBS, allowances) | ✅ | |
 | 4.2 | Resources: role alias management UI | ✅ | |
-| 4.3 ✅| Resources: no-PO badge for subcontractors in row | ✅ | |
-| 4.4 ✅| Accommodation: bulk add rooms | ✅ | |
-| 4.5 ✅| Accommodation: bulk edit dates/rate | ✅ | |
-| 4.6 ✅| Cars: bulk edit dates | ✅ | |
-| 4.7 ✅| Hire: bulk link to PO | ✅ | |
-| 4.8 ✅| Hire: duplicate hire item | ✅ | |
+| 4.3 | Resources: no-PO badge for subcontractors in row | ✅ | |
+| 4.4 | Accommodation: bulk add rooms | ✅ | |
+| 4.5 | Accommodation: bulk edit dates/rate | ✅ | |
+| 4.6 | Cars: bulk edit dates | ✅ | |
+| 4.7 | Hire: bulk link to PO | ✅ | |
+| 4.8 | Hire: duplicate hire item | ✅ | |
 | 4.9 | Invoice: hire/timesheet breakdown when PO selected | ✅ | |
 | 4.10 | Invoice: expected vs actual variance | ✅ | |
 | 4.11 | Parts: issue basket (build pick list from kits before issuing) | ✅ | |
-| 4.12 ✅| Parts: return/un-issue a part | ✅ | |
+| 4.12 | Parts: return/un-issue a part | ✅ | |
 | 4.13 | RFQ: award response + create PO from RFQ | ✅ | |
-| 4.14 ✅| Inductions: fuzzy name matching for import | ✅ | |
+| 4.14 | Inductions: fuzzy name matching for import | ✅ | |
 
 ## Sprint 5 — Display Gaps (polish)
 

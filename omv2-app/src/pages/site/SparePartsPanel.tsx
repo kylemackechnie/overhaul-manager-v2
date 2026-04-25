@@ -58,6 +58,9 @@ export function SparePartsPanel() {
   const [bulkText, setBulkText] = useState('')
   const [bulkError, setBulkError] = useState('')
   const [issueQty, setIssueQty] = useState<Record<string,number>>({})
+  const [basket, setBasket] = useState<{materialNo:string;description:string;qty:number}[]>([])
+  const [kits, setKits] = useState<{id:string;name:string;parts:{materialNo:string;description:string;qty:number}[]}[]>([])
+  const [showBasket, setShowBasket] = useState(false)
   const [issueWO, setIssueWO] = useState('')
   const [issueTo, setIssueTo] = useState('')
   const [issueSaving, setIssueSaving] = useState(false)
@@ -75,6 +78,9 @@ export function SparePartsPanel() {
   }
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+  useEffect(() => {
+    supabase.from('global_kits').select('id,name,parts').then(r => setKits((r.data||[]) as typeof kits))
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -468,6 +474,28 @@ Max available: ${maxQty}`, '1')
           <button className="btn btn-sm" onClick={()=>{setBulkMode(m=>!m);setBulkError('')}}>
             {bulkMode ? '📋 List mode' : '📝 Bulk text mode'}
           </button>
+          {kits.length > 0 && (
+            <select className="input" style={{maxWidth:'200px'}} value="" onChange={e=>{
+              const kit = kits.find(k=>k.id===e.target.value)
+              if (!kit) return
+              const newItems = (kit.parts||[]).map((p:{materialNo:string;description:string;qty:number})=>({materialNo:p.materialNo||'',description:p.description||'',qty:p.qty||1}))
+              setBasket(b=>{
+                const merged=[...b]
+                newItems.forEach(item=>{const existing=merged.find(x=>x.materialNo===item.materialNo);if(existing)existing.qty+=item.qty;else merged.push({...item})})
+                return merged
+              })
+              setShowBasket(true)
+              ;(e.target as HTMLSelectElement).value=''
+            }}>
+              <option value="">🧰 Add from kit...</option>
+              {kits.map(k=><option key={k.id} value={k.id}>{k.name}</option>)}
+            </select>
+          )}
+          {basket.length > 0 && (
+            <button className="btn btn-sm" style={{background:'var(--accent)',color:'#fff'}} onClick={()=>setShowBasket(b=>!b)}>
+              🧺 Basket ({basket.reduce((s,i)=>s+i.qty,0)})
+            </button>
+          )}
         </div>
         {bulkMode && (
           <div className="card" style={{padding:'14px 16px',marginBottom:'12px'}}>
@@ -480,6 +508,33 @@ Max available: ${maxQty}`, '1')
             <button className="btn btn-primary" style={{marginTop:'10px'}} onClick={processBulkIssue} disabled={issueSaving}>
               {issueSaving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} 📤 Process Bulk Issue
             </button>
+          </div>
+        )}
+        {showBasket && basket.length > 0 && (
+          <div className="card" style={{padding:'12px 16px',marginBottom:'12px',border:'1px solid var(--accent)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+              <div style={{fontWeight:600,fontSize:'13px'}}>🧺 Issue Basket</div>
+              <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setBasket([])}>Clear</button>
+            </div>
+            {basket.map((item,i)=>(
+              <div key={i} style={{display:'flex',gap:'8px',alignItems:'center',marginBottom:'4px',fontSize:'12px'}}>
+                <span style={{flex:1,fontFamily:'var(--mono)'}}>{item.materialNo}</span>
+                <span style={{flex:2,color:'var(--text2)'}}>{item.description}</span>
+                <input type="number" className="input" style={{width:'60px',textAlign:'right',padding:'2px 6px',fontSize:'12px'}}
+                  value={item.qty} min={1} onChange={e=>setBasket(b=>b.map((x,j)=>j===i?{...x,qty:parseInt(e.target.value)||1}:x))} />
+                <button style={{background:'none',border:'none',cursor:'pointer',color:'var(--red)',fontSize:'14px'}} onClick={()=>setBasket(b=>b.filter((_,j)=>j!==i))}>✕</button>
+              </div>
+            ))}
+            <button className="btn btn-primary btn-sm" style={{marginTop:'8px'}} onClick={()=>{
+              // Transfer basket to issueQty by matching material numbers
+              const newQty = {...issueQty}
+              basket.forEach(item=>{
+                const part = parts.find(p=>p.material_no===item.materialNo)
+                if (part) newQty[part.id] = (newQty[part.id]||0) + item.qty
+              })
+              setIssueQty(newQty); setBasket([]); setShowBasket(false)
+              toast('Basket applied to issue quantities', 'success')
+            }}>↓ Apply to Issue List</button>
           </div>
         )}
         {issuable.length===0 ? (

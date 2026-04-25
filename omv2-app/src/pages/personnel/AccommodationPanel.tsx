@@ -37,10 +37,14 @@ export function AccommodationPanel() {
   const [wbsList, setWbsList] = useState<{id:string,code:string,name:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Accommodation>(null)
+  const [bulkAddModal, setBulkAddModal] = useState(false)
+  const [selAccom, setSelAccom] = useState<Set<string>>(new Set())
+  const [bulkEditModal, setBulkEditModal] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({ check_in:'', check_out:'', nightly_rate:0, applyRate:false })
+  const [bulkForm, setBulkForm] = useState({ property:'', vendor:'', check_in:'', check_out:'', gm_pct:15, n:1, wbs:'' })
   const [form, setForm] = useState<AccomForm>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [bulkModal, setBulkModal] = useState(false)
-  const [bulkForm, setBulkForm] = useState({ property:'', vendor:'', room_prefix:'Room', rate_per_night:0, gm_pct:0, wbs:'' })
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -59,6 +63,59 @@ export function AccommodationPanel() {
     const wbsRes = await supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order')
     setWbsList((wbsRes.data||[]) as {id:string,code:string,name:string}[])
     setLoading(false)
+  }
+
+
+  async function bulkAddRooms() {
+    if (!bulkForm.property.trim() || !bulkForm.n) return
+    const pid = activeProject!.id
+    const days = bulkForm.check_in && bulkForm.check_out
+      ? Math.max(1, Math.round((new Date(bulkForm.check_out).getTime() - new Date(bulkForm.check_in).getTime()) / 86400000))
+      : 0
+    const rows = Array.from({length: bulkForm.n}, (_, i) => ({
+      project_id: pid,
+      property: bulkForm.property.trim(),
+      room: `Room ${i+1}`,
+      vendor: bulkForm.vendor.trim(),
+      check_in: bulkForm.check_in || null,
+      check_out: bulkForm.check_out || null,
+      nights: days,
+      total_cost: 0,
+      customer_total: 0,
+      gm_pct: bulkForm.gm_pct,
+      wbs: bulkForm.wbs,
+      occupants: [],
+      inclusive: false,
+    }))
+    const { error } = await supabase.from('accommodation').insert(rows)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Added ${bulkForm.n} rooms at ${bulkForm.property}`, 'success')
+    setBulkAddModal(false)
+    setBulkForm({ property:'', vendor:'', check_in:'', check_out:'', gm_pct:15, n:1, wbs:'' })
+    load()
+  }
+
+
+  async function applyBulkEdit() {
+    const ids = [...selAccom]
+    const updates: Record<string,unknown> = {}
+    if (bulkEditForm.check_in) updates.check_in = bulkEditForm.check_in
+    if (bulkEditForm.check_out) updates.check_out = bulkEditForm.check_out
+    if (bulkEditForm.applyRate && bulkEditForm.nightly_rate > 0) {
+      // Calc total_cost from nights × rate for each room — update individually
+      for (const id of ids) {
+        const a = accomList.find(x=>x.id===id)
+        if (!a) continue
+        const nights = a.nights || 0
+        const total_cost = parseFloat((bulkEditForm.nightly_rate * nights).toFixed(2))
+        const customer_total = total_cost > 0 ? parseFloat((total_cost/(1-Math.min(a.gm_pct||15,99)/100)).toFixed(2)) : 0
+        await supabase.from('accommodation').update({...updates, total_cost, customer_total}).eq('id',id)
+      }
+    } else {
+      await supabase.from('accommodation').update(updates).in('id', ids)
+    }
+    toast(`Updated ${ids.length} bookings`, 'success')
+    setSelAccom(new Set()); setBulkEditModal(false); load()
   }
 
   function openNew() { setForm({ ...EMPTY, gm_pct: activeProject?.default_gm || 15 }); setModal('new') }
@@ -200,12 +257,12 @@ export function AccommodationPanel() {
       const nights = res?.mob_in && res?.mob_out
         ? Math.max(1, Math.round((new Date(res.mob_out+'T12:00:00').getTime() - new Date(res.mob_in+'T12:00:00').getTime()) / 86400000))
         : 0
-      const totalCost = (bulkForm.rate_per_night || 0) * nights
+      const totalCost = 0 // rate set individually after bulk add
       const customerTotal = bulkForm.gm_pct > 0 ? parseFloat((totalCost / (1 - bulkForm.gm_pct / 100)).toFixed(2)) : totalCost
       return {
         project_id: pid,
         property: bulkForm.property.trim(),
-        room: `${bulkForm.room_prefix || 'Room'} ${i + 1}`,
+        room: `Room ${i + 1}`,
         vendor: bulkForm.vendor,
         check_in: res?.mob_in || null,
         check_out: res?.mob_out || null,
@@ -392,8 +449,8 @@ export function AccommodationPanel() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'14px'}}>
                 <div className="fg" style={{margin:0,gridColumn:'1/-1'}}><label>Property Name *</label><input className="input" value={bulkForm.property} onChange={e=>setBulkForm(f=>({...f,property:e.target.value}))} placeholder="e.g. Quest Gladstone" /></div>
                 <div className="fg" style={{margin:0}}><label>Vendor</label><input className="input" value={bulkForm.vendor} onChange={e=>setBulkForm(f=>({...f,vendor:e.target.value}))} placeholder="Hotel / owner" /></div>
-                <div className="fg" style={{margin:0}}><label>Room Prefix</label><input className="input" value={bulkForm.room_prefix} onChange={e=>setBulkForm(f=>({...f,room_prefix:e.target.value}))} placeholder="Room" /></div>
-                <div className="fg" style={{margin:0}}><label>Rate per Night ($)</label><input type="number" className="input" value={bulkForm.rate_per_night||''} min={0} step={1} onChange={e=>setBulkForm(f=>({...f,rate_per_night:parseFloat(e.target.value)||0}))} /></div>
+                <div className="fg" style={{margin:0}}><label>Room Prefix</label><input className="input" value={bulkForm.wbs} onChange={e=>setBulkForm(f=>({...f,room_prefix:e.target.value}))} placeholder="Room" /></div>
+                <div className="fg" style={{margin:0}}><label>Rooms Count</label><input type="number" className="input" value={bulkForm.n} min={1} max={50} onChange={e=>setBulkForm(f=>({...f,n:parseInt(e.target.value)||1}))} /></div>
                 <div className="fg" style={{margin:0}}><label>GM%</label><input type="number" className="input" value={bulkForm.gm_pct||''} min={0} max={99} step={0.5} onChange={e=>setBulkForm(f=>({...f,gm_pct:parseFloat(e.target.value)||0}))} /></div>
                 <div className="fg" style={{margin:0,gridColumn:'1/-1'}}><label>WBS</label>
                   <select className="input" value={bulkForm.wbs} onChange={e=>setBulkForm(f=>({...f,wbs:e.target.value}))}>
@@ -423,6 +480,52 @@ export function AccommodationPanel() {
           </div>
         </div>
       )}
+
+      {bulkEditModal && (
+        <div className="modal-overlay" onClick={()=>setBulkEditModal(false)}>
+          <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>✏ Edit {selAccom.size} Bookings</h3><button className="btn btn-sm" onClick={()=>setBulkEditModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <div className="fg"><label>Check In</label><input type="date" className="input" value={bulkEditForm.check_in} onChange={e=>setBulkEditForm(f=>({...f,check_in:e.target.value}))} /></div>
+              <div className="fg"><label>Check Out</label><input type="date" className="input" value={bulkEditForm.check_out} onChange={e=>setBulkEditForm(f=>({...f,check_out:e.target.value}))} /></div>
+              <label style={{display:'flex',gap:'8px',alignItems:'center',fontSize:'12px',marginBottom:'6px'}}>
+                <input type="checkbox" checked={bulkEditForm.applyRate} onChange={e=>setBulkEditForm(f=>({...f,applyRate:e.target.checked}))} />
+                Update nightly rate
+              </label>
+              {bulkEditForm.applyRate && <div className="fg"><label>Nightly Rate ($)</label><input type="number" className="input" min={0} step={0.5} value={bulkEditForm.nightly_rate||''} onChange={e=>setBulkEditForm(f=>({...f,nightly_rate:parseFloat(e.target.value)||0}))} /></div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setBulkEditModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={applyBulkEdit}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {bulkAddModal && (
+        <div className="modal-overlay" onClick={()=>setBulkAddModal(false)}>
+          <div className="modal" style={{maxWidth:'380px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>⊞ Bulk Add Rooms</h3><button className="btn btn-sm" onClick={()=>setBulkAddModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <div className="fg"><label>Property *</label><input className="input" value={bulkForm.property} onChange={e=>setBulkForm(f=>({...f,property:e.target.value}))} placeholder="e.g. Quest Gladstone" autoFocus /></div>
+              <div className="fg"><label>Vendor</label><input className="input" value={bulkForm.vendor} onChange={e=>setBulkForm(f=>({...f,vendor:e.target.value}))} placeholder="Hotel / booking agent" /></div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                <div className="fg"><label>Check In</label><input type="date" className="input" value={bulkForm.check_in} onChange={e=>setBulkForm(f=>({...f,check_in:e.target.value}))} /></div>
+                <div className="fg"><label>Check Out</label><input type="date" className="input" value={bulkForm.check_out} onChange={e=>setBulkForm(f=>({...f,check_out:e.target.value}))} /></div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                <div className="fg"><label>Number of Rooms</label><input type="number" className="input" min={1} max={50} value={bulkForm.n} onChange={e=>setBulkForm(f=>({...f,n:parseInt(e.target.value)||1}))} /></div>
+                <div className="fg"><label>GM%</label><input type="number" className="input" min={0} max={99} step={0.5} value={bulkForm.gm_pct} onChange={e=>setBulkForm(f=>({...f,gm_pct:parseFloat(e.target.value)||0}))} /></div>
+              </div>
+              <p style={{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}}>Rooms will be named Room 1, Room 2, etc. Edit nightly rate and assign occupants after creation.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setBulkAddModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={bulkAddRooms} disabled={!bulkForm.property.trim()}>Add {bulkForm.n} Room{bulkForm.n!==1?'s':''}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

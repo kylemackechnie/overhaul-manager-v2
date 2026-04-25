@@ -43,6 +43,9 @@ export function CarsPanel() {
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Car>(null)
+  const [selCars, setSelCars] = useState<Set<string>>(new Set())
+  const [bulkCarModal, setBulkCarModal] = useState(false)
+  const [bulkCarForm, setBulkCarForm] = useState({ start_date:'', end_date:'' })
   const [form, setForm] = useState<CarForm>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [carSelected, setCarSelected] = useState<Set<string>>(new Set())
@@ -72,6 +75,19 @@ export function CarsPanel() {
     const total_cost = parseFloat(withFees.toFixed(2))
     const customer_total = calcCustomerPrice(total_cost, f.gm_pct)
     return { ...f, total_cost, customer_total }
+  }
+
+
+  async function applyBulkCarEdit() {
+    const ids = [...selCars]
+    const updates: Record<string,unknown> = {}
+    if (bulkCarForm.start_date) updates.start_date = bulkCarForm.start_date
+    if (bulkCarForm.end_date) updates.end_date = bulkCarForm.end_date
+    if (!Object.keys(updates).length) return
+    const { error } = await supabase.from('cars').update(updates).in('id', ids)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Updated ${ids.length} cars`, 'success')
+    setSelCars(new Set()); setBulkCarModal(false); load()
   }
 
   function openNew() { setForm({ ...EMPTY, gm_pct: activeProject?.default_gm || 15 }); setModal('new') }
@@ -334,6 +350,22 @@ export function CarsPanel() {
           </div>
         </div>
       )}
+      {bulkCarModal && (
+        <div className="modal-overlay" onClick={()=>setBulkCarModal(false)}>
+          <div className="modal" style={{maxWidth:'340px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>✏ Edit {selCars.size} Car Bookings</h3><button className="btn btn-sm" onClick={()=>setBulkCarModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <div className="fg"><label>Start Date</label><input type="date" className="input" value={bulkCarForm.start_date} onChange={e=>setBulkCarForm(f=>({...f,start_date:e.target.value}))} /></div>
+              <div className="fg"><label>End Date</label><input type="date" className="input" value={bulkCarForm.end_date} onChange={e=>setBulkCarForm(f=>({...f,end_date:e.target.value}))} /></div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setBulkCarModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={applyBulkCarEdit}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

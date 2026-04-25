@@ -17,12 +17,13 @@ const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
   disputed:{bg:'#fee2e2',color:'#7f1d1d'},
 }
 
-const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', currency:'AUD', invoice_date:'', period_from:'', period_to:'', notes:'', tce_item_id:'' }
+const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', expected_amount:'', currency:'AUD', invoice_date:'', period_from:'', period_to:'', notes:'', tce_item_id:'' }
 
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [_linkedHire, setLinkedHire] = useState<{id:string;name:string;linked_po_id:string|null;hire_cost:number;customer_total:number;start_date:string|null;end_date:string|null}[]>([])
   const [tceLines, setTceLines] = useState<{id:string;item_id:string|null;description:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Invoice>(null)
@@ -45,8 +46,12 @@ export function InvoicesPanel() {
     ])
     setInvoices((invData.data || []) as Invoice[])
     setPos((poData.data || []) as PurchaseOrder[])
-    const tceRes = await supabase.from('nrg_tce_lines').select('id,item_id,description').eq('project_id',pid).order('item_id')
+    const [tceRes, hireRes] = await Promise.all([
+      supabase.from('nrg_tce_lines').select('id,item_id,description').eq('project_id',pid).order('item_id'),
+      supabase.from('hire_items').select('id,name,linked_po_id,hire_cost,customer_total,start_date,end_date').eq('project_id',pid),
+    ])
     setTceLines((tceRes.data||[]) as {id:string;item_id:string|null;description:string}[])
+    setLinkedHire((hireRes.data||[]) as typeof _linkedHire)
     setLoading(false)
   }
 
@@ -72,7 +77,7 @@ export function InvoicesPanel() {
   function openEdit(inv: Invoice) {
     setForm({
       po_id: inv.po_id || '', invoice_number: inv.invoice_number,
-      vendor_ref: inv.vendor_ref, amount: inv.amount.toString(),
+      vendor_ref: inv.vendor_ref, amount: inv.amount.toString(), expected_amount: '',
       currency: inv.currency, invoice_date: inv.invoice_date || '',
       period_from: inv.period_from || '', period_to: inv.period_to || '',
       notes: inv.notes, tce_item_id: inv.tce_item_id || '',
