@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Shipment } from '../../types'
+import { downloadCSV } from '../../lib/csv'
 
 type Direction = 'import' | 'export'
 
@@ -67,6 +68,14 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
     setSaving(false); setModal(null); load()
   }
 
+  
+  function exportCSV() {
+    downloadCSV(
+      [["reference", "description", "carrier", "direction", "status", "eta", "shipped_date"], ...items.map(item => [String(item.reference||''), String(item.description||''), String(item.carrier||''), String(item.direction||''), String(item.status||''), String(item.eta||''), String(item.shipped_date||'')])],
+      'shipments_' + (activeProject?.name || 'project')
+    )
+  }
+
   async function del(s: Shipment) {
     if (!confirm(`Delete shipment "${s.reference}"?`)) return
     await supabase.from('shipments').delete().eq('id', s.id)
@@ -84,6 +93,7 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>{items.length} shipments</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ Add Shipment</button>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
