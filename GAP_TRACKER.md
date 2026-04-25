@@ -19,7 +19,7 @@
 | 1.12 ✅ | forecastEngine: cars spread over person mob dates (not booking dates) | ✅ | |
 | 1.13 ✅ | forecastEngine: accommodation spread over occupant mob dates | ✅ | |
 | 1.14 ✅ | forecastEngine: accommodation out-of-window warnings | ✅ | |
-| 1.15 | forecastEngine: expenses daily estimate fill | ❌ | |
+| 1.15 | forecastEngine: expenses daily estimate fill | ✅ | |
 | 1.16 ✅ | CO2: hire item fuelType/fuelConsumptionPerDay not read | ✅ | |
 
 ## Sprint 2 — Missing Modal Fields (schema + forms)
