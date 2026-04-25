@@ -140,6 +140,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     groups: [
       { label: 'Work Orders', buttons: [
         { icon: '📊', label: 'WO Dashboard', panel: 'wo-dashboard' },
+        { icon: '⏱', label: 'WO Actuals', panel: 'wo-actuals' },
         { icon: '📋', label: 'Work Orders', panel: 'work-orders' },
       ]},
       { label: 'NRG Gladstone', buttons: [

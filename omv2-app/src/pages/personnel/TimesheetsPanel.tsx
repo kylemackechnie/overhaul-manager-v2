@@ -202,6 +202,23 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       crew: week.crew, regime: week.regime, status: week.status, wbs: week.wbs, notes: week.notes,
     }).eq('id', week.id)
     if (error) { toast(error.message, 'error'); return }
+    // Write wo_actuals rows for reporting
+    try {
+      await supabase.from('wo_actuals').delete().eq('timesheet_id', week.id)
+      const actuals: {project_id:string;timesheet_id:string;person_name:string;person_role:string;week_start:string;date:string;hours:number;wo_number:string}[] = []
+      for (const m of week.crew) {
+        for (const [date, day] of Object.entries(m.days)) {
+          const de = day as Record<string,unknown>
+          const allocs = (de.woAllocations as {woId:string;woNumber:string;hours:number}[]) || []
+          for (const a of allocs) {
+            if (a.hours > 0) {
+              actuals.push({ project_id: activeProject!.id, timesheet_id: week.id, person_name: m.name, person_role: m.role, week_start: week.week_start, date, hours: a.hours, wo_number: a.woNumber || '' })
+            }
+          }
+        }
+      }
+      if (actuals.length) await supabase.from('wo_actuals').insert(actuals)
+    } catch { /* non-critical */ }
     toast('Saved', 'success')
     setSheets(prev => prev.map(s => s.id === week.id ? week : s))
   }

@@ -20,7 +20,16 @@ export function WODashboard() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('work_orders').select('wo_number,description,status,budget_hours,actual_hours').eq('project_id', activeProject!.id).order('wo_number')
+    const [woRes, actualsRes] = await Promise.all([
+      supabase.from('work_orders').select('wo_number,description,status,budget_hours,actual_hours').eq('project_id', activeProject!.id).order('wo_number'),
+      supabase.from('wo_actuals').select('wo_number,hours').eq('project_id', activeProject!.id),
+    ])
+    const data = woRes.data
+    // Aggregate actual hours from wo_actuals (overrides manual entry if present)
+    const actualsByWo: Record<string,number> = {}
+    for (const a of actualsRes.data || []) {
+      if (a.wo_number) actualsByWo[a.wo_number] = (actualsByWo[a.wo_number] || 0) + (a.hours || 0)
+    }
     setWos(data || [])
     setLoading(false)
   }

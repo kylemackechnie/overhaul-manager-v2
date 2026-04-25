@@ -72,6 +72,7 @@ import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
 import { WODashboard } from './pages/site/WODashboard'
+import { WOActualsPanel } from './pages/site/WOActualsPanel'
 import { ShippingDashboard } from './pages/shipping/ShippingDashboard'
 import { SubconDashboard } from './pages/subcon/SubconDashboard'
 import type { Session } from '@supabase/supabase-js'
@@ -220,6 +221,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'shipping-inbound':      return <ShipmentsPanel direction="import" />
     case 'shipping-outbound':     return <ShipmentsPanel direction="export" />
     case 'wo-dashboard':          return <WODashboard />
+    case 'wo-actuals':            return <WOActualsPanel />
     case 'work-orders':           return <WorkOrdersPanel />
     case 'nrg-dashboard':         return <NrgDashboardPanel />
     case 'nrg-tce':               return <NrgTcePanel />
