@@ -15,6 +15,11 @@ import { PlaceholderPanel } from './pages/PlaceholderPanel'
 import { CostDashboardPanel } from './pages/cost/CostDashboardPanel'
 import { CustomerReportPanel } from './pages/cost/CustomerReportPanel'
 import { ForecastPanel } from './pages/cost/ForecastPanel'
+import { MikaPanel } from './pages/cost/MikaPanel'
+import { PrePlanningReportPanel } from './pages/cost/PrePlanningReportPanel'
+import { SubconVendorSnapshot } from './pages/subcon/SubconVendorSnapshot'
+import { WOProgressPanel } from './pages/site/WOProgressPanel'
+import { PartsSiteInventoryPanel } from './pages/site/PartsSiteInventoryPanel'
 import { SCurvePanel } from './pages/cost/SCurvePanel'
 import { CostReportPanel } from './pages/cost/CostReportPanel'
 import { ReportsDatabasePanel } from './pages/cost/ReportsDatabasePanel'
@@ -217,6 +222,8 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'cost-dashboard':        return <CostDashboardPanel />
     case 'cost-customer-report':  return <CustomerReportPanel />
     case 'cost-forecast':         return <ForecastPanel />
+    case 'cost-mika':            return <MikaPanel />
+    case 'pre-planning-report':  return <PrePlanningReportPanel />
     case 'cost-scurve':           return <SCurvePanel />
     case 'cost-report':           return <CostReportPanel />
     case 'reports-db':            return <ReportsDatabasePanel />
@@ -226,6 +233,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'sap-recon':             return <SapReconPanel />
     case 'subcon-rfq':            return <SubconRFQPanel />
     case 'subcon-dashboard':      return <SubconDashboard />
+    case 'subcon-vendor-snapshot': return <SubconVendorSnapshot />
     case 'subcon-contracts':      return <SubconRFQPanel />
     case 'hr-dashboard':          return <HRDashboardPanel />
     case 'hr-ratecards':          return <RateCardsPanel />
@@ -251,7 +259,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'shipping-outbound':     return <ShipmentsPanel direction="export" />
     case 'wo-dashboard':          return <WODashboard />
     case 'wo-actuals':            return <WOActualsPanel />
-    case 'wo-progress':           return <WOActualsPanel />
+    case 'wo-progress':           return <WOProgressPanel />
     case 'work-orders':           return <WorkOrdersPanel />
     case 'nrg-dashboard':         return <NrgDashboardPanel />
     case 'nrg-tce':               return <NrgTcePanel />
@@ -268,6 +276,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'parts-dashboard':       return <PartsDashboardPanel />
     case 'parts-list':            return <SparePartsPanel />
     case 'parts-import':          return <WositImportPanel />
+    case 'parts-inventory':      return <PartsSiteInventoryPanel />
     case 'global-parts':          return <GlobalKitsPanel />
     case 'tooling-dashboard':     return <ToolingDashboard />
     case 'tooling-reports':       return <ToolingReportsPanel />

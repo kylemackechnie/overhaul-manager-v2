@@ -111,6 +111,37 @@ export function CostDashboardPanel() {
   }
 
   const fmt = (n:number) => '$'+n.toLocaleString('en-AU',{maximumFractionDigits:0})
+
+  const catDefs = [
+    { key:'tooling', label:'Rental Tooling', color:'var(--mod-tooling)', panel:'tooling-dashboard' },
+    { key:'hardware', label:'Hardware / Parts', color:'var(--mod-hardware, #0891b2)', panel:'hardware-dashboard' },
+    { key:'hire', label:'Equipment Hire', color:'var(--mod-hire)', panel:'hire-dashboard' },
+    { key:'labour', label:'Labour / Timesheets', color:'var(--mod-hr)', panel:'hr-timesheets-trades' },
+    { key:'cars', label:'Car Hire', color:'var(--mod-hire)', panel:'hr-cars' },
+    { key:'accom', label:'Accommodation', color:'var(--mod-hr)', panel:'hr-accommodation' },
+    { key:'expenses', label:'Expenses', color:'#f472b6', panel:'expenses' },
+  ]
+
+  const catCosts: Record<string,number> = {
+    tooling: 0, // tooling costed in EUR — shown separately in tooling dashboard
+    hardware: 0, // hardware priced in EUR
+    hire: stats?.hireTotal || 0,
+    labour: (stats?.tradesCost || 0) + (stats?.mgmtCost || 0) + (stats?.boTotal || 0),
+    cars: stats?.carTotal || 0,
+    accom: stats?.accomTotal || 0,
+    expenses: stats?.expenseTotal || 0,
+  }
+  const catSells: Record<string,number> = {
+    tooling: 0,
+    hardware: 0,
+    hire: stats?.hireTotal || 0,
+    labour: stats ? (stats.tradesSell || 0) + (stats.mgmtSell || 0) : 0,
+    cars: stats?.carTotal || 0,
+    accom: stats?.accomTotal || 0,
+    expenses: stats?.expenseTotal || 0,
+  }
+  const grandCost = Object.values(catCosts).reduce((s,v)=>s+v,0)
+  const grandSell = Object.values(catSells).reduce((s,v)=>s+v,0)
   const fmtH = (n:number) => n.toFixed(1)+'h'
 
   return (
@@ -121,6 +152,37 @@ export function CostDashboardPanel() {
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div> : stats && (<>
+
+
+      {/* Cost by Category — 7 tiles matching HTML layout */}
+      <div style={{marginBottom:'20px'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'10px'}}>
+          <div style={{fontWeight:600,fontSize:'12px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Cost by Category</div>
+          <div style={{fontSize:'11px',color:'var(--text3)',display:'flex',gap:'16px'}}>
+            <span>Figures show: <strong style={{color:'var(--text)'}}>Cost</strong> (what you pay) · <strong style={{color:'var(--green)'}}>Sell</strong> (what you charge)</span>
+            <span>Total Cost: <strong style={{fontFamily:'var(--mono)'}}>{fmt(grandCost)}</strong> · Total Sell: <strong style={{fontFamily:'var(--mono)',color:'var(--green)'}}>{fmt(grandSell)}</strong></span>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'10px'}}>
+          {catDefs.map(cat => {
+            const cost = catCosts[cat.key] || 0
+            const sell = catSells[cat.key] || 0
+            const hasSell = sell > 0 && Math.abs(sell - cost) > 1
+            const gm = sell > 0 && cost > 0 ? ((sell - cost) / sell * 100) : 0
+            return (
+              <div key={cat.key} style={{padding:'10px',border:'1px solid var(--border)',borderRadius:'var(--radius)',borderTop:`3px solid ${cat.color}`,cursor:'pointer'}} onClick={()=>cat.panel&&setActivePanel(cat.panel)}>
+                <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',fontFamily:'var(--mono)',letterSpacing:'0.06em',marginBottom:'4px'}}>{cat.label}</div>
+                <div style={{fontSize:'13px',fontWeight:700,fontFamily:'var(--mono)',color:cat.color}}>{cost > 0 ? fmt(cost) : '—'}</div>
+                <div style={{fontSize:'10px',color:'var(--text3)',marginTop:'1px'}}>Cost</div>
+                {hasSell && <>
+                  <div style={{fontSize:'12px',fontWeight:600,fontFamily:'var(--mono)',color:'var(--green)',marginTop:'4px'}}>{fmt(sell)}</div>
+                  <div style={{fontSize:'10px',color:'var(--text3)'}}>Sell{gm > 0 ? ` · ${gm.toFixed(0)}% GM` : ''}</div>
+                </>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Labour */}
       <div style={{marginBottom:'20px'}}>
