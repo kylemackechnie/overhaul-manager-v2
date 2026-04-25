@@ -158,7 +158,9 @@ export function POsPanel() {
         <div className="card" style={{padding:0,overflow:'hidden'}}>
           <table>
             <thead>
-              <tr><th>PO Number</th><th>Vendor</th><th>Description</th><th>Status</th><th style={{textAlign:'right'}}>PO Value</th><th>Raised</th><th></th></tr>
+              <tr><th>PO Number</th><th>Vendor</th><th>Description</th><th>Status</th><th style={{textAlign:'right'}}>PO Value</th>
+                  <th style={{textAlign:'right'}}>Invoiced</th>
+                  <th style={{textAlign:'right'}}>Remaining</th><th>Raised</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.map(po => {
@@ -170,6 +172,14 @@ export function POsPanel() {
                     <td style={{color:'var(--text2)',fontSize:'13px',maxWidth:'260px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{po.description || '—'}</td>
                     <td><span className="badge" style={sc}>{po.status}</span></td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{fmtMoney(po.po_value)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{(po as PurchaseOrder & {invoiced_total?:number}).invoiced_total ? fmtMoney((po as PurchaseOrder & {invoiced_total?:number}).invoiced_total as number) : '—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:(() => {
+                      const inv = (po as PurchaseOrder & {invoiced_total?:number}).invoiced_total || 0
+                      const rem = (po.po_value||0) - inv
+                      return rem < 0 ? 'var(--red)' : rem === 0 ? 'var(--text3)' : 'var(--green)'
+                    })()}}>
+                      {po.po_value ? fmtMoney((po.po_value||0) - ((po as PurchaseOrder & {invoiced_total?:number}).invoiced_total || 0)) : '—'}
+                    </td>
                     <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{po.raised_date || '—'}</td>
                     <td style={{whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={() => openEdit(po)}>Edit</button>

@@ -85,6 +85,9 @@ export function DashboardPanel() {
   const dStart = daysUntil(activeProject?.start_date)
   const dEnd = daysUntil(activeProject?.end_date)
   const isLive = dStart !== null && dStart <= 0 && (dEnd === null || dEnd > 0)
+  const outageDayNum = isLive && activeProject?.start_date
+    ? Math.floor((Date.now() - new Date(activeProject.start_date).getTime()) / 86400000) + 1
+    : null
 
   const Tile = ({ label, value, sub, panel, color = 'var(--accent)', icon }: { label: string; value: string | number; sub?: string; panel?: string; color?: string; icon?: string }) => (
     <div className="card" style={{ cursor: panel ? 'pointer' : 'default', borderTop: `3px solid ${color}`, padding: '14px 16px' }} onClick={() => panel && setActivePanel(panel)}>
@@ -124,6 +127,25 @@ export function DashboardPanel() {
           <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fff7ed', borderLeft: '4px solid #f97316', marginBottom: '14px', fontSize: '13px' }}>
             🧾 <strong>{fmt(stats.pendingTotal)}</strong> in invoices pending approval
             <button className="btn btn-sm" style={{ marginLeft: '12px' }} onClick={() => setActivePanel('invoices')}>View Invoices →</button>
+          </div>
+        )}
+
+
+        {/* Outage day counter */}
+        {outageDayNum !== null && (
+          <div style={{ display:'flex', gap:'12px', marginBottom:'16px' }}>
+            <div className="card" style={{ padding:'12px 20px', borderTop:'3px solid #8b5cf6', display:'flex', alignItems:'center', gap:'20px' }}>
+              <div>
+                <div style={{ fontSize:'28px', fontWeight:800, fontFamily:'var(--mono)', color:'#8b5cf6' }}>Day {outageDayNum}</div>
+                <div style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>Outage day</div>
+              </div>
+              {dEnd !== null && dEnd > 0 && (
+                <div>
+                  <div style={{ fontSize:'20px', fontWeight:700, fontFamily:'var(--mono)', color:'var(--text3)' }}>{dEnd}d left</div>
+                  <div style={{ fontSize:'11px', color:'var(--text3)' }}>remaining</div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
