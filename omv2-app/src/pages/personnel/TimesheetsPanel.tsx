@@ -322,7 +322,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       project_id: activeProject!.id, type, week_start: ws, wbs: newForm.wbs, notes: newForm.notes,
       regime: 'lt12', status: 'draft', vendor: newForm.vendor || null, po_id: newForm.po_id || null, crew: [],
     }).select('*').single()
-    if (error) { toast(error.message, 'error'); setSaving(false); return }
+    if (error) { console.error('createWeek error:', error); toast(error.message + (error.details ? ' — ' + error.details : ''), 'error'); setSaving(false); return }
     toast('Week created', 'success'); setSaving(false); setShowNewModal(false)
     setNewForm({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
     setActiveWeek(data as WeeklyTimesheet); load()
@@ -935,9 +935,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   </select>
                 </div>
               </>}
-              <p style={{ fontSize: '12px', color: 'var(--text3)' }}>
-                Will auto-populate with matching resources on mob dates.
-              </p>
+
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowNewModal(false)}>Cancel</button>
