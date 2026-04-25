@@ -251,6 +251,31 @@ export function SparePartsPanel() {
 
   if (loading) return <div style={{padding:'24px'}}><div className="loading-center"><span className="spinner"/></div></div>
 
+
+  async function returnPart(logId: string, materialNo: string, description: string, maxQty: number) {
+    const qtyStr = window.prompt(`Return how many units of ${description} (${materialNo}) to store?
+Max available: ${maxQty}`, '1')
+    if (qtyStr === null) return
+    const qty = parseInt(qtyStr)
+    if (!qty || qty < 1 || qty > maxQty) { toast(`Enter a number between 1 and ${maxQty}`, 'error'); return }
+
+    // Restore qty to wosit_line
+    const log = issuedLog.find(l => l.id === logId)
+    if (!log?.wosit_line_id) { toast('Cannot find original part record', 'error'); return }
+    const part = parts.find(p => p.id === log.wosit_line_id)
+    if (!part) { toast('Part not found', 'error'); return }
+
+    const newIssued = Math.max(0, (part.qty_issued || 0) - qty)
+    const newStatus = newIssued === 0 ? 'received' : newIssued < (part.qty_received || 0) ? 'partial' : part.status
+
+    const [r1, r2] = await Promise.all([
+      supabase.from('wosit_lines').update({ qty_issued: newIssued, status: newStatus }).eq('id', part.id),
+      supabase.from('issued_log').delete().eq('id', logId),
+    ])
+    if (r1.error || r2.error) { toast((r1.error||r2.error)?.message||'Error', 'error'); return }
+    toast(`Returned ${qty} unit${qty>1?'s':''} to store`, 'success'); load()
+  }
+
   return (
     <div style={{padding:'24px',maxWidth:'1100px'}}>
       {/* Header */}
@@ -520,6 +545,7 @@ export function SparePartsPanel() {
                     <td style={{fontSize:'12px'}}>{l.issued_to||'—'}</td>
                     <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{l.work_order||'—'}</td>
                     <td style={{fontSize:'11px',color:'var(--text3)'}}>{l.issued_by||'—'}</td>
+                    <td><button className="btn btn-sm" style={{fontSize:'10px',padding:'2px 6px'}} onClick={()=>returnPart(l.id,l.material_no||'',l.description||l.material_no||'',l.qty||1)}>↩ Return</button></td>
                   </tr>
                 ))}
               </tbody>

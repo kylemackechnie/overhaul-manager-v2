@@ -10,6 +10,24 @@ declare const XLSX: {
 
 interface InductionPerson { name: string; company: string; inducted_at?: string; [key: string]: unknown }
 
+
+// Fuzzy name match: normalise name, check first+last token overlap (port of HTML fuzzyNameMatch)
+export function fuzzyNameMatch(a: string, b: string): number {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+  const na = norm(a); const nb = norm(b)
+  if (na === nb) return 1
+  const ta = na.split(' '); const tb = nb.split(' ')
+  // Exact first+last match
+  if (ta[0] === tb[0] && ta[ta.length-1] === tb[tb.length-1]) return 0.95
+  // Reversed first/last (SMITH, John vs John Smith)
+  if (ta[0] === tb[tb.length-1] && ta[ta.length-1] === tb[0]) return 0.9
+  // Any token overlap score
+  const setA = new Set(ta); const setB = new Set(tb)
+  const overlap = [...setA].filter(t => setB.has(t) && t.length > 2).length
+  const total = Math.max(setA.size, setB.size)
+  return total > 0 ? overlap / total : 0
+}
+
 export function InductionsPanel() {
   const { activeProject, setActiveProject } = useAppStore()
   const [people, setPeople] = useState<InductionPerson[]>([])

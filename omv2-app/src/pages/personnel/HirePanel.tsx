@@ -56,6 +56,8 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   const [modal, setModal] = useState<null | 'new' | HireItem>(null)
   const [form, setForm] = useState<HireForm>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [hireSelected, setHireSelected] = useState<Set<string>>(new Set())
+  const [bulkPoModal, setBulkPoModal] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, hireType])
 
@@ -147,6 +149,28 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   const autoCost = autoCalcHireCost(form)
   const previewPeriods = form.charge_unit === 'weekly' ? Math.ceil(days / 7) : days
 
+
+  async function bulkLinkPO(poId: string) {
+    if (!hireSelected.size) return
+    setSaving(true)
+    const { error } = await supabase.from('hire_items').update({ linked_po_id: poId || null }).in('id', [...hireSelected])
+    setSaving(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Linked ${hireSelected.size} item${hireSelected.size>1?'s':''} to PO`, 'success')
+    setBulkPoModal(false); setHireSelected(new Set()); load()
+  }
+
+  async function duplicateItem(h: HireItem) {
+    if (!activeProject) return
+    const copy = { ...h, id: undefined, name: h.name + ' (copy)', created_at: undefined, updated_at: undefined }
+    delete (copy as Record<string,unknown>).id
+    delete (copy as Record<string,unknown>).created_at
+    delete (copy as Record<string,unknown>).updated_at
+    const { error } = await supabase.from('hire_items').insert({ ...copy, project_id: activeProject.id })
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Duplicated "${h.name}"`, 'success'); load()
+  }
+
   return (
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -156,6 +180,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
             {items.length} items · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>
         </div>
+{hireSelected.size>0 && <button className="btn btn-sm" style={{background:'#1e40af',color:'#fff'}} onClick={()=>setBulkPoModal(true)}>🔗 Link to PO ({hireSelected.size})</button>}
         <button className="btn btn-primary" onClick={openNew}>+ Add Item</button>
       </div>
 
@@ -170,7 +195,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <table>
               <thead>
-                <tr>
+                <tr><th style={{width:'32px'}}><input type="checkbox" onChange={e=>setHireSelected(e.target.checked?new Set(items.map(h=>h.id)):new Set())} /></th>
                   <th>Name</th><th>Vendor</th><th>Start</th><th>End</th><th>Days</th>
                   <th style={{ textAlign: 'right' }}>Rate</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
@@ -184,6 +209,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                   const d = daysBetween(h.start_date || '', h.end_date || '')
                   return (
                     <tr key={h.id}>
+                      <td><input type="checkbox" checked={hireSelected.has(h.id)} onChange={e=>setHireSelected(s=>{const n=new Set(s);e.target.checked?n.add(h.id):n.delete(h.id);return n})} /></td>
                       <td style={{ fontWeight: 500 }}>{h.name}</td>
                       <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{h.vendor || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.start_date || '—'}</td>
@@ -196,6 +222,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{fmt(h.customer_total || 0)}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="btn btn-sm" onClick={() => openEdit(h)}>Edit</button>
+                        <button className="btn btn-sm" style={{ marginLeft: '4px' }} title="Duplicate" onClick={() => duplicateItem(h)}>⧉</button>
                         <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(h)}>✕</button>
                       </td>
                     </tr>
@@ -371,6 +398,29 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {bulkPoModal && (
+        <div className="modal-overlay" onClick={()=>setBulkPoModal(false)}>
+          <div className="modal" style={{maxWidth:'460px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>🔗 Link {hireSelected.size} Item{hireSelected.size>1?'s':''} to PO</h3><button className="btn btn-sm" onClick={()=>setBulkPoModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'14px'}}>Choose a PO to link all selected hire items to:</p>
+              <div style={{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'340px',overflowY:'auto'}}>
+                <button style={{padding:'12px',border:'1px solid var(--border)',borderRadius:'6px',background:'var(--bg2)',cursor:'pointer',textAlign:'left'}} onClick={()=>bulkLinkPO('')}>
+                  <div style={{fontWeight:600,fontSize:'12px',color:'var(--red)'}}>✕ Remove PO link</div>
+                </button>
+                {pos.filter(p=>!['cancelled','closed'].includes(p.status)).map(po=>(
+                  <button key={po.id} style={{padding:'12px',border:'1px solid var(--border)',borderRadius:'6px',background:'var(--bg2)',cursor:'pointer',textAlign:'left'}} onClick={()=>bulkLinkPO(po.id)}>
+                    <div style={{fontWeight:700,fontSize:'12px',fontFamily:'var(--mono)'}}>{po.po_number||po.internal_ref||'—'}</div>
+                    <div style={{fontSize:'11px',color:'var(--text3)'}}>{po.vendor} · {po.status}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer"><button className="btn" onClick={()=>setBulkPoModal(false)}>Cancel</button></div>
           </div>
         </div>
       )}

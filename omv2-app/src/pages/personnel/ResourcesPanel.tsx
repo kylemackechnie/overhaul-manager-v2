@@ -44,10 +44,14 @@ export function ResourcesPanel() {
   const [cars, setCars] = useState<{id:string,person_id:string,vehicle_type:string}[]>([])
   const [accom, setAccom] = useState<{id:string,occupants:string[],property:string,room:string}[]>([])
   const [wbsList, setWbsList] = useState<{id:string,code:string,name:string}[]>([])
+  const [rateCards, setRateCards] = useState<{id:string,role:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Resource>(null)
   const [form, setForm] = useState<Partial<Resource>>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkModal, setBulkModal] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ role:'', shift:'', company:'', mob_in:'', mob_out:'', wbs:'' })
 
   const [importing, setImporting] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -70,6 +74,7 @@ export function ResourcesPanel() {
       supabase.from('cars').select('id,person_id,vehicle_type').eq('project_id', pid),
       supabase.from('accommodation').select('id,occupants,property,room').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
+      supabase.from('rate_cards').select('id,role').eq('project_id', pid).order('role'),
     ])
     setResources((resData.data||[]) as Resource[])
     setRcs((rcData.data||[]) as RateCard[])
@@ -77,6 +82,7 @@ export function ResourcesPanel() {
     setCars((carData.data||[]) as {id:string,person_id:string,vehicle_type:string}[])
     setAccom((accomData.data||[]) as {id:string,occupants:string[],property:string,room:string}[])
     setWbsList((wbsData.data||[]) as {id:string,code:string,name:string}[])
+    setRateCards((rcData.data||[]) as {id:string,role:string}[])
     setLoading(false)
   }
 
@@ -228,6 +234,22 @@ export function ResourcesPanel() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+
+  async function applyBulkEdit() {
+    if (!selected.size || !activeProject) return
+    const updates = Object.fromEntries(
+      Object.entries(bulkForm).filter(([, v]) => v !== '')
+    )
+    if (!Object.keys(updates).length) { toast('No fields to update', 'info'); return }
+    setSaving(true)
+    const ids = [...selected]
+    const { error } = await supabase.from('resources').update(updates).in('id', ids)
+    setSaving(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Updated ${ids.length} resource${ids.length > 1 ? 's' : ''}`, 'success')
+    setBulkModal(false); setSelected(new Set()); setBulkForm({ role:'', shift:'', company:'', mob_in:'', mob_out:'', wbs:'' }); load()
+  }
+
   return (
     <div style={{padding:'24px',maxWidth:'100%'}}>
       {/* Header */}
@@ -371,6 +393,14 @@ export function ResourcesPanel() {
                       <td style={{textAlign:'center'}}>
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
+                      </td>
+                      <td style={{fontSize:'11px',whiteSpace:'nowrap'}}>
+                        {r.category==='subcontractor' && (
+                          r.linked_po_id
+                            ? <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#d1fae5',color:'#065f46',fontWeight:700}}>{pos.find(p=>p.id===r.linked_po_id)?.po_number||'PO linked'}</span>
+                            : <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b',fontWeight:700}}>⚠ No PO</span>
+                        )}
+                        {r.category!=='subcontractor' && <span style={{color:'var(--text3)'}}>—</span>}
                       </td>
                       <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
                       <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
@@ -557,6 +587,55 @@ export function ResourcesPanel() {
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null} Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkModal && (
+        <div className="modal-overlay" onClick={()=>setBulkModal(false)}>
+          <div className="modal" style={{maxWidth:'440px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>✏ Bulk Edit {selected.size} Resource{selected.size>1?'s':''}</h3>
+              <button className="btn btn-sm" onClick={()=>setBulkModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'14px'}}>Leave a field blank to keep existing values unchanged.</p>
+              <div style={{display:'grid',gap:'10px'}}>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>Role</label>
+                  <select className="input" value={bulkForm.role} onChange={e=>setBulkForm(f=>({...f,role:e.target.value}))}>
+                    <option value="">— Keep existing —</option>
+                    {rateCards.map(rc=><option key={rc.id} value={rc.role}>{rc.role}</option>)}
+                  </select>
+                </div>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>Shift</label>
+                  <select className="input" value={bulkForm.shift} onChange={e=>setBulkForm(f=>({...f,shift:e.target.value}))}>
+                    <option value="">— Keep existing —</option>
+                    <option value="day">Day</option><option value="night">Night</option><option value="both">Both</option>
+                  </select>
+                </div>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>Company</label>
+                  <input className="input" value={bulkForm.company} onChange={e=>setBulkForm(f=>({...f,company:e.target.value}))} placeholder="— Keep existing —" />
+                </div>
+                <div className="fg-row" style={{gap:'8px'}}>
+                  <div><label style={{fontSize:'11px',fontWeight:600}}>Mob In</label>
+                    <input type="date" className="input" value={bulkForm.mob_in} onChange={e=>setBulkForm(f=>({...f,mob_in:e.target.value}))} />
+                  </div>
+                  <div><label style={{fontSize:'11px',fontWeight:600}}>Mob Out</label>
+                    <input type="date" className="input" value={bulkForm.mob_out} onChange={e=>setBulkForm(f=>({...f,mob_out:e.target.value}))} />
+                  </div>
+                </div>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>WBS</label>
+                  <select className="input" value={bulkForm.wbs} onChange={e=>setBulkForm(f=>({...f,wbs:e.target.value}))}>
+                    <option value="">— Keep existing —</option>
+                    {wbsList.map(w=><option key={w.id} value={w.code}>{w.code} — {w.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setBulkModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={applyBulkEdit} disabled={saving}>{saving?'Saving…':'Apply to All'}</button>
             </div>
           </div>
         </div>

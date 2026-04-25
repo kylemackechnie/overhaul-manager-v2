@@ -45,6 +45,9 @@ export function CarsPanel() {
   const [modal, setModal] = useState<null|'new'|Car>(null)
   const [form, setForm] = useState<CarForm>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [carSelected, setCarSelected] = useState<Set<string>>(new Set())
+  const [carBulkModal, setCarBulkModal] = useState(false)
+  const [carBulkForm, setCarBulkForm] = useState({ start_date:'', end_date:'', daily_rate:'', gm_pct:'' })
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -148,6 +151,23 @@ export function CarsPanel() {
 
   const previewDays = daysBetween(form.start_date, form.end_date) || 1
 
+
+  async function applyCarBulkEdit() {
+    if (!carSelected.size) return
+    const updates: Record<string,unknown> = {}
+    if (carBulkForm.start_date) updates.start_date = carBulkForm.start_date
+    if (carBulkForm.end_date) updates.end_date = carBulkForm.end_date
+    if (carBulkForm.daily_rate) updates.daily_rate = parseFloat(carBulkForm.daily_rate)
+    if (carBulkForm.gm_pct) updates.gm_pct = parseFloat(carBulkForm.gm_pct)
+    if (!Object.keys(updates).length) { toast('No fields to update', 'info'); return }
+    setSaving(true)
+    const { error } = await supabase.from('cars').update(updates).in('id', [...carSelected])
+    setSaving(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Updated ${carSelected.size} vehicle${carSelected.size>1?'s':''}`, 'success')
+    setCarBulkModal(false); setCarSelected(new Set()); setCarBulkForm({ start_date:'', end_date:'', daily_rate:'', gm_pct:'' }); load()
+  }
+
   return (
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -172,7 +192,7 @@ export function CarsPanel() {
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <table>
               <thead>
-                <tr>
+                <tr><th style={{width:'32px'}}><input type="checkbox" onChange={e=>setCarSelected(e.target.checked?new Set(cars.map(c=>c.id)):new Set())} /></th>
                   <th>Type</th><th>Rego</th><th>Vendor</th><th>Person</th>
                   <th>Start</th><th>End</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
@@ -183,6 +203,7 @@ export function CarsPanel() {
               <tbody>
                 {cars.map(c => (
                   <tr key={c.id}>
+                    <td><input type="checkbox" checked={carSelected.has(c.id)} onChange={e=>setCarSelected(s=>{const n=new Set(s);e.target.checked?n.add(c.id):n.delete(c.id);return n})} /></td>
                     <td style={{ fontWeight: 500 }}>{c.vehicle_type || '—'}</td>
                     <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.rego || '—'}</td>
                     <td>{c.vendor || '—'}</td>
@@ -288,6 +309,27 @@ export function CarsPanel() {
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {carBulkModal && (
+        <div className="modal-overlay" onClick={()=>setCarBulkModal(false)}>
+          <div className="modal" style={{maxWidth:'380px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>✏ Bulk Edit {carSelected.size} Vehicle{carSelected.size>1?'s':''}</h3><button className="btn btn-sm" onClick={()=>setCarBulkModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>Leave blank to keep existing values.</p>
+              <div style={{display:'grid',gap:'10px'}}>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>Pickup Date</label><input type="date" className="input" value={carBulkForm.start_date} onChange={e=>setCarBulkForm(f=>({...f,start_date:e.target.value}))} /></div>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>Return Date</label><input type="date" className="input" value={carBulkForm.end_date} onChange={e=>setCarBulkForm(f=>({...f,end_date:e.target.value}))} /></div>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>Daily Rate ($)</label><input type="number" className="input" value={carBulkForm.daily_rate} min={0} step={1} placeholder="— keep existing —" onChange={e=>setCarBulkForm(f=>({...f,daily_rate:e.target.value}))} /></div>
+                <div><label style={{fontSize:'11px',fontWeight:600}}>GM%</label><input type="number" className="input" value={carBulkForm.gm_pct} min={0} max={99} step={0.5} placeholder="— keep existing —" onChange={e=>setCarBulkForm(f=>({...f,gm_pct:e.target.value}))} /></div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setCarBulkModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={applyCarBulkEdit} disabled={saving}>{saving?'Saving…':'Apply'}</button>
             </div>
           </div>
         </div>

@@ -34,10 +34,14 @@ export function AccommodationPanel() {
   const [accomList, setAccomList] = useState<Accommodation[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [wbsList, setWbsList] = useState<{id:string,code:string,name:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Accommodation>(null)
   const [form, setForm] = useState<AccomForm>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [bulkModal, setBulkModal] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ property:'', vendor:'', room_prefix:'Room', rate_per_night:0, gm_pct:0, wbs:'' })
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -52,6 +56,8 @@ export function AccommodationPanel() {
     setAccomList((acData.data || []) as Accommodation[])
     setResources((resData.data || []) as Resource[])
     setPos((poData.data || []) as PurchaseOrder[])
+    const wbsRes = await supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order')
+    setWbsList((wbsRes.data||[]) as {id:string,code:string,name:string}[])
     setLoading(false)
   }
 
@@ -181,6 +187,41 @@ export function AccommodationPanel() {
     const html = `<html><head><title>Vendor Summary — Accommodation</title><style>body{font-family:sans-serif;padding:20px}@media print{@page{size:landscape}}</style></head><body>${pages}</body></html>`
     const w = window.open()
     if (w) { w.document.write(html); w.document.close(); w.print() }
+  }
+
+
+  async function saveBulkRooms() {
+    if (!bulkSelected.size || !activeProject) return
+    if (!bulkForm.property.trim()) { toast('Property name required', 'error'); return }
+    setSaving(true)
+    const pid = activeProject.id
+    const insertions = [...bulkSelected].map((resId, i) => {
+      const res = resources.find(r => r.id === resId)
+      const nights = res?.mob_in && res?.mob_out
+        ? Math.max(1, Math.round((new Date(res.mob_out+'T12:00:00').getTime() - new Date(res.mob_in+'T12:00:00').getTime()) / 86400000))
+        : 0
+      const totalCost = (bulkForm.rate_per_night || 0) * nights
+      const customerTotal = bulkForm.gm_pct > 0 ? parseFloat((totalCost / (1 - bulkForm.gm_pct / 100)).toFixed(2)) : totalCost
+      return {
+        project_id: pid,
+        property: bulkForm.property.trim(),
+        room: `${bulkForm.room_prefix || 'Room'} ${i + 1}`,
+        vendor: bulkForm.vendor,
+        check_in: res?.mob_in || null,
+        check_out: res?.mob_out || null,
+        nights,
+        total_cost: totalCost,
+        customer_total: customerTotal,
+        gm_pct: bulkForm.gm_pct,
+        wbs: bulkForm.wbs,
+        occupants: [resId],
+      }
+    })
+    const { error } = await supabase.from('accommodation').insert(insertions)
+    setSaving(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Added ${insertions.length} room booking${insertions.length > 1 ? 's' : ''}`, 'success')
+    setBulkModal(false); setBulkSelected(new Set()); load()
   }
 
   return (
@@ -335,6 +376,49 @@ export function AccommodationPanel() {
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkModal && (
+        <div className="modal-overlay" onClick={()=>setBulkModal(false)}>
+          <div className="modal" style={{maxWidth:'520px',maxHeight:'90vh'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>⊞ Bulk Add Rooms</h3>
+              <button className="btn btn-sm" onClick={()=>setBulkModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{overflowY:'auto',maxHeight:'60vh'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'14px'}}>
+                <div className="fg" style={{margin:0,gridColumn:'1/-1'}}><label>Property Name *</label><input className="input" value={bulkForm.property} onChange={e=>setBulkForm(f=>({...f,property:e.target.value}))} placeholder="e.g. Quest Gladstone" /></div>
+                <div className="fg" style={{margin:0}}><label>Vendor</label><input className="input" value={bulkForm.vendor} onChange={e=>setBulkForm(f=>({...f,vendor:e.target.value}))} placeholder="Hotel / owner" /></div>
+                <div className="fg" style={{margin:0}}><label>Room Prefix</label><input className="input" value={bulkForm.room_prefix} onChange={e=>setBulkForm(f=>({...f,room_prefix:e.target.value}))} placeholder="Room" /></div>
+                <div className="fg" style={{margin:0}}><label>Rate per Night ($)</label><input type="number" className="input" value={bulkForm.rate_per_night||''} min={0} step={1} onChange={e=>setBulkForm(f=>({...f,rate_per_night:parseFloat(e.target.value)||0}))} /></div>
+                <div className="fg" style={{margin:0}}><label>GM%</label><input type="number" className="input" value={bulkForm.gm_pct||''} min={0} max={99} step={0.5} onChange={e=>setBulkForm(f=>({...f,gm_pct:parseFloat(e.target.value)||0}))} /></div>
+                <div className="fg" style={{margin:0,gridColumn:'1/-1'}}><label>WBS</label>
+                  <select className="input" value={bulkForm.wbs} onChange={e=>setBulkForm(f=>({...f,wbs:e.target.value}))}>
+                    <option value="">— Select WBS —</option>
+                    {wbsList.map(w=><option key={w.id} value={w.code}>{w.code} — {w.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{fontSize:'12px',fontWeight:600,marginBottom:'8px',color:'var(--text)'}}>Assign one room per person:</div>
+              <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                {resources.map(r => (
+                  <label key={r.id} style={{display:'flex',alignItems:'center',gap:'8px',padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'6px',cursor:'pointer',background:'var(--bg3)'}}>
+                    <input type="checkbox" checked={bulkSelected.has(r.id)} onChange={e=>setBulkSelected(s=>{const n=new Set(s);e.target.checked?n.add(r.id):n.delete(r.id);return n})} style={{accentColor:'var(--mod-hr)'}} />
+                    <div>
+                      <div style={{fontSize:'13px',fontWeight:600}}>{r.name}</div>
+                      <div style={{fontSize:'11px',color:'var(--text3)'}}>{r.role||'—'}{r.mob_in?` · ${r.mob_in} → ${r.mob_out||'?'}`:''}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <span style={{fontSize:'12px',color:'var(--text3)'}}>{bulkSelected.size} selected</span>
+              <button className="btn" onClick={()=>setBulkModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveBulkRooms} disabled={saving||!bulkSelected.size}>{saving?'Saving…':`Add ${bulkSelected.size} Room${bulkSelected.size!==1?'s':''}`}</button>
             </div>
           </div>
         </div>
