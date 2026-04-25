@@ -153,6 +153,97 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
   return { hours, sell, cost, allowances }
 }
 
+
+function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: RateCard[], _holidays: Set<string>) {
+  const regime = week.regime || 'lt12'
+  const monday = new Date(week.week_start + 'T12:00:00')
+  const days = Array.from({length:7}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate()+i); return d })
+  const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+  const rcByRole: Record<string,RateCard> = {}
+  rateCards.forEach(r => { rcByRole[r.role.toLowerCase()] = r })
+
+  const fmtDate = (d: Date) => d.toLocaleDateString('en-AU', {day:'2-digit',month:'short',year:'numeric'})
+  const typeLabel = week.type === 'mgmt' ? 'Management' : week.type === 'seag' ? 'SE AG' : 'Trades'
+  const endDate = new Date(monday); endDate.setDate(monday.getDate()+6)
+
+  const personRows = (week.crew || []).map(m => {
+    const rc = rcByRole[(m.role||'').toLowerCase()]
+    const rates = rc?.rates as {cost:Record<string,number>;sell:Record<string,number>}|null
+    let totalHrs = 0, totalSell = 0
+
+    const dayCols = days.map(d => {
+      const ds = d.toISOString().slice(0,10)
+      const cell = (m.days||{})[ds] as {hours?:number;dayType?:string;shiftType?:string;laha?:boolean;meal?:boolean}|undefined
+      if (!cell?.hours) return '<td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#ccc">—</td>'
+      const adjH = (m.mealBreakAdj && cell.hours > 0) ? 0.5 : 0
+      const effH = cell.hours + adjH
+      totalHrs += effH
+      // Simple sell calc
+      let sell = 0
+      if (rates) {
+        const split: Record<string,number> = {dnt:0,dt15:0,ddt:0,ddt15:0,nnt:0,ndt:0,ndt15:0}
+        const h = effH, night = cell.shiftType === 'night', dt = cell.dayType||'weekday'
+        if (dt === 'public_holiday') night ? (split.ndt15=h) : (split.ddt15=h)
+        else if (dt === 'rest') night ? (split.nnt=h) : (split.dnt=h)
+        else if (dt === 'travel'||dt==='mob') split.dnt=h
+        else if (night) { if (dt==='saturday'||dt==='sunday') split.ndt=h; else { split.nnt=Math.min(h,7.2); split.ndt=Math.max(0,h-7.2) } }
+        else if (dt==='saturday') { split.dt15=Math.min(h,3); split.ddt=Math.max(0,h-3) }
+        else if (dt==='sunday') split.ddt=h
+        else { split.dnt=Math.min(h,7.2); split.dt15=Math.min(Math.max(0,h-7.2),3.3); split.ddt=Math.max(0,h-10.5) }
+        Object.entries(split).forEach(([b,bh]) => { sell += bh*(rates.sell?.[b]||0) })
+      }
+      totalSell += sell
+      return `<td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">
+        <div style="font-weight:700">${effH.toFixed(1)}h</div>
+        ${sell>0?`<div style="font-size:9px;color:#059669">$${sell.toFixed(0)}</div>`:''}
+      </td>`
+    }).join('')
+
+    return `<tr>
+      <td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:600">${m.name}</td>
+      <td style="padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;color:#555">${m.role||'—'}</td>
+      ${dayCols}
+      <td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:right;font-weight:700;background:#f8fafc">${totalHrs.toFixed(1)}h</td>
+      <td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:right;color:#059669;font-weight:700;background:#f0fdf4">${totalSell>0?'$'+totalSell.toFixed(0):'—'}</td>
+      <td style="padding:6px 10px;border:1px solid #e2e8f0;text-align:center;font-size:11px">${m.mealBreakAdj?'✓':''}</td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${typeLabel} Timesheet — ${week.week_start}</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:11px;padding:20px;color:#111}
+  h1{font-size:16px;margin-bottom:4px;color:#0f766e}
+  .meta{color:#555;font-size:10px;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;margin-bottom:12px}
+  th{background:#f1f5f9;padding:7px 8px;border:1px solid #e2e8f0;font-size:10px;text-align:center}
+  th.name-col{text-align:left}
+  .sig{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+  .sig-line{border-bottom:1px solid #000;height:32px;margin-bottom:3px}
+  @media print{@page{size:A3 landscape}button{display:none}}
+</style></head><body>
+<h1>${typeLabel} Timesheet — Week of ${fmtDate(monday)} to ${fmtDate(endDate)}</h1>
+<div class="meta">${projectName} · Regime: ${regime === 'ge12' ? 'GE12 (12hr+)' : 'LT12 (under 12hr)'} · ${week.wbs||''}</div>
+<table>
+  <thead><tr>
+    <th class="name-col" style="text-align:left">Name</th>
+    <th class="name-col" style="text-align:left">Role</th>
+    ${days.map((d,i) => `<th>${dayLabels[i]}<br/><span style="font-size:9px;font-weight:400">${d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</span></th>`).join('')}
+    <th>Total Hrs</th><th>Sell</th><th>MBA</th>
+  </tr></thead>
+  <tbody>${personRows}</tbody>
+</table>
+<div class="sig">
+  <div><div class="sig-line"></div><div style="font-size:10px">Site Manager &nbsp; Date: ___________</div></div>
+  <div><div class="sig-line"></div><div style="font-size:10px">Prepared by &nbsp; Date: ___________</div></div>
+</div>
+<div style="margin-top:16px;font-size:9px;color:#999">Generated by Overhaul Manager · ${new Date().toLocaleString('en-AU')} · CONFIDENTIAL</div>
+<script>setTimeout(()=>window.print(),400)<\/script>
+</body></html>`
+
+  const win = window.open('', '_blank', 'width=1200,height=800')
+  if (win) { win.document.write(html); win.document.close() }
+}
+
 export function TimesheetsPanel({ type }: { type: TsType }) {
   const { activeProject } = useAppStore()
   const [sheets, setSheets] = useState<WeeklyTimesheet[]>([])
@@ -286,18 +377,45 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     toast('Allowances applied from resource list', 'success')
   }
 
-  async function duplicateWeek(s: WeeklyTimesheet) {
-    const ws = new Date(s.week_start + 'T12:00:00')
+  const [dupModal, setDupModal] = useState<WeeklyTimesheet|null>(null)
+  const [dupMode, setDupMode] = useState<'copy'|'standard'|'blank'>('copy')
+
+  async function confirmDuplicate(src: WeeklyTimesheet, mode: 'copy'|'standard'|'blank') {
+    const ws = new Date(src.week_start + 'T12:00:00')
     ws.setDate(ws.getDate() + 7)
+    const newStart = ws.toISOString().slice(0, 10)
+    const std = activeProject?.std_hours as {day:Record<string,number>;night:Record<string,number>} | null
+
+    const newCrew = src.crew.map(m => {
+      if (mode === 'copy') {
+        // Shift day keys forward 7 days, recalc dayType, remove WO allocs
+        const newDays: Record<string, unknown> = {}
+        Object.entries(m.days || {}).forEach(([ds, cell]) => {
+          const d = new Date(ds + 'T12:00:00'); d.setDate(d.getDate() + 7)
+          const newDs = d.toISOString().slice(0, 10)
+          newDays[newDs] = { ...(cell as object), dayType: autoType(newDs, holidays) }
+          delete (newDays[newDs] as Record<string,unknown>).woAllocations
+        })
+        return { ...m, days: newDays }
+      } else if (mode === 'standard' && std) {
+        // Use project standard hours via buildPreDays
+        const res = resources.find(r => r.id === m.personId)
+        return { ...m, days: res ? buildPreDays(res, newStart) : {} }
+      } else {
+        return { ...m, days: {} }
+      }
+    })
+
     const { error } = await supabase.from('weekly_timesheets').insert({
-      project_id: s.project_id, type: s.type, week_start: ws.toISOString().slice(0, 10),
-      wbs: s.wbs, notes: s.notes, regime: s.regime, status: 'draft',
-      vendor: s.vendor, po_id: s.po_id,
-      crew: s.crew.map(m => ({ ...m, days: {} })),
+      project_id: src.project_id, type: src.type, week_start: newStart,
+      wbs: src.wbs, notes: src.notes, regime: src.regime, status: 'draft',
+      vendor: src.vendor, po_id: src.po_id, crew: newCrew,
     })
     if (error) { toast(error.message, 'error'); return }
-    toast('Week duplicated', 'success'); load()
+    toast('Week duplicated', 'success'); setDupModal(null); load()
   }
+
+  function duplicateWeek(s: WeeklyTimesheet) { setDupMode('copy'); setDupModal(s) }
 
   function getNextMon(weekStart: string): string {
     const d = new Date(weekStart + 'T12:00:00')
@@ -736,10 +854,51 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               <option value="">+ Add individual...</option>
               {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` — ${r.role}` : ''}</option>)}
             </select>
+            <button className="btn btn-sm" onClick={() => printTimesheet(activeWeek, activeProject?.name||'', rateCards, holidays)}>🖨 Print</button>
             <button className="btn btn-primary" onClick={() => saveWeek(activeWeek)}>💾 Save</button>
           </div>
         </div>
       )}
+
+
+      {/* Duplicate Week Modal */}
+      {dupModal && (() => {
+        const ws = new Date(dupModal.week_start + 'T12:00:00'); ws.setDate(ws.getDate() + 7)
+        const newStart = ws.toISOString().slice(0, 10)
+        const hasStd = !!(activeProject?.std_hours as {day?:Record<string,number>})?.day
+        return (
+          <div className="modal-overlay" onClick={() => setDupModal(null)}>
+            <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header"><h3>⧉ Duplicate Week</h3><button className="btn btn-sm" onClick={() => setDupModal(null)}>✕</button></div>
+              <div className="modal-body">
+                <p style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '16px' }}>
+                  Creating new week starting <strong>{newStart}</strong> with {dupModal.crew.length} people.
+                </p>
+                <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px' }}>How should hours be filled?</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                  {([
+                    { val: 'copy' as const,     title: 'Copy hours from previous week',     desc: 'Same hours, day types, shifts and allowances. Dates shift forward 7 days.' },
+                    { val: 'standard' as const, title: 'Use standard hours from Project Settings', desc: hasStd ? 'Each person gets the configured shift pattern.' : 'No standard hours configured in Project Settings yet.', disabled: !hasStd },
+                    { val: 'blank' as const,    title: 'Blank — zero hours',                desc: 'Keep the crew list but start with empty timesheets.' },
+                  ]).map(opt => (
+                    <label key={opt.val} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', border: `1px solid ${dupMode === opt.val ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius)', cursor: opt.disabled ? 'default' : 'pointer', opacity: opt.disabled ? 0.5 : 1, background: 'var(--bg2)' }}>
+                      <input type="radio" name="dupMode" value={opt.val} checked={dupMode === opt.val} disabled={opt.disabled} onChange={() => setDupMode(opt.val)} style={{ marginTop: '2px' }} />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '12px' }}>{opt.title}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{opt.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn" onClick={() => setDupModal(null)}>Cancel</button>
+                <button className="btn btn-primary" onClick={() => confirmDuplicate(dupModal, dupMode)}>⧉ Duplicate</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* New week modal */}
       {showNewModal && (

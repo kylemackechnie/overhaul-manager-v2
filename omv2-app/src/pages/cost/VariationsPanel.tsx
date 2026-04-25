@@ -15,6 +15,103 @@ interface LineItem { id: string; description: string; wbs: string; cost: number;
 const mkLine = (): LineItem => ({ id: Math.random().toString(36).slice(2), description: '', wbs: '', cost: 0, sell: 0 })
 const EMPTY = { number:'', title:'', status:'draft' as const, cause:'', raised_date:'', scope:'', assumptions:'', exclusions:'', submitted_date:'', approved_date:'', customer_ref:'', notes:'', lines: [mkLine()] }
 
+
+const VN_CAUSE_LABELS: Record<string,string> = {
+  client_instruction:'Client Instruction', design_change:'Design Change',
+  latent_condition:'Latent Condition', scope_omission:'Scope Omission',
+  acceleration:'Acceleration', other:'Other',
+}
+const VN_CAT_LABELS: Record<string,string> = {
+  labour_trades:'Trades Labour', labour_mgmt:'Management Labour', labour_subcon:'Subcon Labour',
+  materials:'Materials', equipment:'Equipment Hire', third_party:'Third Party Services', other:'Other',
+}
+
+function printVariation(v: Variation, projectName: string, client: string) {
+  const sym = '$'
+  const statusColor = v.status === 'approved'
+    ? 'background:#d1fae5;color:#065f46'
+    : v.status === 'submitted' ? 'background:#dbeafe;color:#1e40af'
+    : 'background:#f1f5f9;color:#374151'
+  const statusLabel = v.status === 'approved' ? 'APPROVED' : v.status === 'submitted' ? 'SUBMITTED' : 'DRAFT'
+
+  // Category totals from line items
+  const lines = (v.line_items as {category?:string;cost?:number;sell?:number;description?:string;wbs?:string}[] | null) || []
+  const catTotals: Record<string,{cost:number;sell:number}> = {}
+  lines.forEach(l => {
+    const cat = l.category || 'other'
+    if (!catTotals[cat]) catTotals[cat] = {cost:0,sell:0}
+    catTotals[cat].cost += l.cost || 0
+    catTotals[cat].sell += l.sell || 0
+  })
+  const totalCost = lines.reduce((s,l) => s+(l.cost||0), 0)
+  const totalSell = lines.reduce((s,l) => s+(l.sell||0), 0)
+
+  const catRows = Object.entries(catTotals).map(([cat, t]) =>
+    `<tr><td style="padding:7px 10px;border:1px solid #e2e8f0">${VN_CAT_LABELS[cat]||cat}</td>` +
+    `<td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${sym}${t.cost.toLocaleString('en-AU',{minimumFractionDigits:2})}</td>` +
+    `<td style="padding:7px 10px;border:1px solid #e2e8f0;text-align:right;font-family:monospace;font-weight:700">${sym}${t.sell.toLocaleString('en-AU',{minimumFractionDigits:2})}</td></tr>`
+  ).join('')
+
+  const lineRows = lines.map(l =>
+    `<tr><td style="padding:5px 8px;border:1px solid #e2e8f0">${VN_CAT_LABELS[l.category||'other']||l.category||'Other'}</td>` +
+    `<td style="padding:5px 8px;border:1px solid #e2e8f0">${l.description||'—'}</td>` +
+    `<td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:10px;color:#888">${l.wbs||'—'}</td>` +
+    `<td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${sym}${(l.cost||0).toLocaleString('en-AU',{minimumFractionDigits:2})}</td>` +
+    `<td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace;font-weight:700">${sym}${(l.sell||0).toLocaleString('en-AU',{minimumFractionDigits:2})}</td></tr>`
+  ).join('')
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Variation Notice — ${v.number}</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:12px;padding:28px;color:#111;line-height:1.5}
+  h1{font-size:20px;color:#d97706;margin-bottom:4px}
+  h2{font-size:13px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.06em;margin:18px 0 6px;padding-bottom:5px;border-bottom:2px solid #bae6fd}
+  .meta{color:#555;font-size:11px;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin-bottom:14px}
+  th{background:#f8fafc;padding:7px 10px;border:1px solid #e2e8f0;text-align:left;font-size:11px}
+  .status{display:inline-block;padding:3px 12px;border-radius:12px;font-size:10px;font-weight:700;text-transform:uppercase;${statusColor}}
+  .total-row td{background:#f0fdf4;font-weight:700}
+  .sig-box{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:32px}
+  .sig{border-bottom:1px solid #000;height:44px;margin-bottom:4px}
+  .footer{margin-top:24px;font-size:10px;color:#999;border-top:1px solid #e2e8f0;padding-top:8px}
+  @media print{button{display:none}}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+  <div>
+    <h1>Variation Notice — ${v.number}</h1>
+    <div class="meta">${projectName}${client ? ' · '+client : ''}</div>
+    ${v.cause ? `<div class="meta">Cause: <b>${VN_CAUSE_LABELS[v.cause]||v.cause}</b></div>` : ''}
+  </div>
+  <div style="text-align:right">
+    <span class="status">${statusLabel}</span>
+    ${v.customer_ref ? `<div class="meta" style="margin-top:6px">Client Ref: <b>${v.customer_ref}</b></div>` : ''}
+    <div class="meta" style="margin-top:4px">Raised: ${v.raised_date||'—'} · Approved: ${v.approved_date||'—'}</div>
+  </div>
+</div>
+<h2 style="font-size:15px;text-transform:none;letter-spacing:0;border-bottom:1px solid #e2e8f0;color:#111;padding-bottom:6px">${v.title}</h2>
+${v.scope ? `<h2>Scope of Works</h2><p style="white-space:pre-wrap;margin:0 0 14px">${v.scope}</p>` : ''}
+<h2>Cost Summary</h2>
+<table><thead><tr><th>Category</th><th style="text-align:right">Cost</th><th style="text-align:right">Variation Value (Sell)</th></tr></thead>
+<tbody>${catRows}</tbody>
+<tfoot><tr class="total-row">
+  <td style="padding:8px 10px;border:1px solid #e2e8f0">TOTAL VARIATION VALUE</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${sym}${totalCost.toLocaleString('en-AU',{minimumFractionDigits:2})}</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${sym}${totalSell.toLocaleString('en-AU',{minimumFractionDigits:2})}</td>
+</tr></tfoot></table>
+${lineRows ? `<h2>Detailed Cost Lines</h2><table><thead><tr><th>Category</th><th>Description</th><th>WBS</th><th style="text-align:right">Cost</th><th style="text-align:right">Sell</th></tr></thead><tbody>${lineRows}</tbody></table>` : ''}
+${v.assumptions ? `<h2>Assumptions / Basis of Pricing</h2><p style="white-space:pre-wrap;margin:0 0 14px">${v.assumptions}</p>` : ''}
+${v.exclusions ? `<h2>Exclusions</h2><p style="white-space:pre-wrap;margin:0 0 14px">${v.exclusions}</p>` : ''}
+<div class="sig-box">
+  <div><div class="sig"></div><div style="font-size:11px">Authorised by (Client) &nbsp; Date: ___________</div></div>
+  <div><div class="sig"></div><div style="font-size:11px">Prepared by (SE) &nbsp; Date: ___________</div></div>
+</div>
+<div class="footer">Generated by Overhaul Manager · ${new Date().toLocaleString('en-AU')} · CONFIDENTIAL</div>
+<script>setTimeout(()=>window.print(),400)<\/script>
+</body></html>`
+
+  const win = window.open('', '_blank', 'width=900,height=800')
+  if (win) { win.document.write(html); win.document.close() }
+}
+
 export function VariationsPanel() {
   const { activeProject } = useAppStore()
   const [variations, setVariations] = useState<Variation[]>([])
@@ -153,7 +250,7 @@ export function VariationsPanel() {
           </p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
-          <button className="btn btn-sm" onClick={() => window.print()}>🖨 Print</button>
+          {modal && typeof modal !== 'string' && <button className="btn btn-sm" onClick={() => printVariation(modal as Variation, activeProject?.name||'', activeProject?.client||'')}>🖨 Print VN</button>}
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
           <button className="btn btn-primary" onClick={openNew}>+ New Variation</button>
         </div>

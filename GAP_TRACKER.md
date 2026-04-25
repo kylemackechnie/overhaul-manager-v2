@@ -51,12 +51,12 @@
 
 | # | Gap | Status | Notes |
 |---|-----|--------|-------|
-| 3.1 | Duplicate week: modal with copy-hours / standard-hours / blank options | ❌ | |
-| 3.2 | Variation print: proper formatted VN document (new window, not window.print()) | ❌ | |
-| 3.3 | Timesheet print: formatted weekly printout for site sign-off | ❌ | |
-| 3.4 | Timesheet cost report: per-person cost breakdown print | ❌ | |
-| 3.5 | PO forecast value: remaining per PO from linked hire/accom/subcon | ❌ | |
-| 3.6 | global-parts: fix routing to show cross-site search not SparePartsPanel | ❌ | 1 line fix |
+| 3.1 | Duplicate week: modal with copy-hours / standard-hours / blank options | ✅ | |
+| 3.2 | Variation print: proper formatted VN document (new window, not window.print()) | ✅ | |
+| 3.3 | Timesheet print: formatted weekly printout for site sign-off | ✅ | |
+| 3.4 | Timesheet cost report: per-person cost breakdown print | ✅ | |
+| 3.5 | PO forecast value: remaining per PO from linked hire/accom/subcon | ✅ | |
+| 3.6 | global-parts: fix routing to show cross-site search not SparePartsPanel | ✅ | 1 line fix |
 | 3.7 | NRG TCE actuals: match invoices + expenses to TCE lines | ❌ | |
 | 3.8 | Rate card: auto-calculate all 7 buckets from base rate + multipliers | ❌ | |
 | 3.9 | Variation WBS: dropdown from project WBS list (not free text) | ❌ | |

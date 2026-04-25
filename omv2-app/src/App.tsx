@@ -248,7 +248,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'parts-dashboard':       return <PartsDashboardPanel />
     case 'parts-list':            return <SparePartsPanel />
     case 'parts-import':          return <WositImportPanel />
-    case 'global-parts':          return <SparePartsPanel />
+    case 'global-parts':          return <GlobalKitsPanel />
     case 'tooling-dashboard':     return <ToolingDashboard />
     case 'tooling-reports':       return <ToolingReportsPanel />
     case 'tooling-tvs':           return <TVRegisterPanel />

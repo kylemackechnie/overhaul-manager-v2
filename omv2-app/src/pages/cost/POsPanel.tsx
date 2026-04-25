@@ -27,6 +27,10 @@ export function POsPanel() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [allInvoices, setAllInvoices] = useState<{id:string;po_id:string;amount:number;status:string}[]>([])
+  const [linkedHire, setLinkedHire] = useState<{id:string;linked_po_id:string|null;hire_cost:number;customer_total:number}[]>([])
+  const [linkedCars, setLinkedCars] = useState<{id:string;linked_po_id:string|null;total_cost:number}[]>([])
+  const [linkedAccom, setLinkedAccom] = useState<{id:string;linked_po_id:string|null;total_cost:number}[]>([])
+  const [linkedTS, setLinkedTS] = useState<{id:string;po_id:string|null;type:string;status:string;crew:unknown[]}[]>([])
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
 
@@ -35,13 +39,31 @@ export function POsPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [poRes, invRes] = await Promise.all([
+    const [poRes, invRes, hireRes, carRes, accomRes, tsRes] = await Promise.all([
       supabase.from('purchase_orders').select('*').eq('project_id', pid).order('created_at', { ascending: false }),
       supabase.from('invoices').select('id,po_id,amount,status').eq('project_id', pid),
+      supabase.from('hire_items').select('id,linked_po_id,hire_cost,customer_total').eq('project_id', pid),
+      supabase.from('cars').select('id,linked_po_id,total_cost').eq('project_id', pid),
+      supabase.from('accommodation').select('id,linked_po_id,total_cost').eq('project_id', pid),
+      supabase.from('weekly_timesheets').select('id,po_id,type,status,crew').eq('project_id', pid),
     ])
     setPos((poRes.data || []) as PurchaseOrder[])
     setAllInvoices((invRes.data || []) as {id:string;po_id:string;amount:number;status:string}[])
+    setLinkedHire((hireRes.data||[]) as {id:string;linked_po_id:string|null;hire_cost:number;customer_total:number}[])
+    setLinkedCars((carRes.data||[]) as {id:string;linked_po_id:string|null;total_cost:number}[])
+    setLinkedAccom((accomRes.data||[]) as {id:string;linked_po_id:string|null;total_cost:number}[])
+    setLinkedTS((tsRes.data||[]) as {id:string;po_id:string|null;type:string;status:string;crew:unknown[]}[])
     setLoading(false)
+  }
+
+
+  function calcForecast(poId: string): number | null {
+    let total = 0; let hasAny = false
+    linkedHire.filter(h => h.linked_po_id === poId).forEach(h => { total += h.hire_cost || 0; hasAny = true })
+    linkedCars.filter(c => c.linked_po_id === poId).forEach(c => { total += c.total_cost || 0; hasAny = true })
+    linkedAccom.filter(a => a.linked_po_id === poId).forEach(a => { total += a.total_cost || 0; hasAny = true })
+    linkedTS.filter(ts => ts.po_id === poId && ts.status === 'approved').forEach(() => { hasAny = true /* hours tracked separately */ })
+    return hasAny ? total : null
   }
 
   function openNew() { setForm(EMPTY); setModal('new') }
@@ -166,7 +188,7 @@ export function POsPanel() {
             <thead>
               <tr><th>PO Number</th><th>Vendor</th><th>Description</th><th>Status</th><th style={{textAlign:'right'}}>PO Value</th>
                   <th style={{textAlign:'right'}}>Invoiced</th>
-                  <th style={{textAlign:'right'}}>Remaining</th><th>Raised</th><th></th></tr>
+                  <th style={{textAlign:'right'}}>Remaining</th><th style={{textAlign:'right'}}>Forecast</th><th>Raised</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.map(po => {
@@ -197,6 +219,14 @@ export function POsPanel() {
                     })()}}>
                       {po.po_value ? fmtMoney((po.po_value||0) - calcPoSpend(allInvoices, po.id).invoiced) : '—'}
                     </td>
+                    {(() => {
+                      const fc = calcForecast(po.id)
+                      return (
+                        <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text2)'}}>
+                          {fc !== null ? fmtMoney(fc) : <span style={{color:'var(--text3)'}}>—</span>}
+                        </td>
+                      )
+                    })()}
                     <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{po.raised_date || '—'}</td>
                     <td style={{whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={() => openEdit(po)}>Edit</button>
