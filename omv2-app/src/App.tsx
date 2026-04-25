@@ -100,13 +100,17 @@ export default function App() {
       }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
-      if (!s) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      // Don't flash login screen during token refresh — only clear session on explicit sign-out
+      if (event === 'SIGNED_OUT') {
+        setSession(null)
         setActiveProject(null)
         setPickerOpen(false)
-      } else if (!useAppStore.getState().activeProject) {
-        setPickerOpen(true)
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        setSession(s)
+        if (s && !useAppStore.getState().activeProject) {
+          setPickerOpen(true)
+        }
       }
     })
     return () => subscription.unsubscribe()

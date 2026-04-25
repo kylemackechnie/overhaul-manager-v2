@@ -7,6 +7,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: true,
     storageKey: 'om-v2-auth',
+    storage: window.localStorage,
   }
 })
