@@ -6,6 +6,7 @@ import type { PurchaseOrder } from '../../types'
 
 interface SubconContract {
   id: string; project_id: string; vendor: string; status: string; value: number|null
+  quoted_amount: number|null; response_notes: string; awarded: boolean
   details: Record<string,unknown>; created_at: string; updated_at: string
 }
 
@@ -16,7 +17,7 @@ const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
   declined:{bg:'#fee2e2',color:'#7f1d1d'}, cancelled:{bg:'#e5e7eb',color:'#374151'},
 }
 
-const EMPTY_CONTRACT = { vendor:'', status:'draft', value:'', description:'', scope:'', start_date:'', end_date:'', notes:'', po_id:'' }
+const EMPTY_CONTRACT = { vendor:'', status:'draft', value:'', description:'', scope:'', start_date:'', end_date:'', notes:'', po_id:'', quoted_amount:'', response_notes:'', awarded:false }
 
 export function SubconRFQPanel() {
   const { activeProject } = useAppStore()
@@ -47,7 +48,8 @@ export function SubconRFQPanel() {
     setForm({ vendor:c.vendor, status:c.status, value:c.value?.toString()||'',
       description:String(d.description||''), scope:String(d.scope||''),
       start_date:String(d.start_date||''), end_date:String(d.end_date||''),
-      notes:String(d.notes||''), po_id:String(d.po_id||'') })
+      notes:String(d.notes||''), po_id:String(d.po_id||''),
+      quoted_amount:c.quoted_amount?.toString()||'', response_notes:c.response_notes||'', awarded:c.awarded||false })
     setModal(c)
   }
 
@@ -154,6 +156,19 @@ export function SubconRFQPanel() {
                 </select>
               </div>
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} /></div>
+              <div style={{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--border)'}}>
+                <div style={{fontWeight:600,fontSize:'12px',color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'8px'}}>Vendor Response</div>
+                <div className="fg-row">
+                  <div className="fg"><label>Quoted Amount ($)</label><input type="number" className="input" value={(form as Record<string,unknown>).quoted_amount as string||''} onChange={e=>setForm(f=>({...f,quoted_amount:e.target.value}))} placeholder="Vendor quote value" /></div>
+                  <div className="fg" style={{display:'flex',alignItems:'center',paddingTop:'20px'}}>
+                    <label style={{display:'flex',gap:'8px',alignItems:'center',cursor:'pointer'}}>
+                      <input type="checkbox" checked={(form as Record<string,unknown>).awarded as boolean||false} onChange={e=>setForm(f=>({...f,awarded:e.target.checked}))} style={{accentColor:'var(--green)'}}/>
+                      <span style={{fontSize:'13px',fontWeight:500}}>Awarded</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="fg"><label>Response Notes</label><textarea className="input" rows={2} value={(form as Record<string,unknown>).response_notes as string||''} onChange={e=>setForm(f=>({...f,response_notes:e.target.value}))} placeholder="Quote notes, conditions, exceptions..." style={{resize:'vertical'}} /></div>
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={()=>setModal(null)}>Cancel</button>
