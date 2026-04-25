@@ -64,7 +64,7 @@ export function DashboardPanel() {
     const pid = activeProject!.id
 
     const [resData, invData, poData, tsData, varData, partsData, hireData, carData,
-           accomData, shipData, subconData, wosData, woData, toolData] = await Promise.all([
+           accomData, shipData, subconData, woData, issuedData, toolData] = await Promise.all([
       supabase.from('resources').select('mob_in,mob_out,name,role,company').eq('project_id', pid),
       supabase.from('invoices').select('amount,status').eq('project_id', pid),
       supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('project_id', pid),
@@ -88,7 +88,7 @@ export function DashboardPanel() {
     const hire = hireData.data || []
     const ships = shipData.data || []
     const wos = woData.data || []
-    const issued = wosData.data || []
+    const issued = issuedData.data || []
 
     // Onsite people
     const onsite = res.filter(r => r.mob_in && r.mob_in <= todayStr && (!r.mob_out || r.mob_out >= todayStr))
