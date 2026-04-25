@@ -8,12 +8,17 @@ import { downloadTemplate } from '../../lib/templates'
 import type { NrgTceLine } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
+const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other'] as const
+
 const EMPTY = {
   wbs_code: '', description: '', category: '', source: 'overhead' as 'overhead' | 'skilled',
   tce_total: 0, item_id: '', work_order: '', contract_scope: '', line_type: '', kpi_included: false,
-  details: {} as Record<string, unknown>
+  unit_type: '', estimated_qty: 0, tce_rate: 0, details: {} as Record<string, unknown>
 }
+
 const isGroupHeader = (id: string | null | undefined) => !!id && /^\d+\.\d+\.\d+$/.test(id)
+
+const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0 })
 
 export function NrgTcePanel() {
   const { activeProject } = useAppStore()
@@ -25,10 +30,12 @@ export function NrgTcePanel() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
+  const [hideUnused, setHideUnused] = useState(false)
   const [importing, setImporting] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkWbs, setBulkWbs] = useState('')
+  const [bulkContract, setBulkContract] = useState('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -51,27 +58,43 @@ export function NrgTcePanel() {
     if (!bulkWbs || selected.size === 0) return
     const { error } = await supabase.from('nrg_tce_lines').update({ wbs_code: bulkWbs }).in('id', [...selected])
     if (error) { toast(error.message, 'error'); return }
-    toast(`WBS ${bulkWbs} applied to ${selected.size} lines`, 'success')
+    toast(`WBS applied to ${selected.size} lines`, 'success')
     setSelected(new Set()); setBulkWbs(''); load()
   }
 
-  function openNew() {
-    // Auto-increment item ID from highest existing numeric ID
-    const numericIds = lines
-      .map(l => parseFloat(l.item_id || '0'))
-      .filter(n => !isNaN(n) && n > 0)
-    const nextId = numericIds.length > 0
-      ? (Math.max(...numericIds) + 0.1).toFixed(1)
-      : '1.0'
-    setForm({ ...EMPTY, item_id: nextId })
-    setModal('new')
+  async function applyBulkContract() {
+    if (!bulkContract || selected.size === 0) return
+    const { error } = await supabase.from('nrg_tce_lines').update({ contract_scope: bulkContract }).in('id', [...selected])
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Contract scope applied to ${selected.size} lines`, 'success')
+    setSelected(new Set()); setBulkContract(''); load()
   }
+
+  async function setLineType(id: string, val: string) {
+    await supabase.from('nrg_tce_lines').update({ line_type: val }).eq('id', id)
+    setLines(ls => ls.map(l => l.id === id ? { ...l, line_type: val } : l))
+  }
+
+  async function clearAll() {
+    if (!confirm('Clear ALL TCE lines? This cannot be undone.')) return
+    await supabase.from('nrg_tce_lines').delete().eq('project_id', activeProject!.id)
+    setLines([]); toast('Cleared', 'info')
+  }
+
+  function openNew() {
+    const numericIds = lines.map(l => parseFloat(l.item_id || '0')).filter(n => !isNaN(n) && n > 0)
+    const nextId = numericIds.length > 0 ? (Math.max(...numericIds) + 0.1).toFixed(1) : '1.0'
+    setForm({ ...EMPTY, item_id: nextId }); setModal('new')
+  }
+
   function openEdit(l: NrgTceLine) {
     setForm({
       wbs_code: l.wbs_code, description: l.description, category: l.category,
       source: l.source, tce_total: l.tce_total, item_id: l.item_id || '',
       details: l.details as Record<string, unknown>, work_order: l.work_order || '',
-      contract_scope: l.contract_scope || '', line_type: l.line_type || '', kpi_included: !!l.kpi_included
+      contract_scope: l.contract_scope || '', line_type: l.line_type || '',
+      kpi_included: !!l.kpi_included, unit_type: l.unit_type || '',
+      estimated_qty: l.estimated_qty || 0, tce_rate: l.tce_rate || 0,
     })
     setModal(l)
   }
@@ -82,9 +105,10 @@ export function NrgTcePanel() {
     const payload = {
       project_id: activeProject!.id, wbs_code: form.wbs_code, description: form.description,
       category: form.category, source: form.source, tce_total: form.tce_total,
-      item_id: form.item_id || null, work_order: form.work_order || null,
-      contract_scope: form.contract_scope || null, line_type: form.line_type || null,
-      kpi_included: form.kpi_included
+      item_id: form.item_id || null, work_order: form.work_order || '',
+      contract_scope: form.contract_scope || '', line_type: form.line_type || '',
+      kpi_included: form.kpi_included, unit_type: form.unit_type || '',
+      estimated_qty: form.estimated_qty || 0, tce_rate: form.tce_rate || 0,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('nrg_tce_lines').insert(payload)
@@ -100,8 +124,8 @@ export function NrgTcePanel() {
 
   function exportCSV() {
     downloadCSV(
-      [['Item ID', 'Description', 'Source', 'WBS', 'Work Order', 'Contract Scope', 'TCE Total'],
-       ...lines.map(l => [l.item_id || '', l.description || '', l.source || '', l.wbs_code || '', l.work_order || '', l.contract_scope || '', l.tce_total || 0])],
+      [['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'Unit', 'Est Qty', 'TCE Rate', 'TCE Total', 'KPI', 'Type', 'WBS'],
+       ...lines.map(l => [l.item_id || '', l.source || '', l.description || '', l.work_order || '', l.contract_scope || '', l.unit_type || '', l.estimated_qty || 0, l.tce_rate || 0, l.tce_total || 0, l.kpi_included ? 'Yes' : 'No', l.line_type || '', l.wbs_code || ''])],
       'nrg_tce_' + (activeProject?.name || 'project')
     )
   }
@@ -151,68 +175,109 @@ export function NrgTcePanel() {
     setImporting(false); e.target.value = ''
   }
 
-  const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0 })
+  // Apply filters
+  let filtered = lines
+  if (sourceFilter === 'overhead') filtered = filtered.filter(l => l.source === 'overhead')
+  else if (sourceFilter === 'skilled') filtered = filtered.filter(l => l.source === 'skilled')
+  else if (sourceFilter === 'untyped') filtered = filtered.filter(l => !l.line_type)
 
-  const filtered = lines
-    .filter(l => sourceFilter === 'all' || l.source === sourceFilter)
-    .filter(l => !search || l.description.toLowerCase().includes(search.toLowerCase()) ||
+  if (hideUnused) {
+    // Hide skilled leaf rows with no contract scope (NRG convention: blank = unused scope)
+    filtered = filtered.filter(l => {
+      if (l.source !== 'skilled') return true
+      if (isGroupHeader(l.item_id)) return true
+      return !!l.contract_scope
+    })
+    // Drop group headers with no surviving children
+    const liveIds = new Set(filtered.filter(l => !isGroupHeader(l.item_id)).map(l => l.item_id))
+    filtered = filtered.filter(l => {
+      if (!isGroupHeader(l.item_id)) return true
+      const prefix = (l.item_id || '') + '.'
+      return [...liveIds].some(id => id.startsWith(prefix))
+    })
+  }
+
+  if (search) {
+    filtered = filtered.filter(l =>
+      l.description.toLowerCase().includes(search.toLowerCase()) ||
       (l.wbs_code || '').toLowerCase().includes(search.toLowerCase()) ||
-      (l.item_id || '').includes(search))
-
-  const totalTce = filtered.reduce((s, l) => s + (l.tce_total || 0), 0)
+      (l.item_id || '').includes(search) ||
+      (l.work_order || '').toLowerCase().includes(search.toLowerCase()) ||
+      (l.contract_scope || '').toLowerCase().includes(search.toLowerCase())
+    )
+  }
 
   const visibleRows = filtered.filter(l => {
     if (isGroupHeader(l.item_id)) return true
-    const parent = filtered.find(p =>
-      isGroupHeader(p.item_id) && (l.item_id || '').startsWith((p.item_id || '') + '.')
-    )
+    const parent = filtered.find(p => isGroupHeader(p.item_id) && (l.item_id || '').startsWith((p.item_id || '') + '.'))
     return !parent || !collapsed.has(parent.item_id || '')
   })
 
   const leafIds = filtered.filter(l => !isGroupHeader(l.item_id)).map(l => l.id)
   const allLeafSel = leafIds.length > 0 && leafIds.every(id => selected.has(id))
+  const totalTce = filtered.filter(l => !isGroupHeader(l.item_id)).reduce((s, l) => s + (l.tce_total || 0), 0)
+
+  const sourceBadge = (src: string) => (
+    <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+      background: src === 'skilled' ? '#dbeafe' : '#fef3c7',
+      color: src === 'skilled' ? '#1d4ed8' : '#92400e' }}>
+      {src === 'skilled' ? 'Skilled' : 'Overhead'}
+    </span>
+  )
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1100px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+    <div style={{ padding: '24px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>NRG TCE Register</h1>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{lines.length} lines · Total {fmt(totalTce)}</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={() => downloadTemplate('nrg_tce')}>⬇ Template</button>
           <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
             {importing ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📥'} Import XLSX
             <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportFile} />
           </label>
-          <button className="btn btn-primary" onClick={openNew}>+ Add Line</button>
+          <button className="btn btn-sm" onClick={openNew}>＋ Add Line</button>
+          <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={clearAll}>🗑 Clear All</button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="input" style={{ maxWidth: '240px' }} placeholder="Search description, WBS, item ID..." value={search} onChange={e => setSearch(e.target.value)} />
-        {(['all', 'overhead', 'skilled'] as string[]).map(s => (
+      {/* Filters + toolbar */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input className="input" style={{ maxWidth: '220px' }} placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
+        {(['all', 'overhead', 'skilled', 'untyped'] as string[]).map(s => (
           <button key={s} className="btn btn-sm"
             style={{ background: sourceFilter === s ? 'var(--accent)' : 'var(--bg)', color: sourceFilter === s ? '#fff' : 'var(--text)' }}
             onClick={() => setSourceFilter(s)}>
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--bg3)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={hideUnused} onChange={e => setHideUnused(e.target.checked)} />
+          Hide unused
+        </label>
         {collapsed.size > 0 && (
           <button className="btn btn-sm" style={{ color: 'var(--text3)' }} onClick={() => setCollapsed(new Set())}>Expand All</button>
         )}
       </div>
 
+      {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: 'var(--bg3)', borderRadius: '6px', marginBottom: '10px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: 'var(--bg3)', borderRadius: '6px', marginBottom: '10px', border: '1px solid var(--border)', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)' }}>{selected.size} lines selected</span>
-          <select className="input" style={{ width: '220px', fontSize: '12px' }} value={bulkWbs} onChange={e => setBulkWbs(e.target.value)}>
-            <option value="">Assign WBS code...</option>
+          {/* Bulk WBS */}
+          <select className="input" style={{ width: '200px', fontSize: '12px' }} value={bulkWbs} onChange={e => setBulkWbs(e.target.value)}>
+            <option value="">🏷 Assign WBS...</option>
             {wbsList.map(w => <option key={w.id} value={w.code}>{w.code}{w.name ? ' — ' + w.name : ''}</option>)}
           </select>
-          <button className="btn btn-sm btn-primary" onClick={applyBulkWbs} disabled={!bulkWbs}>Apply</button>
-          <button className="btn btn-sm" onClick={() => { setSelected(new Set()); setBulkWbs('') }}>Clear</button>
+          <button className="btn btn-sm btn-primary" onClick={applyBulkWbs} disabled={!bulkWbs}>Apply WBS</button>
+          {/* Bulk Contract */}
+          <input className="input" style={{ width: '180px', fontSize: '12px' }} placeholder="📑 Set Contract Scope..." value={bulkContract} onChange={e => setBulkContract(e.target.value)} />
+          <button className="btn btn-sm btn-primary" onClick={applyBulkContract} disabled={!bulkContract}>Apply Contract</button>
+          <button className="btn btn-sm" onClick={() => { setSelected(new Set()); setBulkWbs(''); setBulkContract('') }}>Clear</button>
         </div>
       )}
 
@@ -221,66 +286,123 @@ export function NrgTcePanel() {
           <div className="empty-state"><div className="icon">📋</div><h3>No TCE lines</h3><p>Import from XLSX or add lines manually.</p></div>
         ) : (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: '28px' }}>
-                    <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />
-                  </th>
-                  <th>Item ID</th>
-                  <th>Description</th>
-                  <th>Work Order</th>
-                  <th>Source</th>
-                  <th style={{ textAlign: 'right' }}>TCE Total</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map(l => {
-                  const isHdr = isGroupHeader(l.item_id)
-                  const isCol = isHdr && collapsed.has(l.item_id || '')
-                  const childTotal = isHdr ? filtered.filter(c => (c.item_id || '').startsWith((l.item_id || '') + '.')).reduce((s, c) => s + (c.tce_total || 0), 0) : 0
-                  const childCount = isHdr ? filtered.filter(c => !isGroupHeader(c.item_id) && (c.item_id || '').startsWith((l.item_id || '') + '.')).length : 0
-                  const isSel = !isHdr && selected.has(l.id)
-                  return (
-                    <tr key={l.id} style={{ background: isSel ? 'rgba(59,130,246,0.05)' : isHdr ? 'var(--bg3)' : 'transparent' }}>
-                      <td>{!isHdr && <input type="checkbox" checked={isSel} onChange={e => { const ns = new Set(selected); e.target.checked ? ns.add(l.id) : ns.delete(l.id); setSelected(ns) }} />}</td>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', cursor: isHdr ? 'pointer' : 'default', color: isHdr ? 'var(--accent)' : 'var(--text3)', userSelect: 'none' }}
-                        onClick={isHdr ? () => toggleCollapse(l.item_id || '') : undefined}>
-                        {isHdr && <span style={{ marginRight: '4px' }}>{isCol ? '▶' : '▼'}</span>}
-                        {l.item_id || l.wbs_code || '—'}
-                        {isHdr && isCol && <span style={{ marginLeft: '6px', fontSize: '10px', color: 'var(--text3)' }}>({childCount} lines · {fmt(childTotal)})</span>}
-                      </td>
-                      <td style={{ fontWeight: isHdr ? 700 : 500, maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: isHdr ? undefined : '20px' }}>
-                        {l.description || '—'}
-                      </td>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{l.work_order || '—'}</td>
-                      <td>
-                        {!isHdr && <span className="badge" style={l.source === 'skilled' ? { bg: '#dbeafe', color: '#1e40af' } : { bg: '#f1f5f9', color: '#64748b' } as { bg: string; color: string }}>{l.source}</span>}
-                      </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn btn-sm" onClick={() => openEdit(l)}>Edit</button>
-                        <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(l)}>✕</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
-                  <td colSpan={5} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id)).length} lines)</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ fontSize: '12px', minWidth: '1100px' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '28px' }}>
+                      <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />
+                    </th>
+                    <th style={{ width: '80px' }}>Item ID</th>
+                    <th style={{ width: '72px' }}>Source</th>
+                    <th>Description</th>
+                    <th style={{ width: '90px' }}>Work Order</th>
+                    <th style={{ width: '100px' }}>Contract Scope</th>
+                    <th style={{ width: '56px' }}>Unit</th>
+                    <th style={{ width: '60px', textAlign: 'right' }}>Est. Qty</th>
+                    <th style={{ width: '60px', textAlign: 'right' }}>Act. Hrs</th>
+                    <th style={{ width: '74px', textAlign: 'right' }}>TCE Rate</th>
+                    <th style={{ width: '82px', textAlign: 'right' }}>TCE Total</th>
+                    <th style={{ width: '40px' }}>KPI</th>
+                    <th style={{ width: '110px' }}>Type</th>
+                    <th style={{ width: '95px' }}>WBS</th>
+                    <th style={{ width: '60px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map(l => {
+                    const isHdr = isGroupHeader(l.item_id)
+                    const isCol = isHdr && collapsed.has(l.item_id || '')
+                    const isSel = !isHdr && selected.has(l.id)
+
+                    if (isHdr) {
+                      const children = filtered.filter(c => !isGroupHeader(c.item_id) && (c.item_id || '').startsWith((l.item_id || '') + '.'))
+                      const groupTotal = children.reduce((s, c) => s + (c.tce_total || 0), 0)
+                      const childCount = children.length
+                      return (
+                        <tr key={l.id} style={{ background: '#e0e7ff', color: '#3730a3', borderBottom: '1px solid #c7d2fe' }}>
+                          <td></td>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer' }}
+                            onClick={() => toggleCollapse(l.item_id || '')}>
+                            <span style={{ marginRight: '4px' }}>{isCol ? '▶' : '▼'}</span>
+                            {l.item_id}
+                            {isCol && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#6366f1' }}>({childCount} · {fmt(groupTotal)})</span>}
+                          </td>
+                          <td colSpan={8} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px' }}>{groupTotal ? fmt(groupTotal) : '—'}</td>
+                          <td colSpan={3}></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px' }} onClick={() => openEdit(l)}>✏</button>
+                            <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginLeft: '3px', color: 'var(--red)' }} onClick={() => del(l)}>🗑</button>
+                          </td>
+                        </tr>
+                      )
+                    }
+
+                    return (
+                      <tr key={l.id} style={{ background: isSel ? 'rgba(59,130,246,0.05)' : 'transparent' }}>
+                        <td>
+                          <input type="checkbox" checked={isSel} onChange={e => {
+                            const ns = new Set(selected); e.target.checked ? ns.add(l.id) : ns.delete(l.id); setSelected(ns)
+                          }} />
+                        </td>
+                        <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', paddingLeft: '20px', color: 'var(--text3)' }}>{l.item_id || l.wbs_code || '—'}</td>
+                        <td>{sourceBadge(l.source)}</td>
+                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} title={l.description}>
+                          {l.description || '—'}
+                        </td>
+                        <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{l.work_order || '—'}</td>
+                        <td style={{ fontSize: '11px' }}>
+                          {l.contract_scope
+                            ? <span style={{ background: '#ede9fe', color: '#6b21a8', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>{l.contract_scope}</span>
+                            : <span style={{ color: 'var(--text3)' }}>—</span>}
+                        </td>
+                        <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{l.unit_type || '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>—</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>
+                        <td>
+                          {l.kpi_included
+                            ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span>
+                            : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}
+                        </td>
+                        <td>
+                          <select style={{ fontSize: '11px', padding: '2px 4px', height: '26px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', width: '100%' }}
+                            value={l.line_type || ''}
+                            onChange={e => setLineType(l.id, e.target.value)}>
+                            {LINE_TYPES.map(t => <option key={t} value={t}>{t || '— Set type —'}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {l.wbs_code
+                            ? <span style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px' }}>{l.wbs_code}</span>
+                            : <span style={{ color: 'var(--text3)' }}>—</span>}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px' }} onClick={() => openEdit(l)}>✏</button>
+                          <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginLeft: '3px', color: 'var(--red)' }} onClick={() => del(l)}>🗑</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
+                    <td colSpan={10} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id)).length} lines)</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>
+                    <td colSpan={4} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
 
+      {/* Edit/Add Modal */}
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add TCE Line' : 'Edit TCE Line'}</h3>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
@@ -296,27 +418,33 @@ export function NrgTcePanel() {
               </div>
               <div className="fg"><label>Description</label><input className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} autoFocus /></div>
               <div className="fg-row">
+                <div className="fg"><label>Work Order</label><input className="input" value={form.work_order} onChange={e => setForm(f => ({ ...f, work_order: e.target.value }))} /></div>
+                <div className="fg"><label>Contract Scope</label><input className="input" value={form.contract_scope} onChange={e => setForm(f => ({ ...f, contract_scope: e.target.value }))} /></div>
+              </div>
+              <div className="fg-row">
+                <div className="fg"><label>Unit Type</label><input className="input" value={form.unit_type} onChange={e => setForm(f => ({ ...f, unit_type: e.target.value }))} placeholder="Hours, Days, Items..." /></div>
+                <div className="fg"><label>Est. Qty</label><input type="number" className="input" value={form.estimated_qty || ''} onChange={e => setForm(f => ({ ...f, estimated_qty: parseFloat(e.target.value) || 0 }))} /></div>
+                <div className="fg"><label>TCE Rate ($)</label><input type="number" className="input" value={form.tce_rate || ''} onChange={e => setForm(f => ({ ...f, tce_rate: parseFloat(e.target.value) || 0 }))} /></div>
+              </div>
+              <div className="fg"><label>TCE Total ($)</label><input type="number" className="input" value={form.tce_total || ''} onChange={e => setForm(f => ({ ...f, tce_total: parseFloat(e.target.value) || 0 }))} /></div>
+              <div className="fg-row">
                 <div className="fg"><label>WBS Code</label>
                   <select className="input" value={form.wbs_code} onChange={e => setForm(f => ({ ...f, wbs_code: e.target.value }))}>
                     <option value="">— No WBS —</option>
                     {wbsList.map(w => <option key={w.id} value={w.code}>{w.code}{w.name ? ' — ' + w.name : ''}</option>)}
                   </select>
                 </div>
-                <div className="fg"><label>Category</label><input className="input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="e.g. Mechanical" /></div>
-              </div>
-              <div className="fg"><label>TCE Total ($)</label><input type="number" className="input" value={form.tce_total || ''} onChange={e => setForm(f => ({ ...f, tce_total: parseFloat(e.target.value) || 0 }))} /></div>
-              <div className="fg-row">
-                <div className="fg"><label>Work Order</label><input className="input" value={form.work_order} onChange={e => setForm(f => ({ ...f, work_order: e.target.value }))} /></div>
-                <div className="fg"><label>Contract Scope</label><input className="input" value={form.contract_scope} onChange={e => setForm(f => ({ ...f, contract_scope: e.target.value }))} /></div>
-              </div>
-              <div className="fg-row">
-                <div className="fg"><label>Line Type</label><input className="input" value={form.line_type} onChange={e => setForm(f => ({ ...f, line_type: e.target.value }))} placeholder="Labour, Materials, Overhead" /></div>
-                <div className="fg" style={{ display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
-                  <label style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={form.kpi_included} onChange={e => setForm(f => ({ ...f, kpi_included: e.target.checked }))} style={{ accentColor: 'var(--accent)' }} />
-                    KPI Included
-                  </label>
+                <div className="fg"><label>Line Type</label>
+                  <select className="input" value={form.line_type} onChange={e => setForm(f => ({ ...f, line_type: e.target.value }))}>
+                    {LINE_TYPES.map(t => <option key={t} value={t}>{t || '— Unset —'}</option>)}
+                  </select>
                 </div>
+              </div>
+              <div className="fg" style={{ display: 'flex', alignItems: 'center', paddingTop: '4px' }}>
+                <label style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={form.kpi_included} onChange={e => setForm(f => ({ ...f, kpi_included: e.target.checked }))} />
+                  KPI Included
+                </label>
               </div>
             </div>
             <div className="modal-footer">
