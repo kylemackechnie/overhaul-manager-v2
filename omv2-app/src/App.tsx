@@ -54,6 +54,7 @@ import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
 import { SparePartsPanel } from './pages/site/SparePartsPanel'
 // Tooling
 import { TVRegisterPanel } from './pages/tooling/TVRegisterPanel'
+import { ToolingDashboard } from './pages/tooling/ToolingDashboard'
 import { KollosPanel } from './pages/tooling/KollosPanel'
 import { DepartmentsPanel } from './pages/tooling/DepartmentsPanel'
 import { GlobalKitsPanel } from './pages/tooling/GlobalKitsPanel'
@@ -225,6 +226,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hardware-carts':        return <HardwareCartsPanel />
     case 'parts-list':            return <SparePartsPanel />
     case 'global-parts':          return <SparePartsPanel />
+    case 'tooling-dashboard':     return <ToolingDashboard />
     case 'tooling-tvs':           return <TVRegisterPanel />
     case 'tooling-kollos':        return <KollosPanel />
     case 'tooling-departments':   return <DepartmentsPanel />

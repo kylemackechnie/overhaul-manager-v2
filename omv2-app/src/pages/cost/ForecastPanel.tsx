@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { buildForecast, weekKey, bucketTotal } from '../../engines/forecastEngine'
 import type { ForecastData } from '../../engines/forecastEngine'
+import { downloadCSV } from '../../lib/csv'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 interface WeekRow { week: string; trades: number; mgmt: number; seag: number; hire: number; tooling: number; cars: number; accom: number; total: number }
@@ -95,6 +96,16 @@ export function ForecastPanel() {
     setWeekRows(Object.values(byWeek).sort((a,b) => a.week.localeCompare(b.week)))
   }, [mode, data])
 
+  function exportCSV() {
+    downloadCSV(
+      [
+        ['Week', 'Trades', 'Mgmt', 'SE AG', 'Hire', 'Tooling', 'Cars', 'Accom', 'Total'],
+        ...weekRows.map(w => [w.week, w.trades, w.mgmt, w.seag, w.hire, w.tooling, w.cars, w.accom, w.total])
+      ],
+      'forecast_' + (activeProject?.name || 'project')
+    )
+  }
+
   const peakWeek = weekRows.length > 0 ? weekRows.reduce((a, b) => a.total > b.total ? a : b) : null
   const totalForecast = weekRows.reduce((s, w) => s + w.total, 0)
   const fmtFull = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits:0, maximumFractionDigits:0 })
@@ -103,7 +114,10 @@ export function ForecastPanel() {
     <div style={{ padding:'24px', maxWidth:'1200px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
         <div>
-          <h1 style={{ fontSize:'18px', fontWeight:707 }}>Project Forecast</h1>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <h1 style={{ fontSize:'18px', fontWeight:707 }}>Project Forecast</h1>
+            {weekRows.length > 0 && <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>}
+          </div>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>
             {weekRows.length} weeks · Total {fmtFull(totalForecast)}
           </p>
