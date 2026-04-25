@@ -47,6 +47,7 @@ import { NrgDashboardPanel } from './pages/site/NrgDashboardPanel'
 import { NrgTcePanel } from './pages/site/NrgTcePanel'
 import { NrgOhfPanel } from './pages/site/NrgOhfPanel'
 import { NrgActualsPanel } from './pages/site/NrgActualsPanel'
+import { NrgInvoicingPanel } from './pages/site/NrgInvoicingPanel'
 import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
 import { HardwareDashboard } from './pages/hardware/HardwareDashboard'
 import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
@@ -60,6 +61,7 @@ import { ToolingCostingsPanel } from './pages/tooling/ToolingCostingsPanel'
 import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
+import { SitesPanel } from './pages/settings/SitesPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
 import { WODashboard } from './pages/site/WODashboard'
@@ -213,6 +215,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'nrg-tce':               return <NrgTcePanel />
     case 'nrg-ohf':               return <NrgOhfPanel />
     case 'nrg-actuals':           return <NrgActualsPanel />
+    case 'nrg-invoicing':         return <NrgInvoicingPanel />
     case 'hardware-dashboard':    return <HardwareDashboard />
     case 'hardware-contract':     return <HardwareContractPanel />
     case 'hardware-carts':        return <HardwareCartsPanel />
@@ -225,6 +228,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-tooling':        return <GlobalToolingPanel />
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
+    case 'sites':                 return <SitesPanel />
     case 'audit-trail':           return <AuditTrailPanel />
     default:                      return p('🚧', panel, 'Coming soon')
   }
