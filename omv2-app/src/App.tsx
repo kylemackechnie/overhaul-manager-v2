@@ -106,7 +106,7 @@ export default function App() {
             .eq('id', store.activeProjectId)
             .single()
           if (data) {
-            store.restoreProject(data as import('./types').Project)
+            store.restoreProject(data as unknown as Parameters<typeof store.restoreProject>[0])
           } else {
             setPickerOpen(true)
           }
