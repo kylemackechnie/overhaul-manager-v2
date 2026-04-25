@@ -16,17 +16,19 @@ export function ToolingCostingsPanel() {
   const [depts, setDepts] = useState<Department[]>([])
   const [splitModal, setSplitModal] = useState<{ costing: ToolingCosting & { tv?: GlobalTV }; splits: Split[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [wbsList, setWbsList] = useState<{code:string;name:string}[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [cData, tvData, poData, deptData] = await Promise.all([
+    const [cData, tvData, poData, deptData, wbsData] = await Promise.all([
       supabase.from('tooling_costings').select('*').eq('project_id', pid).order('tv_no'),
       supabase.from('global_tvs').select('*').order('tv_no'),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid),
       supabase.from('tooling_departments').select('*').order('name'),
+      supabase.from('wbs_list').select('code,name').eq('project_id', pid).order('sort_order'),
     ])
     const tvMap = Object.fromEntries((tvData.data || []).map(tv => [tv.tv_no, tv] as [string, GlobalTV]))
     const poMap = Object.fromEntries((poData.data || []).map(po => [po.id, po] as [string, PurchaseOrder]))
@@ -34,6 +36,7 @@ export function ToolingCostingsPanel() {
       ...c, tv: tvMap[c.tv_no], po: c.linked_po_id ? poMap[c.linked_po_id] : undefined
     })))
     setDepts((deptData.data || []) as Department[])
+    setWbsList((wbsData.data || []) as {code:string;name:string}[])
     setLoading(false)
   }
 
@@ -96,6 +99,8 @@ export function ToolingCostingsPanel() {
               <thead>
                 <tr><th>TV</th><th>Charge Start</th><th>Charge End</th><th style={{ textAlign: 'right' }}>Days</th>
                   <th style={{ textAlign: 'right' }}>Cost (EUR)</th><th style={{ textAlign: 'right' }}>Sell (EUR)</th>
+                  <th>WBS</th><th style={{ textAlign: 'right' }}>FX Rate</th>
+                  <th style={{ textAlign: 'right' }}>Cost (AUD)</th><th style={{ textAlign: 'right' }}>Sell (AUD)</th>
                   <th>PO</th><th>Splits</th></tr>
               </thead>
               <tbody>
@@ -120,6 +125,31 @@ export function ToolingCostingsPanel() {
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{days ?? '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.cost_eur ? fmtEur(c.cost_eur) : '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{c.sell_eur ? fmtEur(c.sell_eur) : '—'}</td>
+                      <td>
+                        <select style={{ fontSize: '11px', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '3px', background: 'var(--bg2)', minWidth: '120px' }}
+                          value={c.wbs || ''} onChange={async e => {
+                            await supabase.from('tooling_costings').update({ wbs: e.target.value }).eq('id', c.id)
+                            setCostings(cs => cs.map(x => x.id === c.id ? { ...x, wbs: e.target.value } : x))
+                          }}>
+                          <option value="">— No WBS —</option>
+                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code} — {w.name}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input type="number" style={{ fontFamily: 'var(--mono)', fontSize: '11px', width: '60px', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '3px', background: 'var(--bg2)', textAlign: 'right' }}
+                          value={c.fx_rate || 1.65} min={0.1} step={0.01}
+                          onChange={async e => {
+                            const fx = parseFloat(e.target.value) || 1.65
+                            await supabase.from('tooling_costings').update({ fx_rate: fx }).eq('id', c.id)
+                            setCostings(cs => cs.map(x => x.id === c.id ? { ...x, fx_rate: fx } : x))
+                          }} />
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text2)' }}>
+                        {c.cost_eur ? '$' + Math.round(c.cost_eur * (c.fx_rate || 1.65)).toLocaleString() : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>
+                        {c.sell_eur ? '$' + Math.round(c.sell_eur * (c.fx_rate || 1.65)).toLocaleString() : '—'}
+                      </td>
                       <td style={{ fontSize: '11px', color: 'var(--text3)' }}>{c.po ? (c.po.po_number || c.po.vendor) : '—'}</td>
                       <td>
                         {deptCalcs.length > 0 ? (
@@ -140,6 +170,9 @@ export function ToolingCostingsPanel() {
                   <td colSpan={4} style={{ padding: '8px 10px', fontWeight: 600 }}>Total</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, padding: '8px 10px' }}>{fmtEur(totalCostEur)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--green)', padding: '8px 10px' }}>{fmtEur(totalSellEur)}</td>
+                  <td colSpan={4} />
+                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, padding: '8px 10px' }}>{'$' + Math.round(costings.reduce((s,c)=>s+(c.cost_eur||0)*(c.fx_rate||1.65),0)).toLocaleString()}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--green)', padding: '8px 10px' }}>{'$' + Math.round(costings.reduce((s,c)=>s+(c.sell_eur||0)*(c.fx_rate||1.65),0)).toLocaleString()}</td>
                   <td colSpan={2} />
                 </tr>
               </tbody>

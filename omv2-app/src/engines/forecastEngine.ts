@@ -488,12 +488,14 @@ export function aggregateByWbs(
 
   // Tooling costings (EUR → AUD approx)
   for (const tc of toolingCostings) {
-    const wbs = (tc as unknown as {wbs_code?:string}).wbs_code || ''
+    const wbs = tc.wbs || (tc as unknown as {wbs_code?:string}).wbs_code || ''
     if (!wbs) continue
     const r = get(wbs)
-    const _eurRate = fxRates.find ? fxRates.find((r: {code:string;rate:number}) => r.code === 'EUR')?.rate ?? 1.65 : 1.65
-    const cost = (tc.cost_eur || 0) * _eurRate
-    const sell = (tc.sell_eur || 0) * _eurRate
+    // Use per-row fx_rate if set, otherwise fall back to project FX rates or default 1.65
+    const tcFx = (tc as unknown as {fx_rate?:number}).fx_rate
+    const eurRate = tcFx || (fxRates.find ? fxRates.find((fr: {code:string;rate:number}) => fr.code === 'EUR')?.rate ?? 1.65 : 1.65)
+    const cost = (tc.cost_eur || 0) * eurRate
+    const sell = (tc.sell_eur || 0) * eurRate
     r.tooling += cost
     r.total += cost
     r.totalSell += sell

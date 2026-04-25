@@ -398,17 +398,12 @@ export interface GlobalKollo {
 }
 
 export interface ToolingCosting {
-  id: string
-  project_id: string
-  tv_no: string
-  linked_po_id: string | null
-  charge_start: string | null
-  charge_end: string | null
-  sell_eur: number | null
-  cost_eur: number | null
-  config: Record<string, unknown>
-  created_at: string
-  updated_at: string
+  id: string; project_id: string; tv_no: string
+  charge_start: string | null; charge_end: string | null
+  cost_eur: number | null; sell_eur: number | null
+  wbs: string; fx_rate: number
+  linked_po_id: string | null; notes: string
+  created_at: string; updated_at: string
 }
 
 // ─── NRG ─────────────────────────────────────────────────────────────────────
