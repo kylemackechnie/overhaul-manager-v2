@@ -21,11 +21,14 @@ export function ProjectSettingsPanel() {
     currency: 'AUD', scope_tracking: 'none',
     std_hours_day: {} as Record<string,number>,
     std_hours_night: {} as Record<string,number>,
+    site_id: '',
   })
   const [saving, setSaving] = useState(false)
+  const [sites, setSites] = useState<{id:string,name:string}[]>([])
 
   useEffect(() => {
     if (!activeProject) return
+    supabase.from('sites').select('id,name').order('name').then(({data}) => setSites((data||[]) as {id:string,name:string}[]))
     setForm({
       name: activeProject.name || '',
       wbs: activeProject.wbs || '',
@@ -40,6 +43,7 @@ export function ProjectSettingsPanel() {
       client: activeProject.client || '',
       currency: activeProject.currency || 'AUD',
       scope_tracking: activeProject.scope_tracking || 'none',
+      site_id: activeProject.site_id || '',
       std_hours_day: { ...(activeProject.std_hours?.day as Record<string,number> || {}) },
       std_hours_night: { ...(activeProject.std_hours?.night as Record<string,number> || {}) },
     })
@@ -55,6 +59,7 @@ export function ProjectSettingsPanel() {
       end_date: form.end_date || null,
       default_gm: form.default_gm,
       notes: form.notes,
+      site_id: form.site_id || null,
       unit: form.unit,
       pm: form.pm,
       site_contact: form.site_contact,
@@ -107,6 +112,13 @@ export function ProjectSettingsPanel() {
             <div className="fg">
               <label>WBS Code</label>
               <input className="input" value={form.wbs} onChange={e=>setForm(f=>({...f,wbs:e.target.value}))} placeholder="e.g. 50OP-00138" />
+            </div>
+            <div className="fg">
+              <label>Site</label>
+              <select className="input" value={form.site_id} onChange={e=>setForm(f=>({...f,site_id:e.target.value}))}>
+                <option value="">— No Site —</option>
+                {sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </div>
             <div className="fg">
               <label>Unit / Machine</label>
