@@ -127,8 +127,17 @@ export function ShippingImportPanel() {
     const pid = activeProject.id
     const log: string[] = []
 
+    const today = new Date().toISOString().slice(0, 10)
     for (const tv of selected) {
-      // Upsert project_tvs
+      // 1. Upsert global_tvs register
+      await supabase.from('global_tvs').upsert({
+        tv_no: tv.tvNo, header_name: tv.headerName,
+        replacement_value_eur: tv.replValue || null,
+        gross_kg: null, net_kg: null, pack_items: '',
+        extra: {},
+      }, { onConflict: 'tv_no' })
+
+      // 2. Upsert project_tvs (links TV to this project)
       const { error: tvErr } = await supabase.from('project_tvs').upsert({
         project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName,
         replacement_value_eur: tv.replValue || null,
@@ -136,18 +145,38 @@ export function ShippingImportPanel() {
       }, { onConflict: 'project_id,tv_no' })
       if (tvErr) { log.push(`TV${tv.tvNo}: ${tvErr.message}`); continue }
 
-      // Create shipment record if HAWB/ETA provided
-      if (tv.hawb || tv.eta) {
+      // 3. For tooling TVs — create a blank tooling_costings entry so it appears in costing panel
+      if (tv.type === 'tooling') {
+        const { data: existing } = await supabase.from('tooling_costings')
+          .select('id').eq('project_id', pid).eq('tv_no', tv.tvNo).maybeSingle()
+        if (!existing) {
+          await supabase.from('tooling_costings').insert({
+            project_id: pid, tv_no: tv.tvNo,
+            charge_start: null, charge_end: null,
+            cost_eur: null, sell_eur: null, notes: '',
+          })
+          log.push(`✓ TV${tv.tvNo} — Tooling (costing entry created)`)
+        } else {
+          log.push(`✓ TV${tv.tvNo} — Tooling (costing entry already exists)`)
+        }
+      } else {
+        log.push(`✓ TV${tv.tvNo} — Hardware`)
+      }
+
+      // 4. Create import shipment record (skip if already exists for this TV)
+      const { data: existingShip } = await supabase.from('shipments')
+        .select('id').eq('project_id', pid).eq('reference', `TV${tv.tvNo}`).eq('direction', 'import').maybeSingle()
+      if (!existingShip) {
         const { error: sErr } = await supabase.from('shipments').insert({
           project_id: pid, direction: 'import',
           reference: `TV${tv.tvNo}`, description: tv.headerName || `TV${tv.tvNo}`,
-          status: 'booked', carrier: '', tracking: '',
+          status: tv.eta && tv.eta <= today ? 'delivered' : 'pending',
+          carrier: '', tracking: '', origin: 'Germany',
           hawb: tv.hawb, mawb: tv.mawb,
           eta: tv.eta || null,
         })
-        if (sErr && !sErr.message.includes('duplicate')) log.push(`Shipment TV${tv.tvNo}: ${sErr.message}`)
+        if (sErr) log.push(`  ⚠ Shipment TV${tv.tvNo}: ${sErr.message}`)
       }
-      log.push(`✓ TV${tv.tvNo} — ${tv.type === 'tooling' ? 'Tooling' : 'Hardware'}`)
     }
 
     setResults(log)
