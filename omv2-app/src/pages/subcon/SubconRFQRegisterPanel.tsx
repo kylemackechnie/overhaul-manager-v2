@@ -23,7 +23,6 @@ export function SubconRFQRegisterPanel() {
   const { activeProject, setActivePanel } = useAppStore()
   const [docs, setDocs] = useState<RFQDoc[]>([])
   const [loading, setLoading] = useState(true)
-  const [editStage, setEditStage] = useState<Record<string, string>>({})
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
