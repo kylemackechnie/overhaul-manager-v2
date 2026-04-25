@@ -63,6 +63,7 @@ import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
 import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
+import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
 import { WODashboard } from './pages/site/WODashboard'
@@ -207,6 +208,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hire-local':            return <HirePanel hireType="local" />
     case 'hr-inductions':         return <InductionsPanel />
     case 'hse-dashboard':         return <HSEDashboardPanel />
+    case 'hse-hours':             return <HSEHoursPanel />
     case 'hse-co2':               return <Co2TrackingPanel />
     case 'shipping-dashboard':    return <ShippingDashboard />
     case 'shipping-inbound':      return <ShipmentsPanel direction="import" />

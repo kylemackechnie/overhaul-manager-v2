@@ -83,6 +83,7 @@ const RIBBON_MODULES: RibbonTab[] = [
       { label: 'HSE', buttons: [
         { icon: '🦺', label: 'Dashboard', panel: 'hse-dashboard' },
         { icon: '📋', label: 'Inductions', panel: 'hr-inductions' },
+        { icon: '⏱️', label: 'HSE Hours', panel: 'hse-hours' },
         { icon: '🌿', label: 'CO₂ Tracking', panel: 'hse-co2' },
       ]},
     ],
