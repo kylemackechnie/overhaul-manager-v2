@@ -124,9 +124,11 @@ export function NrgTcePanel() {
       if (result.added.length > 0) {
         const rows = result.added.map(l => ({
           project_id: pid, item_id: l.item_id, description: l.description, source: l.source,
-          work_order: l.work_order, contract_scope: l.contract_scope, unit_type: l.unit_type,
-          estimated_qty: l.estimated_qty, tce_rate: l.tce_rate, tce_total: l.tce_total,
-          kpi_included: l.kpi_included, line_type: l.line_type, wbs_code: '', category: '', forecast_enabled: true,
+          work_order: l.work_order || '', contract_scope: l.contract_scope || '',
+          unit_type: l.unit_type || '', estimated_qty: l.estimated_qty || 0,
+          tce_rate: l.tce_rate || 0, tce_total: l.tce_total || 0,
+          kpi_included: l.kpi_included || false, line_type: l.line_type || '',
+          wbs_code: '', category: '', forecast_enabled: true,
         }))
         const { error } = await supabase.from('nrg_tce_lines').insert(rows)
         if (error) { toast(error.message, 'error'); setImporting(false); return }
