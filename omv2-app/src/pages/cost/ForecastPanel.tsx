@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { buildForecast, weekKey, bucketTotal } from '../../engines/forecastEngine'
 import type { ForecastData } from '../../engines/forecastEngine'
+import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from 'recharts'
 
@@ -18,6 +19,11 @@ export function ForecastPanel() {
   const [weekRows, setWeekRows] = useState<WeekRow[]>([])
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState<'cost'|'sell'>('sell')
+  const [showBaseline, setShowBaseline] = useState(false)
+  const [baselineMenuOpen, setBaselineMenuOpen] = useState(false)
+  const [savingBaseline, setSavingBaseline] = useState(false)
+
+  const baseline = activeProject?.forecast_baseline as {setAt:string;setBy:string;grandCost:number;grandSell:number;weeks:Record<string,{cost:number;sell:number;hours:number}>} | null | undefined
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -118,6 +124,36 @@ export function ForecastPanel() {
   const totalForecast = weekRows.reduce((s, w) => s + w.total, 0)
   const fmtFull = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits:0, maximumFractionDigits:0 })
 
+  async function saveBaseline() {
+    if (!activeProject || !weekRows.length) return
+    setSavingBaseline(true)
+    const weeks: Record<string, {cost:number;sell:number;hours:number}> = {}
+    weekRows.forEach(w => { weeks[w.week] = { cost: w.total, sell: w.total, hours: 0 } })
+    const bl = {
+      setAt: new Date().toISOString(),
+      setBy: 'user',
+      grandCost: weekRows.reduce((s,w) => s+w.total, 0),
+      grandSell: weekRows.reduce((s,w) => s+w.total, 0),
+      weeks
+    }
+    await supabase.from('projects').update({ forecast_baseline: bl }).eq('id', activeProject.id)
+    // Update local store
+    useAppStore.getState().setActiveProject({ ...activeProject, forecast_baseline: bl } as typeof activeProject)
+    setSavingBaseline(false)
+    setBaselineMenuOpen(false)
+    setShowBaseline(true)
+    toast('Baseline saved ✓', 'success')
+  }
+
+  async function clearBaseline() {
+    if (!activeProject || !confirm('Clear the forecast baseline?')) return
+    await supabase.from('projects').update({ forecast_baseline: null }).eq('id', activeProject.id)
+    useAppStore.getState().setActiveProject({ ...activeProject, forecast_baseline: null } as typeof activeProject)
+    setShowBaseline(false)
+    setBaselineMenuOpen(false)
+    toast('Baseline cleared', 'info')
+  }
+
   return (
     <div style={{ padding:'24px', maxWidth:'1200px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
@@ -125,6 +161,35 @@ export function ForecastPanel() {
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <h1 style={{ fontSize:'18px', fontWeight:707 }}>Project Forecast</h1>
             {weekRows.length > 0 && <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>}
+
+          <div style={{ position: 'relative' }}>
+            <button className="btn btn-sm" onClick={() => setBaselineMenuOpen(o => !o)}
+              style={{ background: baseline ? 'rgba(99,102,241,.1)' : undefined, color: baseline ? 'var(--accent)' : undefined }}>
+              📸 Baseline{baseline ? ' ✓' : ''}
+            </button>
+            {baselineMenuOpen && (
+              <div style={{ position: 'absolute', right: 0, top: '32px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '6px', minWidth: '210px', zIndex: 200 }}
+                onMouseLeave={() => setBaselineMenuOpen(false)}>
+                <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none', fontSize: '13px', cursor: 'pointer', borderRadius: '4px' }}
+                  onMouseOver={e => (e.currentTarget.style.background='var(--bg3)')} onMouseOut={e => (e.currentTarget.style.background='none')}
+                  onClick={saveBaseline} disabled={savingBaseline}>
+                  📸 {baseline ? 'Replace' : 'Set'} Baseline (snapshot now)
+                </button>
+                {baseline && <>
+                  <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none', fontSize: '13px', cursor: 'pointer', borderRadius: '4px' }}
+                    onMouseOver={e => (e.currentTarget.style.background='var(--bg3)')} onMouseOut={e => (e.currentTarget.style.background='none')}
+                    onClick={() => { setShowBaseline(s => !s); setBaselineMenuOpen(false) }}>
+                    👁 {showBaseline ? 'Hide' : 'Show'} Baseline Comparison
+                  </button>
+                  <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none', fontSize: '13px', cursor: 'pointer', borderRadius: '4px', color: 'var(--red)' }}
+                    onMouseOver={e => (e.currentTarget.style.background='var(--bg3)')} onMouseOut={e => (e.currentTarget.style.background='none')}
+                    onClick={clearBaseline}>
+                    🗑 Clear Baseline
+                  </button>
+                </>}
+              </div>
+            )}
+          </div>
           </div>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>
             {weekRows.length} weeks · Total {fmtFull(totalForecast)}
@@ -139,6 +204,13 @@ export function ForecastPanel() {
         </div>
       </div>
 
+      {baseline && showBaseline && (
+        <div style={{ padding: '8px 12px', background: 'rgba(99,102,241,.08)', borderLeft: '3px solid var(--accent)', borderRadius: '6px', marginBottom: '10px', fontSize: '12px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, color: 'var(--accent)' }}>📸 Baseline active</span>
+          <span style={{ color: 'var(--text3)' }}>Set {new Date(baseline.setAt).toLocaleDateString('en-AU', {day:'2-digit',month:'short',year:'numeric'})}</span>
+          <span style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>Grand total: ${baseline.grandCost.toLocaleString('en-AU', {maximumFractionDigits:0})}</span>
+        </div>
+      )}
       {loading ? <div className="loading-center"><span className="spinner"/> Building forecast...</div>
       : weekRows.length === 0 ? (
         <div className="empty-state">

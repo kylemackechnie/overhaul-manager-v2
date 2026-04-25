@@ -84,9 +84,18 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [newForm, setNewForm] = useState({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
   const [saving, setSaving] = useState(false)
   const [showPayrollImport, setShowPayrollImport] = useState(false)
+  const [woAllocModal, setWoAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
+  const [woAllocRows, setWoAllocRows] = useState<{woId:string;woNumber:string;hours:number}[]>([])
+  const [workOrders, setWorkOrders] = useState<{id:string;wo_number:string;description:string}[]>([])
   const catMap: Record<TsType, string[]> = { trades: ['trades', 'subcontractor'], mgmt: ['management'], seag: ['seag'], subcon: ['subcontractor'] }
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, type])
+  useEffect(() => {
+    if (activeProject) {
+      supabase.from('work_orders').select('id,wo_number,description').eq('project_id', activeProject.id).neq('status','cancelled').order('wo_number')
+        .then(r => setWorkOrders((r.data||[]) as {id:string;wo_number:string;description:string}[]))
+    }
+  }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
@@ -125,6 +134,48 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     toast('Week created', 'success'); setSaving(false); setShowNewModal(false)
     setNewForm({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
     setActiveWeek(data as WeeklyTimesheet); load()
+  }
+
+
+  function openWoAlloc(personId: string, date: string, hours: number, name: string) {
+    const member = activeWeek?.crew.find(m => m.personId === personId)
+    const existing = ((member?.days?.[date] as Record<string,unknown>)?.woAllocations as {woId:string;woNumber:string;hours:number}[]) || []
+    setWoAllocRows(existing.length ? [...existing] : [])
+    setWoAllocModal({ personId, date, hours, name })
+  }
+
+  function saveWoAlloc() {
+    if (!woAllocModal || !activeWeek) return
+    const total = woAllocRows.reduce((s, r) => s + (r.hours || 0), 0)
+    if (total > woAllocModal.hours + 0.01) { toast(`Total (${total.toFixed(1)}h) exceeds shift hours (${woAllocModal.hours}h)`, 'error'); return }
+    const updated = activeWeek.crew.map(m => {
+      if (m.personId !== woAllocModal.personId) return m
+      const existing: Record<string, unknown> = (m.days?.[woAllocModal.date] as Record<string,unknown>) || {}
+      return { ...m, days: { ...m.days, [woAllocModal.date]: { ...existing, woAllocations: woAllocRows.filter(r=>r.hours>0) } as unknown as DayEntry } }
+    })
+    setActiveWeek({ ...activeWeek, crew: updated })
+    setWoAllocModal(null)
+    toast('WO allocations saved', 'success')
+  }
+
+  function applyAllowances() {
+    if (!activeWeek || !resources.length) return
+    const updated = activeWeek.crew.map(m => {
+      const res = resources.find(r => r.name === m.name || r.id === m.personId)
+      if (!res) return m
+      const newDays: typeof m.days = {}
+      Object.entries(m.days).forEach(([d, day]) => {
+        const de = day as Record<string, unknown>
+        if ((de.hours as number) > 0) {
+          newDays[d] = { ...de, laha: !!(res as unknown as Record<string,unknown>).allow_laha, meal: !!(res as unknown as Record<string,unknown>).allow_meal } as typeof day
+        } else {
+          newDays[d] = day
+        }
+      })
+      return { ...m, days: newDays }
+    })
+    setActiveWeek({ ...activeWeek, crew: updated })
+    toast('Allowances applied from resource list', 'success')
   }
 
   async function duplicateWeek(s: WeeklyTimesheet) {
@@ -218,6 +269,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             }}>⏭ Next Week</button>
             <button className="btn btn-sm" onClick={() => setShowPayrollImport(true)}>📥 Import Payroll</button>
             <button className="btn" onClick={() => setActiveWeek(null)}>← All Weeks</button>
+            <button className="btn btn-sm" onClick={applyAllowances} title="Apply LAHA/meal defaults from resource list">🏷 Allowances</button>
           </>}
           <button className="btn btn-primary" onClick={() => setShowNewModal(true)}>+ New Week</button>
         </div>
@@ -368,13 +420,24 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                           <option value="night">Night</option>
                         </select>
                         {cellHrs > 0 && (
-                          <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px' }}>
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', gap: '4px' }}>
                             <label style={{ cursor: 'pointer', color: laha ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
                               <input type="checkbox" checked={laha} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'laha', e.target.checked)} /> LAHA
                             </label>
                             <label style={{ cursor: 'pointer', color: meal ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
                               <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
                             </label>
+                            </div>
+                            {workOrders.length > 0 && (() => {
+                              const allocs = ((raw.woAllocations as {woId:string;woNumber:string;hours:number}[]) || []).filter(a=>a.hours>0)
+                              return (
+                                <button onClick={() => openWoAlloc(member.personId, d, cellHrs, member.name)}
+                                  style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#7c3aed' : 'var(--border2)'}`, background: allocs.length ? 'rgba(124,58,237,0.08)' : 'transparent', color: allocs.length ? '#7c3aed' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
+                                  {allocs.length ? `📋 ${allocs.length} WO${allocs.length > 1 ? 's' : ''}` : '📋 WOs'}
+                                </button>
+                              )
+                            })()}
                           </div>
                         )}
                       </div>
@@ -470,6 +533,59 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               <button className="btn btn-primary" onClick={createWeek} disabled={saving}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Create Week
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {woAllocModal && (
+        <div className="modal-overlay" onClick={() => setWoAllocModal(null)}>
+          <div className="modal" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📋 WO Allocations — {woAllocModal.name} ({woAllocModal.date})</h3>
+              <button className="btn btn-sm" onClick={() => setWoAllocModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                Shift: <strong style={{ fontFamily: 'var(--mono)' }}>{woAllocModal.hours}h</strong>. Allocate across work orders.
+              </p>
+              {woAllocRows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+                  <select className="input" style={{ flex: 1 }} value={r.woId}
+                    onChange={e => {
+                      const wo = workOrders.find(w => w.id === e.target.value)
+                      setWoAllocRows(rows => rows.map((x, j) => j === i ? { ...x, woId: e.target.value, woNumber: wo?.wo_number || '' } : x))
+                    }}>
+                    <option value="">Select WO...</option>
+                    {workOrders.map(w => <option key={w.id} value={w.id}>{w.wo_number} — {w.description}</option>)}
+                  </select>
+                  <input type="number" className="input" style={{ width: '70px', textAlign: 'right', fontFamily: 'var(--mono)' }}
+                    value={r.hours || ''} min={0} max={woAllocModal.hours} step={0.5} placeholder="hrs"
+                    onChange={e => setWoAllocRows(rows => rows.map((x, j) => j === i ? { ...x, hours: parseFloat(e.target.value) || 0 } : x))} />
+                  <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => setWoAllocRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+              <button className="btn btn-sm" style={{ marginBottom: '12px' }} onClick={() => setWoAllocRows(rows => [...rows, { woId: '', woNumber: '', hours: 0 }])}>+ Add WO</button>
+              {(() => {
+                const total = woAllocRows.reduce((s, r) => s + (r.hours || 0), 0)
+                const diff = woAllocModal.hours - total
+                const over = diff < -0.01
+                return (
+                  <div style={{ padding: '8px 12px', background: 'var(--bg3)', borderRadius: '6px', display: 'flex', gap: '16px', fontSize: '12px' }}>
+                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>SHIFT</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{woAllocModal.hours}h</div></div>
+                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>ALLOCATED</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: '#7c3aed' }}>{total.toFixed(1)}h</div></div>
+                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{over ? 'OVER' : 'REMAINING'}</div>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: over ? 'var(--red)' : diff > 0.01 ? 'var(--amber)' : 'var(--green)' }}>
+                        {over ? `+${Math.abs(diff).toFixed(1)}h` : diff.toFixed(1)+'h'}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setWoAllocModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveWoAlloc}>Save</button>
             </div>
           </div>
         </div>

@@ -19,6 +19,7 @@ export function ProjectSettingsPanel() {
     default_gm: 15, notes: '',
     unit: '', pm: '', site_contact: '', site_phone: '', client: '',
     currency: 'AUD', scope_tracking: 'none',
+  currency_rates: [] as {code:string;name:string;rate:number}[],
     std_hours_day: {} as Record<string,number>,
     std_hours_night: {} as Record<string,number>,
     site_id: '',
@@ -42,6 +43,7 @@ export function ProjectSettingsPanel() {
       site_phone: activeProject.site_phone || '',
       client: activeProject.client || '',
       currency: activeProject.currency || 'AUD',
+    currency_rates: (activeProject.currency_rates as {code:string;name:string;rate:number}[] || []),
       scope_tracking: activeProject.scope_tracking || 'none',
       site_id: activeProject.site_id || '',
       std_hours_day: { ...(activeProject.std_hours?.day as Record<string,number> || {}) },
@@ -66,6 +68,7 @@ export function ProjectSettingsPanel() {
       site_phone: form.site_phone,
       client: form.client,
       currency: form.currency,
+      currency_rates: form.currency_rates,
       scope_tracking: form.scope_tracking,
       std_hours: { day: form.std_hours_day, night: form.std_hours_night },
     }
@@ -182,6 +185,44 @@ export function ProjectSettingsPanel() {
               {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+        </div>
+      </div>
+
+      {/* FX Rates */}
+      <div className="card" style={{padding:'14px 16px',marginBottom:'12px'}}>
+        <div style={{fontWeight:600,fontSize:'13px',marginBottom:'10px'}}>💱 Exchange Rates</div>
+        <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}}>
+          Set FX rates for converting foreign currency hire, tooling and subcon costs to base currency ({form.currency}).
+        </p>
+        <div style={{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'8px'}}>
+          {form.currency_rates.map((r,i) => (
+            <div key={r.code} style={{display:'flex',alignItems:'center',gap:'6px',padding:'4px 8px',background:'var(--bg3)',borderRadius:'6px',border:'1px solid var(--border)'}}>
+              <span style={{fontWeight:700,fontFamily:'var(--mono)',fontSize:'12px',color:'var(--accent)'}}>{r.code}</span>
+              <span style={{fontSize:'11px',color:'var(--text3)'}}>1 {r.code} =</span>
+              <input type="number" step="0.0001" className="input" style={{width:'80px',padding:'2px 6px',fontSize:'12px'}}
+                value={r.rate}
+                onChange={e => setForm(f => ({...f, currency_rates: f.currency_rates.map((x,j) => j===i ? {...x, rate: parseFloat(e.target.value)||1} : x)}))} />
+              <span style={{fontSize:'11px',color:'var(--text3)'}}>{form.currency}</span>
+              <button style={{border:'none',background:'none',cursor:'pointer',color:'var(--red)',fontSize:'12px',padding:'0 2px'}}
+                onClick={() => setForm(f => ({...f, currency_rates: f.currency_rates.filter((_,j) => j!==i)}))}>✕</button>
+            </div>
+          ))}
+          <select className="input" style={{fontSize:'12px',width:'auto'}}
+            value="" onChange={e => {
+              const code = e.target.value; if (!code) return
+              if (form.currency_rates.find(r=>r.code===code)) return
+              setForm(f => ({...f, currency_rates: [...f.currency_rates, {code, name: code, rate: 1}]}))
+              e.target.value = ''
+            }}>
+            <option value="">+ Add currency...</option>
+            {['AUD','USD','EUR','GBP','NZD','SGD','JPY','CAD'].filter(c => c !== form.currency && !form.currency_rates.find(r=>r.code===c)).map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="card" style={{padding:'14px 16px',marginBottom:'12px'}}>
+        <div style={{fontWeight:600,fontSize:'13px',marginBottom:'10px'}}>Scope Tracking</div>
+        <div className="fg-row">
           <div className="fg" style={{flex:2}}>
             <label>Scope Tracking Mode</label>
             <select className="input" value={form.scope_tracking} onChange={e=>setForm(f=>({...f,scope_tracking:e.target.value}))}>

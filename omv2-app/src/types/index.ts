@@ -47,6 +47,7 @@ export interface Project {
   site_info: Record<string, string>
   forecast_config: ForecastConfig
   forecast_baseline: ForecastBaseline | null
+  currency_rates?: { code: string; name: string; rate: number }[]
   pre_planning_notes: Record<string, string>
   role_aliases: RoleAlias[]
   mika_data: MikaRow[] | null
@@ -488,7 +489,7 @@ export interface SeSupportEntry { id: string; date: string; amount: number; sell
 export interface RfqDoc { id: string; title: string; [key: string]: unknown }
 export interface SparePartItem { id: string; materialNo: string; description: string; [key: string]: unknown }
 export interface ForecastConfig { [key: string]: unknown }
-export interface ForecastBaseline { grandCost: number; grandSell: number; setAt: string; setBy: string; weeks?: Record<string, number> }
+export interface ForecastBaseline { grandCost: number; grandSell: number; setAt: string; setBy: string; weeks?: Record<string, number | { cost: number; sell: number; hours: number }> }
 
 // ─── Forecast engine types ────────────────────────────────────────────────────
 
