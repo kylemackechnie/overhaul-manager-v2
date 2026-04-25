@@ -54,6 +54,7 @@ import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
 import { HardwareDashboard } from './pages/hardware/HardwareDashboard'
 import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
 import { SparePartsPanel } from './pages/site/SparePartsPanel'
+import { PartsDashboardPanel } from './pages/site/PartsDashboardPanel'
 import { WositImportPanel } from './pages/site/WositImportPanel'
 // Tooling
 import { TVRegisterPanel } from './pages/tooling/TVRegisterPanel'
@@ -229,6 +230,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hardware-dashboard':    return <HardwareDashboard />
     case 'hardware-contract':     return <HardwareContractPanel />
     case 'hardware-carts':        return <HardwareCartsPanel />
+    case 'parts-dashboard':       return <PartsDashboardPanel />
     case 'parts-list':            return <SparePartsPanel />
     case 'parts-import':          return <WositImportPanel />
     case 'global-parts':          return <SparePartsPanel />

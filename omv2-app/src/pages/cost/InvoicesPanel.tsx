@@ -217,6 +217,18 @@ export function InvoicesPanel() {
     return idx >= 0 && idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx+1] : null
   }
 
+
+  // Keyboard shortcut: N = New
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !(e.target as Element)?.closest('input,textarea,select')) {
+        openNew()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   return (
     <div style={{padding:'24px',maxWidth:'1200px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>

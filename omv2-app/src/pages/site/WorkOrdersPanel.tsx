@@ -85,6 +85,18 @@ export function WorkOrdersPanel() {
     toast('Deleted','info'); load()
   }
 
+
+  // Keyboard shortcut: N = New
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !(e.target as Element)?.closest('input,textarea,select')) {
+        openNew()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   return (
     <div style={{ padding:'24px', maxWidth:'1000px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>

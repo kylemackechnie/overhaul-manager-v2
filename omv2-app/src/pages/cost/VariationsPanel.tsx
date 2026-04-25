@@ -125,6 +125,18 @@ export function VariationsPanel() {
   const totalApproved = variations.filter(v=>v.status==='approved').reduce((s,v)=>s+(v.value||0),0)
   const totalSubmitted = variations.filter(v=>v.status==='submitted').reduce((s,v)=>s+(v.value||0),0)
 
+
+  // Keyboard shortcut: N = New
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !(e.target as Element)?.closest('input,textarea,select')) {
+        openNew()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   return (
     <div style={{padding:'24px',maxWidth:'1000px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
