@@ -62,6 +62,7 @@ export function CostReportPanel() {
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
           <button className="btn" onClick={load}>↻ Refresh</button>
+          <button className="btn btn-sm" onClick={() => window.print()}>🖨 Print</button>
           <button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button>
         </div>
       </div>

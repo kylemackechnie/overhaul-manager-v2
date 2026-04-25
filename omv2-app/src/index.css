@@ -503,3 +503,11 @@ tr:hover td { background: var(--bg3); }
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 12px 20px; border-top: 1px solid var(--border);
 }
+
+/* Sticky table headers */
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg3);
+}

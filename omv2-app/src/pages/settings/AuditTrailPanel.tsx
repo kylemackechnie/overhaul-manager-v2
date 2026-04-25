@@ -16,6 +16,7 @@ export function AuditTrailPanel() {
   const [loading, setLoading] = useState(true)
   const [moduleFilter, setModuleFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [dateFilter, setDateFilter] = useState('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -101,6 +102,7 @@ export function AuditTrailPanel() {
   const modules = [...new Set(events.map(e => e.module))]
   const filtered = events
     .filter(e => moduleFilter === 'all' || e.module === moduleFilter)
+    .filter(e => !dateFilter || e.time.slice(0, 10) >= dateFilter)
     .filter(e => !search || e.what.toLowerCase().includes(search.toLowerCase()) || e.detail.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -114,6 +116,7 @@ export function AuditTrailPanel() {
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+        <input type="date" className="input" style={{ maxWidth: '160px', fontSize: '12px' }} value={dateFilter} onChange={e => setDateFilter(e.target.value)} title="Show events from this date" />
         <input className="input" style={{ maxWidth: '220px', fontSize: '12px' }} placeholder="Search events..." value={search} onChange={e => setSearch(e.target.value)} />
         <button className="btn btn-sm" style={{ background: moduleFilter === 'all' ? 'var(--accent)' : '', color: moduleFilter === 'all' ? '#fff' : '' }} onClick={() => setModuleFilter('all')}>All</button>
         {modules.map(m => (
