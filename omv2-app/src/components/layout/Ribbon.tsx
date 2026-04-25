@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/appStore'
+import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface RibbonButton {
   icon: string
@@ -165,6 +166,28 @@ export function Ribbon() {
   const { activePanel, setActivePanel, activeRibbonTab, setActiveRibbonTab, activeProject } = useAppStore()
   const { signOut, currentUser } = useAuth()
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
+  const [counts, setCounts] = useState<Record<string,number>>({})
+
+  useEffect(() => {
+    if (!activeProject) return
+    const pid = activeProject.id
+    Promise.all([
+      supabase.from('resources').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hr-resources',r.count||0]),
+      supabase.from('weekly_timesheets').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hr-timesheets-trades',r.count||0]),
+      supabase.from('purchase_orders').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['purchase-orders',r.count||0]),
+      supabase.from('invoices').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['invoices',r.count||0]),
+      supabase.from('variations').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['variations',r.count||0]),
+      supabase.from('work_orders').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['work-orders',r.count||0]),
+      supabase.from('wosit_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['parts-list',r.count||0]),
+      supabase.from('hire_items').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hire-dry',r.count||0]),
+      supabase.from('nrg_tce_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['nrg-tce',r.count||0]),
+      supabase.from('shipments').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['shipping-inbound',r.count||0]),
+    ]).then(results => {
+      const c: Record<string,number> = {}
+      results.forEach(([panel, count]) => { c[panel as string] = count as number })
+      setCounts(c)
+    })
+  }, [activeProject?.id])
 
   if (!activeProject) return null
 
@@ -311,7 +334,14 @@ export function Ribbon() {
                       }
                     }}
                   >
-                    <span style={{ fontSize: '16px' }}>{btn.icon}</span>
+                    <span style={{ fontSize: '16px', position: 'relative', display: 'inline-block' }}>
+                      {btn.icon}
+                      {(counts[btn.panel]||0) > 0 && (
+                        <span style={{ position: 'absolute', top: '-5px', right: '-8px', background: 'var(--accent)', color: '#fff', borderRadius: '8px', fontSize: '8px', padding: '0 4px', fontFamily: 'var(--mono)', fontWeight: 700, minWidth: '14px', textAlign: 'center', lineHeight: '14px', display: 'block' }}>
+                          {counts[btn.panel] > 99 ? '99+' : counts[btn.panel]}
+                        </span>
+                      )}
+                    </span>
                     <span style={{ fontSize: '10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{btn.label}</span>
                   </button>
                 ))}
