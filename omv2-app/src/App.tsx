@@ -19,6 +19,8 @@ import { MikaPanel } from './pages/cost/MikaPanel'
 import { PrePlanningReportPanel } from './pages/cost/PrePlanningReportPanel'
 import { SubconVendorSnapshot } from './pages/subcon/SubconVendorSnapshot'
 import { SubconRFQRegisterPanel } from './pages/subcon/SubconRFQRegisterPanel'
+import { SubconRFQDocPanel } from './pages/subcon/SubconRFQDocPanel'
+import { ShippingImportPanel } from './pages/shipping/ShippingImportPanel'
 import { WOProgressPanel } from './pages/site/WOProgressPanel'
 import { PartsSiteInventoryPanel } from './pages/site/PartsSiteInventoryPanel'
 import { SCurvePanel } from './pages/cost/SCurvePanel'
@@ -236,6 +238,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'subcon-dashboard':      return <SubconDashboard />
     case 'subcon-vendor-snapshot': return <SubconVendorSnapshot />
     case 'subcon-rfq-register':    return <SubconRFQRegisterPanel />
+    case 'subcon-rfq-doc':         return <SubconRFQDocPanel />
     case 'subcon-contracts':      return <SubconRFQPanel />
     case 'hr-dashboard':          return <HRDashboardPanel />
     case 'hr-ratecards':          return <RateCardsPanel />
@@ -257,6 +260,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hse-hours':             return <HSEHoursPanel />
     case 'hse-co2':               return <Co2TrackingPanel />
     case 'shipping-dashboard':    return <ShippingDashboard />
+    case 'shipping-import':       return <ShippingImportPanel />
     case 'shipping-inbound':      return <ShipmentsPanel direction="import" />
     case 'shipping-outbound':     return <ShipmentsPanel direction="export" />
     case 'wo-dashboard':          return <WODashboard />
