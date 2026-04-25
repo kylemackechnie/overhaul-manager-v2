@@ -3,6 +3,11 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 
+declare const XLSX: {
+  read: (data: ArrayBuffer, opts: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> }
+  utils: { sheet_to_json: (sheet: unknown, opts?: { header?: number; defval?: string }) => Record<string, string>[] }
+}
+
 interface InductionPerson { name: string; company: string; inducted_at?: string; [key: string]: unknown }
 
 export function InductionsPanel() {
@@ -17,10 +22,41 @@ export function InductionsPanel() {
     }
   }, [activeProject?.id])
 
-  async function handleCSV(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
+
+    // Handle XLSX files
+    if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+      try {
+        const buffer = await file.arrayBuffer()
+        const wb = XLSX.read(buffer, { type: 'array' })
+        const sheet = wb.Sheets[wb.SheetNames[0]]
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown as string[][]
+        if (rawRows.length < 2) { toast('Spreadsheet appears empty', 'error'); setUploading(false); return }
+        const headers = rawRows[0].map(h => String(h).trim().toLowerCase())
+        const nameIdx = headers.findIndex(h => h.includes('name') || h === 'full name' || h === 'employee')
+        const compIdx = headers.findIndex(h => h.includes('company') || h.includes('employer') || h.includes('org') || h.includes('contractor'))
+        if (nameIdx < 0) { toast('Could not find Name column in spreadsheet', 'error'); setUploading(false); return }
+        const parsed: InductionPerson[] = rawRows.slice(1)
+          .map(row => ({ name: String(row[nameIdx]||'').trim(), company: compIdx >= 0 ? String(row[compIdx]||'').trim() : '' }))
+          .filter(r => r.name)
+        if (parsed.length === 0) { toast('No people found in file', 'error'); setUploading(false); return }
+        const { error } = await supabase.from('projects')
+          .update({ induction_data: parsed, induction_upload_time: new Date().toISOString() })
+          .eq('id', activeProject!.id)
+        if (error) { toast(error.message, 'error') } else {
+          setPeople(parsed)
+          setActiveProject({ ...activeProject!, induction_data: parsed, induction_upload_time: new Date().toISOString() })
+          toast(`Imported ${parsed.length} people from spreadsheet`, 'success')
+        }
+        setUploading(false)
+        return
+      } catch (err) { toast('Failed to parse spreadsheet', 'error'); setUploading(false); return }
+    }
+
+    // Handle CSV files
     const text = await file.text()
     const lines = text.split('\n').filter(l => l.trim())
     if (lines.length < 2) { toast('CSV appears empty','error'); setUploading(false); return }
@@ -84,8 +120,8 @@ export function InductionsPanel() {
         <div style={{display:'flex',gap:'8px'}}>
           {people.length > 0 && <button className="btn btn-sm" style={{color:'var(--red)'}} onClick={clearData}>Clear</button>}
           <label className="btn btn-primary" style={{cursor:'pointer'}}>
-            {uploading ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : '📂'} Import CSV
-            <input type="file" accept=".csv" style={{display:'none'}} onChange={handleCSV} />
+            {uploading ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : '📂'} Import CSV / XLSX
+            <input type="file" accept=".csv,.xlsx,.xls" style={{display:'none'}} onChange={handleFile} />
           </label>
         </div>
       </div>
