@@ -413,7 +413,7 @@ export function aggregateByWbs(
   rateCards: RateCard[],
   backOffice: BackOfficeHour[],
   toolingCostings: ToolingCosting[],
-  fxRates: { code: string; rate: number }[] = [],
+  _fxRates: { code: string; rate: number }[] = [],
 ): WbsCostRow[] {
   const rows: Record<string, WbsCostRow> = {}
 
@@ -488,17 +488,40 @@ export function aggregateByWbs(
 
   // Tooling costings (EUR → AUD approx)
   for (const tc of toolingCostings) {
-    const wbs = tc.wbs || (tc as unknown as {wbs_code?:string}).wbs_code || ''
-    if (!wbs) continue
-    const r = get(wbs)
-    // Use per-row fx_rate if set, otherwise fall back to project FX rates or default 1.65
-    const tcFx = (tc as unknown as {fx_rate?:number}).fx_rate
-    const eurRate = tcFx || (fxRates.find ? fxRates.find((fr: {code:string;rate:number}) => fr.code === 'EUR')?.rate ?? 1.65 : 1.65)
-    const cost = (tc.cost_eur || 0) * eurRate
-    const sell = (tc.sell_eur || 0) * eurRate
-    r.tooling += cost
-    r.total += cost
-    r.totalSell += sell
+    const tcFx = tc.fx_rate || 1.65
+    const splits = tc.splits || []
+    
+    if (splits.length > 0) {
+      // Use per-split WBS when splits are defined — each project/standby period charges its own WBS
+      for (const sp of splits) {
+        if (!sp.wbs || !sp.startDate || !sp.endDate) continue
+        // Only count project splits in cost tracking (standby is a separate cost centre)
+        if (sp.type !== 'project') continue
+        const r = get(sp.wbs)
+        // Calculate cost for this split's date range using the stored cost_eur pro-rated
+        // Simple approach: ratio of split days to total costing days × total cost
+        const totalDays = tc.charge_start && tc.charge_end
+          ? Math.max(1, Math.round((new Date(tc.charge_end).getTime() - new Date(tc.charge_start).getTime()) / 86400000) + 1)
+          : 1
+        const splitDays = Math.max(0, Math.round((new Date(sp.endDate).getTime() - new Date(sp.startDate).getTime()) / 86400000) + 1)
+        const ratio = splitDays / totalDays
+        const cost = (tc.cost_eur || 0) * ratio * tcFx
+        const sell = (tc.sell_eur || 0) * ratio * tcFx
+        r.tooling += cost
+        r.total += cost
+        r.totalSell += sell
+      }
+    } else {
+      // No splits — use the top-level WBS
+      const wbs = tc.wbs || (tc as unknown as {wbs_code?:string}).wbs_code || ''
+      if (!wbs) continue
+      const r = get(wbs)
+      const cost = (tc.cost_eur || 0) * tcFx
+      const sell = (tc.sell_eur || 0) * tcFx
+      r.tooling += cost
+      r.total += cost
+      r.totalSell += sell
+    }
   }
 
   // Compute margins

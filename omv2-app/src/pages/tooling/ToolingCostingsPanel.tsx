@@ -3,59 +3,109 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { calcRentalCost } from '../../lib/calculations'
-import type { ToolingCosting, GlobalTV, PurchaseOrder } from '../../types'
+import type { ToolingCosting, GlobalTV } from '../../types'
 
 interface Department { id: string; name: string; rental_pct: number; rate_unit: 'weekly'|'daily'|'monthly'; gm_pct: number }
-interface Split { id?: string; project_name: string; start_date: string; end_date: string; notes: string }
+interface WbsItem { code: string; name: string }
+interface ProjectRef { id: string; name: string }
 
-const fmtEur = (n: number) => '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+type SplitType = 'project' | 'standby'
+interface Split {
+  type: SplitType
+  projectId?: string
+  projectName?: string   // free-text label for cross-project splits
+  startDate: string
+  endDate: string
+  wbs: string
+  discountPct?: number   // standby only
+}
+
+type CostingRow = ToolingCosting & {
+  tv?: GlobalTV & { header_name?: string; replacement_value_eur?: number; department_id?: string }
+  splits: Split[]
+}
+
+const fmtEur = (n: number) => '€' + Math.round(n).toLocaleString('en-AU')
+const fmtAud = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
+
+function daysBetween(start: string, end: string) {
+  return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)
+}
 
 export function ToolingCostingsPanel() {
   const { activeProject } = useAppStore()
-  const [costings, setCostings] = useState<(ToolingCosting & { tv?: GlobalTV; po?: PurchaseOrder })[]>([])
+  const [costings, setCostings] = useState<CostingRow[]>([])
   const [depts, setDepts] = useState<Department[]>([])
-  const [splitModal, setSplitModal] = useState<{ costing: ToolingCosting & { tv?: GlobalTV }; splits: Split[] } | null>(null)
+  const [wbsList, setWbsList] = useState<WbsItem[]>([])
+  const [projects, setProjects] = useState<ProjectRef[]>([])
   const [loading, setLoading] = useState(true)
-  const [wbsList, setWbsList] = useState<{code:string;name:string}[]>([])
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [cData, tvData, poData, deptData, wbsData] = await Promise.all([
+    const [cData, tvData, deptData, wbsData, projData] = await Promise.all([
       supabase.from('tooling_costings').select('*').eq('project_id', pid).order('tv_no'),
-      supabase.from('global_tvs').select('*').order('tv_no'),
-      supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid),
-      supabase.from('tooling_departments').select('*').order('name'),
+      supabase.from('global_tvs').select('tv_no,header_name,replacement_value_eur,department_id').order('tv_no'),
+      supabase.from('global_departments').select('*').order('name'),
       supabase.from('wbs_list').select('code,name').eq('project_id', pid).order('sort_order'),
+      supabase.from('projects').select('id,name').order('name'),
     ])
-    const tvMap = Object.fromEntries((tvData.data || []).map(tv => [tv.tv_no, tv] as [string, GlobalTV]))
-    const poMap = Object.fromEntries((poData.data || []).map(po => [po.id, po] as [string, PurchaseOrder]))
+    const tvMap = Object.fromEntries((tvData.data || []).map(tv => [tv.tv_no, tv]))
     setCostings((cData.data || []).map((c: ToolingCosting) => ({
-      ...c, tv: tvMap[c.tv_no], po: c.linked_po_id ? poMap[c.linked_po_id] : undefined
+      ...c,
+      splits: (c as unknown as { splits?: Split[] }).splits || [],
+      tv: tvMap[c.tv_no],
     })))
     setDepts((deptData.data || []) as Department[])
-    setWbsList((wbsData.data || []) as {code:string;name:string}[])
+    setWbsList((wbsData.data || []) as WbsItem[])
+    setProjects((projData.data || []) as ProjectRef[])
     setLoading(false)
   }
 
-  function openSplits(costing: ToolingCosting & { tv?: GlobalTV }) {
-    const existing = (costing as ToolingCosting & { splits?: Split[] }).splits || []
-    setSplitModal({ costing, splits: existing.length ? existing : [{ project_name: '', start_date: costing.charge_start || '', end_date: costing.charge_end || '', notes: '' }] })
+  async function updateField(id: string, field: string, value: unknown) {
+    const { error } = await supabase.from('tooling_costings').update({ [field]: value }).eq('id', id)
+    if (error) { toast(error.message, 'error'); return }
+    setCostings(cs => cs.map(c => c.id === id ? { ...c, [field]: value } : c))
   }
 
-  async function saveSplits() {
-    if (!splitModal) return
-    const validSplits = splitModal.splits.filter(s => s.project_name.trim() && s.start_date && s.end_date)
-    const { error } = await supabase.from('tooling_costings')
-      .update({ splits: validSplits } as Record<string, unknown>)
-      .eq('id', splitModal.costing.id)
+  async function saveSplits(id: string, splits: Split[]) {
+    const { error } = await supabase.from('tooling_costings').update({ splits }).eq('id', id)
     if (error) { toast(error.message, 'error'); return }
-    toast('Splits saved', 'success')
-    setSplitModal(null)
-    load()
+    setCostings(cs => cs.map(c => c.id === id ? { ...c, splits } : c))
   }
+
+  function addSplit(costing: CostingRow, type: SplitType) {
+    const newSplit: Split = type === 'project'
+      ? { type: 'project', projectId: activeProject!.id, projectName: activeProject!.name, startDate: costing.charge_start || '', endDate: costing.charge_end || '', wbs: costing.wbs || '' }
+      : { type: 'standby', startDate: '', endDate: '', wbs: '', discountPct: 0 }
+    const splits = [...costing.splits, newSplit]
+    saveSplits(costing.id, splits)
+  }
+
+  function updateSplit(costing: CostingRow, idx: number, patch: Partial<Split>) {
+    const splits = costing.splits.map((s, i) => i === idx ? { ...s, ...patch } : s)
+    saveSplits(costing.id, splits)
+  }
+
+  function removeSplit(costing: CostingRow, idx: number) {
+    saveSplits(costing.id, costing.splits.filter((_, i) => i !== idx))
+  }
+
+  function calcSplitCost(costing: CostingRow, split: Split, dept: Department | null | undefined): number | null {
+    if (!split.startDate || !split.endDate || !dept || !costing.tv?.replacement_value_eur) return null
+    const replVal = costing.tv.replacement_value_eur
+    const result = calcRentalCost(replVal, { charge_start: split.startDate, charge_end: split.endDate }, dept)
+    if (!result) return null
+    const base = result.cost
+    if (split.type === 'standby' && split.discountPct) return base * (1 - split.discountPct / 100)
+    return base
+  }
+
+
+  if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
 
   const totalCostEur = costings.reduce((s, c) => s + (c.cost_eur || 0), 0)
   const totalSellEur = costings.reduce((s, c) => s + (c.sell_eur || 0), 0)
@@ -66,7 +116,7 @@ export function ToolingCostingsPanel() {
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 707 }}>Tooling Costings</h1>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
-            {costings.length} TVs costed · Cost {fmtEur(totalCostEur)} · Sell {fmtEur(totalSellEur)}
+            {costings.length} TVs · Cost {fmtEur(totalCostEur)} · Sell {fmtEur(totalSellEur)}
           </p>
         </div>
       </div>
@@ -76,170 +126,241 @@ export function ToolingCostingsPanel() {
         <div className="card" style={{ padding: '10px 14px', marginBottom: '14px', fontSize: '12px' }}>
           <div style={{ fontWeight: 600, marginBottom: '6px' }}>💶 Department Billing Model</div>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {depts.map(d => {
-                  return (
-                <div key={d.id} style={{ padding: '4px 10px', background: 'var(--bg3)', borderRadius: '5px' }}>
-                  <span style={{ fontWeight: 600 }}>{d.name}</span>
-                  <span style={{ color: 'var(--text3)', marginLeft: '6px' }}>
-                    {d.rental_pct}% replacement value / {d.rate_unit}
-                  </span>
-                </div>
-              )
-            })}
+            {depts.map(d => (
+              <div key={d.id} style={{ padding: '4px 10px', background: 'var(--bg3)', borderRadius: '5px' }}>
+                <span style={{ fontWeight: 600 }}>{d.name}</span>
+                <span style={{ color: 'var(--text3)', marginLeft: '6px' }}>{d.rental_pct}% repl. value / {d.rate_unit}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
-        : costings.length === 0 ? (
-          <div className="empty-state"><div className="icon">💶</div><h3>No tooling costings</h3><p>Add TVs via the TV Register, then set costings using the Costings button.</p></div>
-        ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table>
-              <thead>
-                <tr><th>TV</th><th>Charge Start</th><th>Charge End</th><th style={{ textAlign: 'right' }}>Days</th>
-                  <th style={{ textAlign: 'right' }}>Cost (EUR)</th><th style={{ textAlign: 'right' }}>Sell (EUR)</th>
-                  <th>WBS</th><th style={{ textAlign: 'right' }}>FX Rate</th>
-                  <th style={{ textAlign: 'right' }}>Cost (AUD)</th><th style={{ textAlign: 'right' }}>Sell (AUD)</th>
-                  <th>PO</th><th>Splits</th></tr>
-              </thead>
-              <tbody>
-                {costings.map(c => {
-                  const days = c.charge_start && c.charge_end
-                    ? Math.round((new Date(c.charge_end).getTime() - new Date(c.charge_start).getTime()) / 86400000) + 1 : null
-                  const splits = (c as ToolingCosting & { splits?: Split[] }).splits || []
-                  const repVal = (c.tv as GlobalTV & { replacement_value?: number } | undefined)?.replacement_value || 0
+      {costings.length === 0 ? (
+        <div className="empty-state"><div className="icon">💶</div><h3>No tooling costings</h3><p>Add TVs via the TV Register, then set charge dates here.</p></div>
+      ) : (
+        costings.map(c => {
+          const dept = c.tv?.department_id ? depts.find(d => d.id === c.tv!.department_id) : null
+          const replVal = c.tv?.replacement_value_eur || 0
+          const calc = dept && c.charge_start && c.charge_end && replVal
+            ? calcRentalCost(replVal, { charge_start: c.charge_start, charge_end: c.charge_end }, dept)
+            : null
+          const days = c.charge_start && c.charge_end ? daysBetween(c.charge_start, c.charge_end) : null
+          const fx = c.fx_rate || 1.65
+          const isExpanded = expandedId === c.id
+          const hasSplits = c.splits.length > 0
 
-                  // Calc rental cost per dept if we have replacement value
-                  const deptCalcs = repVal > 0 && c.charge_start && c.charge_end
-                    ? depts.map(d => ({ dept: d, result: calcRentalCost(repVal, { charge_start: c.charge_start, charge_end: c.charge_end }, d) })).filter(x => x.result)
-                    : []
+          // Total split costs for this project
+          const thisProjectSplitCost = c.splits
+            .filter(s => s.type === 'project' && s.projectId === activeProject!.id)
+            .reduce((sum, s) => sum + (calcSplitCost(c, s, dept) || 0), 0)
 
+          return (
+            <div key={c.id} className="card" style={{ marginBottom: '14px', borderLeft: '3px solid var(--mod-tooling)', padding: '16px' }}>
+              {/* Header row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: '15px', fontWeight: 700, color: 'var(--mod-tooling)' }}>TV{c.tv_no}</span>
+                  <span style={{ fontSize: '14px', fontWeight: 600 }}>{c.tv?.header_name || <em style={{ color: 'var(--text3)', fontWeight: 400 }}>unnamed</em>}</span>
+                  {dept && <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '3px', background: '#e0e7ff', color: '#3730a3', fontWeight: 600 }}>{dept.name}</span>}
+                </div>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>
+                  {replVal > 0 ? fmtEur(replVal) + ' repl. value' : '—'}
+                </span>
+              </div>
+
+              {/* Charge dates + dept + notes */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '14px' }}>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>Charge Start <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— departure from DE warehouse</span></label>
+                  <input type="date" className="input" value={c.charge_start || ''}
+                    onChange={e => updateField(c.id, 'charge_start', e.target.value || null)} />
+                  {c.tv && (c.tv as typeof c.tv & { departure_date?: string }).departure_date && (
+                    <div style={{ fontSize: '10px', color: 'var(--accent)', marginTop: '2px' }}>📦 WOSIT: {(c.tv as typeof c.tv & { departure_date?: string }).departure_date}</div>
+                  )}
+                </div>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>Charge End <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— return to DE warehouse</span></label>
+                  <input type="date" className="input" value={c.charge_end || ''}
+                    onChange={e => updateField(c.id, 'charge_end', e.target.value || null)} />
+                  <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>Includes transit both ways</div>
+                </div>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>WBS Code <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— fallback if no splits</span></label>
+                  <select className="input" value={c.wbs || ''} onChange={e => updateField(c.id, 'wbs', e.target.value)}>
+                    <option value="">— No WBS —</option>
+                    {wbsList.map(w => <option key={w.code} value={w.code}>{w.code} — {w.name}</option>)}
+                  </select>
+                </div>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>Notes</label>
+                  <input className="input" value={c.notes || ''} placeholder="Optional"
+                    onChange={e => updateField(c.id, 'notes', e.target.value)} />
+                </div>
+              </div>
+
+              {/* FX rate + sell override */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>FX Rate EUR → AUD</label>
+                  <input type="number" className="input" value={c.fx_rate || 1.65} min={0.1} step={0.01}
+                    onChange={e => updateField(c.id, 'fx_rate', parseFloat(e.target.value) || 1.65)} />
+                </div>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>Customer Rate Override (EUR/{dept?.rate_unit || 'weekly'}) <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— leave blank to use GM%</span></label>
+                  <input type="number" className="input" value={(c as unknown as { sell_override_eur?: number }).sell_override_eur || ''} min={0} step={0.01}
+                    placeholder={`e.g. 500 per ${dept?.rate_unit || 'week'}`}
+                    onChange={e => updateField(c.id, 'sell_override_eur', parseFloat(e.target.value) || null)} />
+                </div>
+              </div>
+
+              {/* Calculated cost summary */}
+              {calc ? (
+                <div style={{ display: 'flex', gap: '18px', padding: '11px 13px', background: 'var(--bg3)', borderRadius: 'var(--radius)', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Duration', value: `${days} days` },
+                    { label: 'Weekly Rate', value: fmtEur(calc.weeklyRate), color: 'var(--mod-tooling)' },
+                    { label: 'Total Cost EUR', value: fmtEur(calc.cost), color: 'var(--mod-tooling)' },
+                    { label: 'GM%', value: calc.sell > 0 ? `${((calc.sell-calc.cost)/calc.sell*100).toFixed(0)}%` : '—', color: 'var(--amber)' },
+                    { label: 'Customer Sell EUR', value: fmtEur(calc.sell), color: 'var(--green)' },
+                    { label: 'Cost AUD', value: fmtAud(calc.cost * fx), color: 'var(--text2)' },
+                    { label: 'Sell AUD', value: fmtAud(calc.sell * fx), color: 'var(--green)' },
+                  ].map(k => (
+                    <div key={k.label}>
+                      <div style={{ fontSize: '9px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em', fontFamily: 'var(--mono)' }}>{k.label}</div>
+                      <div style={{ fontFamily: 'var(--mono)', fontSize: '15px', fontWeight: 700, color: k.color || 'var(--text)' }}>{k.value}</div>
+                    </div>
+                  ))}
+                  {hasSplits && thisProjectSplitCost > 0 && (
+                    <div>
+                      <div style={{ fontSize: '9px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em', fontFamily: 'var(--mono)' }}>This Project (from splits)</div>
+                      <div style={{ fontFamily: 'var(--mono)', fontSize: '15px', fontWeight: 700, color: 'var(--accent)' }}>{fmtEur(thisProjectSplitCost)}</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding: '9px 13px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: '12px', color: 'var(--text3)', marginBottom: '14px' }}>
+                  {!dept ? '⚠ Assign a department in the TV Register to calculate rental cost.' : '⚠ Set charge start and end dates to calculate cost.'}
+                </div>
+              )}
+
+              {/* ── COST SPLITS ── */}
+              <div>
+                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--text3)', fontFamily: 'var(--mono)', fontWeight: 700, marginBottom: '8px' }}>
+                  Cost Splits <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontFamily: 'var(--sans)', color: 'var(--text3)' }}>— project charges and standby periods</span>
+                  {hasSplits && (
+                    <button style={{ marginLeft: '8px', fontSize: '10px', padding: '1px 8px', borderRadius: '3px', border: '1px solid var(--border)', background: 'var(--bg2)', cursor: 'pointer', fontFamily: 'var(--sans)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}
+                      onClick={() => setExpandedId(isExpanded ? null : c.id)}>
+                      {isExpanded ? '▲ Collapse' : `▼ ${c.splits.length} split${c.splits.length !== 1 ? 's' : ''}`}
+                    </button>
+                  )}
+                </div>
+
+                {(!hasSplits || isExpanded) && c.splits.map((sp, idx) => {
+                  const spCost = calcSplitCost(c, sp, dept)
+                  const isStandby = sp.type === 'standby'
                   return (
-                    <tr key={c.id}>
-                      <td style={{ fontFamily: 'var(--mono)', fontWeight: 707 }}>TV{c.tv_no}
-                        {c.tv && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'sans-serif' }}>{(c.tv as GlobalTV & {header_name?:string}).header_name || ''}</div>}
-                      </td>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.charge_start || '—'}</td>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.charge_end || '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{days ?? '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.cost_eur ? fmtEur(c.cost_eur) : '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{c.sell_eur ? fmtEur(c.sell_eur) : '—'}</td>
-                      <td>
-                        <select style={{ fontSize: '11px', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '3px', background: 'var(--bg2)', minWidth: '120px' }}
-                          value={c.wbs || ''} onChange={async e => {
-                            await supabase.from('tooling_costings').update({ wbs: e.target.value }).eq('id', c.id)
-                            setCostings(cs => cs.map(x => x.id === c.id ? { ...x, wbs: e.target.value } : x))
+                    <div key={idx} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap',
+                      padding: '8px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+                      background: isStandby ? '#fefce8' : 'var(--bg3)',
+                    }}>
+                      {/* Type badge */}
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '3px', fontWeight: 700, whiteSpace: 'nowrap',
+                        background: isStandby ? '#fef3c7' : '#dbeafe',
+                        color: isStandby ? '#92400e' : '#1e40af' }}>
+                        {isStandby ? '⏸ STANDBY' : '📋 PROJECT'}
+                      </span>
+
+                      {/* Project select (project splits only) */}
+                      {!isStandby && (
+                        <select style={{ fontSize: '11px', padding: '3px 6px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', minWidth: '160px' }}
+                          value={sp.projectId || ''}
+                          onChange={e => {
+                            const proj = projects.find(p => p.id === e.target.value)
+                            updateSplit(c, idx, { projectId: e.target.value, projectName: proj?.name || '' })
                           }}>
-                          <option value="">— No WBS —</option>
-                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code} — {w.name}</option>)}
+                          <option value="">— Select Project —</option>
+                          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <input type="number" style={{ fontFamily: 'var(--mono)', fontSize: '11px', width: '60px', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '3px', background: 'var(--bg2)', textAlign: 'right' }}
-                          value={c.fx_rate || 1.65} min={0.1} step={0.01}
-                          onChange={async e => {
-                            const fx = parseFloat(e.target.value) || 1.65
-                            await supabase.from('tooling_costings').update({ fx_rate: fx }).eq('id', c.id)
-                            setCostings(cs => cs.map(x => x.id === c.id ? { ...x, fx_rate: fx } : x))
-                          }} />
-                      </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text2)' }}>
-                        {c.cost_eur ? '$' + Math.round(c.cost_eur * (c.fx_rate || 1.65)).toLocaleString() : '—'}
-                      </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>
-                        {c.sell_eur ? '$' + Math.round(c.sell_eur * (c.fx_rate || 1.65)).toLocaleString() : '—'}
-                      </td>
-                      <td style={{ fontSize: '11px', color: 'var(--text3)' }}>{c.po ? (c.po.po_number || c.po.vendor) : '—'}</td>
-                      <td>
-                        {deptCalcs.length > 0 ? (
-                          <div style={{ fontSize: '10px', color: 'var(--text3)' }}>
-                            {deptCalcs.slice(0, 2).map(({ dept, result }) => (
-                              <div key={dept.id}>{dept.name}: {result ? fmtEur(result.cost) : '—'}</div>
-                            ))}
-                          </div>
-                        ) : null}
-                        <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginTop: '2px' }} onClick={() => openSplits(c)}>
-                          {splits.length ? `📋 ${splits.length} split${splits.length > 1 ? 's' : ''}` : '+ Split'}
-                        </button>
-                      </td>
-                    </tr>
+                      )}
+
+                      {/* Date range */}
+                      <input type="date" style={{ fontSize: '11px', padding: '3px 5px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', fontFamily: 'var(--mono)' }}
+                        value={sp.startDate} onChange={e => updateSplit(c, idx, { startDate: e.target.value })} />
+                      <span style={{ color: 'var(--text3)', fontSize: '11px' }}>to</span>
+                      <input type="date" style={{ fontSize: '11px', padding: '3px 5px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', fontFamily: 'var(--mono)' }}
+                        value={sp.endDate} onChange={e => updateSplit(c, idx, { endDate: e.target.value })} />
+
+                      {/* Standby discount */}
+                      {isStandby && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <input type="number" style={{ fontSize: '11px', padding: '3px 5px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', width: '60px', textAlign: 'right' }}
+                            value={sp.discountPct || 0} min={0} max={100} step={1}
+                            onChange={e => updateSplit(c, idx, { discountPct: parseFloat(e.target.value) || 0 })} />
+                          <span style={{ color: 'var(--text3)', fontSize: '11px' }}>% discount</span>
+                        </div>
+                      )}
+
+                      {/* WBS */}
+                      <select style={{ fontSize: '11px', padding: '3px 5px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', minWidth: '140px' }}
+                        value={sp.wbs || ''}
+                        onChange={e => updateSplit(c, idx, { wbs: e.target.value })}>
+                        <option value="">— No WBS —</option>
+                        {wbsList.map(w => <option key={w.code} value={w.code}>{w.code} — {w.name}</option>)}
+                      </select>
+
+                      {/* Calculated cost */}
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', minWidth: '80px', fontWeight: 600,
+                        color: isStandby ? '#854d0e' : 'var(--mod-tooling)' }}>
+                        {spCost != null ? fmtEur(spCost) : '—'}
+                        {spCost != null && sp.startDate && sp.endDate && (
+                          <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px', marginLeft: '4px' }}>
+                            ({daysBetween(sp.startDate, sp.endDate)}d)
+                          </span>
+                        )}
+                      </span>
+
+                      <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: '14px', lineHeight: 1, padding: '0 4px' }}
+                        onClick={() => removeSplit(c, idx)}>✕</button>
+                    </div>
                   )
                 })}
-                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg3)' }}>
-                  <td colSpan={4} style={{ padding: '8px 10px', fontWeight: 600 }}>Total</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, padding: '8px 10px' }}>{fmtEur(totalCostEur)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--green)', padding: '8px 10px' }}>{fmtEur(totalSellEur)}</td>
-                  <td colSpan={4} />
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, padding: '8px 10px' }}>{'$' + Math.round(costings.reduce((s,c)=>s+(c.cost_eur||0)*(c.fx_rate||1.65),0)).toLocaleString()}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--green)', padding: '8px 10px' }}>{'$' + Math.round(costings.reduce((s,c)=>s+(c.sell_eur||0)*(c.fx_rate||1.65),0)).toLocaleString()}</td>
-                  <td colSpan={2} />
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
 
-      {/* Splits modal */}
-      {splitModal && (
-        <div className="modal-overlay" onClick={() => setSplitModal(null)}>
-          <div className="modal" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>📋 Cost Splits — TV{splitModal.costing.tv_no}</h3>
-              <button className="btn btn-sm" onClick={() => setSplitModal(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
-                Split TV rental cost across multiple projects or date ranges. Each project is billed for its own period.
-              </p>
-              {splitModal.splits.map((s, i) => (
-                <div key={i} style={{ padding: '10px', background: 'var(--bg3)', borderRadius: '6px', marginBottom: '8px' }}>
-                  <div className="fg-row">
-                    <div className="fg" style={{ flex: 2 }}>
-                      <label style={{ fontSize: '11px' }}>Project / Department</label>
-                      <input className="input" value={s.project_name}
-                        onChange={e => setSplitModal(m => m ? { ...m, splits: m.splits.map((x, j) => j === i ? { ...x, project_name: e.target.value } : x) } : null)}
-                        placeholder="e.g. NRG GT11" />
-                    </div>
-                    <div className="fg">
-                      <label style={{ fontSize: '11px' }}>Start</label>
-                      <input type="date" className="input" value={s.start_date}
-                        onChange={e => setSplitModal(m => m ? { ...m, splits: m.splits.map((x, j) => j === i ? { ...x, start_date: e.target.value } : x) } : null)} />
-                    </div>
-                    <div className="fg">
-                      <label style={{ fontSize: '11px' }}>End</label>
-                      <input type="date" className="input" value={s.end_date}
-                        onChange={e => setSplitModal(m => m ? { ...m, splits: m.splits.map((x, j) => j === i ? { ...x, end_date: e.target.value } : x) } : null)} />
-                    </div>
-                    <button style={{ border: 'none', background: 'none', color: 'var(--red)', cursor: 'pointer', alignSelf: 'flex-end', paddingBottom: '8px' }}
-                      onClick={() => setSplitModal(m => m ? { ...m, splits: m.splits.filter((_, j) => j !== i) } : null)}>✕</button>
+                {/* Splits total */}
+                {isExpanded && hasSplits && (
+                  <div style={{ fontSize: '11px', color: 'var(--text3)', padding: '4px 10px', display: 'flex', gap: '20px' }}>
+                    {['project', 'standby'].map(t => {
+                      const total = c.splits.filter(s => s.type === t).reduce((sum, s) => sum + (calcSplitCost(c, s, dept) || 0), 0)
+                      return total > 0 ? (
+                        <span key={t}>
+                          {t === 'project' ? '📋 Project total' : '⏸ Standby total'}:&nbsp;
+                          <strong style={{ fontFamily: 'var(--mono)', color: t === 'project' ? 'var(--mod-tooling)' : '#854d0e' }}>{fmtEur(total)}</strong>
+                        </span>
+                      ) : null
+                    })}
+                    <span>
+                      All splits:&nbsp;
+                      <strong style={{ fontFamily: 'var(--mono)' }}>{fmtEur(c.splits.reduce((sum, s) => sum + (calcSplitCost(c, s, dept) || 0), 0))}</strong>
+                    </span>
                   </div>
-                  {/* Show calculated cost for this split */}
-                  {(() => {
-                    const repVal = ((splitModal.costing.tv as GlobalTV & { replacement_value?: number }) || {}).replacement_value || 0
-                    if (!repVal || !s.start_date || !s.end_date || !depts.length) return null
-                    const days = Math.max(0, Math.round((new Date(s.end_date).getTime() - new Date(s.start_date).getTime()) / 86400000) + 1)
-                    return (
-                      <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>
-                        {days} days · {depts.slice(0, 2).map(d => {
-                          const r = calcRentalCost(repVal, { charge_start: s.start_date, charge_end: s.end_date }, d)
-                          return r ? `${d.name}: ${fmtEur(r.cost)}` : null
-                        }).filter(Boolean).join(' · ')}
-                      </div>
-                    )
-                  })()}
+                )}
+
+                {/* Add buttons */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button className="btn btn-sm" onClick={() => { addSplit(c, 'project'); setExpandedId(c.id) }}>+ Project Split</button>
+                  <button className="btn btn-sm" style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a' }}
+                    onClick={() => { addSplit(c, 'standby'); setExpandedId(c.id) }}>+ Standby Period</button>
+                  {!hasSplits && c.wbs && (
+                    <span style={{ fontSize: '11px', color: 'var(--text3)', alignSelf: 'center' }}>
+                      Cost flows to WBS <strong>{c.wbs}</strong> (no splits set)
+                    </span>
+                  )}
                 </div>
-              ))}
-              <button className="btn btn-sm" onClick={() => setSplitModal(m => m ? { ...m, splits: [...m.splits, { project_name: '', start_date: '', end_date: '', notes: '' }] } : null)}>
-                + Add Split
-              </button>
+              </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setSplitModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveSplits}>Save Splits</button>
-            </div>
-          </div>
-        </div>
+          )
+        })
       )}
     </div>
   )

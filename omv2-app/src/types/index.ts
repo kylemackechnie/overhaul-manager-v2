@@ -402,6 +402,8 @@ export interface ToolingCosting {
   charge_start: string | null; charge_end: string | null
   cost_eur: number | null; sell_eur: number | null
   wbs: string; fx_rate: number
+  splits: { type: 'project'|'standby'; projectId?: string; projectName?: string; startDate: string; endDate: string; wbs: string; discountPct?: number }[]
+  sell_override_eur: number | null
   linked_po_id: string | null; notes: string
   created_at: string; updated_at: string
 }
