@@ -117,7 +117,7 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
   let hours = 0, sell = 0, cost = 0, allowances = 0, allowCost = 0
   const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
   const cr = rates?.cost || {}; const sr = rates?.sell || {}
-  const rcX = rc as unknown as Record<string,unknown>
+  const rcX = (rc || {}) as unknown as Record<string,unknown>
   const isMgmt = rc && (rcX.category === 'management' || rcX.category === 'seag')
   const rcRegime = rcX.regime as RegimeConfig
 
