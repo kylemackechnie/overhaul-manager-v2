@@ -41,7 +41,9 @@ export function VariationsPanel() {
   async function cycleStatus(v: Variation) {
     const order = ['draft','submitted','approved','rejected']
     const cur = order.indexOf(v.status); const next = order[(cur + 1) % order.length]
-    await supabase.from('variations').update({ status: next }).eq('id', v.id)
+    const history = [...((v as Variation & {status_history?: unknown[]}).status_history || []),
+      { from: v.status, to: next, at: new Date().toISOString(), by: '' }]
+    await supabase.from('variations').update({ status: next, status_history: history }).eq('id', v.id)
     load()
   }
 

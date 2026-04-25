@@ -19,6 +19,11 @@ export function ForecastPanel() {
   const [weekRows, setWeekRows] = useState<WeekRow[]>([])
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState<'cost'|'sell'>('sell')
+  const [showConfig, setShowConfig] = useState(false)
+  const [config, setConfig] = useState({
+    labour: true, dryHire: true, wetHire: true, localHire: true,
+    tooling: true, cars: true, accom: true, expenses: true,
+  })
   const [showBaseline, setShowBaseline] = useState(false)
   const [baselineMenuOpen, setBaselineMenuOpen] = useState(false)
   const [savingBaseline, setSavingBaseline] = useState(false)
@@ -160,7 +165,8 @@ export function ForecastPanel() {
         <div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <h1 style={{ fontSize:'18px', fontWeight:707 }}>Project Forecast</h1>
-            {weekRows.length > 0 && <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>}
+            <button className="btn btn-sm" onClick={() => setShowConfig(s => !s)}>⚙ Configure</button>
+          {weekRows.length > 0 && <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>}
 
           <div style={{ position: 'relative' }}>
             <button className="btn btn-sm" onClick={() => setBaselineMenuOpen(o => !o)}
@@ -203,6 +209,30 @@ export function ForecastPanel() {
           ))}
         </div>
       </div>
+
+      {showConfig && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: '12px' }}>
+          <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '10px' }}>⚙ Forecast Configuration — included categories</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '8px' }}>
+            {([
+              ['labour', '👷 Labour'],
+              ['dryHire', '🚜 Dry Hire'],
+              ['wetHire', '🏗 Wet Hire'],
+              ['localHire', '🧰 Local Equip'],
+              ['tooling', '🔧 Tooling'],
+              ['cars', '🚗 Cars'],
+              ['accom', '🏨 Accommodation'],
+              ['expenses', '🧾 Expenses'],
+            ] as [keyof typeof config, string][]).map(([key, label]) => (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 10px', background: config[key] ? 'rgba(99,102,241,.08)' : 'var(--bg3)', borderRadius: '6px', border: `1px solid ${config[key] ? 'var(--accent)' : 'var(--border)'}`, fontSize: '13px' }}>
+                <input type="checkbox" checked={config[key]} style={{ accentColor: 'var(--accent)' }}
+                  onChange={e => setConfig(c => ({ ...c, [key]: e.target.checked }))} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {baseline && showBaseline && (
         <div style={{ padding: '8px 12px', background: 'rgba(99,102,241,.08)', borderLeft: '3px solid var(--accent)', borderRadius: '6px', marginBottom: '10px', fontSize: '12px', display: 'flex', gap: '16px', alignItems: 'center' }}>

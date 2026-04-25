@@ -59,6 +59,7 @@ import { WositImportPanel } from './pages/site/WositImportPanel'
 // Tooling
 import { TVRegisterPanel } from './pages/tooling/TVRegisterPanel'
 import { ToolingDashboard } from './pages/tooling/ToolingDashboard'
+import { ToolingReportsPanel } from './pages/tooling/ToolingReportsPanel'
 import { KollosPanel } from './pages/tooling/KollosPanel'
 import { DepartmentsPanel } from './pages/tooling/DepartmentsPanel'
 import { GlobalKitsPanel } from './pages/tooling/GlobalKitsPanel'
@@ -71,6 +72,7 @@ import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
 import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
+import { HireReportsPanel } from './pages/hire/HireReportsPanel'
 import { WODashboard } from './pages/site/WODashboard'
 import { WOActualsPanel } from './pages/site/WOActualsPanel'
 import { ShippingDashboard } from './pages/shipping/ShippingDashboard'
@@ -210,6 +212,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hr-cars':               return <CarsPanel />
     case 'hr-accommodation':      return <AccommodationPanel />
     case 'hire-dashboard':        return <HireDashboard />
+    case 'hire-reports':          return <HireReportsPanel />
     case 'hire-dry':              return <HirePanel hireType="dry" />
     case 'hire-wet':              return <HirePanel hireType="wet" />
     case 'hire-local':            return <HirePanel hireType="local" />
@@ -238,6 +241,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'parts-import':          return <WositImportPanel />
     case 'global-parts':          return <SparePartsPanel />
     case 'tooling-dashboard':     return <ToolingDashboard />
+    case 'tooling-reports':       return <ToolingReportsPanel />
     case 'tooling-tvs':           return <TVRegisterPanel />
     case 'tooling-kollos':        return <KollosPanel />
     case 'tooling-departments':   return <DepartmentsPanel />
