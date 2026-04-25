@@ -57,9 +57,9 @@
 | 3.4 | Timesheet cost report: per-person cost breakdown print | ✅ | |
 | 3.5 | PO forecast value: remaining per PO from linked hire/accom/subcon | ✅ | |
 | 3.6 | global-parts: fix routing to show cross-site search not SparePartsPanel | ✅ | 1 line fix |
-| 3.7 | NRG TCE actuals: match invoices + expenses to TCE lines | ❌ | |
-| 3.8 | Rate card: auto-calculate all 7 buckets from base rate + multipliers | ❌ | |
-| 3.9 | Variation WBS: dropdown from project WBS list (not free text) | ❌ | |
+| 3.7 | NRG TCE actuals: match invoices + expenses to TCE lines | ✅ | |
+| 3.8 | Rate card: auto-calculate all 7 buckets from base rate + multipliers | ✅ | |
+| 3.9 | Variation WBS: dropdown from project WBS list (not free text) | ✅ | |
 
 ## Sprint 4 — Features (by daily use frequency)
 

@@ -5,6 +5,8 @@ import { downloadCSV } from '../../lib/csv'
 import type { NrgTceLine } from '../../types'
 
 interface InvoiceRow { tce_item_id: string | null; amount: number; status: string }
+interface ExpenseRow { tce_item_id: string | null; cost_ex_gst: number; amount: number; date: string | null }
+
 
 function pctColor(pct: number) {
   return pct > 100 ? 'var(--red)' : pct > 85 ? 'var(--amber)' : 'var(--green)'
@@ -14,6 +16,7 @@ export function NrgKpiPanel() {
   const { activeProject } = useAppStore()
   const [lines, setLines] = useState<NrgTceLine[]>([])
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
+  const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
   const [groupBy, setGroupBy] = useState<'contract_scope' | 'source' | 'work_order'>('contract_scope')
 
@@ -22,21 +25,31 @@ export function NrgKpiPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lData, iData] = await Promise.all([
+    const [lData, iData, eData] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,date').eq('project_id', pid),
     ])
     setLines((lData.data || []) as NrgTceLine[])
     setInvoices((iData.data || []) as InvoiceRow[])
+    setExpenses((eData.data || []) as ExpenseRow[])
     setLoading(false)
   }
 
-  // Calculate actuals per line from invoices
-  const actualsById = invoices.reduce((acc, inv) => {
-    if (!inv.tce_item_id || inv.status === 'rejected') return acc
-    acc[inv.tce_item_id] = (acc[inv.tce_item_id] || 0) + inv.amount
+  // Calculate actuals per line from invoices + expenses
+  const actualsById = (() => {
+    const acc: Record<string, number> = {}
+    for (const inv of invoices) {
+      if (!inv.tce_item_id || inv.status === 'rejected') continue
+      acc[inv.tce_item_id] = (acc[inv.tce_item_id] || 0) + inv.amount
+    }
+    for (const exp of expenses) {
+      if (!exp.tce_item_id) continue
+      const cost = exp.cost_ex_gst || exp.amount || 0
+      acc[exp.tce_item_id] = (acc[exp.tce_item_id] || 0) + cost
+    }
     return acc
-  }, {} as Record<string, number>)
+  })()
 
   // Filter leaf lines (not group headers)
   const leafLines = lines.filter(l => l.description && !/^\d+\.\d+\.\d+$/.test(l.item_id || ''))

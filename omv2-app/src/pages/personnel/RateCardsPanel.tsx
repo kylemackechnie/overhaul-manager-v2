@@ -216,6 +216,70 @@ export function RateCardsPanel() {
                 )}
               </div>
 
+
+              <details style={{marginBottom:'8px',border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden'}}>
+                <summary style={{padding:'8px 12px',cursor:'pointer',fontSize:'12px',fontWeight:600,color:'var(--text2)',background:'var(--bg3)',userSelect:'none',listStyle:'none',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  ⚡ Auto-Calculate from Base Rate
+                  <span style={{fontSize:'10px',fontWeight:400,color:'var(--text3)'}}>Enter base rate → fill all 7 buckets</span>
+                </summary>
+                <div style={{padding:'12px',background:'var(--bg2)'}}>
+                  {(() => {
+                    const [sched, setSched] = useState({
+                      dayBase:0, nightBase:0, shiftAllow:0,
+                      multOT1:1.5, multOT2:2.0, multSat:1.5, multSun:2.0,
+                      markupMode:'pct' as 'pct'|'fixed'|'none', markupVal:15
+                    })
+                    function applySchedule() {
+                      const { dayBase, nightBase, shiftAllow, multOT1, multOT2, multSat, multSun, markupMode, markupVal } = sched
+                      if (!dayBase) return
+                      const nb = nightBase || dayBase
+                      const cost = {
+                        dnt: +dayBase.toFixed(2),
+                        dt15: +(dayBase * multOT1).toFixed(2),
+                        ddt: +(dayBase * multOT2).toFixed(2),
+                        ddt15: +(dayBase * multSun).toFixed(2),
+                        nnt: +(nb + shiftAllow).toFixed(2),
+                        ndt: +((nb + shiftAllow) * multSat).toFixed(2),
+                        ndt15: +((nb + shiftAllow) * multSun).toFixed(2),
+                      }
+                      function applySell(c: number) {
+                        if (markupMode === 'none') return c
+                        if (markupMode === 'fixed') return +(c + markupVal).toFixed(2)
+                        const gm = Math.min(markupVal, 99) / 100
+                        return gm > 0 ? +(c / (1 - gm)).toFixed(2) : c
+                      }
+                      const sell = Object.fromEntries(Object.entries(cost).map(([k,v]) => [k, applySell(v)]))
+                      setForm(f => ({ ...f, rates: { cost, sell } }))
+                    }
+                    return (
+                      <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px'}}>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Day Base ($/hr)</label><input type="number" className="input" placeholder="e.g. 58.50" min={0} step={0.5} value={sched.dayBase||''} onChange={e=>setSched(s=>({...s,dayBase:parseFloat(e.target.value)||0}))} /></div>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Night Base ($/hr)</label><input type="number" className="input" placeholder="Same as day if blank" min={0} step={0.5} value={sched.nightBase||''} onChange={e=>setSched(s=>({...s,nightBase:parseFloat(e.target.value)||0}))} /></div>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Night Shift Allow ($/hr)</label><input type="number" className="input" placeholder="0" min={0} step={0.5} value={sched.shiftAllow||''} onChange={e=>setSched(s=>({...s,shiftAllow:parseFloat(e.target.value)||0}))} /></div>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>OT1 Mult (×)</label><input type="number" className="input" min={1} max={3} step={0.25} value={sched.multOT1} onChange={e=>setSched(s=>({...s,multOT1:parseFloat(e.target.value)||1.5}))} /></div>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>DT Mult (×)</label><input type="number" className="input" min={1} max={4} step={0.25} value={sched.multOT2} onChange={e=>setSched(s=>({...s,multOT2:parseFloat(e.target.value)||2.0}))} /></div>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Sat Mult (×)</label><input type="number" className="input" min={1} max={4} step={0.25} value={sched.multSat} onChange={e=>setSched(s=>({...s,multSat:parseFloat(e.target.value)||1.5}))} /></div>
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                          <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Sell Markup</label>
+                            <select className="input" value={sched.markupMode} onChange={e=>setSched(s=>({...s,markupMode:e.target.value as 'pct'|'fixed'|'none'}))}>
+                              <option value="pct">GM % (sell = cost ÷ (1−GM))</option>
+                              <option value="fixed">Fixed $ markup per hour</option>
+                              <option value="none">No markup (sell = cost)</option>
+                            </select>
+                          </div>
+                          {sched.markupMode !== 'none' && <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>{sched.markupMode === 'pct' ? 'GM %' : 'Markup ($/hr)'}</label><input type="number" className="input" min={0} max={99} step={0.5} value={sched.markupVal} onChange={e=>setSched(s=>({...s,markupVal:parseFloat(e.target.value)||0}))} /></div>}
+                        </div>
+                        <button className="btn btn-sm" style={{background:'var(--accent)',color:'#fff',alignSelf:'flex-start'}} onClick={applySchedule} disabled={!sched.dayBase}>
+                          ⚡ Apply — fill all 7 buckets
+                        </button>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </details>
+
               <div>
                 <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Hourly Rates</div>
                 <table style={{fontSize:'12px'}}>
