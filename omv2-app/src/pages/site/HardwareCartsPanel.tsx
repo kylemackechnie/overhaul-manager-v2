@@ -6,7 +6,7 @@ import { toast } from '../../components/ui/Toast'
 interface Cart {
   id: string; name: string; description: string; totalCost: number; customerTotal: number; status: string; items: CartItem[]
 }
-interface CartItem { description: string; partNo: string; qty: number; unitCost: number; total: number }
+interface CartItem { description: string; partNo: string; qty: number; unitCost: number; total: number; escalated_price?: number; transfer_price?: number; discounted_price?: number; qty_ordered?: number }
 
 export function HardwareCartsPanel() {
   const { activeProject, setActiveProject } = useAppStore()

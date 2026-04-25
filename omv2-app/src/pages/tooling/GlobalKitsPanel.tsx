@@ -46,6 +46,67 @@ export function GlobalKitsPanel() {
 
   const filtered = kits.filter(k=>!search || k.name.toLowerCase().includes(search.toLowerCase()) || (k.machine_type||'').toLowerCase().includes(search.toLowerCase()))
 
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function handleKitsImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return
+    setLoading(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      // Use XLSX global (loaded via CDN in index.html)
+      const XLSX = (window as Window & {XLSX?: {read:(d:ArrayBuffer,o:Record<string,unknown>)=>{SheetNames:string[];Sheets:Record<string,unknown>};utils:{sheet_to_json:(ws:unknown,o:Record<string,unknown>)=>unknown[][]}}}).XLSX
+      if (!XLSX) { toast('XLSX library not loaded — check internet connection', 'error'); setLoading(false); return }
+      const wb = XLSX.read(buffer, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][]
+      if (!rows.length) { toast('Empty file', 'error'); setLoading(false); return }
+
+      const header = rows[0].map(h => String(h).toLowerCase().trim())
+      const col = (name: string) => header.findIndex(h => h.includes(name))
+      const iKit = col('kit'), iType = col('machine') !== -1 ? col('machine') : col('type')
+      const iMat = col('material'), iDesc = col('desc')
+      const iLoc = col('location') !== -1 ? col('location') : col('install')
+      const iQty = col('qty')
+
+      if (iKit < 0 || iMat < 0) {
+        toast('Expected columns: Kit Name, Machine Type, Material No, Description, Install Location, Qty', 'error')
+        setLoading(false); return
+      }
+
+      // Group rows by kit name + machine type → upsert kits
+      const kitMap: Record<string, {name:string;machine_type:string;parts:{material_no:string;description:string;install_location:string;qty:number}[]}> = {}
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        const kitName = String(row[iKit] || '').trim()
+        const machType = String(iType >= 0 ? row[iType] : '').trim().toUpperCase() || 'UNKNOWN'
+        const matNo = String(row[iMat] || '').trim()
+        const desc = String(iDesc >= 0 ? row[iDesc] : '').trim()
+        const loc = String(iLoc >= 0 ? row[iLoc] : '').trim()
+        const qty = iQty >= 0 ? parseInt(String(row[iQty])) || 1 : 1
+        if (!kitName || !matNo) continue
+        const key = `${kitName}|||${machType}`
+        if (!kitMap[key]) kitMap[key] = { name: kitName, machine_type: machType, parts: [] }
+        kitMap[key].parts.push({ material_no: matNo, description: desc, install_location: loc, qty })
+      }
+
+      let added = 0, updated = 0
+      for (const kit of Object.values(kitMap)) {
+        const existing = kits.find(k => k.name === kit.name && (k as typeof k & {machine_type?:string}).machine_type === kit.machine_type)
+        if (existing) {
+          await supabase.from('global_kits').update({ parts: kit.parts }).eq('id', existing.id)
+          updated++
+        } else {
+          await supabase.from('global_kits').insert({ name: kit.name, machine_type: kit.machine_type, parts: kit.parts })
+          added++
+        }
+      }
+      toast(`Kits import: ${added} added, ${updated} updated`, 'success')
+      load()
+    } catch (err) { toast((err as Error).message, 'error') }
+    setLoading(false)
+    e.target.value = ''
+  }
+
   return (
     <div style={{padding:'24px',maxWidth:'900px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
@@ -53,7 +114,11 @@ export function GlobalKitsPanel() {
           <h1 style={{fontSize:'18px',fontWeight:700}}>Global Kits</h1>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{kits.length} kits (global register)</p>
         </div>
-        <button className="btn btn-primary" onClick={()=>{setForm({name:'',machine_type:''});setModal('new')}}>+ New Kit</button>
+        <label className="btn btn-sm" style={{cursor:'pointer'}}>
+            📥 Import XLSX
+            <input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleKitsImport} />
+          </label>
+          <button className="btn btn-primary" onClick={()=>{setForm({name:'',machine_type:''});setModal('new')}}>+ New Kit</button>
       </div>
 
       <input className="input" style={{maxWidth:'240px',marginBottom:'16px'}} placeholder="Search kit or machine type..." value={search} onChange={e=>setSearch(e.target.value)} />

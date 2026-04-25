@@ -54,6 +54,9 @@ export function SparePartsPanel() {
 
   // Issue state
   const [issueSearch, setIssueSearch] = useState('')
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkText, setBulkText] = useState('')
+  const [bulkError, setBulkError] = useState('')
   const [issueQty, setIssueQty] = useState<Record<string,number>>({})
   const [issueWO, setIssueWO] = useState('')
   const [issueTo, setIssueTo] = useState('')
@@ -141,6 +144,59 @@ export function SparePartsPanel() {
   // ── ISSUE ──
   const issuable = parts.filter(p => (p.qty_received - (p.qty_issued||0)) > 0)
     .filter(p => !issueSearch || p.description.toLowerCase().includes(issueSearch.toLowerCase()) || p.material_no.includes(issueSearch))
+
+
+  async function processBulkIssue() {
+    if (!issueTo.trim()) { toast('Enter who parts are issued to', 'error'); return }
+    const lines = bulkText.trim().split('\n').map(l => l.trim()).filter(Boolean)
+    if (!lines.length) { setBulkError('Enter at least one line (MATERIAL_NO QTY)'); return }
+
+    const requests: {materialNo:string;qty:number}[] = []
+    for (let i = 0; i < lines.length; i++) {
+      const parts = lines[i].split(/\s+/)
+      const mat = parts[0]?.trim().toUpperCase()
+      const qty = parseInt(parts[1])
+      if (!mat) continue
+      if (!qty || qty < 1) { setBulkError(`Line ${i+1}: invalid quantity — format is MATERIAL_NO QTY`); return }
+      const existing = requests.find(r => r.materialNo === mat)
+      if (existing) existing.qty += qty
+      else requests.push({ materialNo: mat, qty })
+    }
+    if (!requests.length) { setBulkError('No valid parts found'); return }
+    setBulkError('')
+
+    // Match requests against received inventory
+    const logEntries: {project_id:string;material_no:string;description:string;qty:number;issued_to:string;work_order:string|null;issued_at:string;notes:string}[] = []
+    const updates: {id:string;qty_issued:number}[] = []
+    const errors: string[] = []
+
+    for (const req of requests) {
+      const matching = parts.filter(p =>
+        (p.material_no || '').toUpperCase() === req.materialNo &&
+        (p.qty_received || 0) - (p.qty_issued || 0) > 0
+      )
+      let remaining = req.qty
+      for (const p of matching) {
+        if (remaining <= 0) break
+        const avail = (p.qty_received || 0) - (p.qty_issued || 0)
+        const take = Math.min(remaining, avail)
+        updates.push({ id: p.id, qty_issued: (p.qty_issued || 0) + take })
+        logEntries.push({ project_id: activeProject!.id, material_no: req.materialNo, description: p.description || '', qty: take, issued_to: issueTo, work_order: issueWO || null, issued_at: new Date().toISOString(), notes: '' })
+        remaining -= take
+      }
+      if (remaining > 0) errors.push(`${req.materialNo}: only ${req.qty - remaining} available (requested ${req.qty})`)
+    }
+
+    if (!updates.length) { setBulkError('No matching parts found in inventory'); return }
+
+    setIssueSaving(true)
+    for (const u of updates) await supabase.from('wosit_lines').update({ qty_issued: u.qty_issued }).eq('id', u.id)
+    if (logEntries.length) await supabase.from('issued_log').insert(logEntries)
+    setBulkText(''); setBulkMode(false)
+    toast(`Issued ${logEntries.reduce((s,e)=>s+e.qty,0)} parts` + (errors.length ? ` (${errors.length} warnings)` : ''), 'success')
+    if (errors.length) errors.forEach(e => toast(e, 'error'))
+    setIssueSaving(false); load()
+  }
 
   async function confirmIssue() {
     const toIssue = Object.entries(issueQty).filter(([,q]) => q > 0)
@@ -362,7 +418,25 @@ export function SparePartsPanel() {
             </div>
           </div>
         </div>
-        <input className="input" style={{maxWidth:'280px',marginBottom:'12px'}} placeholder="Search available parts..." value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} />
+        <div style={{display:'flex',gap:'8px',marginBottom:'12px',alignItems:'center'}}>
+          <input className="input" style={{flex:1,maxWidth:'280px'}} placeholder="Search available parts..." value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} />
+          <button className="btn btn-sm" onClick={()=>{setBulkMode(m=>!m);setBulkError('')}}>
+            {bulkMode ? '📋 List mode' : '📝 Bulk text mode'}
+          </button>
+        </div>
+        {bulkMode && (
+          <div className="card" style={{padding:'14px 16px',marginBottom:'12px'}}>
+            <div style={{fontSize:'12px',fontWeight:600,marginBottom:'6px'}}>Bulk Issue — one line per part: <code>MATERIAL_NO QTY</code></div>
+            <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:'8px'}}>e.g. "1234567890 2" — duplicates are merged, stock is depleted from oldest box first</div>
+            <textarea className="input" style={{width:'100%',fontFamily:'var(--mono)',fontSize:'12px',minHeight:'120px',resize:'vertical'}}
+              placeholder="1234567890 2&#10;9876543210 1&#10;..."
+              value={bulkText} onChange={e=>setBulkText(e.target.value)} />
+            {bulkError && <div style={{color:'var(--red)',fontSize:'12px',marginTop:'6px'}}>⚠ {bulkError}</div>}
+            <button className="btn btn-primary" style={{marginTop:'10px'}} onClick={processBulkIssue} disabled={issueSaving}>
+              {issueSaving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} 📤 Process Bulk Issue
+            </button>
+          </div>
+        )}
         {issuable.length===0 ? (
           <div className="empty-state"><div className="icon">📦</div><h3>No parts available to issue</h3><p>Parts must be received before they can be issued.</p></div>
         ) : (
@@ -399,6 +473,16 @@ export function SparePartsPanel() {
       </>}
 
       {/* ── ISSUE LOG TAB ── */}
+      {tab==='log' && issuedLog.length > 0 && (
+        <div style={{marginBottom:'10px'}}>
+          <button className="btn btn-sm" onClick={() => {
+            const rows = [['Date','Part No','Description','Qty','Issued To','Work Order'],
+              ...issuedLog.map(l => [l.issued_at?.slice(0,10)||'',l.material_no||'',l.description||'',l.qty||0,l.issued_to||'',l.work_order||''])]
+            const csv = rows.map(r=>r.join(',')).join('\n')
+            const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='parts-issue-log.csv';a.click()
+          }}>⬇ Export Issue Log CSV</button>
+        </div>
+      )}
       {tab==='log' && (
         issuedLog.length===0 ? (
           <div className="empty-state"><div className="icon">📜</div><h3>No issues recorded</h3><p>Issue parts using the Issue Parts tab to populate this log.</p></div>

@@ -142,6 +142,47 @@ export function AccommodationPanel() {
   const resMap = Object.fromEntries(resources.map(r => [r.id, r.name]))
   const nightlyRate = form.nights > 0 ? form.total_cost / form.nights : 0
 
+
+
+  function printBookingConfirmation() {
+    const rows = accomList.map(a => {
+      const occ = (a.occupants as string[] | undefined || []).join(', ')
+      return `<tr><td>${a.property||a.room||'—'}</td><td>${a.vendor||'—'}</td><td>${a.room||'—'}</td><td>${a.check_in||'—'}</td><td>${a.check_out||'—'}</td><td>${a.nights||0}</td><td>${occ||'—'}</td><td>$${(a.total_cost||0).toFixed(0)}</td></tr>`
+    }).join('')
+    const total = accomList.reduce((s,a) => s + (a.total_cost || 0), 0)
+    const html = `<html><head><title>Accommodation — ${activeProject?.name}</title>
+    <style>body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #ccc;padding:5px 8px}th{background:#f0f0f0}h1{font-size:16px}@media print{@page{size:landscape}}</style>
+    </head><body>
+    <h1>Accommodation Register — ${activeProject?.name || ''}</h1>
+    <p style="font-size:11px;color:#666">Printed: ${new Date().toLocaleDateString('en-AU')}</p>
+    <table><thead><tr><th>Property</th><th>Vendor</th><th>Room</th><th>Check In</th><th>Check Out</th><th>Nights</th><th>Occupants</th><th>Cost</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:bold"><td colspan="7">Total (${accomList.length} bookings)</td><td>$${total.toFixed(0)}</td></tr></tfoot>
+    </table></body></html>`
+    const w = window.open(); if (w) { w.document.write(html); w.document.close(); w.print() }
+  }
+
+  function printVendorSummary() {
+    const vendors = [...new Set(accomList.map(a => a.vendor || a.property || 'Unknown'))]
+    const pages = vendors.map(vendor => {
+      const items = accomList.filter(a => (a.vendor || a.property) === vendor)
+      const total = items.reduce((s, a) => s + (a.total_cost || 0), 0)
+      const rows = items.map(a => {
+        const occ = (a.occupants as string[] | undefined || []).join(', ')
+        return `<tr><td>${a.room||a.property||'—'}</td><td>${a.check_in||'—'}</td><td>${a.check_out||'—'}</td><td>${a.nights||'—'}</td><td>${occ||'—'}</td><td>$${(a.total_cost||0).toFixed(0)}</td></tr>`
+      }).join('')
+      return `<h2 style="margin:0 0 8px">${vendor}</h2>
+        <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+          <thead><tr style="background:#eee"><th>Room</th><th>Check In</th><th>Check Out</th><th>Nights</th><th>Occupants</th><th>Cost</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr style="font-weight:bold"><td colspan="5">Total</td><td>$${total.toFixed(0)}</td></tr></tfoot>
+        </table>`
+    }).join('<hr/>')
+    const html = `<html><head><title>Vendor Summary — Accommodation</title><style>body{font-family:sans-serif;padding:20px}@media print{@page{size:landscape}}</style></head><body>${pages}</body></html>`
+    const w = window.open()
+    if (w) { w.document.write(html); w.document.close(); w.print() }
+  }
+
   return (
     <div style={{ padding: '24px', maxWidth: '1100px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -153,6 +194,8 @@ export function AccommodationPanel() {
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ Add Room</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-sm" onClick={printVendorSummary}>🖨 Vendor</button>
+          <button className="btn btn-sm" onClick={printBookingConfirmation}>🖨 Bookings</button>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>

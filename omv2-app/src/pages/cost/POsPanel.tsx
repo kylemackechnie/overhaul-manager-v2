@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { calcPoSpend } from '../../lib/calculations'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -25,6 +26,7 @@ export function POsPanel() {
   const [modal, setModal] = useState<null|'new'|PurchaseOrder>(null)
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [allInvoices, setAllInvoices] = useState<{id:string;po_id:string;amount:number;status:string}[]>([])
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
 
@@ -32,9 +34,13 @@ export function POsPanel() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('purchase_orders').select('*')
-      .eq('project_id', activeProject!.id).order('created_at', { ascending: false })
-    setPos((data || []) as PurchaseOrder[])
+    const pid = activeProject!.id
+    const [poRes, invRes] = await Promise.all([
+      supabase.from('purchase_orders').select('*').eq('project_id', pid).order('created_at', { ascending: false }),
+      supabase.from('invoices').select('id,po_id,amount,status').eq('project_id', pid),
+    ])
+    setPos((poRes.data || []) as PurchaseOrder[])
+    setAllInvoices((invRes.data || []) as {id:string;po_id:string;amount:number;status:string}[])
     setLoading(false)
   }
 
@@ -172,13 +178,24 @@ export function POsPanel() {
                     <td style={{color:'var(--text2)',fontSize:'13px',maxWidth:'260px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{po.description || '—'}</td>
                     <td><span className="badge" style={sc}>{po.status}</span></td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{fmtMoney(po.po_value)}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{(po as PurchaseOrder & {invoiced_total?:number}).invoiced_total ? fmtMoney((po as PurchaseOrder & {invoiced_total?:number}).invoiced_total as number) : '—'}</td>
+                    {(() => {
+                      const spend = calcPoSpend(allInvoices, po.id)
+                                            return (
+                        <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>
+                          <div style={{color:'var(--text2)'}}>{spend.invoiced > 0 ? fmtMoney(spend.invoiced) : '—'}</div>
+                          {spend.approved > 0 && spend.approved !== spend.invoiced && (
+                            <div style={{fontSize:'10px',color:'var(--green)'}}>{fmtMoney(spend.approved)} appd</div>
+                          )}
+                        </td>
+                      )
+                    })()}
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:(() => {
-                      const inv = (po as PurchaseOrder & {invoiced_total?:number}).invoiced_total || 0
+                      const _spend = calcPoSpend(allInvoices, po.id)
+                      const inv = _spend.invoiced
                       const rem = (po.po_value||0) - inv
                       return rem < 0 ? 'var(--red)' : rem === 0 ? 'var(--text3)' : 'var(--green)'
                     })()}}>
-                      {po.po_value ? fmtMoney((po.po_value||0) - ((po as PurchaseOrder & {invoiced_total?:number}).invoiced_total || 0)) : '—'}
+                      {po.po_value ? fmtMoney((po.po_value||0) - calcPoSpend(allInvoices, po.id).invoiced) : '—'}
                     </td>
                     <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{po.raised_date || '—'}</td>
                     <td style={{whiteSpace:'nowrap'}}>

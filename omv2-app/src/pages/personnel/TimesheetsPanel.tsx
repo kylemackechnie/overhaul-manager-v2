@@ -265,6 +265,31 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     return { hours, sell, cost }
   }
 
+
+  function exportTimesheetCSV() {
+    if (!activeWeek) return
+    const rows: (string | number)[][] = [
+      ['Name', 'Role', 'WBS', ...days.map(d => d), 'Total Hours', 'Total Sell']
+    ]
+    activeWeek.crew.forEach(m => {
+      const t = calcPersonTotals(m, regime, getRC(m.role))
+      rows.push([
+        m.name, m.role, m.wbs,
+        ...days.map(d => {
+          const de = m.days[d] as Record<string,unknown> | undefined
+          return (de?.hours as number) || 0
+        }),
+        t.hours.toFixed(1),
+        t.sell.toFixed(2),
+      ])
+    })
+    const csv = rows.map(r => r.map(c => String(c).includes(',') ? `"${c}"` : c).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = `timesheet-${activeWeek.week_start}-${type}.csv`
+    a.click()
+  }
+
   return (
     <div style={{ padding: '24px', maxWidth: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
@@ -287,6 +312,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             }}>⏭ Next Week</button>
             <button className="btn btn-sm" onClick={() => setShowPayrollImport(true)}>📥 Import Payroll</button>
             <button className="btn" onClick={() => setActiveWeek(null)}>← All Weeks</button>
+            <button className="btn btn-sm" onClick={exportTimesheetCSV}>⬇ CSV</button>
             <button className="btn btn-sm" onClick={applyAllowances} title="Apply LAHA/meal defaults from resource list">🏷 Allowances</button>
           </>}
           <button className="btn btn-primary" onClick={() => setShowNewModal(true)}>+ New Week</button>

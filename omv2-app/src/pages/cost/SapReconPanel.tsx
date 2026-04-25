@@ -100,6 +100,10 @@ export function SapReconPanel() {
     e.target.value = ''
   }
 
+  function toggleMatch(idx: number) {
+    setRows(rows => rows.map((r, i) => i === idx ? { ...r, matched: !r.matched } : r))
+  }
+
   async function importUnmatched() {
     const unmatched = rows.filter(r => !r.matched && r.amount !== 0)
     if (unmatched.length === 0) { toast('No unmatched rows to import','info'); return }
@@ -143,6 +147,11 @@ export function SapReconPanel() {
               Import {unmatched.length} Unmatched
             </button>
           )}
+          <button className="btn btn-sm" onClick={() => {
+              const rows2 = rows.map(r => [r.docNumber||'',r.vendor||'',r.wbs||'',r.postDate||'',r.amount,r.matched?'Matched':'Unmatched'])
+              const csv = [['Doc Number','Vendor','WBS','Post Date','Amount','Status'],...rows2].map(r=>r.join(',')).join('\n')
+              const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='sap-recon.csv';a.click()
+            }} disabled={rows.length===0}>⬇ Export CSV</button>
           <label className="btn" style={{ cursor:'pointer' }}>
             📂 Load SAP Export (.xlsx)
             <input type="file" accept=".xlsx,.xls,.csv" style={{ display:'none' }} onChange={handleFile} />
@@ -196,7 +205,9 @@ export function SapReconPanel() {
                 {rows.map((r, i) => (
                   <tr key={i} style={{ background: r.matched ? 'transparent' : '#fffbeb' }}>
                     <td>
-                      <span className="badge" style={r.matched ? {bg:'#d1fae5',color:'#065f46'} as {bg:string,color:string} : {bg:'#fef3c7',color:'#92400e'}}>
+                      <span className="badge" style={r.matched ? {bg:'#d1fae5',color:'#065f46'} as {bg:string,color:string} : {bg:'#fef3c7',color:'#92400e'}}
+                        title={r.matched ? 'Click to unmatch' : 'Click to mark matched'}
+                        onClick={() => toggleMatch(i)} >
                         {r.matched ? '✓ Matched' : '⚠ Unmatched'}
                       </span>
                     </td>
