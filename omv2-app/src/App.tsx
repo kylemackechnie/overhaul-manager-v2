@@ -75,6 +75,7 @@ import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
 import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
+import { MigrationPanel } from './pages/settings/MigrationPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
 import { HireReportsPanel } from './pages/hire/HireReportsPanel'
 import { WODashboard } from './pages/site/WODashboard'
@@ -264,6 +265,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'user-management':       return <UserManagementPanel />
     case 'sites':                 return <SitesPanel />
     case 'audit-trail':           return <AuditTrailPanel />
+    case 'migration':             return <MigrationPanel />
     default:                      return p('🚧', panel, 'Coming soon')
   }
 }
