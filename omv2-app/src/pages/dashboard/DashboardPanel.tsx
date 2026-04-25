@@ -2,34 +2,59 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 
-const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
-const fmtH = (n: number) => n.toFixed(0) + 'h'
-const today = new Date().toISOString().slice(0, 10)
+const todayStr = new Date().toISOString().slice(0, 10)
+const fmt = (n: number) => 'A$' + Math.round(n).toLocaleString('en-AU')
+const fmtH = (n: number) => Math.round(n).toLocaleString() + 'h'
 
-function daysUntil(date: string | null | undefined): number | null {
+function daysUntil(date: string | null | undefined) {
   if (!date) return null
-  return Math.ceil((new Date(date).getTime() - Date.now()) / 86400000)
+  return Math.ceil((new Date(date + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000)
 }
 
-function progressColor(pct: number) {
-  return pct > 100 ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--green)'
+// ── Module mini-stat card (matching HTML mts-val / mts-lbl pattern) ──────────
+function MTS({ val, lbl, color }: { val: string | number; lbl: string; color?: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'var(--mono)', color: color || 'var(--text)' }}>{val}</div>
+      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text3)', fontWeight: 600 }}>{lbl}</div>
+    </div>
+  )
 }
 
-interface Stats {
-  resources: number; onsite: number; incoming: number
-  invoiceTotal: number; approvedTotal: number; pendingTotal: number
-  poCount: number; invoiceCount: number
-  tsWeeks: number; tsHours: number
-  varCount: number; varApproved: number; varApprovedValue: number
-  partsTotal: number; partsReceived: number
-  wbsCount: number; hireCount: number
-  inductionMissing: number
-  tsSellTotal: number
+// ── Clickable module card (matching HTML dashboard cards) ─────────────────────
+function ModCard({ icon, title, sub, stats, panel, accent }: {
+  icon: string; title: string; sub?: string
+  stats: { val: string | number; lbl: string; color?: string }[]
+  panel?: string; accent?: string
+}) {
+  const { setActivePanel } = useAppStore()
+  return (
+    <div className="card" style={{ padding: '14px 16px', borderTop: `3px solid ${accent || 'var(--accent)'}`, cursor: panel ? 'pointer' : 'default' }}
+      onClick={() => panel && setActivePanel(panel)}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+        <span style={{ fontSize: '18px' }}>{icon}</span>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '12px' }}>{title}</div>
+          {sub && <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{sub}</div>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '16px' }}>
+        {stats.map((s, i) => <MTS key={i} val={s.val} lbl={s.lbl} color={s.color} />)}
+      </div>
+    </div>
+  )
+}
+
+// ── 7-day lookahead event ─────────────────────────────────────────────────────
+interface LookaheadEvent {
+  date: string; icon: string; label: string; sub: string; days: number | null; panel?: string
 }
 
 export function DashboardPanel() {
   const { activeProject, setActivePanel } = useAppStore()
-  const [stats, setStats] = useState<Stats | null>(null)
+
+  const [data, setData] = useState<Record<string, unknown> | null>(null)
+  const [lookahead, setLookahead] = useState<LookaheadEvent[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -37,192 +62,361 @@ export function DashboardPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [resData, invData, poData, tsData, varData, partsData, wbsData, hireData] = await Promise.all([
-      supabase.from('resources').select('mob_in,mob_out').eq('project_id', pid),
+
+    const [resData, invData, poData, tsData, varData, partsData, hireData, carData,
+           accomData, shipData, subconData, wosData, woData, toolData] = await Promise.all([
+      supabase.from('resources').select('mob_in,mob_out,name,role,company').eq('project_id', pid),
       supabase.from('invoices').select('amount,status').eq('project_id', pid),
       supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('project_id', pid),
-      supabase.from('weekly_timesheets').select('crew').eq('project_id', pid),
+      supabase.from('weekly_timesheets').select('crew,regime').eq('project_id', pid),
       supabase.from('variations').select('status,value').eq('project_id', pid),
-      supabase.from('wosit_lines').select('status').eq('project_id', pid),
-      supabase.from('wbs_list').select('id', { count: 'exact', head: true }).eq('project_id', pid),
-      supabase.from('hire_items').select('id', { count: 'exact', head: true }).eq('project_id', pid),
+      supabase.from('wosit_lines').select('status,qty_received').eq('project_id', pid),
+      supabase.from('hire_items').select('id,hire_type,name,vendor,start_date,end_date').eq('project_id', pid),
+      supabase.from('cars').select('id,vehicle_type,rego,vendor,start_date,end_date').eq('project_id', pid),
+      supabase.from('accommodation').select('id,property,room,check_in,check_out,occupants').eq('project_id', pid),
+      supabase.from('shipments').select('direction,status').eq('project_id', pid),
+      supabase.from('subcon_contracts').select('status,value').eq('project_id', pid),
+      supabase.from('work_orders').select('status').eq('project_id', pid),
+      supabase.from('issued_log').select('qty').eq('project_id', pid),
+      supabase.from('tooling_costings').select('tv_no,charge_start,charge_end').eq('project_id', pid),
     ])
-    // Pull induction data from project record to check coverage
-    const { data: projData } = await supabase.from('projects').select('induction_data').eq('id', pid).single()
 
     const res = resData.data || []
     const inv = invData.data || []
     const vars = varData.data || []
     const parts = partsData.data || []
+    const hire = hireData.data || []
+    const ships = shipData.data || []
+    const wos = woData.data || []
+    const issued = wosData.data || []
 
-    // Timesheet hours
+    // Onsite people
+    const onsite = res.filter(r => r.mob_in && r.mob_in <= todayStr && (!r.mob_out || r.mob_out >= todayStr))
+    const next7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+
+    // Timesheet hours total
     let tsHours = 0
     for (const sheet of (tsData.data || [])) {
       const crew = (sheet.crew || []) as { days?: Record<string, { hours?: number }> }[]
       tsHours += crew.reduce((s, m) => s + Object.values(m.days || {}).reduce((ds, d) => ds + (d.hours || 0), 0), 0)
     }
 
-    // Induction coverage check — resources on-site vs induction records
-    const indData = (projData?.induction_data as {name?:string}[] | null) || []
-    const indNames = new Set(indData.map(i => (i.name || '').trim().toLowerCase()))
-    const onsiteNow = res.filter(r => r.mob_in && r.mob_in <= today && (!r.mob_out || r.mob_out >= today))
-    const inductionMissing = onsiteNow.filter(r => {
-      const name = ((r as typeof r & {name?:string}).name || '').trim().toLowerCase()
-      return name && !indNames.has(name)
-    }).length
+    // Invoice totals
+    const invoiceTotal = inv.reduce((s, i) => s + (i.amount || 0), 0)
+    const approvedTotal = inv.filter(i => ['approved', 'paid'].includes(i.status)).reduce((s, i) => s + (i.amount || 0), 0)
+    const pendingTotal = inv.filter(i => ['received', 'checked'].includes(i.status)).reduce((s, i) => s + (i.amount || 0), 0)
 
-    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+    // Hire counts
+    const dryHire = hire.filter(h => h.hire_type === 'dry').length
+    const wetHire = hire.filter(h => h.hire_type === 'wet').length
+    const localHire = hire.filter(h => h.hire_type === 'local').length
 
-    setStats({
-      resources: res.length,
-      onsite: res.filter(r => r.mob_in && r.mob_in <= today && (!r.mob_out || r.mob_out >= today)).length,
-      incoming: res.filter(r => r.mob_in && r.mob_in > today && r.mob_in <= nextWeek).length,
-      invoiceTotal: inv.reduce((s, i) => s + (i.amount || 0), 0),
-      approvedTotal: inv.filter(i => i.status === 'approved' || i.status === 'paid').reduce((s, i) => s + (i.amount || 0), 0),
-      pendingTotal: inv.filter(i => i.status === 'received' || i.status === 'checked').reduce((s, i) => s + (i.amount || 0), 0),
+    // Parts
+    const partsTotal = parts.length
+    const partsReceived = parts.filter(p => p.status === 'received' || p.status === 'issued').length
+    const partsIssued = (wosData.data || []).filter(p => p.status === 'issued').length
+
+    // Subcon
+    const openRfqs = (subconData.data || []).filter(c => c.status === 'draft' || c.status === 'pending').length
+    const contracts = (subconData.data || []).length
+
+    // Work orders
+    const woTotal = wos.length
+    const woInProg = wos.filter(w => w.status === 'in_progress').length
+
+    // Shipping
+    const shipImports = ships.filter(s => s.direction === 'import').length
+    const shipExports = ships.filter(s => s.direction === 'export').length
+    const shipPending = ships.filter(s => s.status === 'pending' || s.status === 'in_transit').length
+
+    // Variations
+    const varApproved = vars.filter(v => v.status === 'approved')
+    const varApprovedValue = varApproved.reduce((s, v) => s + (v.value || 0), 0)
+
+    // Issued parts
+    const issuedQty = (issued as unknown as {qty?:number}[]).reduce((s, e) => s + (e.qty || 0), 0)
+
+    setData({
+      onsite: onsite.length, resTotal: res.length,
+      incoming: res.filter(r => r.mob_in && r.mob_in > todayStr && r.mob_in <= next7).length,
+      tsWeeks: (tsData.data || []).length, tsHours,
+      invoiceCount: inv.length, invoiceTotal, approvedTotal, pendingTotal,
       poCount: poData.count || 0,
-      invoiceCount: inv.length,
-      tsWeeks: (tsData.data || []).length,
-      tsHours,
-      varCount: vars.length,
-      varApproved: vars.filter(v => v.status === 'approved').length,
-      varApprovedValue: vars.filter(v => v.status === 'approved').reduce((s, v) => s + (v.value || 0), 0),
-      partsTotal: parts.length,
-      partsReceived: parts.filter(p => p.status === 'received' || p.status === 'issued').length,
-      wbsCount: wbsData.count || 0,
-      hireCount: hireData.count || 0,
-      inductionMissing,
-      tsSellTotal: 0, // populated from cost dashboard, left 0 here for perf
+      dryHire, wetHire, localHire,
+      carCount: (carData.data || []).length,
+      accomCount: (accomData.data || []).length,
+      varCount: vars.length, varApproved: varApproved.length, varApprovedValue,
+      partsTotal, partsReceived, partsIssued,
+      partsPending: parts.filter(p => !p.status || p.status === 'pending').length,
+      issuedQty,
+      openRfqs, contracts,
+      woTotal, woInProg,
+      shipImports, shipExports, shipPending,
     })
+
+    // ── 7-day lookahead events ──
+    const events: LookaheadEvent[] = []
+    const inWindow = (d: string | null | undefined) => d && d >= todayStr && d <= next7
+    const daysFrom = (d: string) => Math.round((new Date(d + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000)
+
+    // People arrivals/departures
+    const arrMap: Record<string, string[]> = {}
+    const depMap: Record<string, string[]> = {}
+    for (const r of res) {
+      if (inWindow(r.mob_in)) {
+        if (!arrMap[r.mob_in!]) arrMap[r.mob_in!] = []
+        arrMap[r.mob_in!].push(r.name || '')
+      }
+      if (r.mob_out && inWindow(r.mob_out)) {
+        if (!depMap[r.mob_out]) depMap[r.mob_out] = []
+        depMap[r.mob_out].push(r.name || '')
+      }
+    }
+    for (const [d, names] of Object.entries(arrMap)) {
+      events.push({ date: d, icon: '👤', label: `${names.length} person${names.length > 1 ? 's' : ''} arrive${names.length === 1 ? 's' : ''}`, sub: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''), days: daysFrom(d), panel: 'hr-resources' })
+    }
+    for (const [d, names] of Object.entries(depMap)) {
+      events.push({ date: d, icon: '👋', label: `${names.length} person${names.length > 1 ? 's' : ''} depart${names.length === 1 ? 's' : ''}`, sub: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''), days: daysFrom(d), panel: 'hr-resources' })
+    }
+
+    // Hire on/off
+    for (const h of hire) {
+      const icon = h.hire_type === 'wet' ? '🏗️' : h.hire_type === 'local' ? '🧰' : '🚜'
+      const panel = `hire-${h.hire_type}`
+      if (inWindow(h.start_date)) events.push({ date: h.start_date!, icon, label: `${h.name || 'Equipment'} on-hire`, sub: h.vendor || '', days: daysFrom(h.start_date!), panel })
+      if (h.end_date && inWindow(h.end_date)) events.push({ date: h.end_date, icon, label: `${h.name || 'Equipment'} off-hire`, sub: h.vendor || '', days: daysFrom(h.end_date), panel })
+    }
+
+    // Cars pickup/return
+    for (const c of (carData.data || [])) {
+      const lbl = c.vehicle_type ? `${c.vehicle_type}${c.rego ? ` (${c.rego})` : ''}` : 'Car hire'
+      if (inWindow(c.start_date)) events.push({ date: c.start_date!, icon: '🚗', label: `${lbl} pickup`, sub: c.vendor || '', days: daysFrom(c.start_date!), panel: 'hr-cars' })
+      if (c.end_date && inWindow(c.end_date)) events.push({ date: c.end_date, icon: '🚗', label: `${lbl} return`, sub: c.vendor || '', days: daysFrom(c.end_date), panel: 'hr-cars' })
+    }
+
+    // Accommodation check-in/out
+    for (const a of (accomData.data || [])) {
+      const lbl = `${a.property || 'Accom'}${a.room ? ` · ${a.room}` : ''}`
+      const occ = ((a.occupants as string[]) || []).length
+      if (inWindow(a.check_in)) events.push({ date: a.check_in!, icon: '🏨', label: `${lbl} check-in`, sub: `${occ} occupant${occ !== 1 ? 's' : ''}`, days: daysFrom(a.check_in!), panel: 'hr-accommodation' })
+      if (a.check_out && inWindow(a.check_out)) events.push({ date: a.check_out, icon: '🏨', label: `${lbl} check-out`, sub: `${occ} occupant${occ !== 1 ? 's' : ''}`, days: daysFrom(a.check_out), panel: 'hr-accommodation' })
+    }
+
+    // Tooling charge period
+    for (const tc of (toolData.data || [])) {
+      if (inWindow(tc.charge_start)) events.push({ date: tc.charge_start!, icon: '🔩', label: `TV${tc.tv_no} rental starts`, sub: 'Charge period begins', days: daysFrom(tc.charge_start!), panel: 'tooling-tvs' })
+      if (tc.charge_end && inWindow(tc.charge_end)) events.push({ date: tc.charge_end, icon: '🔩', label: `TV${tc.tv_no} rental ends`, sub: 'Return to Germany', days: daysFrom(tc.charge_end), panel: 'tooling-tvs' })
+    }
+
+    events.sort((a, b) => (a.days ?? 999) - (b.days ?? 999))
+    setLookahead(events)
     setLoading(false)
   }
+
+  const d = data as Record<string, number> | null
 
   const dStart = daysUntil(activeProject?.start_date)
   const dEnd = daysUntil(activeProject?.end_date)
   const isLive = dStart !== null && dStart <= 0 && (dEnd === null || dEnd > 0)
   const outageDayNum = isLive && activeProject?.start_date
-    ? Math.floor((Date.now() - new Date(activeProject.start_date).getTime()) / 86400000) + 1
+    ? Math.floor((new Date(todayStr).getTime() - new Date(activeProject.start_date + 'T00:00:00').getTime()) / 86400000) + 1
     : null
 
-  const Tile = ({ label, value, sub, panel, color = 'var(--accent)', icon }: { label: string; value: string | number; sub?: string; panel?: string; color?: string; icon?: string }) => (
-    <div className="card" style={{ cursor: panel ? 'pointer' : 'default', borderTop: `3px solid ${color}`, padding: '14px 16px' }} onClick={() => panel && setActivePanel(panel)}>
-      {icon && <div style={{ fontSize: '20px', marginBottom: '6px' }}>{icon}</div>}
-      <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)', color }}>{value}</div>
-      <div style={{ fontWeight: 600, fontSize: '12px', marginTop: '3px' }}>{label}</div>
-      {sub && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{sub}</div>}
-    </div>
-  )
+  const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short' })
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1100px' }}>
+    <div style={{ padding: '24px', maxWidth: '1200px' }}>
       {/* Project header */}
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{activeProject?.name}</h1>
-        <div style={{ display: 'flex', gap: '16px', marginTop: '6px', flexWrap: 'wrap', fontSize: '13px', color: 'var(--text3)' }}>
-          {activeProject?.unit && <span>🔧 {activeProject.unit}</span>}
-          {activeProject?.client && <span>👤 {activeProject.client}</span>}
-          {activeProject?.pm && <span>📋 PM: {activeProject.pm}</span>}
-          {activeProject?.start_date && <span>📅 {activeProject.start_date} → {activeProject.end_date || 'TBC'}</span>}
-          <span style={{ padding: '2px 8px', borderRadius: '12px', background: isLive ? '#d1fae5' : dStart && dStart > 0 ? '#fef3c7' : '#f1f5f9', color: isLive ? '#065f46' : dStart && dStart > 0 ? '#92400e' : '#64748b', fontWeight: 600 }}>
-            {isLive ? '🟢 Live' : dStart && dStart > 0 ? `⏳ Starts in ${dStart}d` : dEnd && dEnd <= 0 ? '✅ Complete' : '⬜ No dates'}
-          </span>
+      <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '4px' }}>{activeProject?.name || 'No project selected'}</h1>
+          <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+            {activeProject?.wbs && <span>{activeProject.wbs}</span>}
+            {activeProject?.start_date && <span> · {activeProject.start_date}{activeProject.end_date ? ` → ${activeProject.end_date}` : ''}</span>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* KPI header bar — People on site, Hours, Cost, Sell, Days */}
+          {d && (<>
+            <div className="card" style={{ padding: '8px 16px', display: 'flex', gap: '24px', alignItems: 'center' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--mod-hr)' }}>{d.onsite}</div>
+                <div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text3)' }}>People On Site</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--accent)' }}>{fmtH(d.tsHours)}</div>
+                <div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text3)' }}>Total Hours to Date</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'var(--mono)', color: '#f472b6' }}>{d.approvedTotal > 0 ? fmt(d.approvedTotal) : '—'}</div>
+                <div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text3)' }}>Invoice Approved</div>
+              </div>
+            </div>
+            {outageDayNum !== null && (
+              <div className="card" style={{ padding: '8px 16px', textAlign: 'center', borderTop: '3px solid #8b5cf6' }}>
+                <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'var(--mono)', color: '#8b5cf6' }}>Day {outageDayNum}</div>
+                {dEnd !== null && dEnd > 0 && <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{dEnd}d left</div>}
+              </div>
+            )}
+            {dStart !== null && dStart > 0 && (
+              <div className="card" style={{ padding: '8px 16px', textAlign: 'center', borderTop: '3px solid var(--amber)' }}>
+                <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: 'var(--mono)', color: 'var(--amber)' }}>{dStart}d</div>
+                <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Days Until Start</div>
+              </div>
+            )}
+          </>)}
         </div>
       </div>
 
-      {loading ? <div className="loading-center"><span className="spinner" /></div> : stats && (<>
+      {loading ? <div className="loading-center"><span className="spinner" /></div> : d && (<>
 
         {/* Alerts */}
-        {stats.incoming > 0 && (
-          <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fef3c7', borderLeft: '4px solid var(--amber)', marginBottom: '14px', fontSize: '13px' }}>
-            ⚠ <strong>{stats.incoming} person{stats.incoming > 1 ? 's' : ''}</strong> mobbing in the next 7 days
-            <button className="btn btn-sm" style={{ marginLeft: '12px' }} onClick={() => setActivePanel('hr-resources')}>View Resources →</button>
+        {d.incoming > 0 && (
+          <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fef3c7', borderLeft: '4px solid var(--amber)', marginBottom: '10px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>⚠ <strong>{d.incoming} person{d.incoming > 1 ? 's' : ''}</strong> mobbing in the next 7 days</span>
+            <button className="btn btn-sm" onClick={() => setActivePanel('hr-resources')}>View Resources →</button>
           </div>
         )}
-        {stats.inductionMissing > 0 && (
-          <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fef2f2', borderLeft: '4px solid #ef4444', marginBottom: '10px', fontSize: '13px' }}>
-            ⚠ <strong>{stats.inductionMissing} person{stats.inductionMissing > 1 ? 's' : ''} on-site</strong> with no induction record
-            <button className="btn btn-sm" style={{ marginLeft: '12px' }} onClick={() => setActivePanel('hr-inductions')}>View Inductions →</button>
-          </div>
-        )}
-        {stats.pendingTotal > 0 && (
-          <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fff7ed', borderLeft: '4px solid #f97316', marginBottom: '14px', fontSize: '13px' }}>
-            🧾 <strong>{fmt(stats.pendingTotal)}</strong> in invoices pending approval
-            <button className="btn btn-sm" style={{ marginLeft: '12px' }} onClick={() => setActivePanel('invoices')}>View Invoices →</button>
+        {d.pendingTotal > 0 && (
+          <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fff7ed', borderLeft: '4px solid #f97316', marginBottom: '10px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>🧾 <strong>{fmt(d.pendingTotal)}</strong> in invoices pending approval</span>
+            <button className="btn btn-sm" onClick={() => setActivePanel('invoices')}>View Invoices →</button>
           </div>
         )}
 
-
-        {/* Outage day counter */}
-        {outageDayNum !== null && (
-          <div style={{ display:'flex', gap:'12px', marginBottom:'16px' }}>
-            <div className="card" style={{ padding:'12px 20px', borderTop:'3px solid #8b5cf6', display:'flex', alignItems:'center', gap:'20px' }}>
-              <div>
-                <div style={{ fontSize:'28px', fontWeight:800, fontFamily:'var(--mono)', color:'#8b5cf6' }}>Day {outageDayNum}</div>
-                <div style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>Outage day</div>
-              </div>
-              {dEnd !== null && dEnd > 0 && (
-                <div>
-                  <div style={{ fontSize:'20px', fontWeight:700, fontFamily:'var(--mono)', color:'var(--text3)' }}>{dEnd}d left</div>
-                  <div style={{ fontSize:'11px', color:'var(--text3)' }}>remaining</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Personnel */}
-        <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Personnel</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '16px' }}>
-          <Tile label="Total People" value={stats.resources} panel="hr-resources" color="var(--mod-hr)" />
-          <Tile label="On-site" value={stats.onsite} sub="Based on mob dates" color="var(--green)" />
-          <Tile label="Incoming (7d)" value={stats.incoming} color="var(--amber)" />
-          <Tile label="Timesheet Weeks" value={stats.tsWeeks} panel="hr-timesheets-trades" color="#0369a1" />
-          <Tile label="Total Hours" value={fmtH(stats.tsHours)} panel="hr-timesheets-trades" color="#0369a1" />
-        </div>
-
-        {/* Procurement */}
-        <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Procurement</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '16px' }}>
-          <Tile label="POs" value={stats.poCount} panel="purchase-orders" color="#7c3aed" />
-          <Tile label="Invoices" value={stats.invoiceCount} panel="invoices" color="#0284c7" />
-          <Tile label="Invoice Total" value={fmt(stats.invoiceTotal)} panel="invoices" color="#0284c7" />
-          <Tile label="Approved" value={fmt(stats.approvedTotal)} color="var(--green)" />
-          <Tile label="Pending Approval" value={fmt(stats.pendingTotal)} panel="invoices" color="var(--amber)" />
-        </div>
-
-        {/* Variations + Parts */}
+        {/* Main 2-col layout: lookahead + forecast snapshot */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Variations</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-              <Tile label="Total VNs" value={stats.varCount} panel="variations" color="var(--amber)" />
-              <Tile label="Approved" value={stats.varApproved} panel="variations" color="var(--green)" />
-              <Tile label="Approved Value" value={fmt(stats.varApprovedValue)} panel="variations" color="var(--green)" />
+          {/* 7-Day Lookahead */}
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontWeight: 700, fontSize: '13px' }}>7-Day Lookahead</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
+                {new Date(todayStr).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })} – {new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })}
+              </div>
+            </div>
+            {lookahead.length === 0 ? (
+              <div style={{ color: 'var(--text3)', fontSize: '12px', padding: '12px 0' }}>No events in the next 7 days.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {lookahead.slice(0, 8).map((ev, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 8px', borderRadius: '5px', background: 'var(--bg3)', cursor: ev.panel ? 'pointer' : 'default' }}
+                    onClick={() => ev.panel && setActivePanel(ev.panel)}>
+                    <span style={{ fontSize: '16px', flexShrink: 0 }}>{ev.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.label}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.sub}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '10px', fontWeight: 600, color: ev.days === 0 ? 'var(--red)' : ev.days === 1 ? 'var(--amber)' : 'var(--text3)' }}>
+                        {ev.days === 0 ? 'Today' : ev.days === 1 ? 'Tomorrow' : `In ${ev.days}d`}
+                      </div>
+                      <div style={{ fontSize: '9px', color: 'var(--text3)' }}>{fmtDay(ev.date)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Forecast snapshot */}
+          <div className="card" style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontWeight: 700, fontSize: '13px' }}>Forecast Snapshot</div>
+              <button className="btn btn-sm" onClick={() => setActivePanel('cost-forecast')}>Full Forecast →</button>
+            </div>
+            <div style={{ color: 'var(--text3)', fontSize: '12px', padding: '12px 0' }}>
+              Open the full forecast to see week-by-week cost projections.
+              <br /><br />
+              <button className="btn btn-sm" onClick={() => setActivePanel('cost-forecast')}>View Forecast</button>
             </div>
           </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Parts / WOSIT</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-              <Tile label="Total Parts" value={stats.partsTotal} panel="parts-list" color="#0891b2" />
-              <Tile label="Received" value={stats.partsReceived} panel="parts-list" color="var(--green)" />
-              {stats.partsTotal > 0 && (
-                <div className="card" style={{ padding: '14px 16px', borderTop: `3px solid ${progressColor(stats.partsTotal > 0 ? stats.partsReceived / stats.partsTotal * 100 : 0)}` }}>
-                  <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)', color: progressColor(stats.partsTotal > 0 ? stats.partsReceived / stats.partsTotal * 100 : 0) }}>
-                    {stats.partsTotal > 0 ? Math.round(stats.partsReceived / stats.partsTotal * 100) + '%' : '—'}
-                  </div>
-                  <div style={{ fontWeight: 600, fontSize: '12px', marginTop: '3px' }}>Received</div>
-                  <div style={{ background: 'var(--border2)', borderRadius: '3px', height: '4px', marginTop: '6px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min(100, stats.partsTotal > 0 ? stats.partsReceived / stats.partsTotal * 100 : 0)}%`, background: progressColor(stats.partsTotal > 0 ? stats.partsReceived / stats.partsTotal * 100 : 0), borderRadius: '3px' }} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+        </div>
+
+        {/* Module stat cards — 4 per row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
+
+          <ModCard icon="📦" title="Spare Parts" sub="WOSIT export, receiving, inventory & kit issuing" accent="var(--mod-parts)" panel="parts-list"
+            stats={[
+              { val: d.partsTotal, lbl: 'WOSIT Lines', color: 'var(--mod-parts)' },
+              { val: d.partsPending, lbl: 'Pending', color: 'var(--amber)' },
+              { val: d.issuedQty, lbl: 'Issued', color: 'var(--red)' },
+            ]} />
+
+          <ModCard icon="🔧" title="SE Rental Tooling" sub="TV register, packages, costing & project splits" accent="var(--mod-tooling)" panel="tooling-tvs"
+            stats={[
+              { val: '—', lbl: 'TVs', color: 'var(--mod-tooling)' },
+              { val: '—', lbl: 'Costed', color: 'var(--amber)' },
+              { val: '—', lbl: 'EUR Cost', color: 'var(--green)' },
+            ]} />
+
+          <ModCard icon="💰" title="Hardware Pricing" sub="Contract lines, escalation & customer offers" accent="#0891b2" panel="hardware-pricing"
+            stats={[
+              { val: '—', lbl: 'Lines', color: '#0891b2' },
+              { val: '—', lbl: 'Value', color: 'var(--green)' },
+              { val: '—', lbl: 'Carts', color: 'var(--text2)' },
+            ]} />
+
+          <ModCard icon="🚜" title="Equipment Hire" sub="Dry, wet & local hire — rates, calendars, costs" accent="var(--mod-hire)" panel="hire-dry"
+            stats={[
+              { val: d.dryHire, lbl: 'Dry', color: 'var(--mod-hire)' },
+              { val: d.wetHire, lbl: 'Wet', color: 'var(--mod-hire)' },
+              { val: d.localHire, lbl: 'Local', color: 'var(--text2)' },
+            ]} />
+
+          <ModCard icon="👥" title="Personnel" sub="Resources, timesheets, cars & accommodation" accent="var(--mod-hr)" panel="hr-resources"
+            stats={[
+              { val: d.resTotal, lbl: 'People', color: 'var(--mod-hr)' },
+              { val: d.onsite, lbl: 'On Site', color: 'var(--green)' },
+              { val: d.tsWeeks > 0 ? fmtH(d.tsHours) : '0h', lbl: 'Labour Sell', color: 'var(--green)' },
+            ]} />
+
+          <ModCard icon="🔀" title="Variations" sub="Scope changes, cost lines, client approvals" accent="var(--amber)" panel="variations"
+            stats={[
+              { val: d.varCount, lbl: 'Total VNs', color: 'var(--amber)' },
+              { val: d.varApproved, lbl: 'Approved', color: 'var(--green)' },
+              { val: d.varApprovedValue > 0 ? fmt(d.varApprovedValue) : '—', lbl: 'Approved $', color: 'var(--green)' },
+            ]} />
+
+          <ModCard icon="🧾" title="Procurement" sub="POs, invoices, vendor payments" accent="#0284c7" panel="invoices"
+            stats={[
+              { val: d.poCount, lbl: 'POs', color: '#0284c7' },
+              { val: d.invoiceCount, lbl: 'Invoices', color: '#0284c7' },
+              { val: d.invoiceTotal > 0 ? fmt(d.invoiceTotal) : '—', lbl: 'Total', color: 'var(--text2)' },
+            ]} />
+
+          <ModCard icon="🚢" title="Logistics" sub="Import & export shipments tracking" accent="#0891b2" panel="logistics-shipments"
+            stats={[
+              { val: d.shipImports || '—', lbl: 'Imports', color: '#0284c7' },
+              { val: d.shipExports || '—', lbl: 'Exports', color: '#d97706' },
+              { val: d.shipPending || '—', lbl: 'Pending', color: 'var(--amber)' },
+            ]} />
+
+          <ModCard icon="🏗" title="Subcontractors" sub="RFQs, contracts & subcon timesheets" accent="#4f46e5" panel="subcon-rfq"
+            stats={[
+              { val: d.openRfqs || '—', lbl: 'Open RFQs', color: '#4f46e5' },
+              { val: d.contracts || '—', lbl: 'Contracts', color: 'var(--text2)' },
+            ]} />
+
+          <ModCard icon="🔩" title="Work Orders" sub="WO tracking & actuals allocation" accent="var(--mod-wo)" panel="work-orders"
+            stats={[
+              { val: d.woTotal || '—', lbl: 'Total WOs', color: 'var(--mod-wo)' },
+              { val: d.woInProg || '—', lbl: 'In Progress', color: 'var(--amber)' },
+            ]} />
+
+          <ModCard icon="🚗" title="Cars" sub="Car hire bookings & costs" accent="var(--mod-hr)" panel="hr-cars"
+            stats={[
+              { val: d.carCount || '—', lbl: 'Bookings', color: 'var(--mod-hr)' },
+            ]} />
+
+          <ModCard icon="🏨" title="Accommodation" sub="Room bookings & occupants" accent="var(--mod-hr)" panel="hr-accommodation"
+            stats={[
+              { val: d.accomCount || '—', lbl: 'Rooms', color: 'var(--mod-hr)' },
+            ]} />
+
         </div>
 
         {/* Quick links */}
-        <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Quick Links</div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {[
             { label: '📋 Timesheets', panel: 'hr-timesheets-trades' },
             { label: '📦 Parts List', panel: 'parts-list' },
@@ -232,10 +426,9 @@ export function DashboardPanel() {
             { label: '📝 Variations', panel: 'variations' },
             { label: '⚙ Project Settings', panel: 'project-settings' },
             { label: '✅ Pre-Planning', panel: 'pre-planning' },
-          ].map(q => (
-            <button key={q.panel} className="btn btn-sm" onClick={() => setActivePanel(q.panel)}>{q.label}</button>
-          ))}
+          ].map(q => <button key={q.panel} className="btn btn-sm" onClick={() => setActivePanel(q.panel)}>{q.label}</button>)}
         </div>
+
       </>)}
     </div>
   )
