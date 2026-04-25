@@ -33,6 +33,9 @@ export function ExpensesPanel() {
   const [modal, setModal] = useState<null|'new'|Expense>(null)
   const [form, setForm] = useState<ExpenseForm>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -49,6 +52,42 @@ export function ExpensesPanel() {
     setResources((resData.data || []) as Resource[])
     setWbsList((wbsData.data || []) as WbsItem[])
     setLoading(false)
+  }
+
+  async function handleImportExpenses(text: string) {
+    const lines = text.trim().split('\n').filter(l => l.trim())
+    if (lines.length < 2) { toast('No data', 'error'); return }
+    setImporting(true)
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,'').toLowerCase())
+    const col = (...terms: string[]) => headers.findIndex(h => terms.some(t => h.includes(t)))
+    const dateI = col('date'), catI = col('category','cat'), descI = col('description','desc'),
+          amtI = col('amount','receipt'), costI = col('cost ex','cost_ex'), sellI = col('sell','sell price'),
+          nameI = col('name','employee','person'), wbsI = col('wbs')
+    let added = 0
+    for (const line of lines.slice(1)) {
+      const cols = line.split(',').map(c2 => c2.trim().replace(/^"|"$/g,''))
+      const desc = descI >= 0 ? cols[descI] : ''
+      if (!desc) continue
+      const cost = costI >= 0 ? parseFloat(cols[costI])||0 : (amtI >= 0 ? parseFloat(cols[amtI])||0 : 0)
+      const payload = {
+        project_id: activeProject!.id,
+        date: dateI >= 0 ? cols[dateI] || null : null,
+        category: catI >= 0 ? cols[catI] || 'General' : 'General',
+        description: desc,
+        amount: amtI >= 0 ? parseFloat(cols[amtI])||0 : cost,
+        cost_ex_gst: cost,
+        sell_price: sellI >= 0 ? parseFloat(cols[sellI])||0 : 0,
+        gm_pct: activeProject?.default_gm || 15,
+        currency: 'AUD',
+        wbs: wbsI >= 0 ? cols[wbsI]||'' : '',
+        name: nameI >= 0 ? cols[nameI]||'' : '',
+        notes: '',
+      }
+      const { error } = await supabase.from('expenses').insert(payload)
+      if (!error) added++
+    }
+    toast(`Imported ${added} expenses`, 'success')
+    setImporting(false); setShowImport(false); setImportText(''); load()
   }
 
   function openNew() {
@@ -137,6 +176,22 @@ export function ExpensesPanel() {
         <button className="btn btn-primary" onClick={openNew}>+ Add Expense</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
+
+      {showImport && (
+        <div className="card" style={{marginBottom:'16px'}}>
+          <div style={{fontWeight:600,fontSize:'13px',marginBottom:'6px'}}>Bulk Import Expenses</div>
+          <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'8px'}}>CSV with columns: <code>Date, Category, Description, Amount, Cost Ex GST, Sell, WBS, Name</code></p>
+          <textarea className="input" rows={5} value={importText} onChange={e=>setImportText(e.target.value)}
+            placeholder="Date,Category,Description,Amount,Cost Ex GST&#10;2026-04-25,Accommodation,Hotel - 3 nights,330,300" style={{fontFamily:'var(--mono)',fontSize:'12px',resize:'vertical'}} />
+          <div style={{display:'flex',gap:'8px',marginTop:'10px'}}>
+            <button className="btn btn-primary" onClick={()=>handleImportExpenses(importText)} disabled={importing||!importText.trim()}>
+              {importing?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Import
+            </button>
+            <label className="btn" style={{cursor:'pointer'}}>📂 From File<input type="file" accept=".csv" style={{display:'none'}} onChange={async e=>{const f=e.target.files?.[0];if(f){const t=await f.text();setImportText(t)}}} /></label>
+            <button className="btn" onClick={()=>{setShowImport(false);setImportText('')}}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       <input className="input" style={{ maxWidth: '280px', marginBottom: '16px' }}
         placeholder="Search description, category..." value={search} onChange={e => setSearch(e.target.value)} />

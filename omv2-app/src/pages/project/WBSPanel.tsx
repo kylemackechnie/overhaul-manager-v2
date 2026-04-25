@@ -15,6 +15,7 @@ export function WBSPanel() {
   const [bulkText, setBulkText] = useState('')
   const [showBulk, setShowBulk] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
+  const [mikaImporting, setMikaImporting] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -75,7 +76,62 @@ export function WBSPanel() {
     setBulkSaving(false); setBulkText(''); setShowBulk(false); load()
   }
 
-  function exportCSV() {
+  async function handleMikaImport(file: File) {
+    setMikaImporting(true)
+    try {
+      const text = await file.text()
+      const rows = text.split('\n').map(l => l.split(',').map(c2 => c2.trim().replace(/^"|"$/g, '')))
+      // Find WBS Element header row
+      let headerIdx = rows.findIndex(r => r[0]?.trim() === 'WBS Element')
+      if (headerIdx < 0) { toast('Could not find WBS Element header row — is this a MIKA CSV export?', 'error'); setMikaImporting(false); return }
+
+      const existingCodes = new Set(items.map(i => i.code))
+      let added = 0, updated = 0
+
+      // Find PM80/PM100 columns
+      const hdr = rows[headerIdx]
+      const parentRow = headerIdx > 0 ? rows[headerIdx - 1] : []
+      let iPM80 = -1, iPM100 = -1
+      for (let i = 2; i < hdr.length; i++) {
+        const p = (parentRow[i] || '').toLowerCase()
+        const s = (hdr[i] || '').toLowerCase()
+        if (iPM80 < 0 && (p.includes('pm80') || p.includes('pm080')) && s.includes('planned')) iPM80 = i
+        else if (iPM100 < 0 && p.includes('pm100') && s.includes('planned')) iPM100 = i
+      }
+      if (iPM80 < 0) iPM80 = 2
+      if (iPM100 < 0) iPM100 = 3
+
+      const parseCur = (v: string) => { if (!v) return 0; const n = parseFloat(v.replace(/[,$]/g, '')); return isNaN(n) ? 0 : n }
+
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i]
+        const wbs = r[0]?.trim()
+        if (!wbs || !wbs.includes('OP-')) continue
+        const desc = r[1]?.trim() || ''
+        const pm80 = parseCur(r[iPM80])
+        const pm100 = parseCur(r[iPM100])
+
+        if (existingCodes.has(wbs)) {
+          // Update PM80/PM100 on existing
+          const existing = items.find(w => w.code === wbs)
+          if (existing && (pm80 !== (existing.pm80 || 0) || pm100 !== (existing.pm100 || 0))) {
+            await supabase.from('wbs_list').update({ pm80: pm80 || null, pm100: pm100 || null, name: desc || existing.name }).eq('id', existing.id)
+            updated++
+          }
+        } else {
+          await supabase.from('wbs_list').insert({ project_id: activeProject!.id, code: wbs, name: desc, pm80: pm80 || null, pm100: pm100 || null, sort_order: items.length + added })
+          existingCodes.add(wbs)
+          added++
+        }
+      }
+
+      toast(`MIKA import: ${added} WBS added, ${updated} updated`, 'success')
+      load()
+    } catch (e) { toast((e as Error).message, 'error') }
+    setMikaImporting(false)
+  }
+
+    function exportCSV() {
     const rows = [['Code', 'Description', 'PM80', 'PM100']]
     items.forEach(i => rows.push([i.code, i.name || '', String(i.pm80 ?? ''), String(i.pm100 ?? '')]))
     const csv = rows.map(r => r.map(c => c.includes(',') ? `"${c}"` : c).join(',')).join('\n')
@@ -100,6 +156,7 @@ export function WBSPanel() {
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
           <button className="btn btn-sm" onClick={() => setShowBulk(b => !b)}>📋 Bulk Import</button>
+          <label className="btn btn-sm" style={{cursor:"pointer"}}>{mikaImporting?<span className="spinner" style={{width:"14px",height:"14px"}}/>:"📊"} MIKA Import<input type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)handleMikaImport(f)}} /></label>
           <button className="btn btn-primary" onClick={() => { setForm({ code: '', name: '', pm100: '', pm80: '' }); setModal('new') }}>+ Add WBS</button>
         </div>
       </div>
