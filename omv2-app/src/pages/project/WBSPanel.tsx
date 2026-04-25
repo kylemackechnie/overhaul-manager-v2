@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { aggregateByWbs } from '../../engines/forecastEngine'
+import type { WbsCostRow } from '../../engines/forecastEngine'
+import type { HireItem, Car, Accommodation, WeeklyTimesheet, RateCard, BackOfficeEntry } from '../../types'
+import type { HireItem, Car, Accommodation, WeeklyTimesheet, RateCard, BackOfficeEntry } from '../../types'
 import type { WbsItem } from '../../types'
 
 export function WBSPanel() {
@@ -16,6 +20,7 @@ export function WBSPanel() {
   const [showBulk, setShowBulk] = useState(false)
   const [bulkSaving, setBulkSaving] = useState(false)
   const [mikaImporting, setMikaImporting] = useState(false)
+  const [actuals, setActuals] = useState<Record<string, number>>({})
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -24,6 +29,21 @@ export function WBSPanel() {
     const { data } = await supabase.from('wbs_list').select('*')
       .eq('project_id', activeProject!.id).order('sort_order').order('code')
     setItems((data || []) as WbsItem[])
+    // Load actuals per WBS
+    const pid = activeProject!.id
+    const [hireData, carData, acData, tsData, rcData, boData] = await Promise.all([
+      supabase.from('hire_items').select('wbs,hire_cost').eq('project_id',pid),
+      supabase.from('cars').select('wbs,total_cost').eq('project_id',pid),
+      supabase.from('accommodation').select('wbs,total_cost').eq('project_id',pid),
+      supabase.from('weekly_timesheets').select('*').eq('project_id',pid),
+      supabase.from('rate_cards').select('*').eq('project_id',pid),
+      supabase.from('back_office_hours').select('*').eq('project_id',pid),
+    ])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = aggregateByWbs(data||[], (hireData.data||[]) as HireItem[], (carData.data||[]) as Car[], (acData.data||[]) as Accommodation[], (tsData.data||[]) as WeeklyTimesheet[], (rcData.data||[]) as RateCard[], (boData.data||[]) as BackOfficeEntry[], [])
+    const actualMap: Record<string,number> = {}
+    for (const row of rows as WbsCostRow[]) { if (row.code && row.total) actualMap[row.code] = row.total }
+    setActuals(actualMap)
     setLoading(false)
   }
 
@@ -197,6 +217,8 @@ export function WBSPanel() {
                   <th>Description</th>
                   <th style={{ textAlign: 'right' }}>PM80 Budget</th>
                   <th style={{ textAlign: 'right' }}>PM100 Budget</th>
+                  <th style={{ textAlign: 'right' }}>Actuals</th>
+                  <th style={{ textAlign: 'right' }}>Variance</th>
                   <th></th>
                 </tr>
               </thead>
@@ -207,6 +229,10 @@ export function WBSPanel() {
                     <td style={{ color: 'var(--text2)' }}>{item.name || '—'}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{fmt(item.pm80)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text2)', fontWeight: item.pm100 ? 600 : 400 }}>{fmt(item.pm100)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: actuals[item.code] ? 'var(--text)' : 'var(--text3)' }}>{actuals[item.code] ? fmt(actuals[item.code]) : '—'}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>
+                      {item.pm100 && actuals[item.code] ? (() => { const v = item.pm100 - actuals[item.code]; return <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v >= 0 ? '+' : ''}{fmt(v)}</span> })() : '—'}
+                    </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm" onClick={() => { setForm({ code: item.code, name: item.name, pm100: item.pm100?.toString() || '', pm80: item.pm80?.toString() || '' }); setModal(item) }}>Edit</button>
                       <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(item)}>✕</button>

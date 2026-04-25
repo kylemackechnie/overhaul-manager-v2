@@ -265,6 +265,9 @@ export function Ribbon() {
           </span>
         </div>
 
+        {/* Global Search */}
+        <GlobalSearch />
+
         {/* User */}
         <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
           👤 {currentUser?.name || currentUser?.email}
