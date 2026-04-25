@@ -9,15 +9,20 @@ type CarForm = {
   vehicle_type: string; rego: string; vendor: string
   person_id: string; start_date: string; end_date: string
   daily_rate: number; gm_pct: number; total_cost: number; customer_total: number
+  location_fee_pct: number; one_way_fee: number
+  pickup_loc: string; return_loc: string; reservation: string
+  collected: boolean; dropped_off: boolean; fuel_type: string
   linked_po_id: string; notes: string
-  pickup_loc: string; return_loc: string
 }
 
 const EMPTY: CarForm = {
   vehicle_type:'', rego:'', vendor:'', person_id:'',
   start_date:'', end_date:'', daily_rate:0, gm_pct:15,
-  total_cost:0, customer_total:0, linked_po_id:'', notes:'',
-  pickup_loc:'', return_loc:'',
+  total_cost:0, customer_total:0,
+  location_fee_pct:0, one_way_fee:0,
+  pickup_loc:'', return_loc:'', reservation:'',
+  collected:false, dropped_off:false, fuel_type:'',
+  linked_po_id:'', notes:'',
 }
 
 function daysBetween(a: string, b: string): number {
@@ -59,7 +64,9 @@ export function CarsPanel() {
 
   function calcCosts(f: CarForm): CarForm {
     const days = daysBetween(f.start_date, f.end_date) || 1
-    const total_cost = parseFloat((f.daily_rate * days).toFixed(2))
+    const base = f.daily_rate * days
+    const withFees = base * (1 + (f.location_fee_pct || 0) / 100) + (f.one_way_fee || 0)
+    const total_cost = parseFloat(withFees.toFixed(2))
     const customer_total = calcCustomerPrice(total_cost, f.gm_pct)
     return { ...f, total_cost, customer_total }
   }
@@ -70,10 +77,17 @@ export function CarsPanel() {
     setForm({
       vehicle_type: c.vehicle_type, rego: c.rego, vendor: c.vendor,
       person_id: c.person_id || '', start_date: c.start_date || '', end_date: c.end_date || '',
-      daily_rate: (flags.daily_rate as number) || 0,
+      daily_rate: (flags.daily_rate as number) || (c as Car & {daily_rate?:number}).daily_rate || 0,
       gm_pct: c.gm_pct, total_cost: c.total_cost, customer_total: c.customer_total,
+      location_fee_pct: (c as Car & {location_fee_pct?:number}).location_fee_pct || 0,
+      one_way_fee: (c as Car & {one_way_fee?:number}).one_way_fee || 0,
+      pickup_loc: (c as Car & {pickup_loc?:string}).pickup_loc || '',
+      return_loc: (c as Car & {return_loc?:string}).return_loc || '',
+      reservation: (c as Car & {reservation?:string}).reservation || '',
+      collected: !!(c as Car & {collected?:boolean}).collected,
+      dropped_off: !!(c as Car & {dropped_off?:boolean}).dropped_off,
+      fuel_type: (c as Car & {fuel_type?:string}).fuel_type || '',
       linked_po_id: c.linked_po_id || '', notes: c.notes,
-      pickup_loc: (flags.pickup_loc as string) || '', return_loc: (flags.return_loc as string) || '',
     })
     setModal(c)
   }

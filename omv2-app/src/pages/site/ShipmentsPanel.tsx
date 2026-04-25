@@ -16,7 +16,8 @@ const STATUS_COLORS: Record<string, {bg:string,color:string}> = {
 
 const EMPTY = {
   direction:'import' as Direction, reference:'', description:'',
-  status:'pending', carrier:'', tracking:'', eta:'', shipped_date:'', notes:''
+  status:'pending', carrier:'', tracking:'', eta:'', shipped_date:'',
+  origin:'', notes:''
 }
 
 export function ShipmentsPanel({ direction }: { direction: Direction }) {
@@ -38,12 +39,13 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
     setLoading(false)
   }
 
-  function openNew() { setForm({ ...EMPTY, direction }); setModal('new') }
+  function openNew() { setForm({ ...EMPTY, direction, origin:'' }); setModal('new') }
   function openEdit(s: Shipment) {
     setForm({
       direction: s.direction, reference: s.reference, description: s.description,
       status: s.status, carrier: s.carrier, tracking: s.tracking,
-      eta: s.eta || '', shipped_date: s.shipped_date || '', notes: s.notes,
+      eta: s.eta || '', shipped_date: s.shipped_date || '',
+      origin: (s as typeof s & {origin?:string}).origin || '', notes: s.notes,
     })
     setModal(s)
   }

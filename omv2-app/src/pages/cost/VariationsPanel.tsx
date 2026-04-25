@@ -13,7 +13,7 @@ const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
 
 interface LineItem { id: string; description: string; wbs: string; cost: number; sell: number }
 const mkLine = (): LineItem => ({ id: Math.random().toString(36).slice(2), description: '', wbs: '', cost: 0, sell: 0 })
-const EMPTY = { number:'', title:'', status:'draft' as const, scope:'', submitted_date:'', approved_date:'', customer_ref:'', notes:'', lines: [mkLine()] }
+const EMPTY = { number:'', title:'', status:'draft' as const, cause:'', raised_date:'', scope:'', assumptions:'', exclusions:'', submitted_date:'', approved_date:'', customer_ref:'', notes:'', lines: [mkLine()] }
 
 export function VariationsPanel() {
   const { activeProject } = useAppStore()
@@ -61,7 +61,9 @@ export function VariationsPanel() {
     const lines = (v.line_items as LineItem[] | null)
     setForm({
       number: v.number, title: v.title, status: v.status as typeof EMPTY['status'],
-      scope: v.scope, submitted_date: v.submitted_date || '', approved_date: v.approved_date || '',
+      cause: v.cause || '', raised_date: v.raised_date || '',
+      scope: v.scope, assumptions: v.assumptions || '', exclusions: v.exclusions || '',
+      submitted_date: v.submitted_date || '', approved_date: v.approved_date || '',
       customer_ref: (v as {customer_ref?:string}).customer_ref || '',
       notes: v.notes, lines: (lines && lines.length) ? lines : [mkLine()],
     })
@@ -93,7 +95,9 @@ export function VariationsPanel() {
     const payload = {
       project_id: activeProject!.id,
       number: form.number.trim(), title: form.title.trim(), status: form.status,
-      value: sumSell(lines) || null, scope: form.scope,
+      cause: form.cause, raised_date: form.raised_date || null, scope: form.scope,
+      assumptions: form.assumptions, exclusions: form.exclusions,
+      value: sumSell(lines) || null,
       submitted_date: form.submitted_date || null, approved_date: form.approved_date || null,
       notes: form.notes, line_items: lines,
     }
@@ -229,11 +233,25 @@ export function VariationsPanel() {
                 </div>
               </div>
               <div className="fg-row">
+                <div className="fg"><label>Cause</label>
+                  <select className="input" value={form.cause} onChange={e=>setForm(f=>({...f,cause:e.target.value}))}>
+                    <option value="">— Select cause —</option>
+                    <option value="client_instruction">Client Instruction</option>
+                    <option value="design_change">Design Change</option>
+                    <option value="latent_condition">Latent Condition</option>
+                    <option value="scope_omission">Scope Omission</option>
+                    <option value="acceleration">Acceleration</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="fg"><label>Raised Date</label><input type="date" className="input" value={form.raised_date} onChange={e=>setForm(f=>({...f,raised_date:e.target.value}))} /></div>
                 <div className="fg"><label>Submitted</label><input type="date" className="input" value={form.submitted_date} onChange={e=>setForm(f=>({...f,submitted_date:e.target.value}))} /></div>
                 <div className="fg"><label>Approved</label><input type="date" className="input" value={form.approved_date} onChange={e=>setForm(f=>({...f,approved_date:e.target.value}))} /></div>
                 <div className="fg"><label>Customer Ref #</label><input className="input" value={form.customer_ref} onChange={e=>setForm(f=>({...f,customer_ref:e.target.value}))} placeholder="Optional" /></div>
               </div>
               <div className="fg"><label>Scope</label><textarea className="input" rows={2} value={form.scope} onChange={e=>setForm(f=>({...f,scope:e.target.value}))} placeholder="Describe scope of work..." style={{resize:'vertical'}} /></div>
+              <div className="fg"><label>Assumptions / Basis of Pricing</label><textarea className="input" rows={2} value={form.assumptions} onChange={e=>setForm(f=>({...f,assumptions:e.target.value}))} placeholder="List key assumptions..." style={{resize:'vertical'}} /></div>
+              <div className="fg"><label>Exclusions</label><textarea className="input" rows={2} value={form.exclusions} onChange={e=>setForm(f=>({...f,exclusions:e.target.value}))} placeholder="List items specifically excluded..." style={{resize:'vertical'}} /></div>
 
               <div style={{marginTop:'14px'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>

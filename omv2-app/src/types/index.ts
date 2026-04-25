@@ -264,12 +264,15 @@ export interface Expense {
   resource_id: string | null
   category: string
   description: string
+  vendor: string
   date: string | null
   amount: number
   cost_ex_gst: number
   sell_price: number
   currency: string
   gm_pct: number
+  chargeable: boolean
+  tce_item_id: string | null
   attachment: unknown | null
   wbs: string
   notes: string
@@ -440,6 +443,7 @@ export interface NrgTceLine {
 export interface Variation {
   id: string; project_id: string; number: string; title: string
   status: string; value: number | null; scope: string
+  cause: string; raised_date: string | null; assumptions: string; exclusions: string
   submitted_date: string | null; approved_date: string | null
   notes: string; line_items: unknown[] | null; customer_ref?: string; created_at: string; updated_at: string
 }

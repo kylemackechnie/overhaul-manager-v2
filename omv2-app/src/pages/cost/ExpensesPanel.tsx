@@ -8,15 +8,15 @@ import { downloadCSV } from '../../lib/csv'
 const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Other']
 
 type ExpenseForm = {
-  resource_id: string; category: string; description: string; date: string
+  resource_id: string; category: string; description: string; vendor: string; date: string
   amount: number; cost_ex_gst: number; sell_price: number; gm_pct: number
-  currency: string; wbs: string; notes: string; chargeable: boolean
+  currency: string; wbs: string; notes: string; chargeable: boolean; tce_item_id: string
 }
 
 const EMPTY: ExpenseForm = {
-  resource_id:'', category:'', description:'', date: new Date().toISOString().slice(0,10),
+  resource_id:'', category:'', description:'', vendor:'', date: new Date().toISOString().slice(0,10),
   amount:0, cost_ex_gst:0, sell_price:0, gm_pct:15,
-  currency:'AUD', wbs:'', notes:'', chargeable:true,
+  currency:'AUD', wbs:'', notes:'', chargeable:true, tce_item_id:'',
 }
 
 function calcSell(cost: number, gm: number): number {
@@ -98,10 +98,10 @@ export function ExpensesPanel() {
   function openEdit(e: Expense) {
     setForm({
       resource_id: e.resource_id || '', category: e.category,
-      description: e.description, date: e.date || '',
+      vendor: e.vendor || '', description: e.description, date: e.date || '',
       amount: e.amount, cost_ex_gst: e.cost_ex_gst, sell_price: e.sell_price,
       gm_pct: e.gm_pct, currency: e.currency, wbs: e.wbs, notes: e.notes,
-      chargeable: e.sell_price > 0,
+      chargeable: e.sell_price > 0, tce_item_id: e.tce_item_id || '',
     })
     setModal(e)
   }

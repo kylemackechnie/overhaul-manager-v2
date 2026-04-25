@@ -26,26 +26,26 @@
 
 | # | Gap | Status | Notes |
 |---|-----|--------|-------|
-| 2.1 | Variation: cause dropdown (Client Instruction / Design Change / etc) | ❌ | |
-| 2.2 | Variation: raised_date field (separate from submitted_date) | ❌ | |
-| 2.3 | Variation: assumptions text block | ❌ | |
-| 2.4 | Variation: exclusions text block | ❌ | |
-| 2.5 | Variation line: category dropdown (Trades Labour / Materials / Equipment / etc) | ❌ | |
-| 2.6 | Variation line: labour auto-calc from role + hours + dayType | ❌ | |
-| 2.7 | Resource: homeCity field | ❌ | |
-| 2.8 | Resource: transportMode (fly/drive/bus) | ❌ | |
-| 2.9 | Resource: driveKmOneWay | ❌ | |
-| 2.10 | Car: locationFeePct | ❌ | |
-| 2.11 | Car: onewayFee | ❌ | |
-| 2.12 | Car: pickupLoc / returnLoc | ❌ | |
-| 2.13 | Car: reservation number | ❌ | |
-| 2.14 | Car: collected / droppedOff status booleans | ❌ | |
-| 2.15 | Car: fuelType | ❌ | feeds CO2 calc |
-| 2.16 | Shipment: hawb, mawb, flight number | ❌ | |
-| 2.17 | Shipment: origin, destination | ❌ | |
-| 2.18 | Shipment: packages count, weight kg, dimensions, agent | ❌ | |
-| 2.19 | Global TV: replacement_value (EUR) | ❌ | needed for calcRentalCost |
-| 2.20 | Expense: tceItemId linkage to NRG TCE line | ❌ | |
+| 2.1 | Variation: cause dropdown (Client Instruction / Design Change / etc) | ✅ | |
+| 2.2 | Variation: raised_date field (separate from submitted_date) | ✅ | |
+| 2.3 | Variation: assumptions text block | ✅ | |
+| 2.4 | Variation: exclusions text block | ✅ | |
+| 2.5 | Variation line: category dropdown (Trades Labour / Materials / Equipment / etc) | ✅ | |
+| 2.6 | Variation line: labour auto-calc from role + hours + dayType | ✅ | |
+| 2.7 | Resource: homeCity field | ✅ | |
+| 2.8 | Resource: transportMode (fly/drive/bus) | ✅ | |
+| 2.9 | Resource: driveKmOneWay | ✅ | |
+| 2.10 | Car: locationFeePct | ✅ | |
+| 2.11 | Car: onewayFee | ✅ | |
+| 2.12 | Car: pickupLoc / returnLoc | ✅ | |
+| 2.13 | Car: reservation number | ✅ | |
+| 2.14 | Car: collected / droppedOff status booleans | ✅ | |
+| 2.15 | Car: fuelType | ✅ | feeds CO2 calc |
+| 2.16 | Shipment: hawb, mawb, flight number | ✅ | |
+| 2.17 | Shipment: origin, destination | ✅ | |
+| 2.18 | Shipment: packages count, weight kg, dimensions, agent | ✅ | |
+| 2.19 | Global TV: replacement_value (EUR) | ✅ | needed for calcRentalCost |
+| 2.20 | Expense: tceItemId linkage to NRG TCE line | ✅ | |
 
 ## Sprint 3 — Critical Workflows
 

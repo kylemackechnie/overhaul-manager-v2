@@ -9,7 +9,7 @@ export function GlobalToolingPanel() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState<null|'new'|GlobalTV>(null)
-  const [form, setForm] = useState({ tv_no:'', header_name:'', department_id:'', gross_kg:'', net_kg:'', pack_items:'' })
+  const [form, setForm] = useState({ tv_no:'', header_name:'', department_id:'', gross_kg:'', net_kg:'', replacement_value_eur:'', pack_items:'' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { load() }, [])
@@ -26,20 +26,20 @@ export function GlobalToolingPanel() {
   }
 
   function openEdit(tv: GlobalTV) {
-    setForm({ tv_no:tv.tv_no, header_name:tv.header_name, department_id:tv.department_id||'', gross_kg:tv.gross_kg?.toString()||'', net_kg:tv.net_kg?.toString()||'', pack_items:tv.pack_items||'' })
+    setForm({ tv_no:tv.tv_no, header_name:tv.header_name, department_id:tv.department_id||'', gross_kg:tv.gross_kg?.toString()||'', net_kg:tv.net_kg?.toString()||'', replacement_value_eur:(tv as typeof tv & {replacement_value_eur?:number}).replacement_value_eur?.toString()||'', pack_items:tv.pack_items||'' })
     setModal(tv)
   }
 
   async function save() {
     if (!form.tv_no.trim()) return toast('TV number required','error')
     setSaving(true)
-    const payload = { tv_no:form.tv_no.trim(), header_name:form.header_name, department_id:form.department_id||null, gross_kg:form.gross_kg?parseFloat(form.gross_kg):null, net_kg:form.net_kg?parseFloat(form.net_kg):null, pack_items:form.pack_items, extra:{} }
+    const payload = { tv_no:form.tv_no.trim(), header_name:form.header_name, department_id:form.department_id||null, gross_kg:form.gross_kg?parseFloat(form.gross_kg):null, net_kg:form.net_kg?parseFloat(form.net_kg):null, replacement_value_eur:form.replacement_value_eur?parseFloat(form.replacement_value_eur):null, pack_items:form.pack_items, extra:{} }
     if (modal==='new') {
       const { error } = await supabase.from('global_tvs').insert(payload)
       if (error) { toast(error.message,'error'); setSaving(false); return }
       toast('TV added to global register','success')
     } else {
-      const { error } = await supabase.from('global_tvs').update({ header_name:form.header_name, department_id:form.department_id||null, gross_kg:form.gross_kg?parseFloat(form.gross_kg):null, net_kg:form.net_kg?parseFloat(form.net_kg):null, pack_items:form.pack_items }).eq('tv_no',form.tv_no)
+      const { error } = await supabase.from('global_tvs').update({ header_name:form.header_name, department_id:form.department_id||null, gross_kg:form.gross_kg?parseFloat(form.gross_kg):null, net_kg:form.net_kg?parseFloat(form.net_kg):null, replacement_value_eur:form.replacement_value_eur?parseFloat(form.replacement_value_eur):null, pack_items:form.pack_items }).eq('tv_no',form.tv_no)
       if (error) { toast(error.message,'error'); setSaving(false); return }
       toast('Saved','success')
     }
@@ -55,7 +55,7 @@ export function GlobalToolingPanel() {
           <h1 style={{fontSize:'18px',fontWeight:700}}>Global Tooling Register</h1>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{tvs.length} TVs in global register</p>
         </div>
-        <button className="btn btn-primary" onClick={()=>{setForm({tv_no:'',header_name:'',department_id:'',gross_kg:'',net_kg:'',pack_items:''});setModal('new')}}>+ Add TV</button>
+        <button className="btn btn-primary" onClick={()=>{setForm({tv_no:'',header_name:'',department_id:'',gross_kg:'',net_kg:'',replacement_value_eur:'',pack_items:''});setModal('new')}}>+ Add TV</button>
       </div>
 
       <input className="input" style={{maxWidth:'240px',marginBottom:'16px'}} placeholder="Search TV no. or name..." value={search} onChange={e=>setSearch(e.target.value)} />
