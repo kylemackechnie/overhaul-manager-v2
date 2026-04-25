@@ -404,6 +404,11 @@ export interface ToolingCosting {
   wbs: string; fx_rate: number
   splits: { type: 'project'|'standby'; projectId?: string; projectName?: string; startDate: string; endDate: string; wbs: string; discountPct?: number }[]
   sell_override_eur: number | null
+  // Freight costs
+  import_cost_eur: number | null; import_sell_eur: number | null
+  import_wbs: string;             import_project_id: string | null
+  export_cost_eur: number | null; export_sell_eur: number | null
+  export_wbs: string;             export_project_id: string | null
   linked_po_id: string | null; notes: string
   created_at: string; updated_at: string
 }

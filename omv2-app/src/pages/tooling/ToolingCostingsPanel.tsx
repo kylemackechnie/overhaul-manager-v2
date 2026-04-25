@@ -358,6 +358,73 @@ export function ToolingCostingsPanel() {
                   )}
                 </div>
               </div>
+
+              {/* ── IMPORT / EXPORT FREIGHT ── */}
+              <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--text3)', fontFamily: 'var(--mono)', fontWeight: 700, marginBottom: '10px' }}>
+                  Freight Costs <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontFamily: 'var(--sans)', color: 'var(--text3)' }}>— import charged to first project, export charged to last project</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ padding: '12px', background: 'var(--bg3)', borderRadius: 'var(--radius)', borderLeft: '3px solid #0284c7' }}>
+                    <div style={{ fontWeight: 600, fontSize: '11px', color: '#0284c7', marginBottom: '8px' }}>📥 Import Freight (Germany → Site)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+                      <div className="fg" style={{ margin: 0 }}><label>Cost (EUR)</label>
+                        <input type="number" className="input" min={0} step={0.01} value={c.import_cost_eur || ''} placeholder="0.00"
+                          onChange={e => updateField(c.id, 'import_cost_eur', parseFloat(e.target.value) || null)} /></div>
+                      <div className="fg" style={{ margin: 0 }}><label>Sell (EUR)</label>
+                        <input type="number" className="input" min={0} step={0.01} value={c.import_sell_eur || ''} placeholder="0.00"
+                          onChange={e => updateField(c.id, 'import_sell_eur', parseFloat(e.target.value) || null)} /></div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                      <div className="fg" style={{ margin: 0 }}><label>Charged to Project</label>
+                        <select className="input" value={c.import_project_id || ''} onChange={e => updateField(c.id, 'import_project_id', e.target.value || null)}>
+                          <option value="">— First project —</option>
+                          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select></div>
+                      <div className="fg" style={{ margin: 0 }}><label>WBS</label>
+                        <select className="input" value={c.import_wbs || ''} onChange={e => updateField(c.id, 'import_wbs', e.target.value)}>
+                          <option value="">— No WBS —</option>
+                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}</option>)}
+                        </select></div>
+                    </div>
+                    {c.import_cost_eur && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
+                        AUD: <strong style={{ color: 'var(--text2)' }}>{fmtAud(c.import_cost_eur * fx)}</strong>
+                        {c.import_sell_eur ? <> · Sell: <strong style={{ color: 'var(--green)' }}>{fmtAud(c.import_sell_eur * fx)}</strong></> : null}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '12px', background: 'var(--bg3)', borderRadius: 'var(--radius)', borderLeft: '3px solid #d97706' }}>
+                    <div style={{ fontWeight: 600, fontSize: '11px', color: '#d97706', marginBottom: '8px' }}>📤 Export Freight (Site → Germany)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+                      <div className="fg" style={{ margin: 0 }}><label>Cost (EUR)</label>
+                        <input type="number" className="input" min={0} step={0.01} value={c.export_cost_eur || ''} placeholder="0.00"
+                          onChange={e => updateField(c.id, 'export_cost_eur', parseFloat(e.target.value) || null)} /></div>
+                      <div className="fg" style={{ margin: 0 }}><label>Sell (EUR)</label>
+                        <input type="number" className="input" min={0} step={0.01} value={c.export_sell_eur || ''} placeholder="0.00"
+                          onChange={e => updateField(c.id, 'export_sell_eur', parseFloat(e.target.value) || null)} /></div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                      <div className="fg" style={{ margin: 0 }}><label>Charged to Project</label>
+                        <select className="input" value={c.export_project_id || ''} onChange={e => updateField(c.id, 'export_project_id', e.target.value || null)}>
+                          <option value="">— Last project —</option>
+                          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select></div>
+                      <div className="fg" style={{ margin: 0 }}><label>WBS</label>
+                        <select className="input" value={c.export_wbs || ''} onChange={e => updateField(c.id, 'export_wbs', e.target.value)}>
+                          <option value="">— No WBS —</option>
+                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}</option>)}
+                        </select></div>
+                    </div>
+                    {c.export_cost_eur && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
+                        AUD: <strong style={{ color: 'var(--text2)' }}>{fmtAud(c.export_cost_eur * fx)}</strong>
+                        {c.export_sell_eur ? <> · Sell: <strong style={{ color: 'var(--green)' }}>{fmtAud(c.export_sell_eur * fx)}</strong></> : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )
         })

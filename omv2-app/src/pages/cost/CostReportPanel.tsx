@@ -30,7 +30,7 @@ export function CostReportPanel() {
     ])
     const agg = aggregateByWbs(
       wbsData.data||[], hireData.data||[], carData.data||[], acData.data||[],
-      tsData.data||[], rcData.data||[], boData.data||[], tcData.data||[]
+      tsData.data||[], rcData.data||[], boData.data||[], tcData.data||[], [], pid
     )
     setRows(agg)
     setLoading(false)

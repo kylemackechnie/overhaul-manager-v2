@@ -414,6 +414,7 @@ export function aggregateByWbs(
   backOffice: BackOfficeHour[],
   toolingCostings: ToolingCosting[],
   _fxRates: { code: string; rate: number }[] = [],
+  activeProjectId = '',
 ): WbsCostRow[] {
   const rows: Record<string, WbsCostRow> = {}
 
@@ -521,6 +522,26 @@ export function aggregateByWbs(
       r.tooling += cost
       r.total += cost
       r.totalSell += sell
+    }
+  }
+
+
+  // ── Tooling freight costs (import = first project, export = last project) ──
+  for (const tc of toolingCostings) {
+    const tcFx = tc.fx_rate || 1.65
+    // Import freight — only flows into the project it's charged to
+    if (tc.import_cost_eur && tc.import_wbs && (!tc.import_project_id || tc.import_project_id === activeProjectId)) {
+      const r = get(tc.import_wbs)
+      r.tooling += tc.import_cost_eur * tcFx
+      r.total   += tc.import_cost_eur * tcFx
+      r.totalSell += (tc.import_sell_eur || tc.import_cost_eur) * tcFx
+    }
+    // Export freight — only flows into the project it's charged to
+    if (tc.export_cost_eur && tc.export_wbs && (!tc.export_project_id || tc.export_project_id === activeProjectId)) {
+      const r = get(tc.export_wbs)
+      r.tooling += tc.export_cost_eur * tcFx
+      r.total   += tc.export_cost_eur * tcFx
+      r.totalSell += (tc.export_sell_eur || tc.export_cost_eur) * tcFx
     }
   }
 

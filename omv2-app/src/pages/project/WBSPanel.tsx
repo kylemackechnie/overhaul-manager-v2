@@ -39,7 +39,7 @@ export function WBSPanel() {
       supabase.from('back_office_hours').select('*').eq('project_id',pid),
     ])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = aggregateByWbs(data||[], (hireData.data||[]) as never[], (carData.data||[]) as never[], (acData.data||[]) as never[], (tsData.data||[]) as never[], (rcData.data||[]) as never[], (boData.data||[]) as never[], [])
+    const rows = aggregateByWbs(data||[], (hireData.data||[]) as never[], (carData.data||[]) as never[], (acData.data||[]) as never[], (tsData.data||[]) as never[], (rcData.data||[]) as never[], (boData.data||[]) as never[], [], [], pid)
     const actualMap: Record<string,number> = {}
     for (const row of rows as WbsCostRow[]) { if (row.code && row.total) actualMap[row.code] = row.total }
     setActuals(actualMap)
