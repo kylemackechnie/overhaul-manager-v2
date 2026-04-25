@@ -27,6 +27,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     groups: [
       { label: 'Overview', buttons: [
         { icon: '📊', label: 'Dashboard', panel: 'dashboard' },
+        { icon: '❓', label: 'Help', panel: 'help' },
         { icon: '📅', label: 'Calendar', panel: 'calendar' },
         { icon: '📋', label: 'Gantt', panel: 'gantt' },
         { icon: '📝', label: 'Variations', panel: 'variations' },

@@ -8,6 +8,7 @@ import { Ribbon } from './components/layout/Ribbon'
 import { ProjectPicker } from './components/layout/ProjectPicker'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { ToastContainer } from './components/ui/Toast'
+import { HelpPanel } from './pages/HelpPanel'
 import { DashboardPanel } from './pages/dashboard/DashboardPanel'
 import { PlaceholderPanel } from './pages/PlaceholderPanel'
 // Cost
@@ -52,6 +53,7 @@ import { NrgKpiPanel } from './pages/site/NrgKpiPanel'
 import { NrgInvoicingPanel } from './pages/site/NrgInvoicingPanel'
 import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
 import { HardwareDashboard } from './pages/hardware/HardwareDashboard'
+import { HardwareReportsPanel } from './pages/hardware/HardwareReportsPanel'
 import { HardwareCartsPanel } from './pages/site/HardwareCartsPanel'
 import { SparePartsPanel } from './pages/site/SparePartsPanel'
 import { PartsDashboardPanel } from './pages/site/PartsDashboardPanel'
@@ -181,6 +183,8 @@ function PanelRouter({ panel }: { panel: string }) {
   const p = (icon: string, title: string, sub?: string) => <PlaceholderPanel icon={icon} title={title} subtitle={sub} />
   switch (panel) {
     case 'dashboard':             return <DashboardPanel />
+    case 'help':                  return <HelpPanel />
+    case 'tooling-tour':          return <HelpPanel />
     case 'calendar':              return <CalendarPanel />
     case 'gantt':                 return <GanttPanel />
     case 'project-settings':      return <ProjectSettingsPanel />
@@ -234,6 +238,8 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'nrg-invoicing':         return <NrgInvoicingPanel />
     case 'nrg-kpi':               return <NrgKpiPanel />
     case 'hardware-dashboard':    return <HardwareDashboard />
+    case 'hardware-reports':      return <HardwareReportsPanel />
+    case 'hardware-escalation':   return <HardwareDashboard />
     case 'hardware-contract':     return <HardwareContractPanel />
     case 'hardware-carts':        return <HardwareCartsPanel />
     case 'parts-dashboard':       return <PartsDashboardPanel />
