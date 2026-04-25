@@ -292,6 +292,26 @@ export function SparePartsPanel() {
 
       {/* ── LIST TAB ── */}
       {tab==='list' && <>
+        <div style={{marginBottom:'10px',display:'flex',gap:'8px',justifyContent:'flex-end'}}>
+          <button className="btn btn-sm" onClick={() => {
+            const rows = [['Material No','Description','TV','Crate','Box','Location','Qty Received','Qty Issued','Qty Remaining','Status'],
+              ...parts.map(p => [p.material_no||'',p.description||'',
+                (p as typeof p & {tv?:string}).tv||'',(p as typeof p & {crate?:string}).crate||'',(p as typeof p & {box?:string}).box||'',
+                p.location||'', p.qty_received||0, p.qty_issued||0,
+                (p.qty_received||0)-(p.qty_issued||0), p.status||''])]
+            const csv = rows.map(r=>r.map(x=>String(x).includes(',')?`"${x}"`:x).join(',')).join('\n')
+            const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='parts-inventory.csv';a.click()
+          }} disabled={parts.length===0}>⬇ Inventory CSV</button>
+          <button className="btn btn-sm" onClick={() => {
+            const pending = parts.filter(p => !p.status || p.status==='pending')
+            if (!pending.length) { alert('No pending parts to pick'); return }
+            const rows = [['Material No','Description','Location','TV','Crate','Box','Qty'],
+              ...pending.map(p => [p.material_no||'',p.description||'',p.location||'',
+                (p as typeof p & {tv?:string}).tv||'',(p as typeof p & {crate?:string}).crate||'',(p as typeof p & {box?:string}).box||'',p.qty_received||0])]
+            const csv = rows.map(r=>r.join(',')).join('\n')
+            const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='pick-list.csv';a.click()
+          }} disabled={parts.length===0}>🖨 Pick List</button>
+        </div>
         <div style={{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap'}}>
           <input className="input" style={{maxWidth:'260px'}} placeholder="Search description, material no, TV..." value={search} onChange={e=>setSearch(e.target.value)} />
           <select className="input" style={{width:'150px'}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>

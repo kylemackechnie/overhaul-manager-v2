@@ -23,6 +23,8 @@ interface Stats {
   varCount: number; varApproved: number; varApprovedValue: number
   partsTotal: number; partsReceived: number
   wbsCount: number; hireCount: number
+  inductionMissing: number
+  tsSellTotal: number
 }
 
 export function DashboardPanel() {
@@ -45,6 +47,8 @@ export function DashboardPanel() {
       supabase.from('wbs_list').select('id', { count: 'exact', head: true }).eq('project_id', pid),
       supabase.from('hire_items').select('id', { count: 'exact', head: true }).eq('project_id', pid),
     ])
+    // Pull induction data from project record to check coverage
+    const { data: projData } = await supabase.from('projects').select('induction_data').eq('id', pid).single()
 
     const res = resData.data || []
     const inv = invData.data || []
@@ -57,6 +61,15 @@ export function DashboardPanel() {
       const crew = (sheet.crew || []) as { days?: Record<string, { hours?: number }> }[]
       tsHours += crew.reduce((s, m) => s + Object.values(m.days || {}).reduce((ds, d) => ds + (d.hours || 0), 0), 0)
     }
+
+    // Induction coverage check — resources on-site vs induction records
+    const indData = (projData?.induction_data as {name?:string}[] | null) || []
+    const indNames = new Set(indData.map(i => (i.name || '').trim().toLowerCase()))
+    const onsiteNow = res.filter(r => r.mob_in && r.mob_in <= today && (!r.mob_out || r.mob_out >= today))
+    const inductionMissing = onsiteNow.filter(r => {
+      const name = ((r as typeof r & {name?:string}).name || '').trim().toLowerCase()
+      return name && !indNames.has(name)
+    }).length
 
     const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
 
@@ -78,6 +91,8 @@ export function DashboardPanel() {
       partsReceived: parts.filter(p => p.status === 'received' || p.status === 'issued').length,
       wbsCount: wbsData.count || 0,
       hireCount: hireData.count || 0,
+      inductionMissing,
+      tsSellTotal: 0, // populated from cost dashboard, left 0 here for perf
     })
     setLoading(false)
   }
@@ -121,6 +136,12 @@ export function DashboardPanel() {
           <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fef3c7', borderLeft: '4px solid var(--amber)', marginBottom: '14px', fontSize: '13px' }}>
             ⚠ <strong>{stats.incoming} person{stats.incoming > 1 ? 's' : ''}</strong> mobbing in the next 7 days
             <button className="btn btn-sm" style={{ marginLeft: '12px' }} onClick={() => setActivePanel('hr-resources')}>View Resources →</button>
+          </div>
+        )}
+        {stats.inductionMissing > 0 && (
+          <div style={{ padding: '10px 14px', borderRadius: '6px', background: '#fef2f2', borderLeft: '4px solid #ef4444', marginBottom: '10px', fontSize: '13px' }}>
+            ⚠ <strong>{stats.inductionMissing} person{stats.inductionMissing > 1 ? 's' : ''} on-site</strong> with no induction record
+            <button className="btn btn-sm" style={{ marginLeft: '12px' }} onClick={() => setActivePanel('hr-inductions')}>View Inductions →</button>
           </div>
         )}
         {stats.pendingTotal > 0 && (

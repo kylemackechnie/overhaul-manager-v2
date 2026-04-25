@@ -32,6 +32,38 @@ export function HardwareReportsPanel() {
   const totalCustomer = allLines.reduce((s, l) => s + (l.customer_price * l.qty || 0), 0)
   const fmtAmt = (n: number, cur = 'EUR') => (cur === 'EUR' ? '€' : '$') + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
 
+
+  function printGermanOrder() {
+    const rows = allLines.map(l => `<tr><td>${l.part_no||'—'}</td><td>${l.description||'—'}</td><td>${l.qty||0}</td><td>${l.transfer_price ? '€'+l.transfer_price.toFixed(2) : '—'}</td><td>${l.transfer_price ? '€'+(l.transfer_price*(l.qty||1)).toFixed(2) : '—'}</td></tr>`).join('')
+    const total = allLines.reduce((s,l)=>s+(l.transfer_price||0)*(l.qty||1),0)
+    const html = `<html><head><title>Bestellung — ${activeProject?.name}</title>
+    <style>body{font-family:Arial,sans-serif;font-size:11pt;padding:20mm}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}th{background:#ddd}h2{font-size:13pt}p{font-size:10pt;color:#666}@media print{@page{size:A4}}</style></head><body>
+    <h2>Ersatzteilbestellung / Spare Parts Order</h2>
+    <p>Projekt: ${activeProject?.name || ''} &nbsp;|&nbsp; Datum: ${new Date().toLocaleDateString('de-DE')}</p>
+    <table><thead><tr><th>Materialnummer</th><th>Bezeichnung</th><th>Menge</th><th>TP Einzelpreis</th><th>TP Gesamt</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:bold"><td colspan="4">Gesamtbetrag</td><td>€${total.toFixed(2)}</td></tr></tfoot>
+    </table></body></html>`
+    const w = window.open(); if(w){w.document.write(html);w.document.close();w.print()}
+  }
+
+  function printCustomerOffer() {
+    const rows = allLines.map(l => {
+      const custPrice = l.customer_price || l.transfer_price || 0
+      return `<tr><td>${l.part_no||'—'}</td><td>${l.description||'—'}</td><td>${l.qty||0}</td><td>$${custPrice.toFixed(2)}</td><td>$${(custPrice*(l.qty||1)).toFixed(2)}</td></tr>`
+    }).join('')
+    const total = allLines.reduce((s,l)=>s+(l.customer_price||l.transfer_price||0)*(l.qty||1),0)
+    const html = `<html><head><title>Customer Offer — ${activeProject?.name}</title>
+    <style>body{font-family:Arial,sans-serif;font-size:11pt;padding:20mm}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}th{background:#ddd}@media print{@page{size:A4}}</style></head><body>
+    <h2>Hardware Quotation — ${activeProject?.name || ''}</h2>
+    <p>Date: ${new Date().toLocaleDateString('en-AU')} &nbsp;|&nbsp; Prepared by: Siemens Energy</p>
+    <table><thead><tr><th>Part No</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:bold"><td colspan="4">Total</td><td>$${total.toFixed(2)}</td></tr></tfoot>
+    </table></body></html>`
+    const w = window.open(); if(w){w.document.write(html);w.document.close();w.print()}
+  }
+
   function exportReport() {
     if (activeReport === 'full-contract') {
       downloadCSV(
@@ -54,6 +86,10 @@ export function HardwareReportsPanel() {
             {contracts.length} contracts · {allLines.length} lines · Transfer {fmtAmt(totalTransfer)} · Customer {fmtAmt(totalCustomer)}
           </p>
         </div>
+        {allLines.length > 0 && <>
+          <button className="btn btn-sm" onClick={printGermanOrder}>🖨 German Order</button>
+          <button className="btn btn-sm" onClick={printCustomerOffer}>🖨 Customer Offer</button>
+        </>}
         {activeReport && <button className="btn btn-sm" onClick={exportReport}>⬇ Export CSV</button>}
       </div>
 

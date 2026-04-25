@@ -55,7 +55,17 @@ export function NrgTcePanel() {
     setSelected(new Set()); setBulkWbs(''); load()
   }
 
-  function openNew() { setForm(EMPTY); setModal('new') }
+  function openNew() {
+    // Auto-increment item ID from highest existing numeric ID
+    const numericIds = lines
+      .map(l => parseFloat(l.item_id || '0'))
+      .filter(n => !isNaN(n) && n > 0)
+    const nextId = numericIds.length > 0
+      ? (Math.max(...numericIds) + 0.1).toFixed(1)
+      : '1.0'
+    setForm({ ...EMPTY, item_id: nextId })
+    setModal('new')
+  }
   function openEdit(l: NrgTceLine) {
     setForm({
       wbs_code: l.wbs_code, description: l.description, category: l.category,
