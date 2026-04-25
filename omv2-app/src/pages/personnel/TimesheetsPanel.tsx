@@ -88,13 +88,33 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [woAllocRows, setWoAllocRows] = useState<{woId:string;woNumber:string;hours:number}[]>([])
   const [workOrders, setWorkOrders] = useState<{id:string;wo_number:string;description:string}[]>([])
   const catMap: Record<TsType, string[]> = { trades: ['trades', 'subcontractor'], mgmt: ['management'], seag: ['seag'], subcon: ['subcontractor'] }
-  const scopeMode = activeProject?.scope_tracking || 'none' // 'none' | 'work_orders' | 'nrg_tce'
+  const scopeMode = activeProject?.scope_tracking || 'none'
+
+  // Mirror HTML getTsRoleType logic
+  function getTsRoleType(r: Resource): TsType {
+    const role = (r.role || '').toLowerCase()
+    const cat  = (r.category || '').toLowerCase()
+    if (cat === 'subcontractor' || cat === 'subcon') return 'subcon'
+    if (cat === 'seag' || role.includes('se ag') || role.includes('seag')) return 'seag'
+    if (['project manager','engineer','site manager','supervisor','administrator',
+         'admin','specialist','safety','planner','scheduler'].some(k => role.includes(k))) return 'mgmt'
+    return 'trades'
+  }
+
+  const [bulkAddModal, setBulkAddModal] = useState(false)
+  const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
+  const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number}[]>([])
+  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string}[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, type])
   useEffect(() => {
     if (activeProject) {
       supabase.from('work_orders').select('id,wo_number,description').eq('project_id', activeProject.id).neq('status','cancelled').order('wo_number')
         .then(r => setWorkOrders((r.data||[]) as {id:string;wo_number:string;description:string}[]))
+      if (activeProject.scope_tracking === 'nrg_tce') {
+        supabase.from('nrg_tce_lines').select('item_id,description,work_order,source').eq('project_id', activeProject.id).order('item_id')
+          .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string}[]))
+      }
     }
   }, [activeProject?.id])
 
@@ -168,7 +188,11 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       Object.entries(m.days).forEach(([d, day]) => {
         const de = day as Record<string, unknown>
         if ((de.hours as number) > 0) {
-          newDays[d] = { ...de, laha: !!(res as unknown as Record<string,unknown>).allow_laha, meal: !!(res as unknown as Record<string,unknown>).allow_meal } as typeof day
+          newDays[d] = { ...de,
+            laha: !!(res as unknown as Record<string,unknown>).allow_laha,
+            meal: !!(res as unknown as Record<string,unknown>).allow_meal,
+            fsa: !!(res as unknown as Record<string,unknown>).allow_fsa,
+          } as unknown as DayEntry
         } else {
           newDays[d] = day
         }
@@ -243,10 +267,102 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     })
   }
 
+
+  function openTceAlloc(personId: string, date: string, hours: number, name: string) {
+    const member = activeWeek?.crew.find(m => m.personId === personId)
+    const existing = ((member?.days?.[date] as Record<string,unknown>)?.nrgWoAllocations as {key:string;label:string;hours:number}[]) || []
+    setTceAllocRows(existing.length ? [...existing] : [])
+    setTceAllocModal({ personId, date, hours, name })
+  }
+
+  function saveTceAlloc() {
+    if (!tceAllocModal || !activeWeek) return
+    const total = tceAllocRows.reduce((s, r) => s + (r.hours || 0), 0)
+    if (total > tceAllocModal.hours + 0.01) { toast(`Total exceeds shift hours`, 'error'); return }
+    const updated = activeWeek.crew.map(m => {
+      if (m.personId !== tceAllocModal.personId) return m
+      const existing: Record<string, unknown> = (m.days?.[tceAllocModal.date] as Record<string,unknown>) || {}
+      return { ...m, days: { ...m.days, [tceAllocModal.date]: { ...existing, nrgWoAllocations: tceAllocRows.filter(r=>r.hours>0) } as unknown as DayEntry } }
+    })
+    setActiveWeek({ ...activeWeek, crew: updated })
+    setTceAllocModal(null)
+    toast('TCE allocations saved', 'success')
+  }
+
+  // Build TCE dropdown options grouped by WO (mirrors HTML _getNrgTceAllocOptions)
+  function getTceOptions(): {key:string; label:string}[] {
+    const opts: {key:string;label:string}[] = []
+    // Work orders with TCE lines
+    const byWo: Record<string, typeof tceLines> = {}
+    tceLines.filter(l => l.work_order).forEach(l => {
+      if (!byWo[l.work_order!]) byWo[l.work_order!] = []
+      byWo[l.work_order!].push(l)
+    })
+    Object.entries(byWo).sort((a, b) => a[0].localeCompare(b[0], undefined, {numeric:true})).forEach(([wo, ls]) => {
+      opts.push({ key: `wo:${wo}`, label: `WO ${wo} — ${ls[0]?.description?.slice(0,45) || ''}${ls.length > 1 ? ` (+${ls.length-1})` : ''}` })
+    })
+    // Overhead / direct lines without WO
+    tceLines.filter(l => !l.work_order && l.description).forEach(l => {
+      opts.push({ key: `tce:${l.item_id}`, label: `${l.item_id} — ${l.description?.slice(0,50) || ''}` })
+    })
+    return opts
+  }
+
+  function buildPreDays(r: Resource, weekStart: string): Record<string, DayEntry> {
+    // Pre-fill standard hours from project settings and apply resource allowances
+    const std = (activeProject as typeof activeProject & {std_hours?: {day:Record<string,number>;night:Record<string,number>}})?.std_hours
+    const days: Record<string, DayEntry> = {}
+    if (!std) return days
+    const dayNames = ['mon','tue','wed','thu','fri','sat','sun']
+    const monday = new Date(weekStart + 'T12:00:00')
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday); d.setDate(monday.getDate() + i)
+      const ds = d.toISOString().slice(0, 10)
+      const dow = dayNames[i]
+      const shift = (r as Resource & {shift?:string}).shift || 'day'
+      const dayType = autoType(ds, holidays)
+      const hrs = shift === 'night' ? (std.night?.[dow] || 0) : (std.day?.[dow] || 0)
+      if (hrs > 0) {
+        days[ds] = {
+          dayType, shiftType: shift === 'night' ? 'night' : 'day', hours: hrs,
+          laha: !!(r as Resource & {allow_laha?:boolean}).allow_laha,
+          meal: !!(r as Resource & {allow_meal?:boolean}).allow_meal,
+        } as DayEntry
+      }
+    }
+    return days
+  }
+
   function addPerson(resourceId: string) {
     if (!activeWeek || activeWeek.crew.find(m => m.personId === resourceId)) return
     const r = resources.find(x => x.id === resourceId); if (!r) return
-    setActiveWeek({ ...activeWeek, crew: [...activeWeek.crew, { personId: r.id, name: r.name, role: r.role || '', wbs: r.wbs || activeWeek.wbs || '', days: {} as Record<string, DayEntry>, mealBreakAdj: false }] })
+    const preDays = buildPreDays(r, activeWeek.week_start)
+    setActiveWeek({ ...activeWeek, crew: [...activeWeek.crew, { personId: r.id, name: r.name, role: r.role || '', wbs: r.wbs || activeWeek.wbs || '', days: preDays, mealBreakAdj: false }] })
+  }
+
+  function bulkAddByScope(scope: 'onsite' | 'all') {
+    if (!activeWeek) return
+    const weekEnd = days[days.length - 1]
+    const inCrew = new Set(activeWeek.crew.map(m => m.personId))
+    const candidates = resources.filter(r => {
+      if (inCrew.has(r.id)) return false
+      if (getTsRoleType(r) !== type && !(type === 'subcon' && r.category === 'subcontractor')) return false
+      if (scope === 'onsite') {
+        const mobIn = (r as Resource & {mob_in?:string|null}).mob_in
+        const mobOut = (r as Resource & {mob_out?:string|null}).mob_out
+        if (!mobIn) return false
+        return mobIn <= weekEnd && (!mobOut || mobOut >= activeWeek.week_start)
+      }
+      return true
+    })
+    if (!candidates.length) { toast(`No ${scope === 'onsite' ? 'on-site' : ''} ${TYPE_LABELS[type]} to add`, 'info'); setBulkAddModal(false); return }
+    const newCrew = [...activeWeek.crew, ...candidates.map(r => ({
+      personId: r.id, name: r.name, role: r.role || '', wbs: r.wbs || activeWeek.wbs || '',
+      days: buildPreDays(r, activeWeek.week_start), mealBreakAdj: false
+    }))]
+    setActiveWeek({ ...activeWeek, crew: newCrew })
+    setBulkAddModal(false)
+    toast(`Added ${candidates.length} ${scope === 'onsite' ? 'on-site ' : ''}${TYPE_LABELS[type]}`, 'success')
   }
 
   function removePerson(personId: string) {
@@ -473,12 +589,21 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
                             </label>
                             </div>
-                            {(scopeMode === 'work_orders' || scopeMode === 'nrg_tce') && (() => {
+                            {scopeMode === 'work_orders' && workOrders.length > 0 && (() => {
                               const allocs = ((raw.woAllocations as {woId:string;woNumber:string;hours:number}[]) || []).filter(a=>a.hours>0)
                               return (
                                 <button onClick={() => openWoAlloc(member.personId, d, cellHrs, member.name)}
                                   style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#7c3aed' : 'var(--border2)'}`, background: allocs.length ? 'rgba(124,58,237,0.08)' : 'transparent', color: allocs.length ? '#7c3aed' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
                                   {allocs.length ? `📋 ${allocs.length} WO${allocs.length > 1 ? 's' : ''}` : '📋 WOs'}
+                                </button>
+                              )
+                            })()}
+                            {scopeMode === 'nrg_tce' && (() => {
+                              const allocs = ((raw.nrgWoAllocations as {key:string;label:string;hours:number}[]) || []).filter(a=>a.hours>0)
+                              return (
+                                <button onClick={() => openTceAlloc(member.personId, d, cellHrs, member.name)}
+                                  style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#be185d' : 'var(--border2)'}`, background: allocs.length ? 'rgba(244,114,182,0.08)' : 'transparent', color: allocs.length ? '#be185d' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
+                                  {allocs.length ? `🎯 ${allocs.length} scope${allocs.length > 1 ? 's' : ''}` : '🎯 TCE'}
                                 </button>
                               )
                             })()}
@@ -520,10 +645,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           })()}
 
           {/* Add person + save */}
-          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <select className="input" style={{ maxWidth: '280px' }} value="" onChange={e => { if (e.target.value) { addPerson(e.target.value); (e.target as HTMLSelectElement).value = '' } }}>
-              <option value="">+ Add person to this week...</option>
-              {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` (${r.role})` : ''}</option>)}
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-sm" style={{ background: TYPE_COLOR[type], color: '#fff' }} onClick={() => setBulkAddModal(true)}>
+              👥 Add {TYPE_LABELS[type]}
+            </button>
+            <select className="input" style={{ maxWidth: '240px', fontSize: '12px' }} value="" onChange={e => { if (e.target.value) { addPerson(e.target.value); (e.target as HTMLSelectElement).value = '' } }}>
+              <option value="">+ Add individual...</option>
+              {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` — ${r.role}` : ''}</option>)}
             </select>
             <button className="btn btn-primary" onClick={() => saveWeek(activeWeek)}>💾 Save</button>
           </div>
@@ -630,6 +758,119 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             <div className="modal-footer">
               <button className="btn" onClick={() => setWoAllocModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveWoAlloc}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Add People Modal */}
+      {bulkAddModal && activeWeek && (
+        <div className="modal-overlay" onClick={() => setBulkAddModal(false)}>
+          <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>👥 Add {TYPE_LABELS[type]} to Week</h3>
+              <button className="btn btn-sm" onClick={() => setBulkAddModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '16px' }}>
+                Week of <strong>{activeWeek.week_start}</strong>
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(() => {
+                  const weekEnd = days[days.length - 1]
+                  const inCrew = new Set(activeWeek.crew.map(m => m.personId))
+                  const forType = resources.filter(r => getTsRoleType(r) === type && !inCrew.has(r.id))
+                  const onSite = forType.filter(r => {
+                    const mobIn = (r as Resource & {mob_in?:string|null}).mob_in
+                    const mobOut = (r as Resource & {mob_out?:string|null}).mob_out
+                    return mobIn && mobIn <= weekEnd && (!mobOut || mobOut >= activeWeek.week_start)
+                  })
+                  return (<>
+                    <button style={{ padding: '14px 18px', border: '2px solid var(--accent)', borderRadius: '8px', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                      onMouseOver={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLButtonElement).style.color = '#fff' }}
+                      onMouseOut={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '' }}
+                      onClick={() => bulkAddByScope('onsite')}>
+                      <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '3px' }}>
+                        🟢 On Site During This Week
+                        <span style={{ float: 'right', fontFamily: 'var(--mono)', color: 'var(--accent)', fontSize: '12px' }}>{onSite.length} people</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
+                        {TYPE_LABELS[type]} whose mob-in/mob-out dates overlap this week
+                      </div>
+                      {onSite.length > 0
+                        ? <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '4px' }}>{onSite.slice(0,5).map(r=>r.name).join(', ')}{onSite.length>5?` +${onSite.length-5} more`:''}</div>
+                        : <div style={{ fontSize: '10px', color: 'var(--amber)', marginTop: '4px' }}>None available — check mob-in/mob-out dates</div>}
+                    </button>
+                    <button style={{ padding: '14px 18px', border: '2px solid var(--border2)', borderRadius: '8px', background: 'var(--bg3)', cursor: 'pointer', textAlign: 'left' }}
+                      onMouseOver={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--border)' }}
+                      onMouseOut={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg3)' }}
+                      onClick={() => bulkAddByScope('all')}>
+                      <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '3px' }}>
+                        👥 All {TYPE_LABELS[type]}
+                        <span style={{ float: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{forType.length} people</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text2)' }}>Add everyone in {TYPE_LABELS[type]} category regardless of dates</div>
+                    </button>
+                  </>)
+                })()}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setBulkAddModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TCE Scope Allocation Modal */}
+      {tceAllocModal && (
+        <div className="modal-overlay" onClick={() => setTceAllocModal(null)}>
+          <div className="modal" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>🎯 TCE Scopes — {tceAllocModal.name} ({tceAllocModal.date})</h3>
+              <button className="btn btn-sm" onClick={() => setTceAllocModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                Shift: <strong style={{ fontFamily: 'var(--mono)' }}>{tceAllocModal.hours}h</strong>. Allocate to TCE scopes or Work Orders.
+              </p>
+              {tceAllocRows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+                  <select className="input" style={{ flex: 1, fontSize: '12px' }} value={r.key}
+                    onChange={e => {
+                      const opt = getTceOptions().find(o => o.key === e.target.value)
+                      setTceAllocRows(rows => rows.map((x, j) => j === i ? { ...x, key: e.target.value, label: opt?.label || '' } : x))
+                    }}>
+                    <option value="">Select scope...</option>
+                    {getTceOptions().map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                  <input type="number" className="input" style={{ width: '68px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '13px' }}
+                    value={r.hours || ''} min={0} max={tceAllocModal.hours} step={0.5} placeholder="h"
+                    onChange={e => setTceAllocRows(rows => rows.map((x, j) => j === i ? { ...x, hours: parseFloat(e.target.value) || 0 } : x))} />
+                  <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => setTceAllocRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+              <button className="btn btn-sm" style={{ marginBottom: '12px' }} onClick={() => setTceAllocRows(rows => [...rows, { key: '', label: '', hours: 0 }])}>+ Add Scope</button>
+              {(() => {
+                const total = tceAllocRows.reduce((s, r) => s + (r.hours || 0), 0)
+                const diff = tceAllocModal.hours - total
+                const over = diff < -0.01
+                return (
+                  <div style={{ padding: '8px 12px', background: 'var(--bg3)', borderRadius: '6px', display: 'flex', gap: '16px', fontSize: '12px' }}>
+                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>SHIFT</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{tceAllocModal.hours}h</div></div>
+                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>ALLOCATED</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: '#be185d' }}>{total.toFixed(1)}h</div></div>
+                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{over ? 'OVER' : 'REMAINING'}</div>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: over ? 'var(--red)' : diff > 0.01 ? 'var(--amber)' : 'var(--green)' }}>
+                        {over ? `+${Math.abs(diff).toFixed(1)}h` : diff.toFixed(1)+'h'}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setTceAllocModal(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ background: '#be185d' }} onClick={saveTceAlloc}>Save</button>
             </div>
           </div>
         </div>
