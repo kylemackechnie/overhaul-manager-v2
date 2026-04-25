@@ -62,6 +62,7 @@ import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
 import { SitesPanel } from './pages/settings/SitesPanel'
+import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
 import { WODashboard } from './pages/site/WODashboard'
@@ -174,6 +175,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'calendar':              return <CalendarPanel />
     case 'gantt':                 return <GanttPanel />
     case 'project-settings':      return <ProjectSettingsPanel />
+    case 'pre-planning':          return <PrePlanningPanel />
     case 'wbs-list':              return <WBSPanel />
     case 'public-holidays':       return <PublicHolidaysPanel />
     case 'variations':            return <VariationsPanel />
