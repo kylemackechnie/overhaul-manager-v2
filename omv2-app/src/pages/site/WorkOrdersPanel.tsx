@@ -37,6 +37,13 @@ export function WorkOrdersPanel() {
     setLoading(false)
   }
 
+  async function cycleStatus(wo: WorkOrder) {
+    const order = ['open','in_progress','on_hold','complete','cancelled']
+    const cur = order.indexOf(wo.status); const next = order[(cur + 1) % order.length]
+    await supabase.from('work_orders').update({ status: next }).eq('id', wo.id)
+    load()
+  }
+
   function openNew() { setForm(EMPTY); setModal('new') }
   function openEdit(wo: WorkOrder) {
     setForm({ wo_number:wo.wo_number, description:wo.description, status:wo.status,
@@ -125,7 +132,7 @@ export function WorkOrdersPanel() {
                   <tr key={wo.id}>
                     <td style={{ fontFamily:'var(--mono)', fontWeight:600 }}>{wo.wo_number}</td>
                     <td style={{ maxWidth:'240px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{wo.description||'—'}</td>
-                    <td><span className="badge" style={sc}>{wo.status.replace('_',' ')}</span></td>
+                    <td><span className="badge" style={{...sc,cursor:'pointer'}} title="Click to advance status" onClick={()=>cycleStatus(wo)}>{wo.status.replace('_',' ')}</span></td>
                     <td style={{ fontFamily:'var(--mono)', fontSize:'11px', color:'var(--text3)' }}>{wo.wbs_code||'—'}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontSize:'12px' }}>{wo.budget_hours??'—'}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontSize:'12px' }}>

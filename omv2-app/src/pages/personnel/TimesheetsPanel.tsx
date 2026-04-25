@@ -140,6 +140,12 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     toast('Week duplicated', 'success'); load()
   }
 
+  function getNextMon(weekStart: string): string {
+    const d = new Date(weekStart + 'T12:00:00')
+    d.setDate(d.getDate() + 7)
+    return getMon(d.toISOString().slice(0, 10))
+  }
+
   async function saveWeek(week: WeeklyTimesheet) {
     const { error } = await supabase.from('weekly_timesheets').update({
       crew: week.crew, regime: week.regime, status: week.status, wbs: week.wbs, notes: week.notes,
@@ -200,6 +206,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         <div style={{ display: 'flex', gap: '8px' }}>
           {activeWeek && <>
             <button className="btn" onClick={() => { saveWeek(activeWeek); setActiveWeek(null) }}>💾 Save & Close</button>
+            <button className="btn btn-sm" onClick={async () => {
+              await saveWeek(activeWeek)
+              const nextWk = getNextMon(activeWeek.week_start)
+              const existing = sheets.find(s => s.week_start === nextWk && s.type === activeWeek.type)
+              if (existing) { setActiveWeek(existing); return }
+              // Create next week with same crew (no hours)
+              const newWeek = { ...activeWeek, id: undefined, week_start: nextWk, crew: activeWeek.crew.map(m => ({ ...m, days: {} })) }
+              const { data, error } = await supabase.from('weekly_timesheets').insert({ project_id: activeProject!.id, week_start: nextWk, type: activeWeek.type, regime: activeWeek.regime, wbs: activeWeek.wbs, notes: '', vendor: activeWeek.vendor || '', crew: newWeek.crew, status: 'draft' }).select('*').single()
+              if (!error && data) { load(); setActiveWeek(data as WeeklyTimesheet) }
+            }}>⏭ Next Week</button>
             <button className="btn btn-sm" onClick={() => setShowPayrollImport(true)}>📥 Import Payroll</button>
             <button className="btn" onClick={() => setActiveWeek(null)}>← All Weeks</button>
           </>}

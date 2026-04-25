@@ -291,7 +291,14 @@ export function SparePartsPanel() {
         <div className="card" style={{marginBottom:'12px',padding:'12px 16px',background:'#fffbeb',borderLeft:'4px solid var(--amber)'}}>
           <p style={{fontSize:'13px',margin:0}}>Enter quantities received for each part. Location is optional — enter where the part has been stored on site (e.g. TV482, Crate 3, Workshop).</p>
         </div>
-        <input className="input" style={{maxWidth:'280px',marginBottom:'12px'}} placeholder="Search parts to receive..." value={recvSearch} onChange={e=>setRecvSearch(e.target.value)} />
+        <div style={{display:'flex',gap:'8px',marginBottom:'12px',alignItems:'center'}}>
+          <input className="input" style={{maxWidth:'280px'}} placeholder="Search parts to receive..." value={recvSearch} onChange={e=>setRecvSearch(e.target.value)} />
+          <button className="btn btn-sm" onClick={() => {
+            const all: Record<string,number> = {}
+            pendingRecv.forEach(p => { all[p.id] = p.qty_required - p.qty_received })
+            setRecvQty(all)
+          }}>✓ Fill All Qtys</button>
+        </div>
         {receivable.length===0 ? (
           <div className="empty-state"><div className="icon">✅</div><h3>All parts received</h3><p>No parts pending receipt.</p></div>
         ) : (

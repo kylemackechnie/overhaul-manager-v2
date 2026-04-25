@@ -50,6 +50,16 @@ export function InvoicesPanel() {
     setLoading(false)
   }
 
+  async function cycleStatus(inv: Invoice) {
+    const order = ['received','checked','approved','paid','disputed']
+    const cur = order.indexOf(inv.status)
+    const next = order[(cur + 1) % order.length]
+    const historyEntry = { to: next, by: currentUser?.name || '', byEmail: currentUser?.email || '', at: new Date().toISOString() }
+    const history = [...(inv.status_history as typeof historyEntry[] || []), historyEntry]
+    await supabase.from('invoices').update({ status: next, status_history: history }).eq('id', inv.id)
+    load()
+  }
+
   function openNew() { setForm({ ...EMPTY }); setModal('new') }
   function openEdit(inv: Invoice) {
     setForm({
@@ -250,7 +260,7 @@ export function InvoicesPanel() {
                   <tr key={inv.id}>
                     <td style={{fontFamily:'var(--mono)',fontWeight:500,fontSize:'12px'}}>{inv.invoice_number || '—'}</td>
                     <td style={{fontSize:'12px',color:'var(--text2)'}}>{po ? `${po.po_number||''} ${po.vendor||''}`.trim() : '—'}</td>
-                    <td><span className="badge" style={sc}>{inv.status}</span></td>
+                    <td><span className="badge" style={{...sc,cursor:'pointer'}} title="Click to advance status" onClick={()=>cycleStatus(inv)}>{inv.status}</span></td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',fontWeight:600}}>{fmtMoney(inv.amount)}</td>
                     <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{inv.invoice_date || '—'}</td>
                     <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>

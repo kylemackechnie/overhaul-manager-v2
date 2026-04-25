@@ -38,6 +38,13 @@ export function VariationsPanel() {
     setLoading(false)
   }
 
+  async function cycleStatus(v: Variation) {
+    const order = ['draft','submitted','approved','rejected']
+    const cur = order.indexOf(v.status); const next = order[(cur + 1) % order.length]
+    await supabase.from('variations').update({ status: next }).eq('id', v.id)
+    load()
+  }
+
   function openNew() {
     const nextNum = 'VN-' + String(variations.length + 1).padStart(3, '0')
     setForm({ ...EMPTY, number: nextNum, lines: [mkLine()] })
