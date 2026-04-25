@@ -114,7 +114,7 @@ export function DashboardPanel() {
     // Parts
     const partsTotal = parts.length
     const partsReceived = parts.filter(p => p.status === 'received' || p.status === 'issued').length
-    const partsIssued = (wosData.data || []).filter(p => p.status === 'issued').length
+    const partsIssued = (partsData.data || []).filter((p: {status?:string}) => p.status === 'issued').length
 
     // Subcon
     const openRfqs = (subconData.data || []).filter(c => c.status === 'draft' || c.status === 'pending').length
