@@ -30,7 +30,7 @@ export function CalendarPanel() {
     const pid = activeProject!.id
     const ev: CalEvent[] = []
 
-    const [resData, hireData, shipData, varData, invData, accomData, carsData] = await Promise.all([
+    const [resData, hireData, shipData, varData, invData, accomData, carsData, projTvData, globalTvData] = await Promise.all([
       supabase.from('resources').select('name,mob_in,mob_out').eq('project_id',pid),
       supabase.from('hire_items').select('name,start_date,end_date,hire_type').eq('project_id',pid),
       supabase.from('shipments').select('reference,eta,shipped_date,direction').eq('project_id',pid),
@@ -38,6 +38,8 @@ export function CalendarPanel() {
       supabase.from('invoices').select('invoice_number,invoice_date').eq('project_id',pid),
       supabase.from('accommodation').select('property,room,check_in,check_out').eq('project_id',pid),
       supabase.from('cars').select('vehicle_type,rego,start_date,end_date').eq('project_id',pid),
+      supabase.from('project_tvs').select('tv_no').eq('project_id',pid),
+      supabase.from('global_tvs').select('tv_no,header_name,departure_date,eta_pod').order('tv_no'),
     ])
 
     // Resources mob in/out
@@ -67,6 +69,15 @@ export function CalendarPanel() {
     // Invoices
     for (const i of invData.data||[]) {
       if (i.invoice_date) ev.push({ date:i.invoice_date, label:`INV ${i.invoice_number||'—'}`, module:'invoices', color:MOD_COLORS.invoices, panel:'invoices' })
+    }
+
+    // TV departure and ETA events
+    const projTvNos = new Set((projTvData.data||[]).map((t: {tv_no:number}) => t.tv_no))
+    for (const tv of (globalTvData.data||[]) as {tv_no:number;header_name:string|null;departure_date:string|null;eta_pod:string|null}[]) {
+      if (!projTvNos.has(tv.tv_no)) continue
+      const tvLabel = `TV${tv.tv_no}${tv.header_name ? ' — ' + tv.header_name : ''}`
+      if (tv.departure_date) ev.push({ date:tv.departure_date, label:`✈ ${tvLabel}`, module:'tooling', color:'#0891b2', panel:'tooling-tvs', sub:'Departure' })
+      if (tv.eta_pod) ev.push({ date:tv.eta_pod, label:`📦 ${tvLabel}`, module:'tooling', color:'#059669', panel:'tooling-tvs', sub:'ETA POD' })
     }
 
     // Accommodation
