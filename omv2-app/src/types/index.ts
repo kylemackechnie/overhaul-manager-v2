@@ -416,28 +416,16 @@ export interface ToolingCosting {
 // ─── NRG ─────────────────────────────────────────────────────────────────────
 
 export interface NrgTceLine {
-  id: string
-  project_id: string
-  item_id: string | null
-  wbs_code: string
-  description: string
-  category: string
-  source: 'overhead' | 'skilled'
-  tce_total: number
-  forecast_enabled: boolean
-  forecast_type: string | null
-  forecast_subtype: string | null
-  forecast_date_from: string | null
-  forecast_date_to: string | null
-  forecast_resources: string[]
-  hire_links: string[]
+  id: string; project_id: string
+  item_id: string | null; wbs_code: string; description: string
+  category: string; source: 'overhead' | 'skilled'
+  tce_total: number; tce_rate: number; estimated_qty: number; unit_type: string
+  work_order: string; contract_scope: string; line_type: string; kpi_included: boolean
+  forecast_enabled: boolean; forecast_type: string | null
+  forecast_date_from: string | null; forecast_date_to: string | null
+  forecast_resources: unknown[]; hire_links: unknown[]
   details: Record<string, unknown>
-  work_order: string | null
-  contract_scope: string | null
-  line_type: string | null
-  kpi_included: boolean
-  created_at: string
-  updated_at: string
+  created_at: string; updated_at: string
 }
 
 // ─── Other ────────────────────────────────────────────────────────────────────

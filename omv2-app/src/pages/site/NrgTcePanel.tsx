@@ -193,7 +193,7 @@ export function NrgTcePanel() {
     filtered = filtered.filter(l => {
       if (!isGroupHeader(l.item_id)) return true
       const prefix = (l.item_id || '') + '.'
-      return [...liveIds].some(id => id.startsWith(prefix))
+      return [...liveIds].some((id: string | null) => (id || '').startsWith(prefix))
     })
   }
 
