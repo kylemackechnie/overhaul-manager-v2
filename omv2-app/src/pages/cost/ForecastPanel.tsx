@@ -4,9 +4,9 @@ import { useAppStore } from '../../store/appStore'
 import { buildForecast, weekKey, bucketTotal } from '../../engines/forecastEngine'
 import type { ForecastData } from '../../engines/forecastEngine'
 import { downloadCSV } from '../../lib/csv'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from 'recharts'
 
-interface WeekRow { week: string; trades: number; mgmt: number; seag: number; hire: number; tooling: number; cars: number; accom: number; total: number }
+interface WeekRow { week: string; trades: number; mgmt: number; seag: number; hire: number; tooling: number; cars: number; accom: number; total: number; actual?: number }
 
 const COLORS = { trades:'#6366f1', mgmt:'#0891b2', seag:'#f59e0b', hire:'#f97316', tooling:'#0891b2', cars:'#be185d', accom:'#7c3aed' }
 
@@ -18,6 +18,7 @@ export function ForecastPanel() {
   const [weekRows, setWeekRows] = useState<WeekRow[]>([])
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState<'cost'|'sell'>('sell')
+  const [actuals, setActuals] = useState<Record<string,number>>({})
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -25,7 +26,7 @@ export function ForecastPanel() {
     setLoading(true)
     const pid = activeProject!.id
 
-    const [resData, rcData, boData, hireData, carData, acData, tcData] = await Promise.all([
+    const [resData, rcData, boData, hireData, carData, acData, tcData, invData] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('back_office_hours').select('*').eq('project_id', pid),
@@ -33,7 +34,17 @@ export function ForecastPanel() {
       supabase.from('cars').select('*').eq('project_id', pid),
       supabase.from('accommodation').select('*').eq('project_id', pid),
       supabase.from('tooling_costings').select('*').eq('project_id', pid),
+      supabase.from('invoices').select('amount,invoice_date,status').eq('project_id', pid),
     ])
+
+    // Group invoice actuals by week
+    const actualsByWk: Record<string,number> = {}
+    for (const inv of (invData.data || []) as {amount:number;invoice_date:string|null;status:string}[]) {
+      if (!inv.invoice_date || inv.status === 'rejected') continue
+      const wk = weekKey(inv.invoice_date)
+      actualsByWk[wk] = (actualsByWk[wk] || 0) + (inv.amount || 0)
+    }
+    setActuals(actualsByWk)
 
     const stdHours = activeProject!.std_hours as { day: Record<string,number>; night: Record<string,number> } || { day:{}, night:{} }
     const publicHolidays = (activeProject!.public_holidays as {date:string}[]) || []
@@ -166,7 +177,7 @@ export function ForecastPanel() {
           <div className="card" style={{ marginBottom:'20px' }}>
             <div style={{ fontWeight:600, marginBottom:'12px', fontSize:'13px' }}>Weekly {mode === 'sell' ? 'Revenue' : 'Cost'} by Category</div>
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={weekRows} margin={{ top:4, right:16, left:0, bottom:4 }}>
+              <ComposedChart data={weekRows} margin={{ top:4, right:16, left:0, bottom:4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="week" tick={{ fontSize:10 }} tickFormatter={w => w.slice(5)} />
                 <YAxis tickFormatter={fmt} tick={{ fontSize:10 }} />
@@ -179,7 +190,8 @@ export function ForecastPanel() {
                 <Bar dataKey="tooling" name="Tooling" stackId="a" fill={COLORS.tooling} />
                 <Bar dataKey="cars" name="Cars" stackId="a" fill={COLORS.cars} />
                 <Bar dataKey="accom" name="Accommodation" stackId="a" fill={COLORS.accom} />
-              </BarChart>
+                <Line type="monotone" dataKey="actual" name="Actuals (invoiced)" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
             </ResponsiveContainer>
           </div>
 
