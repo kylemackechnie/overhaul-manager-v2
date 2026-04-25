@@ -48,6 +48,7 @@ export function ResourcesPanel() {
   const [modal, setModal] = useState<null|'new'|Resource>(null)
   const [form, setForm] = useState<Partial<Resource>>(EMPTY)
   const [saving, setSaving] = useState(false)
+
   const [importing, setImporting] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [importText, setImportText] = useState('')

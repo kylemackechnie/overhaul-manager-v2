@@ -34,6 +34,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectSiteId, setNewProjectSiteId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     // Session is guaranteed by App.tsx before this component renders
@@ -166,7 +167,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
   // Main: project cards
   function renderMain() {
-    let filteredProjects: Project[]
+  let filteredProjects: Project[]
     let siteTitle: string
     let siteColourHex: string
     let site: Site | null = null
@@ -187,6 +188,16 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
     return (
       <div className="picker-main">
+        <div style={{padding:'10px 16px 0'}}>
+          <input
+            className="input"
+            style={{width:'100%',fontSize:'13px',marginBottom:'4px'}}
+            placeholder="Search projects..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            autoFocus={false}
+          />
+        </div>
         <div className="picker-main-header">
           <div className="picker-site-hero">
             <div className="picker-site-icon" style={{ background: siteColourHex + '22' }}>🏭</div>
@@ -231,6 +242,16 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   function renderAllSites() {
     return (
       <div className="picker-main">
+        <div style={{padding:'10px 16px 0'}}>
+          <input
+            className="input"
+            style={{width:'100%',fontSize:'13px',marginBottom:'4px'}}
+            placeholder="Search projects..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            autoFocus={false}
+          />
+        </div>
         <div className="picker-main-header">
           <div>
             <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>All Sites</div>

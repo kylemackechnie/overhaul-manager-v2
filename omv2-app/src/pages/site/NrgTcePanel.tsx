@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
+import { downloadTemplate } from '../../lib/templates'
 import type { NrgTceLine } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
@@ -168,6 +169,7 @@ export function NrgTcePanel() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-sm" onClick={() => downloadTemplate('nrg_tce')}>⬇ Template</button>
           <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
             {importing ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📥'} Import XLSX
             <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportFile} />

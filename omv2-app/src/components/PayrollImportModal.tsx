@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toast } from './ui/Toast'
+import { downloadTemplate } from '../lib/templates'
 import type { WeeklyTimesheet } from '../types'
 
 declare const XLSX: {
@@ -230,7 +231,8 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
             <div style={{ border: '2px dashed var(--border2)', borderRadius: '8px', padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '24px', marginBottom: '8px' }}>📋</div>
               <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>UKG / Kronos</div>
-              <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '10px' }}>CSV payroll export with Employee Id, First Name, Last Name rows</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '8px' }}>CSV payroll export with Employee Id, First Name, Last Name rows</div>
+              <button className="btn btn-sm" style={{marginBottom:'6px',display:'block'}} onClick={()=>downloadTemplate('payroll')}>⬇ Template</button>
               <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
                 {importing ? <span className="spinner" style={{ width: '12px', height: '12px' }} /> : '📂'} Choose File
                 <input type="file" accept=".csv" style={{ display: 'none' }}
