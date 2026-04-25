@@ -17,12 +17,13 @@ const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
   disputed:{bg:'#fee2e2',color:'#7f1d1d'},
 }
 
-const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', currency:'AUD', invoice_date:'', period_from:'', period_to:'', notes:'' }
+const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', currency:'AUD', invoice_date:'', period_from:'', period_to:'', notes:'', tce_item_id:'' }
 
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [tceLines, setTceLines] = useState<{id:string;item_id:string|null;description:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Invoice>(null)
   const [form, setForm] = useState(EMPTY)
@@ -44,17 +45,19 @@ export function InvoicesPanel() {
     ])
     setInvoices((invData.data || []) as Invoice[])
     setPos((poData.data || []) as PurchaseOrder[])
+    const tceRes = await supabase.from('nrg_tce_lines').select('id,item_id,description').eq('project_id',pid).order('item_id')
+    setTceLines((tceRes.data||[]) as {id:string;item_id:string|null;description:string}[])
     setLoading(false)
   }
 
-  function openNew() { setForm(EMPTY); setModal('new') }
+  function openNew() { setForm({ ...EMPTY }); setModal('new') }
   function openEdit(inv: Invoice) {
     setForm({
       po_id: inv.po_id || '', invoice_number: inv.invoice_number,
       vendor_ref: inv.vendor_ref, amount: inv.amount.toString(),
       currency: inv.currency, invoice_date: inv.invoice_date || '',
       period_from: inv.period_from || '', period_to: inv.period_to || '',
-      notes: inv.notes,
+      notes: inv.notes, tce_item_id: inv.tce_item_id || '',
     })
     setModal(inv)
   }
@@ -72,6 +75,7 @@ export function InvoicesPanel() {
       period_from: form.period_from || null,
       period_to: form.period_to || null,
       notes: form.notes,
+      tce_item_id: form.tce_item_id || null,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('invoices').insert({
@@ -381,6 +385,15 @@ export function InvoicesPanel() {
                   <input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} />
                 </div>
               </div>
+              {tceLines.length > 0 && (
+                <div className="fg">
+                  <label>NRG TCE Line <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— optional, counts as actuals in KPI/Actuals</span></label>
+                  <select className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))}>
+                    <option value="">— No TCE Link —</option>
+                    {tceLines.map(l=><option key={l.id} value={l.id}>{l.item_id||''} — {l.description}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="fg">
                 <label>Notes</label>
                 <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} />
