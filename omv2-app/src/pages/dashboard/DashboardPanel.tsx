@@ -318,17 +318,28 @@ export function DashboardPanel() {
             )}
           </div>
 
-          {/* Forecast snapshot */}
+          {/* Forecast snapshot — first 5 upcoming weeks */}
           <div className="card" style={{ padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div style={{ fontWeight: 700, fontSize: '13px' }}>Forecast Snapshot</div>
               <button className="btn btn-sm" onClick={() => setActivePanel('cost-forecast')}>Full Forecast →</button>
             </div>
-            <div style={{ color: 'var(--text3)', fontSize: '12px', padding: '12px 0' }}>
-              Open the full forecast to see week-by-week cost projections.
-              <br /><br />
-              <button className="btn btn-sm" onClick={() => setActivePanel('cost-forecast')}>View Forecast</button>
-            </div>
+            {d && d.forecastWeeks && ((d.forecastWeeks as unknown) as {week:string;hc:number;cost:number;sell:number;gm:number}[]).slice(0, 5).map((w, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border)', fontSize: '12px' }}>
+                <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)', fontSize: '11px' }}>{w.week}</span>
+                <span style={{ color: 'var(--mod-hr)', fontSize: '11px' }}>HC {w.hc}</span>
+                <span style={{ fontFamily: 'var(--mono)' }}>{fmt(w.cost)}</span>
+                <span style={{ fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmt(w.sell)}</span>
+                <span style={{ fontSize: '10px', color: w.gm >= 15 ? 'var(--green)' : 'var(--amber)' }}>{w.gm.toFixed(0)}%</span>
+              </div>
+            ))}
+            {d && (!d.forecastWeeks || ((d.forecastWeeks as unknown) as unknown[]).length === 0) && (
+              <div style={{ color: 'var(--text3)', fontSize: '12px', padding: '12px 0' }}>
+                No forecast data yet — add resources with mob dates and open the full forecast.
+                <br /><br />
+                <button className="btn btn-sm" onClick={() => setActivePanel('cost-forecast')}>View Forecast</button>
+              </div>
+            )}
           </div>
         </div>
 
