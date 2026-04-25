@@ -30,7 +30,7 @@ export function CalendarPanel() {
     const pid = activeProject!.id
     const ev: CalEvent[] = []
 
-    const [resData, hireData, shipData, varData, invData, accomData, carsData, projTvData, globalTvData] = await Promise.all([
+    const [resData, hireData, shipData, varData, invData, accomData, carsData, projTvData, globalTvData, toolingData] = await Promise.all([
       supabase.from('resources').select('name,mob_in,mob_out').eq('project_id',pid),
       supabase.from('hire_items').select('name,start_date,end_date,hire_type').eq('project_id',pid),
       supabase.from('shipments').select('reference,eta,shipped_date,direction').eq('project_id',pid),
@@ -40,6 +40,7 @@ export function CalendarPanel() {
       supabase.from('cars').select('vehicle_type,rego,start_date,end_date').eq('project_id',pid),
       supabase.from('project_tvs').select('tv_no').eq('project_id',pid),
       supabase.from('global_tvs').select('tv_no,header_name,departure_date,eta_pod').order('tv_no'),
+      supabase.from('tooling_costings').select('tv_no,charge_start,charge_end').eq('project_id',pid),
     ])
 
     // Resources mob in/out
@@ -50,8 +51,8 @@ export function CalendarPanel() {
 
     // Hire items
     for (const h of hireData.data||[]) {
-      if (h.start_date) ev.push({ date:h.start_date, label:`${h.name||'Hire'}`, module:'hire', color:MOD_COLORS.hire, panel:`hire-${h.hire_type}`, sub:'Hire starts' })
-      if (h.end_date) ev.push({ date:h.end_date, label:`${h.name||'Hire'} end`, module:'hire', color:'#fdba74', panel:`hire-${h.hire_type}`, sub:'Hire ends' })
+      if (h.start_date) ev.push({ date:h.start_date, label:`🚜 ${h.name||'Hire'} on-hire`, module:'hire', color:MOD_COLORS.hire, panel:`hire-${h.hire_type}`, sub:'On hire' })
+      if (h.end_date) ev.push({ date:h.end_date, label:`🚜 ${h.name||'Hire'} off-hire`, module:'hire', color:'#fdba74', panel:`hire-${h.hire_type}`, sub:'Off hire' })
     }
 
     // Shipments
@@ -69,6 +70,13 @@ export function CalendarPanel() {
     // Invoices
     for (const i of invData.data||[]) {
       if (i.invoice_date) ev.push({ date:i.invoice_date, label:`INV ${i.invoice_number||'—'}`, module:'invoices', color:MOD_COLORS.invoices, panel:'invoices' })
+    }
+
+    // TV tooling charge period events (5.3)
+    const chargePeriods = (toolingData.data||[]) as {tv_no:string;charge_start:string|null;charge_end:string|null}[]
+    for (const tc of chargePeriods) {
+      if (tc.charge_start) ev.push({ date:tc.charge_start, label:`🔩 TV${tc.tv_no} rental starts`, module:'tooling', color:'#7c3aed', panel:'tooling-tvs', sub:'Charge period starts' })
+      if (tc.charge_end) ev.push({ date:tc.charge_end, label:`🔩 TV${tc.tv_no} rental ends`, module:'tooling', color:'#c4b5fd', panel:'tooling-tvs', sub:'Charge period ends' })
     }
 
     // TV departure and ETA events

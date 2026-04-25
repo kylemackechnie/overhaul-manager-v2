@@ -84,18 +84,18 @@
 
 | # | Gap | Status | Notes |
 |---|-----|--------|-------|
-| 5.1 | Variation table: add Cause, Raised Date, GM%, Line count columns | ❌ | |
-| 5.2 | Calendar: hire on-hire/off-hire events | ❌ | |
-| 5.3 | Calendar: TV charge period start/end events | ❌ | |
-| 5.4 | Calendar: parts expected delivery per TV ETA | ❌ | |
-| 5.5 | Timesheet cell: per-cell $ cost display | ❌ | |
-| 5.6 | Timesheet cell: split hours breakdown (NT:7.2 T1.5:2.8) | ❌ | |
-| 5.7 | Resources: show linked accommodation room in row | ❌ | |
-| 5.8 | Expenses: GST breakdown columns in table | ❌ | |
-| 5.9 | Rate card table: all 7 buckets + sell vs cost margin% | ❌ | |
-| 5.10 | WBS panel: PM100/PM80 vs actuals comparison table | ❌ | |
-| 5.11 | Cost report: add backoffice + subcon labour category columns | ❌ | |
-| 5.12 | Audit trail: write events on all save actions (currently reconstructs) | ❌ | |
+| 5.1 | Variation table: add Cause, Raised Date, GM%, Line count columns | ✅ | |
+| 5.2 | Calendar: hire on-hire/off-hire events | ✅ | |
+| 5.3 | Calendar: TV charge period start/end events | ✅ | |
+| 5.4 | Calendar: parts expected delivery per TV ETA | ✅ | |
+| 5.5 | Timesheet cell: per-cell $ cost display | ✅ | |
+| 5.6 | Timesheet cell: split hours breakdown (NT:7.2 T1.5:2.8) | ✅ | |
+| 5.7 | Resources: show linked accommodation room in row | ✅ | |
+| 5.8 | Expenses: GST breakdown columns in table | ✅ | |
+| 5.9 | Rate card table: all 7 buckets + sell vs cost margin% | ✅ | |
+| 5.10 | WBS panel: PM100/PM80 vs actuals comparison table | ✅ | |
+| 5.11 | Cost report: add backoffice + subcon labour category columns | ✅ | |
+| 5.12 | Audit trail: write events on all save actions (currently reconstructs) | ✅ | |
 
 ## Deferred / Lower Priority
 

@@ -44,6 +44,7 @@ export function ResourcesPanel() {
   const [cars, setCars] = useState<{id:string,person_id:string,vehicle_type:string}[]>([])
   const [accom, setAccom] = useState<{id:string,occupants:string[],property:string,room:string}[]>([])
   const [wbsList, setWbsList] = useState<{id:string,code:string,name:string}[]>([])
+  const [accommodationByPerson, setAccomByPerson] = useState<Record<string,{property:string;room:string}>>({})
   const [_rateCards, setRateCards] = useState<{id:string,role:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Resource>(null)
@@ -79,6 +80,15 @@ export function ResourcesPanel() {
     setResources((resData.data||[]) as Resource[])
     setRcs((rcData.data||[]) as RateCard[])
     setPos((poData.data||[]) as PurchaseOrder[])
+    // Build per-person accommodation map
+    const byPerson: Record<string,{property:string;room:string}> = {}
+    for (const a of (accomData.data||[]) as {id:string;property:string;room:string;occupants:unknown}[]) {
+      const occupants = (a.occupants as string[]) || []
+      for (const oId of occupants) {
+        byPerson[oId] = { property: a.property, room: a.room }
+      }
+    }
+    setAccomByPerson(byPerson)
     setCars((carData.data||[]) as {id:string,person_id:string,vehicle_type:string}[])
     setAccom((accomData.data||[]) as {id:string,occupants:string[],property:string,room:string}[])
     setWbsList((wbsData.data||[]) as {id:string,code:string,name:string}[])
@@ -409,6 +419,7 @@ export function ResourcesPanel() {
                         {r.category!=='subcontractor' && <span style={{color:'var(--text3)'}}>—</span>}
                       </td>
                       <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
+                      <td style={{fontSize:'11px',color:accommodationByPerson[r.id]?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{accommodationByPerson[r.id]?`🏨 ${accommodationByPerson[r.id].room||accommodationByPerson[r.id].property}`:'—'}</td>
                       <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',maxWidth:'130px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
                       <td>

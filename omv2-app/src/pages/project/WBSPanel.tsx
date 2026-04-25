@@ -10,6 +10,7 @@ export function WBSPanel() {
   const { activeProject } = useAppStore()
   const [items, setItems] = useState<WbsItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [wbsActuals, setWbsActuals] = useState<Record<string,number>>({})
   const [modal, setModal] = useState<null | 'new' | WbsItem>(null)
   const [form, setForm] = useState({ code: '', name: '', pm100: '', pm80: '' })
   const [saving, setSaving] = useState(false)
@@ -42,6 +43,7 @@ export function WBSPanel() {
     const actualMap: Record<string,number> = {}
     for (const row of rows as WbsCostRow[]) { if (row.code && row.total) actualMap[row.code] = row.total }
     setActuals(actualMap)
+    setWbsActuals(actualMap)
     setLoading(false)
   }
 
@@ -280,6 +282,43 @@ export function WBSPanel() {
           </div>
         </div>
       )}
+      {items.some(w => w.pm100 || w.pm80) && (
+        <div className="card" style={{marginTop:'16px',padding:0,overflow:'hidden'}}>
+          <div style={{padding:'10px 14px',fontWeight:600,fontSize:'13px',borderBottom:'1px solid var(--border)'}}>
+            MIKA Budget vs Actuals
+          </div>
+          <table>
+            <thead><tr>
+              <th>WBS Code</th><th>Description</th>
+              <th style={{textAlign:'right'}}>PM80</th>
+              <th style={{textAlign:'right'}}>PM100</th>
+              <th style={{textAlign:'right'}}>Actuals</th>
+              <th style={{textAlign:'right'}}>Variance</th>
+              <th style={{textAlign:'right'}}>% Spent</th>
+            </tr></thead>
+            <tbody>
+              {items.filter(w=>w.pm100||w.pm80).map(w=>{
+                const act = wbsActuals[w.code]||0
+                const budget = w.pm100||w.pm80||0
+                const variance = budget - act
+                const pct = budget>0?(act/budget*100):null
+                return (
+                  <tr key={w.id}>
+                    <td style={{fontFamily:'var(--mono)',fontSize:'12px',fontWeight:500}}>{w.code}</td>
+                    <td style={{color:'var(--text2)'}}>{w.name}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{w.pm80?`$${Number(w.pm80).toLocaleString()}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{w.pm100?`$${Number(w.pm100).toLocaleString()}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--green)'}}>{act>0?`$${act.toLocaleString()}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:variance<0?'var(--red)':'var(--green)'}}>{budget>0?(variance>=0?'+':'')+`$${Math.abs(variance).toLocaleString()}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:pct===null?'var(--text3)':pct>100?'var(--red)':pct>85?'var(--amber)':'var(--text2)'}}>{pct!==null?pct.toFixed(1)+'%':'—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
     </div>
   )
 }

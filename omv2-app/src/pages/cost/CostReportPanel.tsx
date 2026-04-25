@@ -43,7 +43,7 @@ export function CostReportPanel() {
   function exportCSV() {
     const lines = ['WBS Code,Description,Labour Trades,Labour Mgmt,Labour SE AG,Hire,Cars,Accommodation,Tooling,Total Cost,Total Sell,Margin %']
     rows.forEach(r => {
-      lines.push([r.code,r.name,r.labourTrades,r.labourMgmt,r.labourSeag,r.hire,r.cars,r.accom,r.tooling,r.total,r.totalSell,r.margin?.toFixed(1)||''].join(','))
+      lines.push([r.code,r.name,r.labourTrades,r.labourMgmt,r.labourSeag,(r as typeof r & {labourSubcon?:number}).labourSubcon||0,(r as typeof r & {backoffice?:number}).backoffice||0,r.hire,r.cars,r.accom,r.tooling,r.total,r.totalSell,r.margin?.toFixed(1)||''].join(','))
     })
     lines.push(['','TOTAL','','','','','','','',grandTotal,grandSell,grandMargin?.toFixed(1)||''].join(','))
     const blob = new Blob([lines.join('\n')], { type:'text/csv' })
@@ -121,7 +121,7 @@ export function CostReportPanel() {
                   <tr key={r.code}>
                     <td style={{ fontFamily:'var(--mono)', fontSize:'11px', fontWeight:500, whiteSpace:'nowrap' }}>{r.code}</td>
                     <td style={{ color:'var(--text2)', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</td>
-                    {[r.labourTrades, r.labourMgmt, r.labourSeag, r.hire, r.cars, r.accom, r.tooling].map((v, i) => (
+                    {[r.labourTrades, r.labourMgmt, r.labourSeag, (r as typeof r & {labourSubcon?:number}).labourSubcon||0, (r as typeof r & {backoffice?:number}).backoffice||0, r.hire, r.cars, r.accom, r.tooling].map((v, i) => (
                       <td key={i} style={{ textAlign:'right', fontFamily:'var(--mono)', color: v > 0 ? undefined : 'var(--text3)' }}>{v > 0 ? fmt(v) : '—'}</td>
                     ))}
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:600 }}>{fmt(r.total)}</td>
@@ -135,6 +135,8 @@ export function CostReportPanel() {
                     rows.reduce((s,r)=>s+r.labourTrades,0),
                     rows.reduce((s,r)=>s+r.labourMgmt,0),
                     rows.reduce((s,r)=>s+r.labourSeag,0),
+                    rows.reduce((s,r)=>s+((r as typeof r & {labourSubcon?:number}).labourSubcon??0),0),
+                    rows.reduce((s,r)=>s+((r as typeof r & {backoffice?:number}).backoffice??0),0),
                     rows.reduce((s,r)=>s+r.hire,0),
                     rows.reduce((s,r)=>s+r.cars,0),
                     rows.reduce((s,r)=>s+r.accom,0),

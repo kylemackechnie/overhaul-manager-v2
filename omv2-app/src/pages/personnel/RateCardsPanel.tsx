@@ -159,7 +159,6 @@ export function RateCardsPanel() {
             </thead>
             <tbody>
               {filtered.map(rc => {
-                const cost = rc.rates?.cost as Record<string,number> || {}
                 const catStyles: Record<string,{bg:string,color:string}> = {
                   trades:{bg:'#dbeafe',color:'#1e40af'}, management:{bg:'#d1fae5',color:'#065f46'},
                   seag:{bg:'#fef3c7',color:'#92400e'}, subcontractor:{bg:'#f3e8ff',color:'#6b21a8'},
@@ -167,15 +166,18 @@ export function RateCardsPanel() {
                 const cs = catStyles[rc.category] || {bg:'#f1f5f9',color:'#64748b'}
                 return (
                   <tr key={rc.id}>
-                    <td style={{fontWeight:500}}>{rc.role}</td>
-                    <td><span className="badge" style={cs}>{rc.category}</span></td>
-                    <td style={{color:'var(--text3)',fontSize:'12px'}}>{rc.subcon_vendor || '—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>${(cost.dnt||0).toFixed(2)}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>${(cost.nnt||0).toFixed(2)}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>
-                      ${isMgmtCat(rc.category) ? (rc.fsa_cost||0).toFixed(2) : (rc.laha_cost||0).toFixed(2)}
-                    </td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>${(rc.meal_cost||0).toFixed(2)}</td>
+                    <td style={{fontWeight:500}}>{rc.role}{rc.subcon_vendor&&<div style={{fontSize:'10px',color:'var(--text3)'}}>{rc.subcon_vendor}</div>}</td>
+                    <td><span className="badge" style={cs}>{rc.category.slice(0,4)}</span></td>
+                    {(['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const).map(b=>{
+                      const s=(rc.rates as {sell:Record<string,number>})?.sell?.[b]||0
+                      const co=(rc.rates as {cost:Record<string,number>})?.cost?.[b]||0
+                      const gm=s>0?((s-co)/s*100):null
+                      return <td key={b} style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>
+                        {s>0?<><div>${s.toFixed(2)}</div>{gm!==null&&<div style={{fontSize:'9px',color:'var(--green)'}}>{gm.toFixed(0)}%</div>}</>:'—'}
+                      </td>
+                    })}
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>{isMgmtCat(rc.category)?`$${(rc.fsa_sell||0).toFixed(0)}`:`$${(rc.laha_sell||0).toFixed(0)}`}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>${(rc.meal_sell||0).toFixed(0)}</td>
                     <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={() => openEdit(rc)}>Edit</button>
                       <button className="btn btn-sm" style={{marginLeft:'4px'}} title="Duplicate" onClick={() => duplicate(rc)}>⧉</button>
