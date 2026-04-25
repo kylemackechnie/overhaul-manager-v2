@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { PayrollImportModal } from '../../components/PayrollImportModal'
 import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry } from '../../types'
 
 type TsType = 'trades' | 'mgmt' | 'seag' | 'subcon'
@@ -82,6 +83,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [showNewModal, setShowNewModal] = useState(false)
   const [newForm, setNewForm] = useState({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
   const [saving, setSaving] = useState(false)
+  const [showPayrollImport, setShowPayrollImport] = useState(false)
   const catMap: Record<TsType, string[]> = { trades: ['trades', 'subcontractor'], mgmt: ['management'], seag: ['seag'], subcon: ['subcontractor'] }
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, type])
@@ -198,6 +200,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         <div style={{ display: 'flex', gap: '8px' }}>
           {activeWeek && <>
             <button className="btn" onClick={() => { saveWeek(activeWeek); setActiveWeek(null) }}>💾 Save & Close</button>
+            <button className="btn btn-sm" onClick={() => setShowPayrollImport(true)}>📥 Import Payroll</button>
             <button className="btn" onClick={() => setActiveWeek(null)}>← All Weeks</button>
           </>}
           <button className="btn btn-primary" onClick={() => setShowNewModal(true)}>+ New Week</button>
@@ -426,6 +429,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             </div>
           </div>
         </div>
+      )}
+      {showPayrollImport && activeWeek && (
+        <PayrollImportModal
+          activeWeek={activeWeek}
+          onUpdate={(updated) => setActiveWeek(updated)}
+          onClose={() => setShowPayrollImport(false)}
+        />
       )}
     </div>
   )
