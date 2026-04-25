@@ -58,6 +58,18 @@ export function SparePartsPanel() {
   const [issueWO, setIssueWO] = useState('')
   const [issueTo, setIssueTo] = useState('')
   const [issueSaving, setIssueSaving] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkStatus, setBulkStatus] = useState('')
+  const [bulkSaving, setBulkSaving] = useState(false)
+
+  async function applyBulkStatus() {
+    if (!bulkStatus || selected.size === 0) return
+    setBulkSaving(true)
+    const { error } = await supabase.from('wosit_lines').update({ status: bulkStatus }).in('id', [...selected])
+    if (error) { toast(error.message, 'error'); setBulkSaving(false); return }
+    toast(`Updated ${selected.size} parts to ${bulkStatus}`, 'success')
+    setSelected(new Set()); setBulkStatus(''); setBulkSaving(false); load()
+  }
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -249,7 +261,7 @@ export function SparePartsPanel() {
                   const ss=STATUS_STYLE[p.status]||STATUS_STYLE.required
                   const needsAttn = p.qty_received < p.qty_required && p.status!=='not_required'
                   return (
-                    <tr key={p.id} style={{background:needsAttn?'rgba(251,191,36,0.04)':''}}>
+                    <tr key={p.id} style={{background:isSel?'rgba(var(--accent-rgb,59,130,246),0.05)':'transparent'}} style={{background:needsAttn?'rgba(251,191,36,0.04)':''}}>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{p.item_no||'—'}</td>
                       <td style={{fontWeight:500,maxWidth:'220px'}}><div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.description}</div>
                         {p.install_location&&<div style={{fontSize:'10px',color:'var(--text3)'}}>{p.install_location}</div>}

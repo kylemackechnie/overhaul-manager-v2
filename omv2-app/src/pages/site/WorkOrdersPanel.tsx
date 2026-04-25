@@ -88,6 +88,28 @@ export function WorkOrdersPanel() {
         <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><button className="btn btn-primary" onClick={openNew}>+ New WO</button></div>
       </div>
 
+      {!loading && wos.length > 0 && (() => {
+        const open = wos.filter(w => w.status === 'open' || w.status === 'in_progress').length
+        const done = wos.filter(w => w.status === 'complete').length
+        const budgetHrs = wos.reduce((s, w) => s + (Number(w.budget_hours) || 0), 0)
+        const actualHrs = wos.reduce((s, w) => s + (w.actual_hours || 0), 0)
+        const pct = budgetHrs > 0 ? Math.min(100, Math.round(actualHrs / budgetHrs * 100)) : 0
+        return (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'10px', marginBottom:'14px' }}>
+            {[
+              { label:'Total WOs', value:wos.length, color:'var(--accent)' },
+              { label:'In Progress', value:open, color:'var(--amber)' },
+              { label:'Complete', value:done, color:'var(--green)' },
+              { label:'Hours Used', value:`${actualHrs}/${budgetHrs}h (${pct}%)`, color: pct > 100 ? 'var(--red)' : 'var(--text)' },
+            ].map(t => (
+              <div key={t.label} className="card" style={{padding:'12px',borderTop:`3px solid ${t.color}`}}>
+                <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:t.color}}>{t.value}</div>
+                <div style={{fontSize:'11px',marginTop:'2px'}}>{t.label}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
       {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
       : wos.length===0 ? (
         <div className="empty-state"><div className="icon">📋</div><h3>No work orders</h3><p>Add work orders to track job scope.</p></div>
@@ -107,8 +129,10 @@ export function WorkOrdersPanel() {
                     <td style={{ fontFamily:'var(--mono)', fontSize:'11px', color:'var(--text3)' }}>{wo.wbs_code||'—'}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontSize:'12px' }}>{wo.budget_hours??'—'}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontSize:'12px' }}>
-                      {wo.actual_hours||0}
-                      {pct!=null && <span style={{ fontSize:'10px', color: pct>100?'var(--red)':'var(--text3)', marginLeft:'4px' }}>({pct}%)</span>}
+                      <div>{wo.actual_hours||0}h{pct!=null && <span style={{ fontSize:'10px', color: pct>100?'var(--red)':'var(--text3)', marginLeft:'4px' }}>({pct}%)</span>}</div>
+                      {pct!=null && <div style={{background:'var(--border2)',borderRadius:'2px',height:'3px',marginTop:'3px',overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${Math.min(100,pct)}%`,background:pct>100?'var(--red)':pct>80?'var(--amber)':'var(--green)',borderRadius:'2px'}}/>
+                      </div>}
                     </td>
                     <td style={{ whiteSpace:'nowrap' }}>
                       <button className="btn btn-sm" onClick={() => openEdit(wo)}>Edit</button>
