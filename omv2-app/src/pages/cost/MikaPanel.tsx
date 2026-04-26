@@ -92,7 +92,7 @@ export function MikaPanel() {
 
       const dbLines: MikaLine[] = rows.map((r, i) => {
         const result = actualsResults[i]
-        const actuals = result.status === 'fulfilled' && result.value.data !== null
+        const actuals = result.status === 'fulfilled' && result.value && result.value.data !== null && result.value.data !== undefined
           ? Number(result.value.data) : 0
         return {
           wbs: r.wbs, desc: r.description, level: r.level||1,
