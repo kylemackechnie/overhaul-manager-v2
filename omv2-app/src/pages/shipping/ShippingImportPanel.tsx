@@ -390,56 +390,74 @@ export function ShippingImportPanel() {
     const selected = tvParsed.filter(t => t.selected)
     if (!selected.length) { toast('Select at least one TV', 'error'); return }
     const pid = activeProject.id
+    const siteId = (activeProject as typeof activeProject & { site_id?: string }).site_id || null
 
-    // Insert tooling_tvs — check existing first to avoid conflict issues
-    const { data: existingTVs } = await supabase.from('tooling_tvs')
-      .select('tv_no').eq('project_id', pid)
-    const existingSet = new Set((existingTVs || []).map(t => (t as { tv_no: number }).tv_no))
+    let tvAdded = 0, tvUpdated = 0, shipmentsCreated = 0
 
-    const toInsert = selected.filter(tv => !existingSet.has(tv.tvNo)).map(tv => ({
-      project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName || null,
-      replacement_value: tv.replacementValue || null, po_number: tv.poNumber || null,
-      departure: tv.departure || null, eta: tv.eta || null,
-      hawb: tv.hawb || null, mawb: tv.mawb || null,
-    }))
-    const toUpdate = selected.filter(tv => existingSet.has(tv.tvNo))
-
-    if (toInsert.length) {
-      const { error: insErr } = await supabase.from('tooling_tvs').insert(toInsert)
-      if (insErr) { toast('Error saving TVs: ' + insErr.message, 'error'); return }
-    }
-    for (const tv of toUpdate) {
-      await supabase.from('tooling_tvs').update({
-        header_name: tv.headerName, replacement_value: tv.replacementValue,
-        departure: tv.departure || null, eta: tv.eta || null,
-        hawb: tv.hawb, mawb: tv.mawb,
-      }).eq('project_id', pid).eq('tv_no', tv.tvNo)
-    }
-
-    // Upsert shipment records
-    let shipmentsCreated = 0
     for (const tv of selected) {
+      const tvNoStr = String(tv.tvNo)
+
+      // 1. Upsert into global_tvs
+      const { data: existingGlobal } = await supabase.from('global_tvs')
+        .select('id').eq('tv_no', tvNoStr).maybeSingle()
+
+      if (existingGlobal) {
+        await supabase.from('global_tvs').update({
+          header_name: tv.headerName || null,
+          replacement_value_eur: tv.replacementValue || null,
+          departure_date: tv.departure || null,
+          eta_pod: tv.eta || null,
+          hawb: tv.hawb || null,
+          mawb: tv.mawb || null,
+        }).eq('id', (existingGlobal as { id: string }).id)
+        tvUpdated++
+      } else {
+        await supabase.from('global_tvs').insert({
+          tv_no: tvNoStr,
+          header_name: tv.headerName || null,
+          replacement_value_eur: tv.replacementValue || null,
+          departure_date: tv.departure || null,
+          eta_pod: tv.eta || null,
+          hawb: tv.hawb || null,
+          mawb: tv.mawb || null,
+          site_id: siteId,
+          imported_by_project_id: pid,
+        })
+        tvAdded++
+      }
+
+      // 2. Link to project in project_tvs (PK is project_id + tv_no)
+      const { data: existingLink } = await supabase.from('project_tvs')
+        .select('project_id').eq('project_id', pid).eq('tv_no', tvNoStr).maybeSingle()
+      if (!existingLink) {
+        await supabase.from('project_tvs').insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId })
+      }
+
+      // 3. Create import shipment record
       const ref = `TV${tv.tvNo}`
-      const { data: existing } = await supabase.from('shipments').select('id').eq('project_id', pid).eq('reference', ref).eq('direction','import').maybeSingle()
-      if (!existing) {
+      const { data: existingShip } = await supabase.from('shipments')
+        .select('id').eq('project_id', pid).eq('reference', ref).eq('direction', 'import').maybeSingle()
+      if (!existingShip) {
         const status = tv.eta && tv.eta <= today ? 'delivered' : 'in_transit'
         await supabase.from('shipments').insert({
           project_id: pid, direction: 'import', ship_type: tv.shipType,
           reference: ref, description: tv.headerName || ref,
-          hawb: tv.hawb, mawb: tv.mawb, eta: tv.eta || null,
+          hawb: tv.hawb || null, mawb: tv.mawb || null, eta: tv.eta || null,
           status, notes: tv.poNumber ? `PO: ${tv.poNumber}` : '',
           origin: 'Germany',
         })
         shipmentsCreated++
       } else {
         await supabase.from('shipments').update({
-          eta: tv.eta || null, hawb: tv.hawb,
-          description: tv.headerName,
-        }).eq('id', (existing as { id: string }).id)
+          eta: tv.eta || null, hawb: tv.hawb || null,
+          description: tv.headerName, ship_type: tv.shipType,
+        }).eq('id', (existingShip as { id: string }).id)
       }
     }
 
-    toast(`✓ ${selected.length} TVs imported — ${shipmentsCreated} shipments created`, 'success')
+    const toolCount = selected.filter(t => t.shipType === 'tooling').length
+    const hwCount = selected.filter(t => t.shipType === 'hardware').length
+    toast(`✓ ${selected.length} TVs imported (${toolCount} tooling, ${hwCount} hardware) — ${tvAdded} new, ${tvUpdated} updated, ${shipmentsCreated} shipments created`, 'success')
     setTVParsed([]); setTVStatus('')
     loadSummary()
   }
@@ -502,17 +520,38 @@ export function ShippingImportPanel() {
         })
       }
 
-      // Upsert into tooling_kollos
-      const kolloRows = kollos.map(k => ({
-        project_id: pid, tv_no: k.tvNo,
-        kollo_id: k.kolloId || null, crate_no: k.crateNo, vb_no: k.vbNo,
-        gross_kg: k.grossKg, net_kg: k.netKg,
-        length_cm: k.lengthCm, width_cm: k.widthCm, height_cm: k.heightCm, vol_m3: k.volM3,
-        pack_items: k.packItems, dangerous_goods: k.dangerousGoods,
-        dg_name: k.dgName, dg_class: k.dgClass,
-      }))
-      const { error: kErr } = await supabase.from('tooling_kollos').insert(kolloRows)
-      if (kErr) { setKolloStatus(`❌ Error: ${kErr.message}`); return }
+      // Write to global_kollos + project_kollos
+      let kAdded = 0
+      for (const k of kollos) {
+        const tvNoStr = String(k.tvNo)
+        const kolloKey = k.kolloId ? `k_${k.kolloId}` : `k_${k.tvNo}_${k.crateNo}_${k.vbNo}`
+
+        // Upsert global_kollos by kollo_id (unique key)
+        const { data: existingKollo } = await supabase.from('global_kollos')
+          .select('id').eq('kollo_id', kolloKey).maybeSingle()
+
+        if (!existingKollo) {
+          await supabase.from('global_kollos').insert({
+            kollo_id: kolloKey, tv_no: tvNoStr, crate_no: k.crateNo || null,
+            vb_no: k.vbNo || null, gross_kg: k.grossKg || null, net_kg: k.netKg || null,
+            length_cm: k.lengthCm || null, width_cm: k.widthCm || null,
+            height_cm: k.heightCm || null, vol_m3: k.volM3 || null,
+            pack_items: k.packItems || null, delivery_package: k.crateNo || null,
+            dangerous_goods: k.dangerousGoods, dg_class: k.dgClass || null,
+          })
+          kAdded++
+        }
+
+        // Link to project in project_kollos
+        const { data: existingLink } = await supabase.from('project_kollos')
+          .select('project_id').eq('project_id', pid).eq('kollo_id', kolloKey).maybeSingle()
+        if (!existingLink) {
+          await supabase.from('project_kollos').insert({
+            project_id: pid, kollo_id: kolloKey, tv_no: k.tvNo,
+            site_id: (activeProject as typeof activeProject & { site_id?: string }).site_id || null,
+          })
+        }
+      }
 
       // Update shipment records with weight/package totals
       const kollosByTV: Record<number, ParsedKollo[]> = {}
@@ -532,7 +571,7 @@ export function ShippingImportPanel() {
         await supabase.from('shipments').update({ packages: pkgs, gross_kg: weight, has_dg: hasDg, dg_info: dgInfo }).eq('id', (s as { id: string }).id)
       }
 
-      setKolloStatus(`✓ ${kollos.length} packages imported. Shipment weights updated.`)
+      setKolloStatus(`✓ ${kAdded} packages imported. Shipment weights updated.`)
       loadSummary()
     } catch (err) {
       setKolloStatus(`❌ Error: ${(err as Error).message}`)
