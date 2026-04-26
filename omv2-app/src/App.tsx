@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { useAppStore } from './store/appStore'
+import { usePermissions, AccessDenied, type Module } from './lib/permissions'
 import { useAuth } from './hooks/useAuth'
 import { LoginPage } from './pages/LoginPage'
 import { Header } from './components/layout/Header'
@@ -85,6 +86,7 @@ import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
 import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
+import { UtilisationPanel } from './pages/personnel/UtilisationPanel'
 import { MigrationPanel } from './pages/settings/MigrationPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
 import { HireReportsPanel } from './pages/hire/HireReportsPanel'
@@ -302,7 +304,43 @@ export default function App() {
   )
 }
 
+// Map panel prefixes to modules for permission checks
+const PANEL_MODULE_MAP: Record<string, Module> = {
+  'cost-':        'cost_tracking',
+  'purchase-':    'cost_tracking',
+  'invoices':     'cost_tracking',
+  'expenses':     'cost_tracking',
+  'sap-':         'cost_tracking',
+  'variations':   'cost_tracking',
+  'hr-':          'personnel',
+  'hire-':        'personnel',
+  'hse-':         'hse',
+  'subcon-':      'subcontractors',
+  'shipping-':    'logistics',
+  'hardware-':    'hardware',
+  'parts-':       'hardware',
+  'tooling-':     'tooling',
+  'global-':      'global',
+  'nrg-':         'site_specific',
+  'wo-':          'site_specific',
+  'work-':        'site_specific',
+  'site-':        'site_specific',
+}
+
+function getPanelModule(panel: string): Module | null {
+  for (const [prefix, mod] of Object.entries(PANEL_MODULE_MAP)) {
+    if (panel.startsWith(prefix) || panel === prefix.replace('-','')) return mod
+  }
+  return null
+}
+
 function PanelRouter({ panel }: { panel: string }) {
+  const { canRead } = usePermissions()
+  const module = getPanelModule(panel)
+  // Check read permission — skip for settings/admin panels
+  if (module && !canRead(module)) {
+    return <AccessDenied module={module.replace('_', ' ')} />
+  }
   const p = (icon: string, title: string, sub?: string) => <PlaceholderPanel icon={icon} title={title} subtitle={sub} />
   switch (panel) {
     case 'dashboard':             return <DashboardPanel />
@@ -341,6 +379,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hr-timesheets-seag':    return <TimesheetsPanel key="seag" type="seag" />
     case 'hr-timesheets-subcon':  return <TimesheetsPanel key="subcon" type="subcon" />
     case 'hr-backoffice':         return <BackOfficePanel />
+    case 'hr-utilisation':        return <UtilisationPanel />
     case 'hr-cars':               return <CarsPanel />
     case 'hr-accommodation':      return <AccommodationPanel />
     case 'hire-dashboard':        return <HireDashboard />
