@@ -10,6 +10,8 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
+import type { RateCard, WeeklyTimesheet } from '../../types'
 import type { NrgTceLine, NrgCustomerInvoice, NrgInvoiceGroupingRule } from '../../types'
 
 const fmt = (n: number) => n === 0 ? '—' : '$' + Math.round(n).toLocaleString('en-AU')
@@ -47,6 +49,19 @@ export function NrgInvoicingPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
+    // Backfill: if no cost lines exist for this project, write them from approved timesheets
+    const { count } = await supabase.from('timesheet_cost_lines').select('id', { count: 'exact', head: true }).eq('project_id', pid)
+    if ((count || 0) === 0) {
+      const [tsRes, rcRes] = await Promise.all([
+        supabase.from('weekly_timesheets').select('*').eq('project_id', pid).eq('status', 'approved'),
+        supabase.from('rate_cards').select('*').eq('project_id', pid),
+      ])
+      const rcs = (rcRes.data || []) as RateCard[]
+      for (const ts of (tsRes.data || []) as WeeklyTimesheet[]) {
+        await writeTimesheetCostLines(ts, pid, rcs)
+      }
+    }
+
     const [linesRes, invRes, rulesRes, clRes, supInvRes, expRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
