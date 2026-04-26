@@ -16,6 +16,12 @@ type HireForm = {
   currency: string; transport_in: number; transport_out: number
   standby_rate: number; qty: number
   linked_po_id: string; notes: string
+  // Wet hire specific
+  rate_ds: number; rate_ns: number; rate_wds: number; rate_wns: number
+  rate_sdd: number; rate_sdn: number; daa_rate: number
+  crew: { name: string; role: string }[]
+  // Local hire specific
+  active_days: number | null
 }
 
 const EMPTY: HireForm = {
@@ -24,6 +30,8 @@ const EMPTY: HireForm = {
   hire_cost: 0, customer_total: 0, gm_pct: 15, daily_rate: 0, weekly_rate: 0, charge_unit: 'daily',
   currency: 'AUD', transport_in: 0, transport_out: 0, standby_rate: 0, qty: 1,
   linked_po_id: '', notes: '',
+  rate_ds: 0, rate_ns: 0, rate_wds: 0, rate_wns: 0, rate_sdd: 0, rate_sdn: 0, daa_rate: 0,
+  crew: [], active_days: null,
 }
 
 function daysBetween(a: string, b: string): number {
@@ -58,6 +66,9 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   const [saving, setSaving] = useState(false)
   const [hireSelected, setHireSelected] = useState<Set<string>>(new Set())
   const [bulkPoModal, setBulkPoModal] = useState(false)
+  // Wet hire shift calendar
+  const [calendarItem, setCalendarItem] = useState<HireItem | null>(null)
+  const [calendarData, setCalendarData] = useState<Record<string, Record<string, boolean>>>({}) // date → {ds,ns,...}
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, hireType])
 
@@ -78,7 +89,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
     setModal('new')
   }
   function openEdit(h: HireItem) {
-    const hi = h as HireItem & { daily_rate?: number; weekly_rate?: number; charge_unit?: string; transport_in?: number; transport_out?: number; standby_rate?: number; qty?: number }
+    const hi = h as HireItem & { daily_rate?: number; weekly_rate?: number; charge_unit?: string; transport_in?: number; transport_out?: number; standby_rate?: number; qty?: number; active_days?: number; daa_rate?: number; crew?: {name:string;role:string}[]; rates?: Record<string,number> }
     setForm({
       name: h.name, vendor: h.vendor, description: h.description,
       start_date: h.start_date || '', end_date: h.end_date || '',
@@ -88,6 +99,12 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       currency: h.currency, transport_in: hi.transport_in || 0, transport_out: hi.transport_out || 0,
       standby_rate: hi.standby_rate || 0, qty: hi.qty || 1,
       linked_po_id: h.linked_po_id || '', notes: h.notes,
+      // Wet hire rates
+      rate_ds: hi.rates?.ds || 0, rate_ns: hi.rates?.ns || 0,
+      rate_wds: hi.rates?.wds || 0, rate_wns: hi.rates?.wns || 0,
+      rate_sdd: hi.rates?.sdd || 0, rate_sdn: hi.rates?.sdn || 0,
+      daa_rate: hi.daa_rate || 0, crew: hi.crew || [],
+      active_days: hi.active_days ?? null,
     })
     setModal(h)
   }
@@ -121,6 +138,12 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       currency: form.currency, transport_in: form.transport_in, transport_out: form.transport_out,
       standby_rate: form.standby_rate || null,
       linked_po_id: form.linked_po_id || null, notes: form.notes,
+      // Wet hire specific
+      rates: hireType === 'wet' ? { ds: form.rate_ds, ns: form.rate_ns, wds: form.rate_wds, wns: form.rate_wns, sdd: form.rate_sdd, sdn: form.rate_sdn } : null,
+      daa_rate: hireType === 'wet' ? form.daa_rate : null,
+      crew: hireType === 'wet' ? form.crew : null,
+      // Local hire specific
+      active_days: hireType === 'local' ? (form.active_days ?? null) : null,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('hire_items').insert(payload)
@@ -148,6 +171,77 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   const days = daysBetween(form.start_date, form.end_date)
   const autoCost = autoCalcHireCost(form)
   const previewPeriods = form.charge_unit === 'weekly' ? Math.ceil(days / 7) : days
+
+  // Local hire: cost split between active (usage) and standby days
+  function calcLocalHireCost() {
+    if (!days) return null
+    const qty = form.qty || 1
+    const activeDays = form.active_days !== null && form.standby_rate > 0
+      ? Math.min(form.active_days ?? days, days) : days
+    const standbyDays = form.standby_rate > 0 ? days - activeDays : 0
+    const unit = form.charge_unit
+    const activePeriods = unit === 'weekly' ? Math.ceil(activeDays / 7) : activeDays
+    const standbyPeriods = unit === 'weekly' ? Math.ceil(standbyDays / 7) : standbyDays
+    const hireCost = (form.daily_rate * activePeriods + (form.standby_rate || 0) * standbyPeriods) * qty
+    return hireCost + (form.transport_in || 0) + (form.transport_out || 0)
+  }
+
+  // Wet hire: calc from calendar (for display in shift calendar modal)
+  const SHIFT_KEYS = ['ds','ns','wds','wns','sdd','sdn'] as const
+  type ShiftKey = typeof SHIFT_KEYS[number]
+  const SHIFT_LABELS: Record<ShiftKey, string> = { ds:'Day Shift', ns:'Night Shift', wds:'Weekend Day', wns:'Weekend Night', sdd:'Standdown DS', sdn:'Standdown NS' }
+  const SHIFT_COLORS: Record<ShiftKey, string> = { ds:'var(--accent)', ns:'#8b5cf6', wds:'var(--orange)', wns:'var(--red)', sdd:'#92400e', sdn:'#6b4c1e' }
+
+  function calcWetCostFromCalendar(cal: typeof calendarData, ratesOverride?: Partial<typeof form>): { shiftCost: number; daaCost: number; total: number } {
+    const r = ratesOverride || form
+    const rateMap: Record<string, number> = { ds: r.rate_ds||0, ns: r.rate_ns||0, wds: r.rate_wds||0, wns: r.rate_wns||0, sdd: r.rate_sdd||0, sdn: r.rate_sdn||0 }
+    let shiftCost = 0
+    let activeDays = 0
+    for (const shifts of Object.values(cal)) {
+      let dayHasShift = false
+      for (const k of SHIFT_KEYS) {
+        if (shifts[k]) { shiftCost += rateMap[k] || 0; dayHasShift = true }
+      }
+      if (dayHasShift) activeDays++
+    }
+    const crewCount = Math.max(1, (form.crew || []).length)
+    const daaCost = (r.daa_rate || 0) * crewCount * activeDays
+    const transCost = (r.transport_in || 0) + (r.transport_out || 0)
+    return { shiftCost, daaCost, total: shiftCost + daaCost + transCost }
+  }
+
+  function openCalendar(item: HireItem) {
+    setCalendarItem(item)
+    const cal: Record<string, Record<string, boolean>> = {}
+    const calendar = (item as HireItem & { calendar?: {date:string;shifts:Record<string,boolean>}[] }).calendar || []
+    for (const entry of calendar) { cal[entry.date] = { ...entry.shifts } }
+    setCalendarData(cal)
+  }
+
+  async function saveCalendar() {
+    if (!calendarItem) return
+    const calArray = Object.entries(calendarData)
+      .filter(([, shifts]) => SHIFT_KEYS.some(k => shifts[k]))
+      .map(([date, shifts]) => ({ date, shifts }))
+    const wetItem = calendarItem as HireItem & { calendar?: unknown[]; rates?: Record<string,number>; daa_rate?: number; crew?: {name:string;role:string}[]; transport_in?: number; transport_out?: number }
+    const ratesFromItem = { rate_ds: wetItem.rates?.ds||0, rate_ns: wetItem.rates?.ns||0, rate_wds: wetItem.rates?.wds||0, rate_wns: wetItem.rates?.wns||0, rate_sdd: wetItem.rates?.sdd||0, rate_sdn: wetItem.rates?.sdn||0, daa_rate: wetItem.daa_rate||0, transport_in: wetItem.transport_in||0, transport_out: wetItem.transport_out||0, crew: wetItem.crew||[] }
+    const { total } = calcWetCostFromCalendar(calendarData, ratesFromItem)
+    const customerTotal = calcCustomerPrice(total, calendarItem.gm_pct)
+    const { error } = await supabase.from('hire_items').update({
+      calendar: calArray, hire_cost: total, customer_total: customerTotal,
+    }).eq('id', calendarItem.id)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Shift calendar saved — costs updated', 'success')
+    setCalendarItem(null); load()
+  }
+
+  function toggleShift(date: string, key: ShiftKey, checked: boolean) {
+    setCalendarData(prev => {
+      const updated = { ...prev, [date]: { ...(prev[date] || {}), [key]: checked } }
+      if (!SHIFT_KEYS.some(k => updated[date][k])) { const { [date]: _, ...rest } = updated; return rest }
+      return updated
+    })
+  }
 
 
   async function bulkLinkPO(poId: string) {
@@ -222,6 +316,9 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{fmt(h.customer_total || 0)}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="btn btn-sm" onClick={() => openEdit(h)}>Edit</button>
+                        {hireType === 'wet' && (
+                          <button className="btn btn-sm" style={{ marginLeft: '4px', background: 'var(--amber)', color: '#fff', border: 'none' }} onClick={() => openCalendar(h)}>📅 Calendar</button>
+                        )}
                         <button className="btn btn-sm" style={{ marginLeft: '4px' }} title="Duplicate" onClick={() => duplicateItem(h)}>⧉</button>
                         <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(h)}>✕</button>
                       </td>
@@ -281,34 +378,122 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                 )}
               </div>
 
-              {/* Rate inputs */}
-              <div className="fg-row">
-                <div className="fg">
-                  <label>Charge Unit</label>
-                  <select className="input" value={form.charge_unit}
-                    onChange={e => setFormAndCalc(f => ({ ...f, charge_unit: e.target.value }))}>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="fixed">Fixed (lump sum)</option>
-                  </select>
+              {/* ── WET HIRE SPECIFIC ── */}
+              {hireType === 'wet' && (<>
+                <div style={{ padding: '10px 14px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '6px', fontSize: '11px', color: '#92400e', marginBottom: '4px' }}>
+                  💡 Wet hire is billed by shift. Enter rates below, then use <b>Shift Calendar</b> to assign days and auto-calculate costs.
                 </div>
-                {form.charge_unit !== 'fixed' && (
+                <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '6px' }}>Shift Rates ($/shift)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '8px', marginBottom: '8px' }}>
+                  {(['ds','ns','wds','wns','sdd','sdn'] as ShiftKey[]).map(k => (
+                    <div key={k}>
+                      <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px', color: SHIFT_COLORS[k] }}>{SHIFT_LABELS[k]}</label>
+                      <input type="number" className="input" min={0} value={(form[`rate_${k}` as keyof HireForm] as number) || ''}
+                        onChange={e => setForm(f => ({ ...f, [`rate_${k}`]: parseFloat(e.target.value)||0 }))}
+                        placeholder="$/shift" />
+                    </div>
+                  ))}
+                </div>
+                <div className="fg-row">
                   <div className="fg">
-                    <label>Daily Rate</label>
-                    <input type="number" className="input" value={form.daily_rate || ''}
-                      onChange={e => setFormAndCalc(f => ({ ...f, daily_rate: parseFloat(e.target.value) || 0 }))}
-                      placeholder="$/day" />
+                    <label>DAA per person per day ($)</label>
+                    <input type="number" className="input" min={0} value={form.daa_rate || ''}
+                      onChange={e => setForm(f => ({ ...f, daa_rate: parseFloat(e.target.value)||0 }))} placeholder="0" />
+                  </div>
+                  <div className="fg">
+                    <label>GM %</label>
+                    <input type="number" className="input" value={form.gm_pct} onChange={e => updateGm(parseFloat(e.target.value)||0)} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    Crew <button className="btn btn-sm" onClick={() => setForm(f => ({ ...f, crew: [...f.crew, { name:'', role:'' }] }))}>+ Add</button>
+                  </div>
+                  {form.crew.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                      <input className="input" placeholder="Name" value={c.name} onChange={e => setForm(f => ({ ...f, crew: f.crew.map((cr,j)=>j===i?{...cr,name:e.target.value}:cr) }))} />
+                      <input className="input" placeholder="Role (Operator, Dogman...)" value={c.role} onChange={e => setForm(f => ({ ...f, crew: f.crew.map((cr,j)=>j===i?{...cr,role:e.target.value}:cr) }))} />
+                      <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => setForm(f => ({ ...f, crew: f.crew.filter((_,j)=>j!==i) }))}>✕</button>
+                    </div>
+                  ))}
+                  {form.crew.length === 0 && <div style={{ fontSize: '11px', color: 'var(--text3)' }}>No crew — DAA charged for 1 person</div>}
+                </div>
+              </>)}
+
+              {/* ── DRY HIRE RATE FIELDS ── */}
+              {hireType === 'dry' && (
+                <div className="fg-row">
+                  <div className="fg">
+                    <label>Charge Unit</label>
+                    <select className="input" value={form.charge_unit} onChange={e => setFormAndCalc(f => ({ ...f, charge_unit: e.target.value }))}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="fixed">Fixed (lump sum)</option>
+                    </select>
+                  </div>
+                  {form.charge_unit !== 'fixed' && (
+                    <div className="fg">
+                      <label>Daily Rate</label>
+                      <input type="number" className="input" value={form.daily_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, daily_rate: parseFloat(e.target.value)||0 }))} placeholder="$/day" />
+                    </div>
+                  )}
+                  {form.charge_unit === 'weekly' && (
+                    <div className="fg">
+                      <label>Weekly Rate</label>
+                      <input type="number" className="input" value={form.weekly_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, weekly_rate: parseFloat(e.target.value)||0 }))} placeholder="Override" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── LOCAL HIRE RATE FIELDS ── */}
+              {hireType === 'local' && (<>
+                <div className="fg-row">
+                  <div className="fg">
+                    <label>Charge Unit</label>
+                    <select className="input" value={form.charge_unit} onChange={e => setFormAndCalc(f => ({ ...f, charge_unit: e.target.value }))}>
+                      <option value="daily">Daily</option><option value="weekly">Weekly</option>
+                    </select>
+                  </div>
+                  <div className="fg">
+                    <label>Usage Rate ($/day when active)</label>
+                    <input type="number" className="input" value={form.daily_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, daily_rate: parseFloat(e.target.value)||0 }))} placeholder="$/day" />
+                  </div>
+                  <div className="fg">
+                    <label>Standby Rate <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>($/day when idle)</span></label>
+                    <input type="number" className="input" value={form.standby_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, standby_rate: parseFloat(e.target.value)||0 }))} placeholder="0" />
+                  </div>
+                </div>
+                {form.standby_rate > 0 && (
+                  <div className="fg-row">
+                    <div className="fg">
+                      <label>Days Used (active) <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>of {days || '?'} total</span></label>
+                      <input type="number" className="input" min={0} max={days || undefined} value={form.active_days ?? ''}
+                        onChange={e => setFormAndCalc(f => ({ ...f, active_days: e.target.value===''?null:parseInt(e.target.value)||0 }))} placeholder={`All ${days||''} days`} />
+                    </div>
+                    <div className="fg" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Standby days: <b>{form.active_days!==null&&days>0?Math.max(0,days-(form.active_days??days)):0}</b></div>
+                    </div>
                   </div>
                 )}
-                {form.charge_unit === 'weekly' && (
-                  <div className="fg">
-                    <label>Weekly Rate</label>
-                    <input type="number" className="input" value={form.weekly_rate || ''}
-                      onChange={e => setFormAndCalc(f => ({ ...f, weekly_rate: parseFloat(e.target.value) || 0 }))}
-                      placeholder="Override weekly rate" />
-                  </div>
-                )}
-              </div>
+                {/* Local cost preview */}
+                {days > 0 && form.daily_rate > 0 && (() => {
+                  const c = calcLocalHireCost()
+                  if (!c) return null
+                  const activeDays = form.active_days !== null && form.standby_rate > 0 ? Math.min(form.active_days??days, days) : days
+                  const standbyDays = form.standby_rate > 0 ? days - activeDays : 0
+                  return (
+                    <div style={{ padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', marginTop: '4px' }}>
+                      <div style={{ fontWeight: 600, color: '#15803d', marginBottom: '4px' }}>📐 Auto-calculated cost</div>
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontFamily: 'var(--mono)' }}>
+                        <span>Active: {activeDays}d × ${form.daily_rate}/d = ${(activeDays * form.daily_rate * (form.qty||1)).toLocaleString()}</span>
+                        {standbyDays > 0 && <span>Standby: {standbyDays}d × ${form.standby_rate}/d = ${(standbyDays * form.standby_rate * (form.qty||1)).toLocaleString()}</span>}
+                        <span style={{ fontWeight: 700 }}>Total: ${c.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </>)}
 
               <div className="fg-row">
                 <div className="fg">
@@ -424,6 +609,106 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
           </div>
         </div>
       )}
+
+      {/* ── WET HIRE SHIFT CALENDAR MODAL ── */}
+      {calendarItem && (() => {
+        const item = calendarItem as HireItem & { rates?: Record<string,number>; daa_rate?: number; crew?: {name:string;role:string}[]; start_date?: string; end_date?: string; transport_in?: number; transport_out?: number }
+        const start = item.start_date ? new Date(item.start_date + 'T00:00:00') : new Date()
+        const end   = item.end_date   ? new Date(item.end_date   + 'T00:00:00') : new Date(start.getTime() + 30*86400000)
+        const dates: Date[] = []
+        const cur = new Date(start)
+        while (cur <= end) { dates.push(new Date(cur)); cur.setDate(cur.getDate()+1) }
+        const rateMap: Record<string,number> = { ds: item.rates?.ds||0, ns: item.rates?.ns||0, wds: item.rates?.wds||0, wns: item.rates?.wns||0, sdd: item.rates?.sdd||0, sdn: item.rates?.sdn||0 }
+        const { shiftCost, daaCost, total } = calcWetCostFromCalendar(calendarData, { rate_ds: item.rates?.ds||0, rate_ns: item.rates?.ns||0, rate_wds: item.rates?.wds||0, rate_wns: item.rates?.wns||0, rate_sdd: item.rates?.sdd||0, rate_sdn: item.rates?.sdn||0, daa_rate: item.daa_rate||0, transport_in: item.transport_in||0, transport_out: item.transport_out||0, crew: item.crew||[] })
+        const customerTotal = calcCustomerPrice(total, calendarItem.gm_pct)
+        const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+        return (
+          <div className="modal-overlay" onClick={() => setCalendarItem(null)}>
+            <div className="modal" style={{ maxWidth: '760px', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>📅 Shift Calendar — {item.name}</h3>
+                <button className="btn btn-sm" onClick={() => setCalendarItem(null)}>✕</button>
+              </div>
+              <div className="modal-body">
+                {/* Pattern shortcuts */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text3)', alignSelf: 'center' }}>Apply pattern:</span>
+                  {[
+                    { label: 'Standard (DS weekdays)', fn: () => { const d: typeof calendarData = {}; dates.forEach(dt => { const dow = dt.getDay(); const ds = dt.toISOString().slice(0,10); if (dow>0&&dow<6) d[ds]={ds:true,ns:false,wds:false,wns:false,sdd:false,sdn:false}; else if(dow===6) d[ds]={ds:false,ns:false,wds:true,wns:false,sdd:false,sdn:false} }); setCalendarData(d) }},
+                    { label: 'DS Only', fn: () => { const d: typeof calendarData = {}; dates.forEach(dt => { const dow=dt.getDay(); const ds=dt.toISOString().slice(0,10); d[ds]={ds:dow>0&&dow<6,ns:false,wds:dow===6,wns:false,sdd:false,sdn:false} }); setCalendarData(d) }},
+                    { label: 'DS+NS (24hr)', fn: () => { const d: typeof calendarData = {}; dates.forEach(dt => { const dow=dt.getDay(); const ds=dt.toISOString().slice(0,10); d[ds]={ds:dow>0&&dow<6,ns:dow>0&&dow<6,wds:dow===6,wns:dow===6,sdd:false,sdn:false} }); setCalendarData(d) }},
+                    { label: 'Clear All', fn: () => setCalendarData({}) },
+                  ].map(p => (
+                    <button key={p.label} className="btn btn-sm" onClick={p.fn} style={{ fontSize: '11px' }}>{p.label}</button>
+                  ))}
+                </div>
+
+                {/* Calendar table */}
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg3)' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '10px', fontFamily: 'var(--mono)', color: 'var(--text3)', whiteSpace: 'nowrap' }}>Date</th>
+                        {SHIFT_KEYS.map(k => (
+                          <th key={k} style={{ padding: '6px 8px', textAlign: 'center', fontSize: '10px', fontFamily: 'var(--mono)', color: SHIFT_COLORS[k], whiteSpace: 'nowrap' }}>
+                            {SHIFT_LABELS[k].split(' ')[0]}<br/><span style={{ fontSize: '9px' }}>${rateMap[k]||0}</span>
+                          </th>
+                        ))}
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '10px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>Day Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dates.map(dt => {
+                        const dateStr = dt.toISOString().slice(0,10)
+                        const dow = dt.getDay()
+                        const isWknd = dow===0||dow===6
+                        const shifts = calendarData[dateStr] || {}
+                        const dayCost = SHIFT_KEYS.reduce((s,k) => s + (shifts[k] ? (rateMap[k]||0) : 0), 0)
+                        return (
+                          <tr key={dateStr} style={{ background: isWknd ? 'rgba(234,179,8,0.05)' : 'transparent', borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '4px 8px', fontFamily: 'var(--mono)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                              <span style={{ color: dow===0 ? 'var(--red)' : isWknd ? 'var(--amber)' : 'var(--text2)', fontWeight: isWknd ? 600 : 400 }}>{DAY_NAMES[dow]}</span>
+                              <span style={{ color: 'var(--text3)', marginLeft: '6px' }}>{dt.toLocaleDateString('en-AU', { day:'2-digit', month:'2-digit' })}</span>
+                            </td>
+                            {SHIFT_KEYS.map(k => (
+                              <td key={k} style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                <input type="checkbox" checked={!!shifts[k]} style={{ accentColor: SHIFT_COLORS[k], width: '15px', height: '15px', cursor: 'pointer' }}
+                                  onChange={e => toggleShift(dateStr, k, e.target.checked)} />
+                              </td>
+                            ))}
+                            <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: dayCost ? 'var(--mod-hire,#f97316)' : 'var(--text3)', fontWeight: dayCost ? 600 : 400 }}>
+                              {dayCost ? `$${dayCost.toLocaleString()}` : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Calendar cost summary */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px', padding: '12px', background: 'var(--bg3)', borderRadius: '6px' }}>
+                  {[
+                    { label: 'Shift Cost', val: shiftCost, color: '#f97316' },
+                    { label: `DAA Cost (${Math.max(1,(item.crew||[]).length)} crew)`, val: daaCost, color: 'var(--text2)' },
+                    { label: 'Total Cost', val: total, color: '#f97316' },
+                    { label: 'Customer Price', val: customerTotal, color: 'var(--green)' },
+                  ].map(s => (
+                    <div key={s.label}>
+                      <div style={{ fontSize: '9px', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text3)', marginBottom: '2px' }}>{s.label}</div>
+                      <div style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--mono)', color: s.color }}>${Math.round(s.val).toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn" onClick={() => setCalendarItem(null)}>Close</button>
+                <button className="btn btn-primary" onClick={saveCalendar}>Save Calendar &amp; Update Costs</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

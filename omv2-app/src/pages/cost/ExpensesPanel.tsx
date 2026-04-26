@@ -115,8 +115,16 @@ export function ExpensesPanel() {
     setModal(e)
   }
 
-  function updateCost(cost: number) {
-    setForm(f => ({ ...f, cost_ex_gst: cost, sell_price: f.chargeable ? calcSell(cost, f.gm_pct) : 0 }))
+  // updateCost replaced by updateAmountInclGst / updateAmountExGst below
+
+  function updateAmountInclGst(incl: number) {
+    const exGst = incl > 0 ? parseFloat((incl / 1.1).toFixed(2)) : 0
+    setForm(f => ({ ...f, amount: incl, cost_ex_gst: exGst, sell_price: f.chargeable ? calcSell(exGst, f.gm_pct) : 0 }))
+  }
+
+  function updateAmountExGst(ex: number) {
+    const incl = ex > 0 ? parseFloat((ex * 1.1).toFixed(2)) : 0
+    setForm(f => ({ ...f, amount: incl, cost_ex_gst: ex, sell_price: f.chargeable ? calcSell(ex, f.gm_pct) : 0 }))
   }
 
   function updateGm(gm: number) {
@@ -281,12 +289,12 @@ export function ExpensesPanel() {
               </div>
               <div className="fg-row">
                 <div className="fg">
-                  <label>Receipt Amount (inc GST)</label>
-                  <input type="number" className="input" value={form.amount || ''} onChange={e => setForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))} placeholder="0.00" />
+                  <label>Receipt Amount (inc GST) <span style={{fontSize:'10px',color:'var(--text3)'}}>auto-fills ex GST</span></label>
+                  <input type="number" className="input" value={form.amount || ''} onChange={e => updateAmountInclGst(parseFloat(e.target.value) || 0)} placeholder="0.00" />
                 </div>
                 <div className="fg">
-                  <label>Cost (ex GST)</label>
-                  <input type="number" className="input" value={form.cost_ex_gst || ''} onChange={e => updateCost(parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                  <label>Cost (ex GST) <span style={{fontSize:'10px',color:'var(--text3)'}}>auto-fills inc GST</span></label>
+                  <input type="number" className="input" value={form.cost_ex_gst || ''} onChange={e => updateAmountExGst(parseFloat(e.target.value) || 0)} placeholder="0.00" />
                 </div>
                 <div className="fg">
                   <label>Currency</label>

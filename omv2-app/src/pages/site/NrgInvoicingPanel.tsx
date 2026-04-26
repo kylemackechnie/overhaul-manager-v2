@@ -37,19 +37,32 @@ export function NrgInvoicingPanel() {
   const [invForm, setInvForm] = useState({ label:'', invoice_number:'', week_ending:'', sent_date:'', notes:'' })
   const [rulesModal, setRulesModal] = useState(false)
   const [rulesForm, setRulesForm] = useState<{group_name:string;triggers_str:string}[]>([])
+  // For period-bounded actuals
+  const [timesheets, setTimesheets] = useState<Record<string,unknown>[]>([])
+  const [supplierInvoices, setSupplierInvoices] = useState<Record<string,unknown>[]>([])
+  const [expenseItems, setExpenseItems] = useState<Record<string,unknown>[]>([])
+  const [rateCards, setRateCards] = useState<Record<string,unknown>[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [linesRes, invRes, rulesRes] = await Promise.all([
+    const [linesRes, invRes, rulesRes, tsRes, supInvRes, expRes, rcRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
       supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
+      supabase.from('weekly_timesheets').select('week_start,type,regime,crew,scope_tracking').eq('project_id', pid).eq('status','approved'),
+      supabase.from('invoices').select('tce_item_id,invoice_date,amount,status').eq('project_id', pid).neq('status','rejected'),
+      supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount').eq('project_id', pid),
+      supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     setTceLines((linesRes.data||[]) as NrgTceLine[])
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
+    setTimesheets((tsRes.data||[]) as Record<string,unknown>[])
+    setSupplierInvoices((supInvRes.data||[]) as Record<string,unknown>[])
+    setExpenseItems((expRes.data||[]) as Record<string,unknown>[])
+    setRateCards((rcRes.data||[]) as Record<string,unknown>[])
     let rd = (rulesRes.data||[]) as NrgInvoiceGroupingRule[]
     if (rd.length === 0) {
       const { data: nr } = await supabase.from('nrg_invoice_grouping_rules')
@@ -70,13 +83,97 @@ export function NrgInvoicingPanel() {
     groups.get(g)!.push(cs)
   }
 
+  // Period helper: is `date` (YYYY-MM-DD) in (fromWE, toWE] — exclusive from, inclusive to
+  function inPeriod(date: string, fromWE: string, toWE: string): boolean {
+    if (!date || !toWE) return false
+    const d = date.slice(0,10)
+    if (d > toWE) return false
+    if (fromWE && d <= fromWE) return false
+    return true
+  }
+
+  // Previous invoice week-ending (for period start)
+  function prevWE(invId: string): string {
+    const all = [...sortedInvoices].filter(i => i.week_ending)
+    const idx = all.findIndex(i => i.id === invId)
+    if (idx <= 0) return ''
+    return all[idx-1].week_ending || ''
+  }
+
+  // Period-bounded actual for a single TCE line
+  function lineActualInPeriod(line: NrgTceLine, fromWE: string, toWE: string): number {
+    if (!toWE) return 0
+    const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
+    if (isLabour) {
+      let total = 0
+      for (const ts of timesheets) {
+        const wStart = ((ts.week_start as string)||'').slice(0,10)
+        if (!wStart) continue
+        // Week-ending = weekStart + 6 days
+        const wEnd = new Date(wStart + 'T00:00:00')
+        wEnd.setDate(wEnd.getDate() + 6)
+        const wEndStr = wEnd.toISOString().slice(0,10)
+        if (!inPeriod(wEndStr, fromWE, toWE)) continue
+        const scopeTracking = ts.scope_tracking as string
+        if (scopeTracking !== 'tce' && scopeTracking !== 'nrg_tce') continue
+        const crew = (ts.crew as Record<string,unknown>[]) || []
+        for (const member of crew) {
+          const rc = (rateCards as Record<string,unknown>[]).find((r: Record<string,unknown>) => (r.role as string)?.toLowerCase() === (member.role as string)?.toLowerCase())
+          const days = (member.days as Record<string,Record<string,unknown>>) || {}
+          for (const day of Object.values(days)) {
+            const allocs = (day.nrgWoAllocations as Record<string,unknown>[]) || []
+            const match = allocs.find(a => (a.tceItemId && a.tceItemId === line.item_id) || (!a.tceItemId && line.work_order && a.wo === line.work_order))
+            if (!match) continue
+            const effHours = Number(match.hours) || 0
+            if (!effHours || !rc) continue
+            // Simple sell rate × hours (proper split not available without importing costEngine here)
+            const rates = (rc.rates as Record<string,Record<string,number>>)
+            const sellDnt = rates?.sell?.dnt || 0
+            total += effHours * sellDnt
+          }
+        }
+      }
+      return total
+    }
+    // Non-labour: supplier invoices + expenses in period
+    let total = 0
+    for (const inv of supplierInvoices) {
+      if (inv.tce_item_id !== line.item_id) continue
+      if (!inPeriod(inv.invoice_date as string, fromWE, toWE)) continue
+      total += Number(inv.amount) || 0
+    }
+    for (const exp of expenseItems) {
+      if (exp.tce_item_id !== line.item_id) continue
+      if (!inPeriod(exp.date as string, fromWE, toWE)) continue
+      const cost = Number(exp.cost_ex_gst)
+      total += (!isNaN(cost) && cost > 0) ? cost : (Number(exp.amount) || 0)
+    }
+    return total
+  }
+
+  // Sum period-bounded actuals for a contract scope
+  function calcPeriodAmount(inv: NrgCustomerInvoice, cs: string): number {
+    const from = prevWE(inv.id)
+    const to = inv.week_ending || ''
+    if (!to) return 0
+    const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id||'')
+    return tceLines
+      .filter(l => l.contract_scope === cs && !isGroupHeader(l.item_id))
+      .reduce((s, l) => s + lineActualInPeriod(l, from, to), 0)
+  }
+
   function effectiveAmount(inv: NrgCustomerInvoice, cs: string): number {
     const ov = inv.overrides?.[cs]
-    return (ov !== undefined && ov !== null) ? ov : 0
+    if (ov !== undefined && ov !== null) return ov
+    return calcPeriodAmount(inv, cs)
   }
 
   function hasOverride(inv: NrgCustomerInvoice, cs: string): boolean {
     return inv.overrides?.[cs] !== undefined && inv.overrides?.[cs] !== null
+  }
+
+  function isCalculated(inv: NrgCustomerInvoice, cs: string): boolean {
+    return inv.overrides?.[cs] === undefined || inv.overrides?.[cs] === null
   }
 
   async function handleCellClick(inv: NrgCustomerInvoice, cs: string) {
@@ -228,11 +325,14 @@ export function NrgInvoicingPanel() {
                         {sortedInvoices.map(inv => {
                           const amount = effectiveAmount(inv,cs)
                           const isOv = hasOverride(inv,cs)
+                          const isCalc = isCalculated(inv,cs)
                           return (
                             <td key={inv.id} onClick={()=>handleCellClick(inv,cs)}
                               style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',cursor:'pointer',
-                                background:isOv?'#fefce8':'transparent',color:amount>0?'var(--text)':'var(--text3)'}}>
+                                background:isOv?'#fefce8':isCalc&&amount>0?'rgba(220,252,231,0.4)':'transparent',
+                                color:amount>0?'var(--text)':'var(--text3)'}}>
                               {isOv&&<span style={{fontSize:'9px',color:'#d97706',marginRight:'3px'}}>✎</span>}
+                              {isCalc&&amount>0&&<span style={{fontSize:'9px',color:'#15803d',marginRight:'3px'}}>⚡</span>}
                               {fmt(amount)}
                             </td>
                           )
@@ -264,8 +364,9 @@ export function NrgInvoicingPanel() {
           </table>
         </div>
       </div>
-      <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'8px'}}>
-        <span style={{background:'#fefce8',border:'1px solid #fde68a',padding:'1px 5px',borderRadius:'3px'}}>✎ Yellow</span> = Manual override · Click any cell to set or clear
+      <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'8px',display:'flex',gap:'12px',flexWrap:'wrap'}}>
+        <span><span style={{background:'rgba(220,252,231,0.6)',border:'1px solid #bbf7d0',padding:'1px 5px',borderRadius:'3px'}}>⚡ Green</span> = Auto-calculated from TCE actuals in period</span>
+        <span><span style={{background:'#fefce8',border:'1px solid #fde68a',padding:'1px 5px',borderRadius:'3px'}}>✎ Yellow</span> = Manual override · Click any cell to set or clear</span>
       </div>
 
       {/* Invoice Modal */}
