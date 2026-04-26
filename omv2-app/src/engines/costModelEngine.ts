@@ -1,7 +1,7 @@
 import { fcDateRange, fcDayType, fcWeekKey, calcHoursCost } from './costEngine'
 import type {
   RfqDocument, RfqResponse,
-  RfqLabourRow, RfqResponseLabour, RfqResponseLabourRates,
+  RfqLabourRow, RfqResponseLabourRates,
   PublicHoliday,
 } from '../types'
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -239,7 +239,6 @@ export function SubconCostModelPanel() {
 // ─── Output component ─────────────────────────────────────────────────────────
 
 function CostModelOutput({ result, doc, startDate, endDate }: { result: CostModelResult; doc: RfqDocument; startDate: string; endDate: string }) {
-  const [showDayByDay, setShowDayByDay] = useState(false)
   const labourRoles = doc.labour_rows || []
   const equipRows   = doc.equip_rows  || []
 
@@ -588,12 +587,6 @@ function VendorRateSnapshot({ vendor: v, doc, startDate }: { vendor: PerVendorRe
           <tbody>
             {labourRoles.map((lr, li) => {
               const rb = v.roles[li]
-              const resp = v.roles[li]
-              // find raw rates from response
-              const rawRates = resp ? {
-                dnt: 0, dt15: 0, ddt: 0, ntHrs: 0, ot1Hrs: 0, shiftHrs: 0,
-                nnt: 0, ndt: 0, nntHrs: 0, nshiftHrs: 0, laha: 0, ...({} as Record<string, number>)
-              } : null
               // We don't have raw rates on the result — use per-day costs as proxies
               const isDual = lr.shiftType === 'dual'
               const isNS   = lr.shiftType === 'single-night'
@@ -659,7 +652,6 @@ function VendorRateSnapshot({ vendor: v, doc, startDate }: { vendor: PerVendorRe
                       ? (isDual || isNS) // night crew works every day in dual/NS
                       : !isNS           // day crew works every day (mon-sun in 7day, mon-fri in weekday)
                     const lahaDay = rb.lahaPerDay || 0
-                    const lahaMulV = isDual ? (dow !== 0 && dow !== 6 ? 2 : 1) : 1
 
                     if (!worksToday) {
                       weekTotal += lahaDay
