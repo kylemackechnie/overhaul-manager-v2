@@ -415,6 +415,41 @@ export interface ToolingCosting {
 
 // ─── NRG ─────────────────────────────────────────────────────────────────────
 
+export interface VariationLine {
+  id: string; variation_id: string; project_id: string
+  category: 'labour_trades'|'labour_mgmt'|'labour_subcon'|'materials'|'equipment'|'third_party'|'other'
+  // Per-line WBS — CRITICAL for MIKA rollup. A variation affecting multiple WBS buckets needs multiple lines.
+  wbs: string; wbs_name: string
+  description: string; cost_total: number; sell_total: number
+  // Non-labour fields
+  qty: number|null; unit: string|null; unit_cost: number|null; unit_sell: number|null
+  // Labour-only fields
+  role: string|null; hours: number|null; day_type: string|null; shift_type: string|null
+  allowances: boolean; shifts_calc: number|null; breakdown: unknown[]
+  created_at: string; updated_at: string
+}
+
+export interface NrgCustomerInvoice {
+  id: string; project_id: string
+  label: string; invoice_number: string
+  week_ending: string|null; sent_date: string|null; notes: string
+  // Keys are contractScope strings e.g. '00173164/00001', values are override amounts
+  overrides: Record<string, number>
+  created_at: string; updated_at: string
+}
+
+export interface NrgInvoiceGroupingRule {
+  id: string; project_id: string
+  group_name: string; triggers: string[]; sort_order: number; created_at: string
+}
+
+export interface MikaWbsLine {
+  id: string; project_id: string; import_batch_id: string|null; imported_at: string
+  wbs: string; description: string; level: number|null
+  pm80: number|null; pm100: number|null; forecast_tc: number|null
+  monthly_forecast: Record<string, number>; sort_order: number; created_at: string
+}
+
 export interface NrgTceLine {
   id: string; project_id: string
   item_id: string | null; wbs_code: string; description: string
@@ -425,6 +460,13 @@ export interface NrgTceLine {
   forecast_date_from: string | null; forecast_date_to: string | null
   forecast_resources: unknown[]; hire_links: unknown[]
   details: Record<string, unknown>
+  // Fields added in fix migration
+  assigned_resources: string[]
+  is_variation_line: boolean
+  invoice_override: number | null
+  notes: string
+  linked_module: string | null
+  linked_ids: unknown[]
   created_at: string; updated_at: string
 }
 
@@ -435,7 +477,14 @@ export interface Variation {
   status: string; value: number | null; scope: string
   cause: string; raised_date: string | null; assumptions: string; exclusions: string
   submitted_date: string | null; approved_date: string | null
-  notes: string; line_items: unknown[] | null; customer_ref?: string; created_at: string; updated_at: string
+  notes: string; line_items: unknown[] | null; customer_ref?: string
+  // Fields added in fix migration
+  tce_link: string        // stores TCE item_id (text), NOT internal UUID — stable across re-imports
+  wo_ref: string          // NRG work order reference
+  cost_total: number      // sum of variation_lines.cost_total
+  sell_total: number      // sum of variation_lines.sell_total
+  status_history: { from: string; to: string; at: string; by: string }[]
+  created_at: string; updated_at: string
 }
 
 export interface WorkOrder {

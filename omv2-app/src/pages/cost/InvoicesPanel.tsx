@@ -425,7 +425,7 @@ export function InvoicesPanel() {
                   <label>NRG TCE Line <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— optional, counts as actuals in KPI/Actuals</span></label>
                   <select className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))}>
                     <option value="">— No TCE Link —</option>
-                    {tceLines.map(l=><option key={l.id} value={l.id}>{l.item_id||''} — {l.description}</option>)}
+                    {tceLines.map(l=><option key={l.id} value={l.item_id||''}>{l.item_id||''} — {l.description}</option>)}
                   </select>
                 </div>
               )}

@@ -1,288 +1,322 @@
+/**
+ * NRG Customer Invoicing Panel
+ * Mirrors NRG's "Invoice Summary" Excel tab.
+ * Period-bounded invoices grouped by contract scope.
+ * Manual cell overrides stored in invoice.overrides map.
+ * Yellow cell = override in effect. Click any cell to set/clear.
+ */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
-import type { NrgTceLine } from '../../types'
+import type { NrgTceLine, NrgCustomerInvoice, NrgInvoiceGroupingRule } from '../../types'
 
-interface InvoicingEntry {
-  id: string
-  tce_line_id: string
-  week_start: string
-  invoiced_amount: number
-  status: string
-  invoice_ref: string
-  notes: string
-}
+const fmt = (n: number) => n === 0 ? '—' : '$' + Math.round(n).toLocaleString('en-AU')
 
-function getMon(dateStr: string) {
-  const d = new Date(dateStr + 'T12:00:00')
-  const dow = d.getDay()
-  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1))
-  return d.toISOString().slice(0, 10)
-}
+const DEFAULT_RULES = [
+  { group_name: 'TasTK — Overheads & Skilled Labour', triggers: ['000001','000003','000004','/00001','/00003','/00004'], sort_order: 0 },
+  { group_name: 'Non TasTK — Overheads', triggers: ['000002','/00002'], sort_order: 1 },
+]
 
-function weekLabel(w: string) {
-  return new Date(w + 'T12:00:00').toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })
-}
-
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  draft:    { bg: '#f1f5f9', color: '#64748b' },
-  invoiced: { bg: '#dbeafe', color: '#1e40af' },
-  paid:     { bg: '#d1fae5', color: '#065f46' },
-  disputed: { bg: '#fee2e2', color: '#991b1b' },
+function contractGroup(cs: string, rules: NrgInvoiceGroupingRule[]): string {
+  for (const rule of [...rules].sort((a,b) => a.sort_order - b.sort_order)) {
+    if (rule.triggers.some(t => cs.includes(t))) return rule.group_name
+  }
+  return 'Ungrouped'
 }
 
 export function NrgInvoicingPanel() {
   const { activeProject } = useAppStore()
-  const [lines, setLines] = useState<NrgTceLine[]>([])
-  const [entries, setEntries] = useState<InvoicingEntry[]>([])
-  const [weeks, setWeeks] = useState<string[]>([])
+  const [tceLines, setTceLines] = useState<NrgTceLine[]>([])
+  const [invoices, setInvoices] = useState<NrgCustomerInvoice[]>([])
+  const [rules, setRules] = useState<NrgInvoiceGroupingRule[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState<string | null>(null)
-  const [newWeek, setNewWeek] = useState(getMon(new Date().toISOString().slice(0, 10)))
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'overhead' | 'skilled'>('all')
+  const [saving, setSaving] = useState(false)
+  const [invModal, setInvModal] = useState<null|'new'|NrgCustomerInvoice>(null)
+  const [invForm, setInvForm] = useState({ label:'', invoice_number:'', week_ending:'', sent_date:'', notes:'' })
+  const [rulesModal, setRulesModal] = useState(false)
+  const [rulesForm, setRulesForm] = useState<{group_name:string;triggers_str:string}[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [linesData, entriesData] = await Promise.all([
-      supabase.from('nrg_tce_lines').select('*').eq('project_id', pid)
-        .eq('forecast_enabled', true).order('source').order('item_id'),
-      supabase.from('nrg_invoicing').select('*').eq('project_id', pid).order('week_start'),
+    const [linesRes, invRes, rulesRes] = await Promise.all([
+      supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
+      supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
+      supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
     ])
-    const linesArr = (linesData.data || []) as NrgTceLine[]
-    const entriesArr = (entriesData.data || []) as InvoicingEntry[]
-    setLines(linesArr)
-    setEntries(entriesArr)
-    // Build week list from existing entries + any timesheet weeks
-    const weekSet = new Set(entriesArr.map(e => e.week_start))
-    const sortedWeeks = [...weekSet].sort()
-    setWeeks(sortedWeeks)
+    setTceLines((linesRes.data||[]) as NrgTceLine[])
+    setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
+    let rd = (rulesRes.data||[]) as NrgInvoiceGroupingRule[]
+    if (rd.length === 0) {
+      const { data: nr } = await supabase.from('nrg_invoice_grouping_rules')
+        .insert(DEFAULT_RULES.map(r => ({ ...r, project_id: pid }))).select()
+      rd = (nr||[]) as NrgInvoiceGroupingRule[]
+    }
+    setRules(rd)
     setLoading(false)
   }
 
-  function getEntry(lineId: string, week: string): InvoicingEntry | undefined {
-    return entries.find(e => e.tce_line_id === lineId && e.week_start === week)
+  const contractScopes = [...new Set(tceLines.map(l => l.contract_scope).filter(Boolean))].sort()
+  const sortedInvoices = [...invoices].sort((a,b) => (a.week_ending||'').localeCompare(b.week_ending||''))
+
+  const groups = new Map<string, string[]>()
+  for (const cs of contractScopes) {
+    const g = contractGroup(cs, rules)
+    if (!groups.has(g)) groups.set(g, [])
+    groups.get(g)!.push(cs)
   }
 
-  function colTotal(week: string): number {
-    return entries.filter(e => e.week_start === week).reduce((s, e) => s + (e.invoiced_amount || 0), 0)
+  function effectiveAmount(inv: NrgCustomerInvoice, cs: string): number {
+    const ov = inv.overrides?.[cs]
+    return (ov !== undefined && ov !== null) ? ov : 0
   }
 
-  function rowTotal(lineId: string): number {
-    return entries.filter(e => e.tce_line_id === lineId).reduce((s, e) => s + (e.invoiced_amount || 0), 0)
+  function hasOverride(inv: NrgCustomerInvoice, cs: string): boolean {
+    return inv.overrides?.[cs] !== undefined && inv.overrides?.[cs] !== null
   }
 
-  function grandTotal(): number {
-    return entries.reduce((s, e) => s + (e.invoiced_amount || 0), 0)
-  }
-
-  async function addWeek() {
-    const ws = getMon(newWeek)
-    if (weeks.includes(ws)) return toast('Week already exists', 'error')
-    setWeeks(prev => [...prev, ws].sort())
-    toast(`Week ${weekLabel(ws)} added`, 'success')
-  }
-
-  async function updateCell(lineId: string, week: string, amount: number, field: 'invoiced_amount' | 'status' | 'invoice_ref' = 'invoiced_amount', value: string | number = amount) {
-    const existing = getEntry(lineId, week)
-    setSaving(`${lineId}-${week}`)
-    try {
-      if (existing) {
-        await supabase.from('nrg_invoicing').update({ [field]: value }).eq('id', existing.id)
-        setEntries(prev => prev.map(e =>
-          e.id === existing.id ? { ...e, [field]: value } : e
-        ))
-      } else if (field === 'invoiced_amount' && Number(value) > 0) {
-        const { data, error } = await supabase.from('nrg_invoicing').insert({
-          project_id: activeProject!.id,
-          tce_line_id: lineId,
-          week_start: week,
-          invoiced_amount: Number(value),
-          status: 'invoiced',
-        }).select().single()
-        if (error) throw error
-        setEntries(prev => [...prev, data as InvoicingEntry])
-      }
-    } catch (e) {
-      toast((e as Error).message, 'error')
-    } finally {
-      setSaving(null)
+  async function handleCellClick(inv: NrgCustomerInvoice, cs: string) {
+    const cur = inv.overrides?.[cs]
+    const input = window.prompt(
+      `Override for ${cs} | ${inv.label||inv.week_ending||'Invoice'}\n(blank = calculated, "clear" = remove override)`,
+      cur !== undefined ? String(cur) : ''
+    )
+    if (input === null) return
+    const newOv = { ...(inv.overrides||{}) }
+    if (input.trim().toLowerCase() === 'clear' || input.trim() === '') {
+      delete newOv[cs]
+    } else {
+      const val = parseFloat(input.replace(/[^0-9.\-]/g,''))
+      if (isNaN(val)) { toast('Invalid amount','error'); return }
+      newOv[cs] = val
     }
+    const { error } = await supabase.from('nrg_customer_invoices').update({ overrides: newOv }).eq('id', inv.id)
+    if (error) { toast(error.message,'error'); return }
+    setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, overrides: newOv } : i))
+  }
+
+  function openNewInvoice() {
+    setInvForm({ label:`Invoice ${sortedInvoices.length+1}`, invoice_number:'', week_ending:'', sent_date:'', notes:'' })
+    setInvModal('new')
+  }
+
+  function openEditInvoice(inv: NrgCustomerInvoice) {
+    setInvForm({ label:inv.label, invoice_number:inv.invoice_number, week_ending:inv.week_ending||'', sent_date:inv.sent_date||'', notes:inv.notes })
+    setInvModal(inv)
+  }
+
+  async function saveInvoice() {
+    setSaving(true)
+    const payload = {
+      project_id: activeProject!.id, label: invForm.label.trim(),
+      invoice_number: invForm.invoice_number.trim(),
+      week_ending: invForm.week_ending||null, sent_date: invForm.sent_date||null,
+      notes: invForm.notes, overrides: invModal!=='new' ? (invModal as NrgCustomerInvoice).overrides : {},
+    }
+    const isNew = invModal === 'new'
+    const { error } = isNew
+      ? await supabase.from('nrg_customer_invoices').insert(payload)
+      : await supabase.from('nrg_customer_invoices').update(payload).eq('id', (invModal as NrgCustomerInvoice).id)
+    if (error) { toast(error.message,'error'); setSaving(false); return }
+    toast(isNew ? 'Invoice added' : 'Updated','success')
+    setSaving(false); setInvModal(null); load()
+  }
+
+  async function deleteInvoice(inv: NrgCustomerInvoice) {
+    if (!confirm(`Delete "${inv.label}"?`)) return
+    await supabase.from('nrg_customer_invoices').delete().eq('id', inv.id)
+    toast('Deleted','info'); load()
+  }
+
+  async function saveRules() {
+    setSaving(true)
+    await supabase.from('nrg_invoice_grouping_rules').delete().eq('project_id', activeProject!.id)
+    const inserts = rulesForm.filter(r=>r.group_name.trim()).map((r,i) => ({
+      project_id: activeProject!.id, group_name: r.group_name.trim(),
+      triggers: r.triggers_str.split(',').map(t=>t.trim()).filter(Boolean), sort_order: i,
+    }))
+    if (inserts.length > 0) {
+      const { error } = await supabase.from('nrg_invoice_grouping_rules').insert(inserts)
+      if (error) { toast(error.message,'error'); setSaving(false); return }
+    }
+    toast('Rules saved','success'); setSaving(false); setRulesModal(false); load()
   }
 
   function exportCSV() {
-    const header = ['Item ID', 'Description', 'Source', 'Contract Scope', 'TCE Total', ...weeks.map(weekLabel), 'Total Invoiced', '% of TCE']
-    const data = filteredLines.map(l => {
-      const rowTot = rowTotal(l.id)
-      const pct = l.tce_total > 0 ? (rowTot / l.tce_total * 100).toFixed(1) + '%' : '—'
-      return [l.item_id || '', l.description, l.source, (l as NrgTceLine & { contract_scope?: string }).contract_scope || '', l.tce_total,
-        ...weeks.map(w => getEntry(l.id, w)?.invoiced_amount || 0),
-        rowTot, pct]
+    const header = ['Group','Contract Scope',...sortedInvoices.map(i=>i.label||i.week_ending||i.id),'Progress Total']
+    const rows: string[][] = [header]
+    groups.forEach((scopes, groupName) => {
+      rows.push([groupName,'',...sortedInvoices.map(()=>''),''])
+      scopes.forEach(cs => {
+        const amounts = sortedInvoices.map(inv => String(effectiveAmount(inv,cs)))
+        const total = sortedInvoices.reduce((s,inv)=>s+effectiveAmount(inv,cs),0)
+        rows.push(['',cs,...amounts,String(total)])
+      })
+      const groupTotals = sortedInvoices.map(inv => String(scopes.reduce((s,cs)=>s+effectiveAmount(inv,cs),0)))
+      const groupTotal = scopes.reduce((s,cs)=>s+sortedInvoices.reduce((ss,inv)=>ss+effectiveAmount(inv,cs),0),0)
+      rows.push(['','Total',...groupTotals,String(groupTotal)])
     })
-    downloadCSV([header, ...data], `nrg_invoicing_${activeProject?.name || 'project'}`)
+    downloadCSV(rows, `NRG_Customer_Invoicing_${activeProject?.name||'project'}_${new Date().toISOString().slice(0,10)}`)
   }
 
-  const filteredLines = lines.filter(l => sourceFilter === 'all' || l.source === sourceFilter)
-  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
-  const fmtPct = (a: number, b: number) => b > 0 ? (a / b * 100).toFixed(0) + '%' : '—'
-  const totalTce = filteredLines.reduce((s, l) => s + (l.tce_total || 0), 0)
+  if (loading) return <div className="loading-center"><span className="spinner"/> Loading...</div>
+
+  if (contractScopes.length === 0) return (
+    <div style={{padding:'24px'}}>
+      <h1 style={{fontSize:'18px',fontWeight:700,marginBottom:'8px'}}>NRG Customer Invoicing</h1>
+      <div className="empty-state">
+        <div className="icon">📄</div><h3>No contract scopes set</h3>
+        <p>Populate Contract Scope on TCE lines first (Bulk Set Contract in TCE Register), then return here to add invoices.</p>
+      </div>
+    </div>
+  )
 
   return (
-    <div style={{ padding: '24px', maxWidth: '100%' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+    <div style={{padding:'24px'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px',flexWrap:'wrap',gap:'8px'}}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>NRG Invoicing</h1>
-          <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
-            {lines.length} TCE lines · {weeks.length} weeks · {fmt(grandTotal())} invoiced of {fmt(totalTce)} TCE
-            {totalTce > 0 && <span style={{ marginLeft: '8px', color: 'var(--accent)' }}>({fmtPct(grandTotal(), totalTce)})</span>}
+          <h1 style={{fontSize:'18px',fontWeight:700}}>NRG Customer Invoicing</h1>
+          <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
+            {sortedInvoices.length} invoices · {contractScopes.length} contract scopes · Click any cell to override
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{display:'flex',gap:'6px'}}>
+          <button className="btn btn-sm" onClick={()=>{setRulesForm(rules.map(r=>({group_name:r.group_name,triggers_str:r.triggers.join(', ')}))); setRulesModal(true)}}>⚙ Grouping Rules</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-primary" onClick={openNewInvoice}>+ Add Invoice</button>
         </div>
       </div>
 
-      {/* Controls */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Source filter */}
-        {(['all', 'overhead', 'skilled'] as const).map(s => (
-          <button key={s} className="btn btn-sm"
-            style={{ background: sourceFilter === s ? 'var(--accent)' : '', color: sourceFilter === s ? '#fff' : '' }}
-            onClick={() => setSourceFilter(s)}>
-            {s === 'all' ? `All (${lines.length})` : `${s.charAt(0).toUpperCase() + s.slice(1)} (${lines.filter(l => l.source === s).length})`}
-          </button>
-        ))}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <input type="date" className="input" style={{ width: '150px', fontSize: '12px' }}
-            value={newWeek} onChange={e => setNewWeek(e.target.value)} />
-          <button className="btn btn-primary" onClick={addWeek}>+ Add Week</button>
-        </div>
-      </div>
-
-      {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
-      : lines.length === 0 ? (
-        <div className="empty-state">
-          <div className="icon">📋</div>
-          <h3>No TCE lines</h3>
-          <p>Import the NRG TCE spreadsheet on the TCE Register tab first, then come here to track weekly billing.</p>
-        </div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ minWidth: weeks.length > 0 ? `${400 + weeks.length * 110}px` : '600px', fontSize: '12px' }}>
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div style={{overflowX:'auto'}}>
+          <table style={{fontSize:'12px',minWidth:'700px',borderCollapse:'collapse'}}>
             <thead>
-              <tr style={{ background: 'var(--bg3)' }}>
-                <th style={{ textAlign: 'left', padding: '8px 10px', minWidth: '80px' }}>Item</th>
-                <th style={{ textAlign: 'left', padding: '8px 10px', minWidth: '180px' }}>Description</th>
-                <th style={{ textAlign: 'left', padding: '8px 6px', width: '80px' }}>Source</th>
-                <th style={{ textAlign: 'right', padding: '8px 10px', width: '100px' }}>TCE Value</th>
-                {weeks.map(w => (
-                  <th key={w} style={{ textAlign: 'center', padding: '8px 4px', width: '100px', fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>
-                    {weekLabel(w)}
+              <tr style={{background:'var(--bg3)'}}>
+                <th style={{padding:'8px 12px',textAlign:'left',minWidth:'200px'}}>Contract Scope</th>
+                {sortedInvoices.map(inv=>(
+                  <th key={inv.id} style={{padding:'8px 12px',textAlign:'right',minWidth:'110px'}}>
+                    <div style={{fontWeight:700}}>{inv.label||'Invoice'}</div>
+                    <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>{inv.week_ending?`WE ${inv.week_ending}`:'No period'}</div>
+                    <div style={{display:'flex',gap:'3px',justifyContent:'flex-end',marginTop:'3px'}}>
+                      <button className="btn btn-sm" style={{fontSize:'9px',padding:'1px 4px'}} onClick={()=>openEditInvoice(inv)}>✏</button>
+                      <button className="btn btn-sm" style={{fontSize:'9px',padding:'1px 4px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>
+                    </div>
                   </th>
                 ))}
-                <th style={{ textAlign: 'right', padding: '8px 10px', width: '100px' }}>Total</th>
-                <th style={{ textAlign: 'right', padding: '8px 10px', width: '70px' }}>%</th>
+                <th style={{padding:'8px 12px',textAlign:'right',minWidth:'100px',borderLeft:'2px solid var(--border)'}}>Progress Total</th>
               </tr>
             </thead>
             <tbody>
-              {filteredLines.map(line => {
-                const rowTot = rowTotal(line.id)
-                const pct = line.tce_total > 0 ? rowTot / line.tce_total * 100 : 0
-                return (
-                  <tr key={line.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>
-                      {line.item_id || '—'}
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <div style={{ fontWeight: 500, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {line.description}
-                      </div>
-                      {(line as NrgTceLine & { contract_scope?: string }).contract_scope && (
-                        <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '1px' }}>
-                          {(line as NrgTceLine & { contract_scope?: string }).contract_scope}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '6px 6px' }}>
-                      <span style={{
-                        fontSize: '9px', padding: '1px 5px', borderRadius: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
-                        background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
-                        color: line.source === 'skilled' ? '#1e40af' : '#64748b'
-                      }}>{line.source}</span>
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>
-                      {fmt(line.tce_total)}
-                    </td>
-                    {weeks.map(w => {
-                      const entry = getEntry(line.id, w)
-                      const isSaving = saving === `${line.id}-${w}`
-                      const ss = entry ? (STATUS_COLORS[entry.status] || STATUS_COLORS.draft) : null
-                      return (
-                        <td key={w} style={{ padding: '3px 4px', textAlign: 'center' }}>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number" min="0" step="1000"
-                              value={entry?.invoiced_amount || ''}
-                              placeholder="—"
-                              style={{
-                                width: '92px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px',
-                                padding: '3px 6px', border: '1px solid var(--border2)', borderRadius: '4px',
-                                background: entry ? (ss?.bg || 'transparent') : 'transparent',
-                                color: entry ? (ss?.color || 'var(--text)') : 'var(--text3)',
-                              }}
-                              onBlur={e => {
-                                const val = parseFloat(e.target.value) || 0
-                                if (val !== (entry?.invoiced_amount || 0)) {
-                                  updateCell(line.id, w, val)
-                                }
-                              }}
-                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                            />
-                            {isSaving && <span style={{ position: 'absolute', right: '4px', top: '4px' }}><span className="spinner" style={{ width: '10px', height: '10px' }} /></span>}
-                          </div>
+              {[...groups.entries()].map(([groupName, scopes]) => {
+                const groupTotals = sortedInvoices.map(inv => scopes.reduce((s,cs)=>s+effectiveAmount(inv,cs),0))
+                const progressTotal = groupTotals.reduce((s,t)=>s+t,0)
+                return [
+                  <tr key={`g-${groupName}`} style={{background:'#e0e7ff'}}>
+                    <td colSpan={sortedInvoices.length+2} style={{padding:'6px 12px',fontWeight:700,fontSize:'11px',color:'#3730a3'}}>{groupName}</td>
+                  </tr>,
+                  ...scopes.map(cs => {
+                    const rowTotal = sortedInvoices.reduce((s,inv)=>s+effectiveAmount(inv,cs),0)
+                    return (
+                      <tr key={cs} style={{borderBottom:'1px solid var(--border)'}}>
+                        <td style={{padding:'6px 12px',paddingLeft:'24px'}}>
+                          <span style={{background:'#ede9fe',color:'#6b21a8',padding:'1px 6px',borderRadius:'3px',fontFamily:'var(--mono)',fontSize:'11px'}}>{cs}</span>
                         </td>
-                      )
-                    })}
-                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: rowTot > 0 ? 'var(--green)' : 'var(--text3)' }}>
-                      {fmt(rowTot)}
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: pct > 100 ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--text3)' }}>
-                      {pct > 0 ? Math.round(pct) + '%' : '—'}
-                    </td>
-                  </tr>
-                )
+                        {sortedInvoices.map(inv => {
+                          const amount = effectiveAmount(inv,cs)
+                          const isOv = hasOverride(inv,cs)
+                          return (
+                            <td key={inv.id} onClick={()=>handleCellClick(inv,cs)}
+                              style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',cursor:'pointer',
+                                background:isOv?'#fefce8':'transparent',color:amount>0?'var(--text)':'var(--text3)'}}>
+                              {isOv&&<span style={{fontSize:'9px',color:'#d97706',marginRight:'3px'}}>✎</span>}
+                              {fmt(amount)}
+                            </td>
+                          )
+                        })}
+                        <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:600,borderLeft:'2px solid var(--border)'}}>{fmt(rowTotal)}</td>
+                      </tr>
+                    )
+                  }),
+                  <tr key={`gt-${groupName}`} style={{background:'var(--bg3)',fontWeight:600,borderTop:'1px solid var(--border)'}}>
+                    <td style={{padding:'6px 12px',paddingLeft:'24px',color:'var(--text2)'}}>Total</td>
+                    {groupTotals.map((t,i)=><td key={i} style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)'}}>{fmt(t)}</td>)}
+                    <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:700,borderLeft:'2px solid var(--border)'}}>{fmt(progressTotal)}</td>
+                  </tr>,
+                ]
               })}
             </tbody>
-            {/* Footer totals */}
             <tfoot>
-              <tr style={{ background: 'var(--bg3)', fontWeight: 700, borderTop: '2px solid var(--border2)' }}>
-                <td colSpan={3} style={{ padding: '8px 10px' }}>TOTAL ({filteredLines.length} lines)</td>
-                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(totalTce)}</td>
-                {weeks.map(w => (
-                  <td key={w} style={{ padding: '8px 4px', textAlign: 'center', fontFamily: 'var(--mono)', color: 'var(--green)' }}>
-                    {fmt(colTotal(w))}
-                  </td>
-                ))}
-                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)' }}>
-                  {fmt(grandTotal())}
-                </td>
-                <td style={{ padding: '8px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--accent)' }}>
-                  {fmtPct(grandTotal(), totalTce)}
+              <tr style={{background:'#1e3a5f',color:'#fff',fontWeight:700}}>
+                <td style={{padding:'8px 12px'}}>GRAND TOTAL</td>
+                {sortedInvoices.map(inv => {
+                  const colTotal = contractScopes.reduce((s,cs)=>s+effectiveAmount(inv,cs),0)
+                  return <td key={inv.id} style={{padding:'8px 12px',textAlign:'right',fontFamily:'var(--mono)'}}>{fmt(colTotal)}</td>
+                })}
+                <td style={{padding:'8px 12px',textAlign:'right',fontFamily:'var(--mono)',borderLeft:'2px solid rgba(255,255,255,0.2)'}}>
+                  {fmt(contractScopes.reduce((s,cs)=>s+sortedInvoices.reduce((ss,inv)=>ss+effectiveAmount(inv,cs),0),0))}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
+      </div>
+      <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'8px'}}>
+        <span style={{background:'#fefce8',border:'1px solid #fde68a',padding:'1px 5px',borderRadius:'3px'}}>✎ Yellow</span> = Manual override · Click any cell to set or clear
+      </div>
+
+      {/* Invoice Modal */}
+      {invModal&&(
+        <div className="modal-overlay" onClick={()=>setInvModal(null)}>
+          <div className="modal" style={{maxWidth:'480px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{invModal==='new'?'Add Invoice':`Edit: ${(invModal as NrgCustomerInvoice).label}`}</h3>
+              <button className="btn btn-sm" onClick={()=>setInvModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="fg-row">
+                <div className="fg"><label>Label *</label><input className="input" value={invForm.label} onChange={e=>setInvForm(f=>({...f,label:e.target.value}))} placeholder="e.g. Prepayment, Invoice 1, Final" autoFocus /></div>
+                <div className="fg"><label>Invoice Number</label><input className="input" value={invForm.invoice_number} onChange={e=>setInvForm(f=>({...f,invoice_number:e.target.value}))} placeholder="INV-12345" /></div>
+              </div>
+              <div className="fg-row">
+                <div className="fg"><label>Week Ending <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>period boundary</span></label><input type="date" className="input" value={invForm.week_ending} onChange={e=>setInvForm(f=>({...f,week_ending:e.target.value}))} /></div>
+                <div className="fg"><label>Sent Date</label><input type="date" className="input" value={invForm.sent_date} onChange={e=>setInvForm(f=>({...f,sent_date:e.target.value}))} /></div>
+              </div>
+              <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={invForm.notes} onChange={e=>setInvForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
+            </div>
+            <div className="modal-footer">
+              {invModal!=='new'&&<button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{deleteInvoice(invModal as NrgCustomerInvoice);setInvModal(null)}}>Delete</button>}
+              <button className="btn" onClick={()=>setInvModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveInvoice} disabled={saving}>{saving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Save</button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {weeks.length === 0 && lines.length > 0 && (
-        <div style={{ marginTop: '16px', padding: '12px 16px', background: '#eff6ff', borderLeft: '4px solid #0284c7', borderRadius: '4px', fontSize: '13px' }}>
-          Use the date picker above and click <strong>+ Add Week</strong> to create billing columns.
+      {/* Grouping Rules Modal */}
+      {rulesModal&&(
+        <div className="modal-overlay" onClick={()=>setRulesModal(false)}>
+          <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>⚙ Grouping Rules</h3><button className="btn btn-sm" onClick={()=>setRulesModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>Contract scopes matched to groups by trigger substrings. First match wins.</p>
+              {rulesForm.map((r,i)=>(
+                <div key={i} className="fg-row" style={{alignItems:'flex-end'}}>
+                  <div className="fg" style={{flex:2}}>{i===0&&<label>Group Name</label>}<input className="input" value={r.group_name} onChange={e=>setRulesForm(f=>f.map((x,j)=>j===i?{...x,group_name:e.target.value}:x))} placeholder="Group name"/></div>
+                  <div className="fg" style={{flex:3}}>{i===0&&<label>Triggers (comma-separated)</label>}<input className="input" value={r.triggers_str} onChange={e=>setRulesForm(f=>f.map((x,j)=>j===i?{...x,triggers_str:e.target.value}:x))} placeholder="000001, /00001"/></div>
+                  <button className="btn btn-sm" style={{color:'var(--red)',marginBottom:'0'}} onClick={()=>setRulesForm(f=>f.filter((_,j)=>j!==i))}>✕</button>
+                </div>
+              ))}
+              <button className="btn btn-sm" style={{marginTop:'8px'}} onClick={()=>setRulesForm(f=>[...f,{group_name:'',triggers_str:''}])}>+ Add Rule</button>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setRulesModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveRules} disabled={saving}>Save Rules</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

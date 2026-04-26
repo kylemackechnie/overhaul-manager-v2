@@ -54,10 +54,38 @@ export function MikaPanel() {
     if (!activeProject) return
     const m = (activeProject as typeof activeProject & { mika_data?: MikaData }).mika_data
     setMika(m || null)
-    // Load variations for VN impact columns
-    supabase.from('variations').select('status,line_items').eq('project_id', activeProject.id)
-      .then(r => setVariations((r.data || []) as typeof variations))
+    loadMikaLines()
+    // Load variation_lines (not line_items blob) for VN columns
+    supabase.from('variation_lines').select('variation_id,wbs,sell_total')
+      .eq('project_id', activeProject.id)
+      .then(r => {
+        // Also load variation statuses to know approved vs pending
+        supabase.from('variations').select('id,status').eq('project_id', activeProject.id)
+          .then(vr => {
+            const statusMap = new Map((vr.data||[]).map((v: {id:string;status:string}) => [v.id, v.status]))
+            setVariations(((r.data||[]) as {variation_id:string;wbs:string;sell_total:number}[]).map(l => ({
+              status: statusMap.get(l.variation_id)||'draft',
+              line_items: [{ wbs: l.wbs, sell: l.sell_total }],
+            })))
+          })
+      })
   }, [activeProject?.id])
+
+  async function loadMikaLines() {
+    if (!activeProject) return
+    const { data } = await supabase.from('mika_wbs_lines')
+      .select('*').eq('project_id', activeProject.id).order('sort_order')
+    if (data && data.length > 0) {
+      // Convert DB rows back to MikaLine format for display
+      const dbLines: MikaLine[] = (data as {wbs:string;description:string;level:number|null;pm80:number|null;pm100:number|null;forecast_tc:number|null}[]).map(r => ({
+        wbs: r.wbs, desc: r.description, level: r.level||1,
+        pm80tot: r.pm80||0, pm100: r.pm100||0,
+        actuals: 0, // PTD actuals are live — computed from modules, not from MIKA import
+        forecast: r.forecast_tc||0,
+      }))
+      setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
+    }
+  }
 
   function handleFile(file: File) {
     setStatus({ msg: '⏳ Reading CSV…', type: 'info' })
@@ -133,18 +161,40 @@ export function MikaPanel() {
   async function confirmImport() {
     if (!preview || !activeProject) return
     setSaving(true)
-    const { error } = await supabase.from('projects').update({ mika_data: preview }).eq('id', activeProject.id)
+
+    // Delete existing MIKA lines for this project, then insert fresh batch
+    const batchId = crypto.randomUUID()
+    await supabase.from('mika_wbs_lines').delete().eq('project_id', activeProject.id)
+
+    const inserts = preview.lines.map((l, i) => ({
+      project_id: activeProject.id,
+      import_batch_id: batchId,
+      wbs: l.wbs, description: l.desc, level: l.level,
+      pm80: l.pm80tot, pm100: l.pm100, forecast_tc: l.forecast,
+      monthly_forecast: {}, sort_order: i,
+    }))
+
+    const { error } = await supabase.from('mika_wbs_lines').insert(inserts)
     if (error) { setStatus({ msg: '✗ Save error: ' + error.message, type: 'error' }); setSaving(false); return }
+
+    // Also keep a lightweight meta blob on projects for dashboard display
+    const meta = { projectNo: preview.projectNo, projectName: preview.projectName, period: preview.period, importedAt: preview.importedAt, lineCount: preview.lines.length }
+    await supabase.from('projects').update({ mika_data: meta }).eq('id', activeProject.id)
+
     setMika(preview)
     setPreview(null)
-    setActiveProject({ ...activeProject, mika_data: preview } as unknown as typeof activeProject)
-    setStatus({ msg: `✓ Saved ${preview.lines.length} WBS lines`, type: 'success' })
+    setStatus({ msg: `✓ Saved ${preview.lines.length} WBS lines to mika_wbs_lines`, type: 'success' })
     setSaving(false)
+    // Reload WBS lines
+    loadMikaLines()
   }
 
   async function clearMika() {
     if (!activeProject || !confirm('Clear MIKA data? This cannot be undone.')) return
-    await supabase.from('projects').update({ mika_data: null }).eq('id', activeProject.id)
+    await Promise.all([
+      supabase.from('mika_wbs_lines').delete().eq('project_id', activeProject.id),
+      supabase.from('projects').update({ mika_data: null }).eq('id', activeProject.id),
+    ])
     setMika(null)
     setActiveProject({ ...activeProject, mika_data: null } as unknown as typeof activeProject)
   }

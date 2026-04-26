@@ -37,9 +37,10 @@ export function NrgActualsPanel() {
   }
 
   // Calculate actuals per TCE line from linked invoices
+  // CRITICAL: match on item_id (stable NRG text string e.g. "2.02.4.5"), NOT line.id (UUID, regenerates on re-import)
   function lineActuals(line: NrgTceLine): number {
     return invoices
-      .filter(inv => inv.tce_item_id === line.id && inv.status !== 'rejected')
+      .filter(inv => inv.tce_item_id === (line.item_id || '') && inv.status !== 'rejected')
       .reduce((s, inv) => s + (inv.amount || 0), 0)
   }
 
