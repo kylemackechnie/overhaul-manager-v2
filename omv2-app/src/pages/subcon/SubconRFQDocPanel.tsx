@@ -41,6 +41,9 @@ export function SubconRFQDocPanel() {
   const [labour, setLabour] = useState<RfqLabourRow[]>([mkLabour()])
   const [equip, setEquip] = useState<RfqEquipRow[]>([mkEquip()])
 
+  // Field-level validation errors. Cleared as the user types into the field.
+  const [errors, setErrors] = useState<{ title?: string; deadline?: string }>({})
+
   useEffect(() => {
     if (!activeProject) return
     setProjectName(activeProject.name || '')
@@ -119,8 +122,23 @@ export function SubconRFQDocPanel() {
   }
 
   async function saveRFQ() {
-    if (!title.trim()) { toast('Title is required', 'error'); return }
-    if (!deadline) { toast('Response deadline is required', 'error'); return }
+    // Field-level validation — sets red borders + inline error text and scrolls to first invalid field
+    const newErrors: typeof errors = {}
+    if (!title.trim()) newErrors.title = 'Title is required'
+    if (!deadline) newErrors.deadline = 'Response deadline is required'
+    setErrors(newErrors)
+    if (Object.keys(newErrors).length > 0) {
+      // Scroll the first invalid field into view
+      const firstField = newErrors.title ? 'rfq-title' : 'rfq-deadline'
+      requestAnimationFrame(() => {
+        const el = document.getElementById(firstField)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el?.focus()
+      })
+      toast(`Please fix the highlighted field${Object.keys(newErrors).length > 1 ? 's' : ''}`, 'error')
+      return
+    }
+
     setSaving(true)
     const payload = {
       project_id: activeProject!.id,
@@ -143,8 +161,15 @@ export function SubconRFQDocPanel() {
       ? await supabase.from('rfq_documents').update(payload).eq('id', editId).select('id').single()
       : await supabase.from('rfq_documents').insert(payload).select('id').single()
     if (error) { toast(error.message, 'error'); setSaving(false); return }
+    // Defend against silent RLS failures — Supabase client can return {data:null, error:null}
+    // when an insert succeeds but RLS blocks the post-insert SELECT.
+    if (!data) {
+      toast('Save appeared to succeed but the row could not be read back. Check your project access.', 'error')
+      setSaving(false)
+      return
+    }
     toast('RFQ saved', 'success')
-    if (!editId && data) setEditId(data.id)
+    if (!editId) setEditId(data.id)
     setSaving(false)
     loadSaved()
   }
@@ -331,7 +356,15 @@ ${notes ? `<div class="notes-box"><div class="notes-title">Additional Requiremen
           <div className="card" style={{ padding: '16px' }}>
             <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '12px' }}>Project &amp; Scope Details</div>
             <div className="fg"><label>Title / Scope Name *</label>
-              <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Scaffolding Supply &amp; Erect — GT1 Outage 2026" />
+              <input
+                id="rfq-title"
+                className="input"
+                value={title}
+                onChange={e => { setTitle(e.target.value); if (errors.title) setErrors(s => ({ ...s, title: undefined })) }}
+                placeholder="e.g. Scaffolding Supply &amp; Erect — GT1 Outage 2026"
+                style={errors.title ? { borderColor: 'var(--red)', boxShadow: '0 0 0 2px rgba(239,68,68,.15)' } : undefined}
+              />
+              {errors.title && <div style={{ fontSize: '11px', color: 'var(--red)', marginTop: '3px' }}>{errors.title}</div>}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div className="fg"><label>Project Name</label><input className="input" value={projectName} onChange={e => setProjectName(e.target.value)} /></div>
@@ -340,7 +373,15 @@ ${notes ? `<div class="notes-box"><div class="notes-title">Additional Requiremen
               <div className="fg"><label>Scope End</label><input type="date" className="input" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
             </div>
             <div className="fg"><label>Response Required By *</label>
-              <input type="date" className="input" value={deadline} onChange={e => setDeadline(e.target.value)} />
+              <input
+                id="rfq-deadline"
+                type="date"
+                className="input"
+                value={deadline}
+                onChange={e => { setDeadline(e.target.value); if (errors.deadline) setErrors(s => ({ ...s, deadline: undefined })) }}
+                style={errors.deadline ? { borderColor: 'var(--red)', boxShadow: '0 0 0 2px rgba(239,68,68,.15)' } : undefined}
+              />
+              {errors.deadline && <div style={{ fontSize: '11px', color: 'var(--red)', marginTop: '3px' }}>{errors.deadline}</div>}
             </div>
             <div className="fg"><label>Scope Description</label>
               <textarea className="input" rows={5} value={scope} onChange={e => setScope(e.target.value)}

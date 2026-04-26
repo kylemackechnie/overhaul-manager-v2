@@ -20,10 +20,16 @@ export function ToastContainer() {
   const addToast = useCallback((message: string, type: Toast['type']) => {
     const id = Math.random().toString(36).slice(2)
     setToasts(prev => [...prev, { id, message, type }])
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id))
-    }, 3500)
+    // Errors stay visible until dismissed — easy to miss otherwise.
+    // Success/info auto-dismiss after 3.5s.
+    if (type !== 'error') {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id))
+      }, 3500)
+    }
   }, [])
+
+  const dismiss = (id: string) => setToasts(prev => prev.filter(t => t.id !== id))
 
   useEffect(() => {
     _addToast = addToast
@@ -33,8 +39,9 @@ export function ToastContainer() {
   return createPortal(
     <div className="toast-container">
       {toasts.map(t => (
-        <div key={t.id} className={`toast toast-${t.type}`}>
+        <div key={t.id} className={`toast toast-${t.type}`} onClick={() => dismiss(t.id)} style={{ cursor: 'pointer' }}>
           {t.message}
+          {t.type === 'error' && <span style={{ marginLeft: '12px', opacity: 0.7, fontSize: '11px' }}>✕</span>}
         </div>
       ))}
     </div>,

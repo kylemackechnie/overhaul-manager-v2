@@ -185,6 +185,7 @@ export function RfqResponseModal({ doc, projectId, vendorsSent, existingResponse
   const [pdfName, setPdfName] = useState<string | null>(existingResponse?.quote_pdf_name || null)
   const [pdfSize, setPdfSize] = useState<number | null>(existingResponse?.quote_pdf_size_bytes || null)
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<{ vendor?: string }>({})
 
   // Esc key to close
   useEffect(() => {
@@ -241,7 +242,18 @@ export function RfqResponseModal({ doc, projectId, vendorsSent, existingResponse
   }
 
   async function save() {
-    if (!vendor.trim()) { toast('Vendor name is required', 'error'); return }
+    const newErrors: typeof errors = {}
+    if (!vendor.trim()) newErrors.vendor = 'Vendor name is required'
+    setErrors(newErrors)
+    if (Object.keys(newErrors).length > 0) {
+      requestAnimationFrame(() => {
+        const el = document.getElementById('rr-vendor')
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el?.focus()
+      })
+      toast('Please fix the highlighted field', 'error')
+      return
+    }
     setSaving(true)
 
     try {
@@ -278,6 +290,7 @@ export function RfqResponseModal({ doc, projectId, vendorsSent, existingResponse
       } else {
         const { data, error } = await supabase.from('rfq_responses').insert(payload).select('id').single()
         if (error) throw new Error(error.message)
+        if (!data) throw new Error('Save appeared to succeed but the row could not be read back. Check your project access.')
         responseId = data.id
       }
 
@@ -342,10 +355,19 @@ export function RfqResponseModal({ doc, projectId, vendorsSent, existingResponse
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
           <div className="fg" style={{ margin: 0 }}>
             <label>Vendor / Company *</label>
-            <input className="input" list="vendor-suggestions" value={vendor} onChange={e => setVendor(e.target.value)} placeholder="e.g. ABC Scaffolding Pty Ltd" />
+            <input
+              id="rr-vendor"
+              className="input"
+              list="vendor-suggestions"
+              value={vendor}
+              onChange={e => { setVendor(e.target.value); if (errors.vendor) setErrors(s => ({ ...s, vendor: undefined })) }}
+              placeholder="e.g. ABC Scaffolding Pty Ltd"
+              style={errors.vendor ? { borderColor: 'var(--red)', boxShadow: '0 0 0 2px rgba(239,68,68,.15)' } : undefined}
+            />
             <datalist id="vendor-suggestions">
               {vendorsSent.map(v => <option key={v} value={v} />)}
             </datalist>
+            {errors.vendor && <div style={{ fontSize: '11px', color: 'var(--red)', marginTop: '3px' }}>{errors.vendor}</div>}
           </div>
           <div className="fg" style={{ margin: 0 }}>
             <label>Date Received</label>
