@@ -250,6 +250,38 @@ export function VariationsPanel() {
     }
 
     toast(isNew?'Variation created':'Saved','success')
+
+    // Handle "Create new TCE line for this VN" — spec Part 8
+    // tce_link stores item_id text, auto-created line uses itemId = 'VN.' + number
+    if (form.tce_link === 'create_new') {
+      const newItemId = `VN.${form.number.trim()}`
+      // Check it doesn't already exist
+      const { data: existing } = await supabase.from('nrg_tce_lines')
+        .select('id').eq('project_id', activeProject!.id).eq('item_id', newItemId).maybeSingle()
+      if (!existing) {
+        await supabase.from('nrg_tce_lines').insert({
+          project_id: activeProject!.id,
+          item_id: newItemId,
+          source: 'overhead',
+          description: form.title.trim(),
+          work_order: form.wo_ref || '',
+          contract_scope: '',
+          unit_type: 'lump',
+          estimated_qty: 1,
+          tce_rate: totalSell || 0,
+          tce_total: totalSell || 0,
+          kpi_included: false,
+          line_type: 'Variation',
+          is_variation_line: true,
+          wbs_code: '',
+          category: '',
+          forecast_enabled: false,
+        })
+      }
+      // Update the variation to store the new item_id as tce_link
+      await supabase.from('variations').update({ tce_link: newItemId }).eq('id', varId)
+    }
+
     setSaving(false); setModal(null); load()
   }
 

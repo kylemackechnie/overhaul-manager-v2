@@ -140,6 +140,7 @@ export function NrgTcePanel() {
       contract_scope: form.contract_scope || '', line_type: form.line_type || '',
       kpi_included: form.kpi_included, unit_type: form.unit_type || '',
       estimated_qty: form.estimated_qty || 0, tce_rate: form.tce_rate || 0,
+      notes: (form as typeof form & { notes?: string }).notes || '',
     }
     if (modal === 'new') {
       const { error } = await supabase.from('nrg_tce_lines').insert(payload)
@@ -533,6 +534,13 @@ export function NrgTcePanel() {
                   <input type="checkbox" checked={form.kpi_included} onChange={e => setForm(f => ({ ...f, kpi_included: e.target.checked }))} />
                   KPI Included
                 </label>
+              </div>
+              <div className="fg" style={{ marginTop: '8px' }}>
+                <label>Notes</label>
+                <textarea className="input" rows={2}
+                  value={(form as typeof form & { notes?: string }).notes || ''}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value } as typeof f))}
+                  style={{ resize: 'vertical' }} placeholder="Optional notes for this TCE line" />
               </div>
             </div>
             <div className="modal-footer">

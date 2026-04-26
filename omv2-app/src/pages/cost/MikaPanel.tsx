@@ -76,11 +76,30 @@ export function MikaPanel() {
     const { data } = await supabase.from('mika_wbs_lines')
       .select('*').eq('project_id', activeProject.id).order('sort_order')
     if (data && data.length > 0) {
-      // Convert DB rows back to MikaLine format for display
-      const dbLines: MikaLine[] = (data as {wbs:string;description:string;level:number|null;pm80:number|null;pm100:number|null;forecast_tc:number|null}[]).map(r => ({
+      const rows = data as {wbs:string;description:string;level:number|null;pm80:number|null;pm100:number|null;forecast_tc:number|null}[]
+
+      // Fetch live actuals for each WBS row via DB function (handles child WBS prefix rollup)
+      // get_mika_live_actuals(project_id, wbs) sums: expenses + hire + cars + accommodation + back_office
+      // where wbs = target OR wbs LIKE target || '.%' (child prefix matching)
+      // Note: Labour actuals require timesheet computation — this covers non-labour sources
+      const actualsMap: Record<string, number> = {}
+      // Batch: call for top-level WBS codes only (children roll up inside the function)
+      const topLevel = rows.filter(r => r.level === 1 || r.level === 2)
+      await Promise.all(topLevel.map(async r => {
+        try {
+          const { data: result } = await supabase.rpc('get_mika_live_actuals', {
+            p_project_id: activeProject.id,
+            p_wbs: r.wbs,
+          })
+          if (result !== null) actualsMap[r.wbs] = Number(result)
+        } catch { /* non-critical */ }
+      }))
+
+      const dbLines: MikaLine[] = rows.map(r => ({
         wbs: r.wbs, desc: r.description, level: r.level||1,
         pm80tot: r.pm80||0, pm100: r.pm100||0,
-        actuals: 0, // PTD actuals are live — computed from modules, not from MIKA import
+        // Use child-rollup actuals for top-level rows; for leaf rows use exact match
+        actuals: actualsMap[r.wbs] ?? 0,
         forecast: r.forecast_tc||0,
       }))
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })

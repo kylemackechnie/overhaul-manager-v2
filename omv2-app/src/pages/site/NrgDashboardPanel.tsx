@@ -16,22 +16,29 @@ export function NrgDashboardPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [tceRes, invRes, woRes] = await Promise.all([
+    const [tceRes, invRes, expRes, varRes, woRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('tce_total,source').eq('project_id', pid),
       supabase.from('invoices').select('amount,status,tce_item_id').eq('project_id', pid),
+      supabase.from('expenses').select('cost_ex_gst,amount,tce_item_id').eq('project_id', pid),
+      supabase.from('variations').select('status,sell_total').eq('project_id', pid),
       supabase.from('work_orders').select('status').eq('project_id', pid),
     ])
     const tce = (tceRes.data || []) as { tce_total: number; source: string }[]
     const inv = (invRes.data || []) as { amount: number; status: string; tce_item_id: string | null }[]
+    const exp = (expRes.data || []) as { cost_ex_gst: number; amount: number; tce_item_id: string | null }[]
+    const vars = (varRes.data || []) as { status: string; sell_total: number }[]
     const wos = (woRes.data || []) as { status: string }[]
     const oh = tce.filter(l => l.source === 'overhead')
     const sl = tce.filter(l => l.source === 'skilled')
+    const invActuals = inv.filter(i => i.tce_item_id && i.status !== 'rejected').reduce((a, i) => a + (i.amount || 0), 0)
+    const expActuals = exp.filter(e => e.tce_item_id).reduce((a, e) => a + (e.cost_ex_gst || e.amount || 0), 0)
+    const vnActuals = vars.filter(v => v.status === 'approved').reduce((a, v) => a + (v.sell_total || 0), 0)
     setS({
       tce: tce.length, oh: oh.length, sl: sl.length,
       ohTotal: oh.reduce((a, l) => a + (l.tce_total || 0), 0),
       slTotal: sl.reduce((a, l) => a + (l.tce_total || 0), 0),
       tceTotal: tce.reduce((a, l) => a + (l.tce_total || 0), 0),
-      actuals: inv.filter(i => i.tce_item_id).reduce((a, i) => a + (i.amount || 0), 0),
+      actuals: invActuals + expActuals + vnActuals,
       pending: inv.filter(i => i.status === 'received' || i.status === 'checked').length,
       wos: wos.length,
       complete: wos.filter(w => w.status === 'complete').length,
