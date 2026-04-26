@@ -16,11 +16,12 @@ interface IssuedLog {
   issued_at: string; notes: string
 }
 
-const STATUSES = ['required','ordered','received','not_required','issued'] as const
+const STATUSES = ['required','ordered','partial','received','not_required','issued'] as const
 const STATUS_STYLE: Record<string,{bg:string,color:string,label:string}> = {
   required:    {bg:'#dbeafe',color:'#1e40af',label:'Required'},
   ordered:     {bg:'#fef3c7',color:'#92400e',label:'Ordered'},
   received:    {bg:'#d1fae5',color:'#065f46',label:'Received'},
+  partial:     {bg:'#fef3c7',color:'#d97706',label:'Partial'},
   issued:      {bg:'#f3e8ff',color:'#6b21a8',label:'Issued'},
   not_required:{bg:'#e5e7eb',color:'#374151',label:'Not Required'},
 }
