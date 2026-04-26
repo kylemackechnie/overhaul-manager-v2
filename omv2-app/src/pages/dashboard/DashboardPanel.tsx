@@ -360,7 +360,7 @@ export function DashboardPanel() {
               { val: '—', lbl: 'EUR Cost', color: 'var(--green)' },
             ]} />
 
-          <ModCard icon="💰" title="Hardware Pricing" sub="Contract lines, escalation & customer offers" accent="#0891b2" panel="hardware-pricing"
+          <ModCard icon="💰" title="Hardware Pricing" sub="Contract lines, escalation & customer offers" accent="#0891b2" panel="hardware-dashboard"
             stats={[
               { val: '—', lbl: 'Lines', color: '#0891b2' },
               { val: '—', lbl: 'Value', color: 'var(--green)' },
@@ -395,7 +395,7 @@ export function DashboardPanel() {
               { val: d.invoiceTotal > 0 ? fmt(d.invoiceTotal) : '—', lbl: 'Total', color: 'var(--text2)' },
             ]} />
 
-          <ModCard icon="🚢" title="Logistics" sub="Import & export shipments tracking" accent="#0891b2" panel="logistics-shipments"
+          <ModCard icon="🚢" title="Logistics" sub="Import & export shipments tracking" accent="#0891b2" panel="shipping-dashboard"
             stats={[
               { val: d.shipImports || '—', lbl: 'Imports', color: '#0284c7' },
               { val: d.shipExports || '—', lbl: 'Exports', color: '#d97706' },

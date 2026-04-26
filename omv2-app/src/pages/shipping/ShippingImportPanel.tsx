@@ -56,7 +56,7 @@ function SummaryTile({ label, value, color }: { label: string; value: string | n
 
 // ── SLI Modal ─────────────────────────────────────────────────────────────
 
-function SLIModal({ shipmentId, onClose, project }: { shipmentId: string; onClose: () => void; project: { name: string } }) {
+function SLIModal({ shipmentId: _shipmentId, onClose, project }: { shipmentId: string; onClose: () => void; project: { name: string } }) {
   const [form, setForm] = useState({
     senderCo: 'Siemens Energy Pty Ltd', senderAddr: '', senderContact: '', senderPhone: '',
     pickupAddr: '', pickupDate: new Date().toISOString().slice(0,10), shipperRef: '',
@@ -180,7 +180,7 @@ table{width:100%;border-collapse:collapse}.ft td{border:1px solid #999;padding:5
 
 // ── PackingListModal ───────────────────────────────────────────────────────
 
-function PackingListModal({ shipmentId, shipRef, onClose, project }: { shipmentId: string; shipRef: string; onClose: () => void; project: { name: string } }) {
+function PackingListModal({ shipmentId: _shipmentId, shipRef, onClose, project }: { shipmentId: string; shipRef: string; onClose: () => void; project: { name: string } }) {
   const [form, setForm] = useState({
     shipperCo: 'Siemens Energy Pty Ltd', shipperAddr: '',
     recvCo: 'Siemens Energy Global GmbH & Co. KG', recvAddr: '', recvCity: '', recvCountry: 'Germany',

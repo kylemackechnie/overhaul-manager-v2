@@ -133,7 +133,7 @@ export function PartsDashboardPanel() {
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', background: 'var(--bg3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Recent Issues</span>
-            <button className="btn btn-sm" style={{ fontSize: '10px', padding: '2px 8px' }} onClick={() => setActivePanel('parts-log')}>View all →</button>
+            <button className="btn btn-sm" style={{ fontSize: '10px', padding: '2px 8px' }} onClick={() => setActivePanel('parts-issue')}>View all →</button>
           </div>
           {recentIssues.length === 0 ? (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: '12px' }}>No parts issued yet</div>
