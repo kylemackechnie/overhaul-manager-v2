@@ -2,11 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
+import { nrgInvoiceActual, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine } from '../../types'
-
-interface InvoiceRow { tce_item_id: string | null; amount: number; status: string }
-interface ExpenseRow { tce_item_id: string | null; cost_ex_gst: number; amount: number; date: string | null }
-
 
 function pctColor(pct: number) {
   return pct > 100 ? 'var(--red)' : pct > 85 ? 'var(--amber)' : 'var(--green)'
@@ -15,8 +12,9 @@ function pctColor(pct: number) {
 export function NrgKpiPanel() {
   const { activeProject } = useAppStore()
   const [lines, setLines] = useState<NrgTceLine[]>([])
-  const [invoices, setInvoices] = useState<InvoiceRow[]>([])
-  const [expenses, setExpenses] = useState<ExpenseRow[]>([])
+  const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
+  const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
+  const [variations, setVariations] = useState<NrgVariationMin[]>([])
   const [loading, setLoading] = useState(true)
   const [groupBy, setGroupBy] = useState<'contract_scope' | 'source' | 'work_order'>('contract_scope')
 
@@ -25,28 +23,26 @@ export function NrgKpiPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lData, iData, eData] = await Promise.all([
+    const [lData, iData, eData, vData] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,date').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
+      supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
     ])
     setLines((lData.data || []) as NrgTceLine[])
-    setInvoices((iData.data || []) as InvoiceRow[])
-    setExpenses((eData.data || []) as ExpenseRow[])
+    setInvoices((iData.data || []) as NrgInvoiceMin[])
+    setExpenses((eData.data || []) as NrgExpenseMin[])
+    setVariations((vData.data || []) as NrgVariationMin[])
     setLoading(false)
   }
 
-  // Calculate actuals per line from invoices + expenses
+  // Calculate actuals per line using engine (invoices + expenses + approved variations)
+  // CRITICAL: keyed by item_id (text), NOT line.id (UUID)
   const actualsById = (() => {
     const acc: Record<string, number> = {}
-    for (const inv of invoices) {
-      if (!inv.tce_item_id || inv.status === 'rejected') continue
-      acc[inv.tce_item_id] = (acc[inv.tce_item_id] || 0) + inv.amount
-    }
-    for (const exp of expenses) {
-      if (!exp.tce_item_id) continue
-      const cost = exp.cost_ex_gst || exp.amount || 0
-      acc[exp.tce_item_id] = (acc[exp.tce_item_id] || 0) + cost
+    for (const line of lines) {
+      if (!line.item_id) continue
+      acc[line.item_id] = nrgInvoiceActual(line.item_id, invoices, expenses, variations)
     }
     return acc
   })()
@@ -72,7 +68,7 @@ export function NrgKpiPanel() {
 
   // Totals
   const totalTce = leafLines.reduce((s, l) => s + (l.tce_total || 0), 0)
-  const totalActuals = leafLines.reduce((s, l) => s + (actualsById[l.id] || 0), 0)
+  const totalActuals = leafLines.reduce((s, l) => s + (actualsById[l.item_id || ""] || 0), 0)
   const totalPct = totalTce > 0 ? totalActuals / totalTce * 100 : 0
 
   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
@@ -82,7 +78,7 @@ export function NrgKpiPanel() {
     const rows: (string | number)[][] = [['Group', 'Item ID', 'Description', 'Source', 'TCE Value', 'Actuals', 'Remaining', '% Used']]
     sortedGroups.forEach(([group, gLines]) => {
       gLines.forEach(l => {
-        const act = actualsById[l.id] || 0
+        const act = actualsById[l.item_id || ""] || 0
         const pct = l.tce_total > 0 ? act / l.tce_total * 100 : 0
         rows.push([group, l.item_id || '', l.description, l.source, l.tce_total || 0, act, (l.tce_total || 0) - act, pct.toFixed(1) + '%'])
       })
@@ -147,9 +143,9 @@ export function NrgKpiPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {sortedGroups.map(([group, gLines]) => {
             const gTce = gLines.reduce((s, l) => s + (l.tce_total || 0), 0)
-            const gAct = gLines.reduce((s, l) => s + (actualsById[l.id] || 0), 0)
+            const gAct = gLines.reduce((s, l) => s + (actualsById[l.item_id || ""] || 0), 0)
             const gPct = gTce > 0 ? gAct / gTce * 100 : 0
-            const overLines = gLines.filter(l => actualsById[l.id] > (l.tce_total || 0) && l.tce_total > 0)
+            const overLines = gLines.filter(l => actualsById[l.item_id || ""] > (l.tce_total || 0) && l.tce_total > 0)
             return (
               <div key={group} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 {/* Group header */}
@@ -183,7 +179,7 @@ export function NrgKpiPanel() {
                   </thead>
                   <tbody>
                     {gLines.map(line => {
-                      const act = actualsById[line.id] || 0
+                      const act = actualsById[line.item_id || ""] || 0
                       const tce = line.tce_total || 0
                       const pct = tce > 0 ? act / tce * 100 : null
                       const rem = tce - act

@@ -38,7 +38,7 @@ export function NrgOhfPanel() {
     ])
     const all = (tceData.data||[]) as NrgTceLine[]
     setAllLines(all)
-    setOhfLines(all.filter(l=>ohfIds.includes(l.id)))
+    setOhfLines(all.filter(l=>ohfIds.includes(l.item_id||"")))
     setResources((resData.data||[]) as Resource[])
     setLoading(false)
   }
@@ -47,6 +47,7 @@ export function NrgOhfPanel() {
     if (selectedIds.length===0) return
     const nrgConfig = activeProject!.nrg_config as {kpiTarget:unknown;ohfLineIds:string[]}
     const existing = nrgConfig?.ohfLineIds||[]
+    // Store item_id strings (stable across re-imports), not UUIDs
     const newIds = [...new Set([...existing,...selectedIds])]
     const { data, error } = await supabase.from('projects').update({ nrg_config:{ ...nrgConfig, ohfLineIds:newIds } })
       .eq('id',activeProject!.id).select('*,site:sites(id,name)').single()
@@ -104,7 +105,8 @@ export function NrgOhfPanel() {
     }))
   }
 
-  const notAdded = allLines.filter(l=>!ohfLines.find(o=>o.id===l.id)).filter(l=>l.source==='overhead')
+  const ohfLineIds = ((activeProject?.nrg_config as {ohfLineIds?:string[]})?.ohfLineIds || [])
+  const notAdded = allLines.filter(l=>!ohfLineIds.includes(l.item_id||'')).filter(l=>l.source==='overhead')
   const filteredPicker = notAdded.filter(l=>!search||l.description.toLowerCase().includes(search.toLowerCase())||l.wbs_code.toLowerCase().includes(search.toLowerCase()))
   const totalTce = ohfLines.reduce((s,l)=>s+(l.tce_total||0),0)
   const fmt = (n:number) => '$'+n.toLocaleString('en-AU',{minimumFractionDigits:0})
@@ -157,7 +159,7 @@ export function NrgOhfPanel() {
                     </td>
                     <td style={{whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={()=>openEdit(l)}>Config</button>
-                      <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={()=>removeLine(l.id)}>✕</button>
+                      <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={()=>removeLine(l.item_id||'')}>✕</button>
                     </td>
                   </tr>
                 )
@@ -182,7 +184,7 @@ export function NrgOhfPanel() {
               {filteredPicker.length===0 ? <p style={{padding:'24px',textAlign:'center',color:'var(--text3)'}}>All overhead lines already added.</p>
               : filteredPicker.map(l => (
                 <label key={l.id} style={{display:'flex',alignItems:'flex-start',gap:'10px',padding:'10px 20px',borderBottom:'1px solid var(--border)',cursor:'pointer'}}>
-                  <input type="checkbox" style={{marginTop:'2px'}} checked={selectedIds.includes(l.id)} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,l.id]:ids.filter(x=>x!==l.id))} />
+                  <input type="checkbox" style={{marginTop:'2px'}} checked={selectedIds.includes(l.item_id||'')} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,l.item_id||'']:ids.filter(x=>x!==l.item_id))} />
                   <div style={{flex:1}}>
                     <div style={{fontWeight:500,fontSize:'13px'}}>{l.description||'—'}</div>
                     <div style={{display:'flex',gap:'12px',marginTop:'2px'}}>

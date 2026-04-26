@@ -475,3 +475,195 @@ export function fcDayTotal(row: DayCostRow, mode: 'cost' | 'sell'): number {
     return s + v
   }, 0)
 }
+
+
+// ─── NRG TCE Actuals Engine ───────────────────────────────────────────────────
+// Mirrors the HTML app's nrgLineActual / nrgInvoiceActual / _nrgMatchAllocForLine.
+// All functions are pure — no Supabase calls. Pass in pre-fetched data.
+
+export interface NrgWoAlloc {
+  wo: string
+  tceItemId: string | null
+  _tceMode?: boolean
+  hours: number
+  label?: string
+}
+
+export interface NrgTceLineMin {
+  item_id: string | null
+  source: string
+  work_order: string
+  line_type: string
+}
+
+export interface NrgTimesheetCrewDay {
+  dayType: string
+  shiftType: string
+  hours: number
+  nrgWoAllocations?: NrgWoAlloc[]
+}
+
+export interface NrgTimesheetCrew {
+  personId: string
+  name: string
+  role: string
+  days: Record<string, NrgTimesheetCrewDay>
+}
+
+export interface NrgTimesheet {
+  id: string
+  week_start: string
+  type: string
+  status: string
+  scope_tracking: string
+  regime: string
+  crew: NrgTimesheetCrew[]
+}
+
+export interface NrgInvoiceMin {
+  tce_item_id: string | null
+  amount: number
+  status: string
+}
+
+export interface NrgExpenseMin {
+  tce_item_id: string | null
+  cost_ex_gst: number
+  amount: number
+}
+
+export interface NrgVariationMin {
+  status: string
+  tce_link: string
+  sell_total: number
+}
+
+/**
+ * _nrgMatchAllocForLine — THE core matcher.
+ * Resolution order (spec Part 6):
+ * 1. tceItemId exact match — works for overheads and skilled-without-WO
+ * 2. wo exact match with !tceItemId guard — covers TasTK imports AND _tceMode WO rows
+ * The !tceItemId guard prevents double-counting alloc rows that have both fields.
+ */
+export function nrgMatchAllocForLine(
+  allocs: NrgWoAlloc[],
+  line: NrgTceLineMin
+): NrgWoAlloc | null {
+  // Pass 1: tceItemId exact match
+  const byItemId = allocs.find(a => a.tceItemId && a.tceItemId === (line.item_id || ''))
+  if (byItemId) return byItemId
+
+  // Pass 2: wo exact match, but ONLY for allocs without tceItemId
+  // The guard prevents double-counting rows that have both fields
+  if (line.work_order) {
+    const byWo = allocs.find(a => !a.tceItemId && a.wo === line.work_order)
+    if (byWo) return byWo
+  }
+
+  return null
+}
+
+/**
+ * nrgVariationActual — sum of approved variation sell totals for a TCE item_id.
+ * Approved-only — draft/submitted/rejected are invisible to TCE register.
+ */
+export function nrgVariationActual(
+  itemId: string | null,
+  variations: NrgVariationMin[]
+): number {
+  if (!itemId) return 0
+  return variations
+    .filter(v => v.status === 'approved' && v.tce_link === itemId)
+    .reduce((s, v) => s + (v.sell_total || 0), 0)
+}
+
+/**
+ * nrgInvoiceActual — sum of supplier invoices + expenses + approved variations
+ * for a given TCE item_id. This is the non-labour path.
+ * NOTE: Do NOT also call nrgVariationActual() in render — it's already here.
+ */
+export function nrgInvoiceActual(
+  itemId: string | null,
+  invoices: NrgInvoiceMin[],
+  expenses: NrgExpenseMin[],
+  variations: NrgVariationMin[]
+): number {
+  if (!itemId) return 0
+
+  const invTotal = invoices
+    .filter(i => i.tce_item_id === itemId && i.status !== 'rejected')
+    .reduce((s, i) => s + (i.amount || 0), 0)
+
+  const expTotal = expenses
+    .filter(e => e.tce_item_id === itemId)
+    .reduce((s, e) => s + (e.cost_ex_gst || e.amount || 0), 0)
+
+  const vnTotal = nrgVariationActual(itemId, variations)
+
+  return invTotal + expTotal + vnTotal
+}
+
+/**
+ * nrgLineActualHours — total actual hours allocated to a Labour TCE line.
+ * Walks all approved timesheets, finds matching allocations using the matcher.
+ */
+export function nrgLineActualHours(
+  line: NrgTceLineMin,
+  timesheets: NrgTimesheet[]
+): number {
+  let total = 0
+  for (const ts of timesheets) {
+    if (ts.status !== 'approved') continue
+    if (ts.scope_tracking !== 'tce' && ts.scope_tracking !== 'nrg_tce') continue
+    for (const member of ts.crew) {
+      for (const day of Object.values(member.days)) {
+        if (!day.hours || day.hours <= 0) continue
+        const allocs = day.nrgWoAllocations || []
+        const match = nrgMatchAllocForLine(allocs, line)
+        if (match) total += match.hours
+      }
+    }
+  }
+  return total
+}
+
+/**
+ * nrgLineActual — total actual cost for a TCE line.
+ * For Labour lines: walks approved timesheets + rate cards.
+ * For non-Labour: delegates to nrgInvoiceActual.
+ */
+export function nrgLineActual(
+  line: NrgTceLineMin,
+  timesheets: NrgTimesheet[],
+  invoices: NrgInvoiceMin[],
+  expenses: NrgExpenseMin[],
+  variations: NrgVariationMin[],
+  getRateForRole: (role: string) => number
+): number {
+  const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
+
+  if (!isLabour) {
+    return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
+  }
+
+  // Labour: sum hours × sell rate from approved TCE-mode timesheets
+  let total = 0
+  for (const ts of timesheets) {
+    if (ts.status !== 'approved') continue
+    if (ts.scope_tracking !== 'tce' && ts.scope_tracking !== 'nrg_tce') continue
+    for (const member of ts.crew) {
+      const rate = getRateForRole(member.role)
+      for (const day of Object.values(member.days)) {
+        if (!day.hours || day.hours <= 0) continue
+        const allocs = day.nrgWoAllocations || []
+        const match = nrgMatchAllocForLine(allocs, line)
+        if (match) total += match.hours * rate
+      }
+    }
+  }
+
+  // Also add any invoices/expenses directly tagged to this labour line
+  total += nrgInvoiceActual(line.item_id, invoices, expenses, variations)
+
+  return total
+}
