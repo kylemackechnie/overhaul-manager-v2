@@ -66,9 +66,26 @@ export function TVRegisterPanel() {
   }
 
   async function removeTV(tvNo: string) {
-    if (!confirm(`Remove TV${tvNo} from this project?`)) return
-    await supabase.from('project_tvs').delete().eq('project_id',activeProject!.id).eq('tv_no',tvNo)
-    toast('Removed','info'); load()
+    const hasCosting = costings.some(c => c.tv_no === tvNo)
+    const msg = `Remove TV${tvNo} from this project?${hasCosting ? '\n\nThis will also delete the costing data and packages for this TV.' : ''}`
+    if (!confirm(msg)) return
+    const pid = activeProject!.id
+
+    // Remove project link
+    await supabase.from('project_tvs').delete().eq('project_id', pid).eq('tv_no', tvNo)
+    // Remove costings for this TV on this project
+    await supabase.from('tooling_costings').delete().eq('project_id', pid).eq('tv_no', tvNo)
+    // Remove project kollos for this TV
+    const { data: kolloLinks } = await supabase.from('project_kollos').select('kollo_id').eq('project_id', pid)
+    const { data: tvKollos } = await supabase.from('global_kollos').select('kollo_id').eq('tv_no', tvNo)
+    if (kolloLinks && tvKollos) {
+      const tvKolloIds = new Set(tvKollos.map(k => k.kollo_id))
+      const toDelete = kolloLinks.filter(k => tvKolloIds.has(k.kollo_id)).map(k => k.kollo_id)
+      if (toDelete.length) {
+        await supabase.from('project_kollos').delete().eq('project_id', pid).in('kollo_id', toDelete)
+      }
+    }
+    toast(`TV${tvNo} removed from project`, 'info'); load()
   }
 
   function openCostModal(tv: GlobalTV) {

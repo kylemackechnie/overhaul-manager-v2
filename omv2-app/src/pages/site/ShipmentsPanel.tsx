@@ -79,9 +79,74 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
   }
 
   async function del(s: Shipment) {
-    if (!confirm(`Delete shipment "${s.reference}"?`)) return
-    await supabase.from('shipments').delete().eq('id', s.id)
-    toast('Deleted','info'); load()
+    const pid = activeProject!.id
+    // Check if this shipment references a TV
+    const ref = s.reference || ''
+    const tvNo = ref.startsWith('TV') ? ref.slice(2) : null
+
+    if (tvNo) {
+      // Check what downstream data exists
+      const [tvLink, kollos, wositLines] = await Promise.all([
+        supabase.from('project_tvs').select('tv_no').eq('project_id', pid).eq('tv_no', tvNo).maybeSingle(),
+        supabase.from('global_kollos').select('kollo_id').eq('tv_no', tvNo),
+        supabase.from('wosit_lines').select('id').eq('project_id', pid).eq('tv_no', tvNo),
+      ])
+      const hasTV = !!tvLink.data
+      const kolloCount = kollos.data?.length || 0
+      const wositCount = wositLines.data?.length || 0
+
+      const lines = [`Remove shipment ${ref}?`, '']
+      if (hasTV) lines.push(`TV${tvNo} will be removed from the TV Register and Costing.`)
+      if (kolloCount) lines.push(`${kolloCount} package record(s) for TV${tvNo} will be deleted.`)
+      if (wositCount) lines.push(`${wositCount} spare parts line(s) for TV${tvNo} will be deleted.`)
+      lines.push('', 'Delete shipment only, or delete everything?')
+
+      const choice = await new Promise<'cancel'|'shiponly'|'all'>(resolve => {
+        const overlay = document.createElement('div')
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center'
+        overlay.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+          <div style="font-size:16px;font-weight:700;color:var(--red);margin-bottom:12px">🗑 Delete Shipment</div>
+          <p style="white-space:pre-line;font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">${lines.join('\n')}</p>
+          <div style="background:#fef2f2;border:1px solid #ef4444;border-radius:6px;padding:10px;font-size:11px;color:#ef4444;margin-bottom:16px">⚠ Cascade delete cannot be undone.</div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="_dsCancelBtn" style="padding:7px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);cursor:pointer;font-size:13px">Cancel</button>
+            <button id="_dsShipOnlyBtn" style="padding:7px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);cursor:pointer;font-size:13px">Shipment Only</button>
+            <button id="_dsAllBtn" style="padding:7px 14px;border:none;border-radius:6px;background:#ef4444;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Delete Everything</button>
+          </div>
+        </div>`
+        document.body.appendChild(overlay)
+        overlay.querySelector('#_dsCancelBtn')!.addEventListener('click', () => { overlay.remove(); resolve('cancel') })
+        overlay.querySelector('#_dsShipOnlyBtn')!.addEventListener('click', () => { overlay.remove(); resolve('shiponly') })
+        overlay.querySelector('#_dsAllBtn')!.addEventListener('click', () => { overlay.remove(); resolve('all') })
+      })
+
+      if (choice === 'cancel') return
+
+      // Always delete the shipment
+      await supabase.from('shipments').delete().eq('id', s.id)
+
+      if (choice === 'all') {
+        // Cascade: TV Register, costings, kollos, WOSIT lines
+        await supabase.from('project_tvs').delete().eq('project_id', pid).eq('tv_no', tvNo)
+        await supabase.from('tooling_costings').delete().eq('project_id', pid).eq('tv_no', tvNo)
+        if (kollos.data && kollos.data.length > 0) {
+          const kolloIds = kollos.data.map(k => k.kollo_id)
+          await supabase.from('project_kollos').delete().eq('project_id', pid).in('kollo_id', kolloIds)
+        }
+        if (wositCount > 0) {
+          await supabase.from('wosit_lines').delete().eq('project_id', pid).eq('tv_no', tvNo)
+        }
+        toast(`Shipment ${ref} and all related data deleted`, 'info')
+      } else {
+        toast(`Shipment ${ref} deleted`, 'info')
+      }
+    } else {
+      // Non-TV shipment — simple confirm
+      if (!confirm(`Delete shipment "${ref}"?`)) return
+      await supabase.from('shipments').delete().eq('id', s.id)
+      toast('Deleted', 'info')
+    }
+    load()
   }
 
   const label = direction === 'import' ? 'Inbound' : 'Outbound'
