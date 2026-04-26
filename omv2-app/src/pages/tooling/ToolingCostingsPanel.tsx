@@ -257,7 +257,7 @@ export function ToolingCostingsPanel() {
                       const val = parseFloat(e.target.value) || null
                       supabase.from('global_tvs').update({ replacement_value_eur: val }).eq('tv_no', c.tv_no).then(({ error }) => {
                         if (error) toast(error.message, 'error')
-                        else setCostings(cs => cs.map(x => x.id === c.id ? { ...x, tv: x.tv ? { ...x.tv, replacement_value_eur: val } : x.tv } : x))
+                        else setCostings(cs => cs.map(x => x.id === c.id ? { ...x, tv: x.tv ? { ...x.tv, replacement_value_eur: val ?? undefined } : x.tv } : x) as CostingRow[])
                       })
                     }} />
                 </div>
