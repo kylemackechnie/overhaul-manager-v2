@@ -150,7 +150,6 @@ const RIBBON_MODULES: RibbonTab[] = [
     groups: [
       { label: 'SE AG Tooling', buttons: [
         { icon: '🔩', label: 'Dashboard', panel: 'tooling-dashboard' },
-        { icon: '📥', label: 'Import', panel: 'shipping-import' },
         { icon: '🧰', label: 'TV Register', panel: 'tooling-tvs' },
         { icon: '📦', label: 'Kollos', panel: 'tooling-kollos' },
         { icon: '💶', label: 'Costings', panel: 'tooling-costings' },

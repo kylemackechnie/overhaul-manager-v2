@@ -397,40 +397,48 @@ export function ShippingImportPanel() {
     for (const tv of selected) {
       const tvNoStr = String(tv.tvNo)
 
-      // 1. Upsert into global_tvs
+      // 1. Upsert into global_tvs — unique constraint is (site_id, tv_no)
       const { data: existingGlobal } = await supabase.from('global_tvs')
-        .select('id').eq('tv_no', tvNoStr).maybeSingle()
+        .select('id')
+        .eq('tv_no', tvNoStr)
+        .eq('site_id', siteId || '')
+        .maybeSingle()
 
       if (existingGlobal) {
         await supabase.from('global_tvs').update({
-          header_name: tv.headerName || null,
+          header_name: tv.headerName || '',
           replacement_value_eur: tv.replacementValue || null,
           departure_date: tv.departure || null,
           eta_pod: tv.eta || null,
-          hawb: tv.hawb || null,
-          mawb: tv.mawb || null,
+          hawb: tv.hawb || '',
+          mawb: tv.mawb || '',
         }).eq('id', (existingGlobal as { id: string }).id)
         tvUpdated++
       } else {
         await supabase.from('global_tvs').insert({
           tv_no: tvNoStr,
-          header_name: tv.headerName || null,
+          header_name: tv.headerName || '',
           replacement_value_eur: tv.replacementValue || null,
           departure_date: tv.departure || null,
           eta_pod: tv.eta || null,
-          hawb: tv.hawb || null,
-          mawb: tv.mawb || null,
+          hawb: tv.hawb || '',
+          mawb: tv.mawb || '',
+          flight: '',
           site_id: siteId,
           imported_by_project_id: pid,
         })
         tvAdded++
       }
 
-      // 2. Link to project in project_tvs (PK is project_id + tv_no)
+      // 2. Link to project in project_tvs — ignore if already exists (409)
       const { data: existingLink } = await supabase.from('project_tvs')
         .select('project_id').eq('project_id', pid).eq('tv_no', tvNoStr).maybeSingle()
       if (!existingLink) {
-        await supabase.from('project_tvs').insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId })
+        const { error: linkErr } = await supabase.from('project_tvs')
+          .insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId })
+        if (linkErr && !linkErr.message.includes('duplicate')) {
+          toast('Error linking TV to project: ' + linkErr.message, 'error'); return
+        }
       }
 
       // 3. Create import shipment record
