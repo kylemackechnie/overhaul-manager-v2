@@ -1,3 +1,4 @@
+// ShippingImportPanel v2 — build 2
 import * as XLSX from 'xlsx'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -429,7 +430,7 @@ export function ShippingImportPanel() {
       }
     }
 
-    toast(`${selected.length} TVs imported — ${shipmentsCreated} shipments created`, 'success')
+    toast(`✓ ${selected.length} TVs imported — ${shipmentsCreated} shipments created`, 'success')
     setTVParsed([]); setTVStatus('')
     loadSummary()
   }
@@ -770,4 +771,3 @@ export function ShippingImportPanel() {
     </div>
   )
 }
-// force redeploy Sun Apr 26 11:15:16 UTC 2026
