@@ -511,3 +511,42 @@ thead th {
   z-index: 2;
   background: var(--bg3);
 }
+
+/* ── Toast notifications ──────────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  top: 68px; /* below the header */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  width: max-content;
+  max-width: min(560px, 90vw);
+}
+.toast {
+  pointer-events: all;
+  padding: 11px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--sans);
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: toastIn 0.18s ease;
+  max-width: 100%;
+  text-align: center;
+}
+.toast-success { background: #065f46; color: #ecfdf5; border: 1px solid #059669; }
+.toast-error   { background: #991b1b; color: #fef2f2; border: 1px solid #dc2626; font-size: 14px; font-weight: 600; padding: 14px 24px; }
+.toast-info    { background: var(--bg2); color: var(--text); border: 1px solid var(--border); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

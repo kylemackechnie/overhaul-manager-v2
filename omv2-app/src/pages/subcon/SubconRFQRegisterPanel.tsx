@@ -181,7 +181,7 @@ export function SubconRFQRegisterPanel() {
     toast('PO created — opening editor…', 'success')
     // Navigate to POs panel and trigger edit modal
     setPendingPoId((po as { id: string }).id)
-    setActivePanel('cost-pos')
+    setActivePanel('purchase-orders')
   }
 
   async function viewPdf(path: string) {
