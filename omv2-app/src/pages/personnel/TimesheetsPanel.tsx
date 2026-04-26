@@ -826,6 +826,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{member.role || '—'}</div>
                       {!rc && <div style={{ fontSize: '9px', color: 'var(--amber)', marginTop: '2px' }}>⚠ No rate card</div>}
                     </div>
+                    {/* EBA meal break adjustment — +0.5h per worked day, cost & sell only */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginTop: '2px' }}
+                      title="+0.5h per worked day (EBA meal break adjustment — cost & charge only, payroll unaffected)">
+                      <input type="checkbox" checked={!!member.mealBreakAdj} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }}
+                        onChange={e => {
+                          const updated = { ...member, mealBreakAdj: e.target.checked }
+                          setActiveWeek(w => w ? ({ ...w, crew: w.crew.map(m => m.personId === member.personId ? updated : m) }) : w)
+                        }} />
+                      <span style={{ fontSize: '9px', color: member.mealBreakAdj ? TYPE_COLOR[type] : 'var(--text3)' }}>+½h/day adj.</span>
+                    </label>
                     <button className="btn btn-sm" style={{ fontSize: '10px', padding: '2px 6px', color: 'var(--red)', alignSelf: 'flex-start' }} onClick={() => removePerson(member.personId)}>✕ Remove</button>
                   </div>
                   {/* Day cells */}
@@ -837,11 +847,21 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     const laha = (raw.laha as boolean) || false
                     const meal = (raw.meal as boolean) || false
                     const isPH = holidays.has(d); const isWknd = i >= 5
+                    // EBA adj for display and split
+                    const adjH = (member.mealBreakAdj && cellHrs > 0) ? 0.5 : 0
+                    const dispHrs = cellHrs + adjH
+                    const split = dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, regime, (rc?.regime as RegimeConfig)) : null
+                    // Split summary labels/colors matching HTML
+                    const SPLIT_LABELS: Record<string,string> = { dnt:'NT', dt15:'T1.5', ddt:'DT', ddt15:'DT1.5', nnt:'NNT', ndt:'NDT', ndt15:'NDT1.5' }
+                    const SPLIT_COLORS: Record<string,string> = { dnt:'var(--accent)', dt15:'var(--orange)', ddt:'var(--red)', ddt15:'var(--red)', nnt:'var(--mod-tooling,#8b5cf6)', ndt:'var(--mod-tooling,#8b5cf6)', ndt15:'var(--mod-tooling,#8b5cf6)' }
+                    const splitEntries = split ? (Object.entries(split) as [string,number][]).filter(([,v])=>v>0) : []
                     return (
                       <div key={d} style={{ background: isPH ? 'rgba(139,92,246,0.05)' : isWknd ? 'rgba(194,65,12,0.03)' : 'var(--bg2)', padding: '4px 5px', borderLeft: '1px solid var(--border)' }}>
                         <input type="number" min="0" max="24" step="0.5" value={cellHrs || ''} placeholder="0"
                           style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 600, padding: '2px 4px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: cellHrs > 0 ? 'var(--text)' : 'var(--text3)', textAlign: 'center' }}
                           onChange={e => setDay(member.personId, d, 'hours', parseFloat(e.target.value) || 0)} />
+                        {/* EBA adjustment display */}
+                        {adjH > 0 && <div style={{ fontSize: '9px', color: TYPE_COLOR[type], textAlign: 'center', marginTop: '1px' }}>{dispHrs.toFixed(1)}h (adj)</div>}
                         <select value={dayType} style={{ width: '100%', fontSize: '9px', padding: '1px 2px', border: '1px solid var(--border2)', borderRadius: '2px', background: 'var(--bg3)', color: 'var(--text3)', marginTop: '2px' }}
                           onChange={e => setDay(member.personId, d, 'dayType', e.target.value)}>
                           {DAY_TYPES.map(dt => <option key={dt.key} value={dt.key}>{dt.label}</option>)}
@@ -851,6 +871,14 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                           <option value="day">Day</option>
                           <option value="night">Night</option>
                         </select>
+                        {/* NT / T1.5 / DT breakdown */}
+                        {splitEntries.length > 0 && (
+                          <div style={{ marginTop: '2px', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                            {splitEntries.map(([k, v]) => (
+                              <span key={k} style={{ color: SPLIT_COLORS[k], fontSize: '9px' }}>{SPLIT_LABELS[k]}:{v.toFixed(1)}</span>
+                            ))}
+                          </div>
+                        )}
                         {cellHrs > 0 && (
                           <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px', flexDirection: 'column' }}>
                             <div style={{ display: 'flex', gap: '4px' }}>
