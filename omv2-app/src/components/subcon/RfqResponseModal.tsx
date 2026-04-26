@@ -4,7 +4,7 @@ import { toast } from '../ui/Toast'
 import { uploadQuotePdf, deleteQuotePdf, getQuotePdfSignedUrl, formatFileSize } from '../../lib/quotePdfStorage'
 import { calcHoursCost } from '../../engines/costEngine'
 import type {
-  RfqDocument, RfqResponse, RfqLabourRow, RfqEquipRow,
+  RfqDocument, RfqResponse, RfqLabourRow,
   RfqResponseLabour, RfqResponseLabourRates, RfqResponseEquip,
 } from '../../types'
 
