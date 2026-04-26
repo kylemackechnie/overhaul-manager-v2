@@ -570,8 +570,6 @@ export function ShippingImportPanel() {
         const kanlogParts = String(row[matKanIdx] || '').split('#').map(s => s.trim()).filter(Boolean)
         const installLoc = kanlogParts[0] || ''
         const delivPkg = String(row[delivPkgIdx] || '')
-        const dp = delivPkg.split('-')
-        const crateNo = dp.length >= 3 ? dp[2] : delivPkg
 
         parts.push({
           project_id: pid,
