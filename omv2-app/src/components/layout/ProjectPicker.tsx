@@ -59,18 +59,9 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
     setLoading(true)
     setLoadError(null)
     try {
-      // Diagnostic: time getSession() separately — this is suspected to hang on cold-start refresh
-      console.log(`[Picker] ${ms()} calling getSession()...`)
-      const sessionTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('getSession() hung for 5s — auth not initialised')), 5000)
-      )
-      const sessionResult = await Promise.race([
-        supabase.auth.getSession(),
-        sessionTimeout,
-      ])
-      const session = sessionResult.data.session
-      console.log(`[Picker] ${ms()} getSession() resolved | uid:`, session?.user?.id ?? 'NONE', '| expires:', session?.expires_at ?? 'N/A')
-
+      // No getSession() call here — it would serialize through the same auth lock as
+      // useAuth and hang on cold start. Session is guaranteed by App.tsx (which only
+      // mounts this component after INITIAL_SESSION/SIGNED_IN fires).
       console.log(`[Picker] ${ms()} firing projects + sites queries...`)
       const queryTimeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('projects/sites query hung for 8s — RLS or network issue')), 8000)

@@ -11,36 +11,28 @@ export function useAuth() {
     const ms = () => `+${Math.round(performance.now() - t0)}ms`
     console.log(`[useAuth] ${ms()} effect mounted`)
 
-    // Get initial session — wrap in timeout so a hang surfaces in the console
-    console.log(`[useAuth] ${ms()} calling getSession()...`)
-    const sessionTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('useAuth getSession() hung for 5s')), 5000)
-    )
-    Promise.race([supabase.auth.getSession(), sessionTimeout])
-      .then(({ data: { session } }) => {
-        console.log(`[useAuth] ${ms()} getSession() resolved | uid:`, session?.user?.id ?? 'NONE')
-        if (session?.user) {
-          loadAppUser(session.user.id)
-        }
-      })
-      .catch(err => {
-        console.error(`[useAuth] ${ms()} getSession() failed:`, err.message)
-      })
+    // NO getSession() call — it serializes through the same internal auth lock as the
+    // token refresh that runs on cold start, causing all concurrent auth calls to hang
+    // for 5+ seconds. The auth listener below covers both fresh signins (SIGNED_IN)
+    // and page refreshes with stored sessions (INITIAL_SESSION) — that's all we need.
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`[useAuth] ${ms()} auth event:`, event, '| uid:', session?.user?.id ?? 'NONE')
       if (event === 'SIGNED_IN' && session?.user) {
         await loadAppUser(session.user.id)
-        // Update last_login
-        await supabase
+        // Update last_login (fire-and-forget — don't block on it)
+        supabase
           .from('app_users')
           .update({ last_login: new Date().toISOString() })
           .eq('auth_id', session.user.id)
+          .then(({ error }) => {
+            if (error) console.warn('[useAuth] last_login update failed:', error.message)
+          })
       } else if (event === 'INITIAL_SESSION' && session?.user) {
-        // On refresh, INITIAL_SESSION fires — must load app_user from this path too
-        // (the getSession() call above may hang and never trigger loadAppUser)
+        // Fires on page refresh when a valid session is already in storage
         await loadAppUser(session.user.id)
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Token rolled over — no need to reload app_user, just keep listening
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null)
       }
