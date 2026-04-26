@@ -39,7 +39,45 @@ export function CostReportPanel() {
     setLoading(false)
   }
 
-  const grandTotal = rows.reduce((s,r)=>s+r.total,0)
+  function printByModule() {
+    const MODULES = [
+      { key: 'trades',    label: '👷 Trades Labour',    col: (r: typeof rows[0]) => r.labourTrades },
+      { key: 'mgmt',      label: '🎯 Management Labour', col: (r: typeof rows[0]) => r.labourMgmt },
+      { key: 'seag',      label: '🔧 SE AG Labour',     col: (r: typeof rows[0]) => r.labourSeag },
+      { key: 'hire',      label: '🚜 Equipment Hire',   col: (r: typeof rows[0]) => r.hire },
+      { key: 'cars',      label: '🚗 Cars',             col: (r: typeof rows[0]) => r.cars },
+      { key: 'accom',     label: '🏨 Accommodation',    col: (r: typeof rows[0]) => r.accom },
+      { key: 'tooling',   label: '🔩 Tooling',         col: (r: typeof rows[0]) => r.tooling },
+    ]
+    const projectName = activeProject?.name || 'Project'
+    const sections = MODULES.map(m => {
+      const moduleRows = rows.filter(r => m.col(r) > 0)
+      if (!moduleRows.length) return ''
+      const total = moduleRows.reduce((s, r) => s + m.col(r), 0)
+      return `<div class="section"><div class="section-title">${m.label}</div>
+        <table><thead><tr><th>WBS</th><th>Description</th><th style="text-align:right">Cost</th></tr></thead>
+        <tbody>${moduleRows.map(r => `<tr><td class="mono">${r.code}</td><td>${r.name}</td><td class="num">${fmt(m.col(r))}</td></tr>`).join('')}
+        <tr class="total"><td colspan="2">Total</td><td class="num">${fmt(total)}</td></tr>
+        </tbody></table></div>`
+    }).filter(Boolean).join('')
+    const html = `<!DOCTYPE html><html><head><title>${projectName} — Cost by Module</title>
+    <style>body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+    h1{font-size:16px;margin-bottom:4px}p{color:#64748b;font-size:10px;margin-bottom:20px}
+    .section{margin-bottom:20px}.section-title{font-size:13px;font-weight:700;padding:6px 0;border-bottom:2px solid #6366f1;margin-bottom:6px;color:#6366f1}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th{background:#f8fafc;padding:5px 8px;text-align:left;font-size:10px;border-bottom:1px solid #e2e8f0}
+    td{padding:4px 8px;border-bottom:1px solid #f1f5f9}
+    .num{text-align:right;font-family:monospace}.mono{font-family:monospace;font-size:10px}
+    .total td{font-weight:700;background:#f8fafc;border-top:1px solid #e2e8f0}
+    @media print{@page{size:A4;margin:15mm}}</style></head>
+    <body><h1>${projectName} — Cost Summary by Module</h1>
+    <p>Printed ${new Date().toLocaleDateString('en-AU')} · Total Cost ${fmt(grandTotal)} · Total Sell ${fmt(grandSell)}</p>
+    ${sections}<script>setTimeout(()=>window.print(),300)<\/script></body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
+
   const grandSell = rows.reduce((s,r)=>s+r.totalSell,0)
   const grandMargin = grandSell > 0 ? (grandSell-grandTotal)/grandSell*100 : null
 
@@ -65,7 +103,8 @@ export function CostReportPanel() {
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
           <button className="btn" onClick={load}>↻ Refresh</button>
-          <button className="btn btn-sm" onClick={() => window.print()}>🖨 Print</button>
+          <button className="btn btn-sm" onClick={printByModule} disabled={rows.length===0}>🖨 Print by Module</button>
+          <button className="btn btn-sm" onClick={() => window.print()}>🖨 Print by WBS</button>
           <button className="btn btn-primary" onClick={exportCSV}>⬇ Export CSV</button>
         </div>
       </div>

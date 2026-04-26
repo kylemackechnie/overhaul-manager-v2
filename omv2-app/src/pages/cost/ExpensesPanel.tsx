@@ -320,16 +320,18 @@ export function ExpensesPanel() {
                   {wbsList.map(w => <option key={w.id} value={w.code}>{w.code} {w.name ? `— ${w.name}` : ''}</option>)}
                 </select>
               </div>
-              {tceLines.length > 0 && (
-                <div className="fg">
-                  <label>NRG TCE Scope <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— overhead lines only, counts as actuals</span></label>
+              <div className="fg">
+                <label>NRG TCE Scope <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— links expense to a TCE line for actuals</span></label>
+                {tceLines.length > 0 ? (
                   <select className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))}>
                     <option value="">— No TCE Link —</option>
                     {/* CRITICAL: value is item_id (stable text), never the UUID id */}
                     {tceLines.map(l => <option key={l.id} value={l.item_id || ''}>{l.item_id} — {l.description}</option>)}
                   </select>
-                </div>
-              )}
+                ) : (
+                  <input className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))} placeholder="e.g. 2.02.4.1 (import TCE to enable dropdown)" />
+                )}
+              </div>
               <div className="fg">
                 <label>Notes</label>
                 <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />

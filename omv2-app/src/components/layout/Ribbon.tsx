@@ -142,6 +142,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📦', label: 'Kollos', panel: 'tooling-kollos' },
         { icon: '💶', label: 'Costings', panel: 'tooling-costings' },
         { icon: '🏢', label: 'Departments', panel: 'tooling-departments' },
+        { icon: '📥', label: 'Import', panel: 'tooling-import' },
       ]},
       { label: 'Equipment Hire', buttons: [
         { icon: '📊', label: 'Dashboard', panel: 'hire-dashboard' },

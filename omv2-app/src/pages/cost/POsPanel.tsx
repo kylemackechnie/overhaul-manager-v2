@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { calcPoSpend } from '../../lib/calculations'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
@@ -195,7 +195,8 @@ export function POsPanel() {
               {filtered.map(po => {
                 const sc = STATUS_COLORS[po.status] || STATUS_COLORS.draft
                 return (
-                  <tr key={po.id}>
+                  <React.Fragment key={po.id}>
+                  <tr>
                     <td style={{fontFamily:'var(--mono)',fontWeight:500,fontSize:'12px'}}>{po.po_number || <span style={{color:'var(--text3)'}}>—</span>}</td>
                     <td style={{fontWeight:500}}>{po.vendor || '—'}</td>
                     <td style={{color:'var(--text2)',fontSize:'13px',maxWidth:'260px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{po.description || '—'}</td>
@@ -245,22 +246,17 @@ export function POsPanel() {
                       <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={() => del(po)}>✕</button>
                     </td>
                   </tr>
-                  {/* Inline invoice expansion */}
-                  {expanded.has(po.id) && (() => {
-                    const poInvs = allInvoices.filter(i => i.po_id === po.id)
-                    return poInvs.map(inv => (
-                      <tr key={inv.id} style={{background:'var(--bg3)',fontSize:'11px'}}>
-                        <td colSpan={4} style={{paddingLeft:'32px',color:'var(--text3)'}}>
-                          🧾 Invoice
-                        </td>
-                        <td style={{textAlign:'right',fontFamily:'var(--mono)',color:'var(--text2)'}}>{fmtMoney(inv.amount)}</td>
-                        <td colSpan={4}>
-                          <span className="badge" style={{fontSize:'9px',background:'var(--bg2)',color:'var(--text3)'}}>{inv.status}</span>
-                        </td>
-                      </tr>
-                    ))
-                  })()}
-                
+                  {expanded.has(po.id) && allInvoices.filter(i => i.po_id === po.id).map(inv => (
+                    <tr key={inv.id} style={{background:'var(--bg3)',fontSize:'11px'}}>
+                      <td colSpan={4} style={{paddingLeft:'32px',color:'var(--text3)'}}>🧾 Invoice</td>
+                      <td style={{textAlign:'right',fontFamily:'var(--mono)',color:'var(--text2)'}}>{fmtMoney(inv.amount)}</td>
+                      <td colSpan={4}>
+                        <span className="badge" style={{fontSize:'9px',background:'var(--bg2)',color:'var(--text3)'}}>{inv.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                  </React.Fragment>
+                )
               })}
             </tbody>
           </table>
