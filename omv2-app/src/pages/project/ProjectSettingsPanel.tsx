@@ -13,7 +13,7 @@ const SCOPE_MODES = [
 ]
 
 export function ProjectSettingsPanel() {
-  const { activeProject, setActiveProject } = useAppStore()
+  const { activeProject, setActiveProject, setActivePanel } = useAppStore()
   const [form, setForm] = useState({
     name: '', wbs: '', start_date: '', end_date: '',
     default_gm: 15, notes: '',
@@ -169,6 +169,17 @@ export function ProjectSettingsPanel() {
   const section = (label: string) => (
     <div style={{fontWeight:600,marginBottom:'14px',fontSize:'13px',color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em'}}>{label}</div>
   )
+
+  async function deleteProject() {
+    if (!activeProject) return
+    if (!window.confirm(`Delete "${activeProject.name}" and ALL its data? This cannot be undone.`)) return
+    if (!window.confirm(`Final confirmation — permanently delete "${activeProject.name}"?`)) return
+    const { error } = await supabase.from('projects').delete().eq('id', activeProject.id)
+    if (error) { toast(error.message, 'error'); return }
+    setActiveProject(null)
+    setActivePanel('dashboard')
+    toast(`Project "${activeProject.name}" deleted`, 'info')
+  }
 
   return (
     <div style={{padding:'24px',maxWidth:'760px'}}>
@@ -455,6 +466,28 @@ export function ProjectSettingsPanel() {
           </div>
         </div>
       )}
+
+      {/* ── Danger Zone ─────────────────────────────────────── */}
+      <div style={{ marginTop: 32, border: '2px solid var(--red)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ background: '#fef2f2', padding: '12px 20px', borderBottom: '1px solid #fecaca' }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#991b1b' }}>⚠ Danger Zone</div>
+          <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 2 }}>These actions are permanent and cannot be undone.</div>
+        </div>
+        <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Delete this project</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+              Permanently deletes the project and all associated data — timesheets, resources, invoices, POs, variations, TCE lines, everything. No recovery.
+            </div>
+          </div>
+          <button
+            style={{ marginLeft: 24, padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
+            onClick={deleteProject}
+          >
+            🗑 Delete Project
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
