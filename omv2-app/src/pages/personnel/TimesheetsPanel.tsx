@@ -114,7 +114,7 @@ function splitHours(hrs: number, dayType: string, shiftType: string, regime: str
 }
 // Exact port of HTML calcCrewMemberTotal() — handles all allowances, mealBreakAdj, rc.regime
 function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc: RateCard | null) {
-  let hours = 0, sell = 0, cost = 0, allowances = 0, allowCost = 0
+  let hours = 0, labourSell = 0, labourCost = 0, allowances = 0, allowCost = 0
   const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
   const cr = rates?.cost || {}; const sr = rates?.sell || {}
   const rcX = (rc || {}) as unknown as Record<string,unknown>
@@ -134,21 +134,19 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
 
   Object.entries(member.days || {}).forEach(([, d]) => {
     const day = d as { dayType?:string; shiftType?:string; hours?:number; laha?:boolean; meal?:boolean; fsa?:boolean; camp?:boolean }
-    const h = day.hours || 0
 
-    // Allowances apply on worked days (hours > 0) — prevents zero-hour pre-filled cells
-    // from incorrectly accumulating allowances
-    if (h > 0) {
-      if (isMgmt) {
-        if (day.fsa)       { allowances += fsaSell;  allowCost += fsaCost }
-        else if (day.camp) { allowances += campSell; allowCost += campCost }
-        else if (day.laha) { allowances += fsaSell;  allowCost += fsaCost } // legacy laha = FSA for mgmt
-      } else {
-        if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
-        if (day.meal) { allowances += mealSell; allowCost += mealCost }
-      }
+    // Allowances apply on every day entry — guys get paid LAHA/Meal every day
+    // on the project, not just days they work hours
+    if (isMgmt) {
+      if (day.fsa)       { allowances += fsaSell;  allowCost += fsaCost }
+      else if (day.camp) { allowances += campSell; allowCost += campCost }
+      else if (day.laha) { allowances += fsaSell;  allowCost += fsaCost }
+    } else {
+      if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
+      if (day.meal) { allowances += mealSell; allowCost += mealCost }
     }
 
+    const h = day.hours || 0
     if (h <= 0) return // skip hour calcs for zero-hour days
 
     // mealBreakAdj: +0.5h to cost/sell calc (not payroll) per HTML
@@ -159,15 +157,16 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
     const split = splitHours(effH, day.dayType || 'weekday', day.shiftType || 'day', regime, rcRegime)
     Object.entries(split).forEach(([b, bh]) => {
       if (bh > 0) {
-        cost += bh * (parseFloat(String(cr[b] || 0)) || 0)
-        sell += bh * (parseFloat(String(sr[b] || 0)) || 0)
+        labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)
+        labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0)
       }
     })
   })
 
-  sell += allowances
-  cost += allowCost
-  return { hours, sell, cost, allowances }
+  // sell/cost = labour + allowances (combined total, matching HTML)
+  const sell = labourSell + allowances
+  const cost = labourCost + allowCost
+  return { hours, sell, cost, allowances, labourSell }
 }
 
 
@@ -896,16 +895,17 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             ))}
                           </div>
                         )}
+                        {/* LAHA/Meal always visible — allowances paid every day on site */}
+                        <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px' }}>
+                          <label style={{ cursor: 'pointer', color: laha ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="checkbox" checked={laha} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'laha', e.target.checked)} /> LAHA
+                          </label>
+                          <label style={{ cursor: 'pointer', color: meal ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
+                          </label>
+                        </div>
                         {cellHrs > 0 && (
                           <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                            <label style={{ cursor: 'pointer', color: laha ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                              <input type="checkbox" checked={laha} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'laha', e.target.checked)} /> LAHA
-                            </label>
-                            <label style={{ cursor: 'pointer', color: meal ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                              <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
-                            </label>
-                            </div>
                             {scopeMode === 'work_orders' && workOrders.length > 0 && (() => {
                               const allocs = ((raw.woAllocations as {woId:string;woNumber:string;hours:number}[]) || []).filter(a=>a.hours>0)
                               return (
@@ -933,7 +933,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   <div style={{ background: 'var(--bg2)', padding: '8px', textAlign: 'right' }}>
                     <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type], fontSize: '13px' }}>{hours.toFixed(1)}h</div>
                     {sell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)', marginTop: '2px' }}>{fmt(sell)}</div>}
-                    {allowances > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>+{fmt(allowances)}</div>}
+                    {allowances > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>incl. {fmt(allowances)} allow</div>}
                     {cost > 0 && cost !== sell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(cost)}</div>}
                   </div>
                 </div>
