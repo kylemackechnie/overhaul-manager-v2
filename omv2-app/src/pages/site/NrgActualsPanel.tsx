@@ -86,7 +86,7 @@ export function NrgActualsPanel() {
   const withActuals = lines
     .filter(l => !isGroupHeader(l.item_id))
     .map(l => {
-      const labour = (l.item_id ? labourByItem[l.item_id]?.cost || 0 : 0)
+      const labour = (l.item_id ? labourByItem[l.item_id]?.sell || 0 : 0)
       const nonLabour = nrgInvoiceActual(l.item_id, invoices, expenses, variations)
       const actuals = labour + nonLabour
       const tce = l.tce_total || 0

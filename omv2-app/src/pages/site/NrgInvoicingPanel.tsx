@@ -137,7 +137,7 @@ export function NrgInvoicingPanel() {
       for (const [we, vals] of Object.entries(buckets)) {
         if (we > toWE) continue
         if (fromWE && we <= fromWE) continue
-        total += vals.cost
+        total += vals.sell
       }
       return total
     }
