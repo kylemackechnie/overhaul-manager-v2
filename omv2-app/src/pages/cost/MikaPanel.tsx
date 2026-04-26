@@ -78,30 +78,29 @@ export function MikaPanel() {
     if (data && data.length > 0) {
       const rows = data as {wbs:string;description:string;level:number|null;pm80:number|null;pm100:number|null;forecast_tc:number|null}[]
 
-      // Fetch live actuals for each WBS row via DB function (handles child WBS prefix rollup)
-      // get_mika_live_actuals(project_id, wbs) sums: expenses + hire + cars + accommodation + back_office
-      // where wbs = target OR wbs LIKE target || '.%' (child prefix matching)
-      // Note: Labour actuals require timesheet computation — this covers non-labour sources
-      const actualsMap: Record<string, number> = {}
-      // Batch: call for top-level WBS codes only (children roll up inside the function)
-      const topLevel = rows.filter(r => r.level === 1 || r.level === 2)
-      await Promise.all(topLevel.map(async r => {
-        try {
-          const { data: result } = await supabase.rpc('get_mika_live_actuals', {
-            p_project_id: activeProject.id,
-            p_wbs: r.wbs,
-          })
-          if (result !== null) actualsMap[r.wbs] = Number(result)
-        } catch { /* non-critical */ }
-      }))
+      // Fetch live actuals from DB function for each WBS row.
+      // get_mika_live_actuals(project_id, wbs) handles child prefix rollup:
+      // costs tagged to 50OP.P.02.01 show up in 50OP.P.02 and 50OP.P too.
+      // Covers: expenses, hire items, cars, accommodation, back_office hours.
+      // Labour (timesheet) actuals require WBS on the timesheet — zero until that's populated.
+      const actualsResults = await Promise.allSettled(
+        rows.map(r => supabase.rpc('get_mika_live_actuals', {
+          p_project_id: activeProject.id,
+          p_wbs: r.wbs,
+        }))
+      )
 
-      const dbLines: MikaLine[] = rows.map(r => ({
-        wbs: r.wbs, desc: r.description, level: r.level||1,
-        pm80tot: r.pm80||0, pm100: r.pm100||0,
-        // Use child-rollup actuals for top-level rows; for leaf rows use exact match
-        actuals: actualsMap[r.wbs] ?? 0,
-        forecast: r.forecast_tc||0,
-      }))
+      const dbLines: MikaLine[] = rows.map((r, i) => {
+        const result = actualsResults[i]
+        const actuals = result.status === 'fulfilled' && result.value.data !== null
+          ? Number(result.value.data) : 0
+        return {
+          wbs: r.wbs, desc: r.description, level: r.level||1,
+          pm80tot: r.pm80||0, pm100: r.pm100||0,
+          actuals,
+          forecast: r.forecast_tc||0,
+        }
+      })
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
     }
   }
