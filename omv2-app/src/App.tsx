@@ -278,7 +278,10 @@ export default function App() {
 
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
-        {!activeProject ? (
+        {/* Profile and settings panels don't require an active project */}
+        {(['profile', 'user-management', 'audit-trail', 'sites'].includes(activePanel)) ? (
+          <PanelRouter panel={activePanel} />
+        ) : !activeProject ? (
           restoringProject ? (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'70vh', gap:'12px' }}>
               <span className="spinner" style={{ width:'28px', height:'28px' }} />
