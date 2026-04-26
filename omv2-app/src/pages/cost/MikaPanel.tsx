@@ -102,7 +102,7 @@ export function MikaPanel() {
       const dbLines: MikaLine[] = rows.map(r => {
         const actuals = actualsByWbs[r.wbs] || 0
         return {
-          wbs: r.wbs, desc: r.description, level: r.level||1,
+          wbs: r.wbs, desc: r.description, level: r.level ?? 1,
           pm80tot: r.pm80||0, pm100: r.pm100||0,
           actuals,
           forecast: r.forecast_tc||0,
@@ -246,12 +246,13 @@ export function MikaPanel() {
   // Filtered lines
   const lines = (mika?.lines) || []
   const q = search.toLowerCase()
-  let filtered = lines.filter(l => l.level >= 1)
+  let filtered = lines.filter(l => l.level >= 0)
   if (q) filtered = filtered.filter(l => l.wbs.toLowerCase().includes(q) || l.desc.toLowerCase().includes(q))
   if (levelFilter !== 'all') filtered = filtered.filter(l => l.level <= parseInt(levelFilter))
 
-  // Top-level KPIs
-  const topLines = lines.filter(l => l.level === 1)
+  // Top-level KPIs — use the minimum level rows only to avoid double-counting
+  const minLevel = lines.length > 0 ? Math.min(...lines.map(l => l.level)) : 0
+  const topLines = lines.filter(l => l.level === minLevel)
   const totPM80    = topLines.reduce((s, l) => s + l.pm80tot, 0)
   const totPM100   = topLines.reduce((s, l) => s + l.pm100, 0)
   const totActuals = topLines.reduce((s, l) => s + l.actuals, 0)
