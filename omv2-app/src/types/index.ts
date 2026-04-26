@@ -457,6 +457,7 @@ export interface NrgTceLine {
   tce_total: number; tce_rate: number; estimated_qty: number; unit_type: string
   work_order: string; contract_scope: string; line_type: string; kpi_included: boolean
   forecast_enabled: boolean; forecast_type: string | null
+  forecast_subtype: string | null
   forecast_date_from: string | null; forecast_date_to: string | null
   forecast_resources: unknown[]; hire_links: unknown[]
   details: Record<string, unknown>
