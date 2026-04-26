@@ -78,22 +78,29 @@ export function MikaPanel() {
     if (data && data.length > 0) {
       const rows = data as {wbs:string;description:string;level:number|null;pm80:number|null;pm100:number|null;forecast_tc:number|null}[]
 
-      // Fetch live actuals from DB function for each WBS row.
-      // get_mika_live_actuals(project_id, wbs) handles child prefix rollup:
-      // costs tagged to 50OP.P.02.01 show up in 50OP.P.02 and 50OP.P too.
-      // Covers: expenses, hire items, cars, accommodation, back_office hours.
-      // Labour (timesheet) actuals require WBS on the timesheet — zero until that's populated.
-      const actualsResults = await Promise.allSettled(
-        rows.map(r => supabase.rpc('get_mika_live_actuals', {
-          p_project_id: activeProject.id,
-          p_wbs: r.wbs,
-        }))
-      )
+      // Fetch live actuals: single query on hire_items, then roll up by WBS prefix
+      const { data: hireData } = await supabase
+        .from('hire_items')
+        .select('wbs, hire_cost')
+        .eq('project_id', activeProject.id)
 
-      const dbLines: MikaLine[] = rows.map((r, i) => {
-        const result = actualsResults[i]
-        const actuals = result.status === 'fulfilled' && result.value && result.value.data !== null && result.value.data !== undefined
-          ? Number(result.value.data) : 0
+      // Build a lookup: for each hire item, add cost to all matching WBS prefixes
+      const actualsByWbs: Record<string, number> = {}
+      for (const item of (hireData || [])) {
+        const wbs = item.wbs || ''
+        const cost = Number(item.hire_cost) || 0
+        if (!wbs || !cost) continue
+        // Add to this WBS and all parent prefixes (e.g. 50OP-P.02.01 → 50OP-P.02 → 50OP-P)
+        const parts = wbs.split('.')
+        let prefix = parts[0]
+        for (let pi = 0; pi < parts.length; pi++) {
+          if (pi > 0) prefix += '.' + parts[pi]
+          actualsByWbs[prefix] = (actualsByWbs[prefix] || 0) + cost
+        }
+      }
+
+      const dbLines: MikaLine[] = rows.map(r => {
+        const actuals = actualsByWbs[r.wbs] || 0
         return {
           wbs: r.wbs, desc: r.description, level: r.level||1,
           pm80tot: r.pm80||0, pm100: r.pm100||0,
@@ -237,7 +244,7 @@ export function MikaPanel() {
   }
 
   // Filtered lines
-  const lines = mika?.lines || []
+  const lines = (mika?.lines) || []
   const q = search.toLowerCase()
   let filtered = lines.filter(l => l.level >= 1)
   if (q) filtered = filtered.filter(l => l.wbs.toLowerCase().includes(q) || l.desc.toLowerCase().includes(q))
@@ -366,7 +373,7 @@ export function MikaPanel() {
             {mika.projectNo && <span>{mika.projectNo} </span>}
             {mika.period && <span>· {mika.period} </span>}
             · Imported {mika.importedAt ? new Date(mika.importedAt).toLocaleDateString('en-AU') : ''}
-            · {mika.lines.length} WBS lines
+            · {(mika.lines || []).length} WBS lines
           </div>
 
           {/* Filters */}
