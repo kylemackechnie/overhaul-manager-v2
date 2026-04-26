@@ -18,22 +18,37 @@ export function TVRegisterPanel() {
   const [costForm, setCostForm] = useState({ charge_start:'', charge_end:'', sell_eur:'', cost_eur:'', linked_po_id:'' })
   const [saving, setSaving] = useState(false)
 
+  const [departments, setDepartments] = useState<GlobalDepartment[]>([])
+
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [ptData, tvData, costData, poData] = await Promise.all([
+    const [ptData, tvData, costData, poData, deptData] = await Promise.all([
       supabase.from('project_tvs').select('tv_no').eq('project_id',pid),
       supabase.from('global_tvs').select('*,department:global_departments(*)').order('tv_no'),
       supabase.from('tooling_costings').select('*').eq('project_id',pid),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id',pid).neq('status','cancelled'),
+      supabase.from('global_departments').select('*').order('name'),
     ])
     setProjectTVs((ptData.data||[]).map(r => r.tv_no))
     setAllTVs((tvData.data||[]) as GlobalTV[])
     setCostings((costData.data||[]) as ToolingCosting[])
     setPos((poData.data||[]) as PurchaseOrder[])
+    setDepartments((deptData.data||[]) as GlobalDepartment[])
     setLoading(false)
+  }
+
+  async function setTVDept(tvNo: string, deptId: string) {
+    const { error } = await supabase.from('global_tvs')
+      .update({ department_id: deptId || null })
+      .eq('tv_no', tvNo)
+    if (error) { toast(error.message, 'error'); return }
+    setAllTVs(tvs => tvs.map(tv => tv.tv_no === tvNo
+      ? { ...tv, department_id: deptId || null, department: departments.find(d => d.id === deptId) || null }
+      : tv
+    ))
   }
 
   async function addTV() {
@@ -107,11 +122,20 @@ export function TVRegisterPanel() {
             <tbody>
               {myTVs.map(tv => {
                 const costing = costings.find(c => c.tv_no === tv.tv_no)
-                const dept = tv.department as unknown as GlobalDepartment|null
                 return (
                   <tr key={tv.tv_no}>
                     <td style={{ fontFamily:'var(--mono)', fontWeight:700, fontSize:'14px' }}>TV{tv.tv_no}</td>
-                    <td style={{ fontSize:'12px', color:'var(--text2)' }}>{dept?.name || '—'}</td>
+                    <td>
+                      <select
+                        className="input"
+                        style={{ fontSize:'11px', padding:'3px 6px', width:'140px' }}
+                        value={(tv as typeof tv & { department_id?: string }).department_id || ''}
+                        onChange={e => setTVDept(tv.tv_no, e.target.value)}
+                      >
+                        <option value="">— assign —</option>
+                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </td>
                     <td style={{ fontFamily:'var(--mono)', fontSize:'12px' }}>{costing?.charge_start || '—'}</td>
                     <td style={{ fontFamily:'var(--mono)', fontSize:'12px' }}>{costing?.charge_end || '—'}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontSize:'12px' }}>
