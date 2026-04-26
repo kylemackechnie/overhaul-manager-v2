@@ -29,6 +29,7 @@ export function ExpensesPanel() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [wbsList, setWbsList] = useState<WbsItem[]>([])
+  const [tceLines, setTceLines] = useState<{id:string;item_id:string|null;description:string;source:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Expense>(null)
   const [form, setForm] = useState<ExpenseForm>(EMPTY)
@@ -43,14 +44,22 @@ export function ExpensesPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [expData, resData, wbsData] = await Promise.all([
+    const [expData, resData, wbsData, tceData] = await Promise.all([
       supabase.from('expenses').select('*').eq('project_id', pid).order('date', { ascending: false }),
       supabase.from('resources').select('id,name,role').eq('project_id', pid).order('name'),
       supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
+      // Only overhead leaf lines — skilled labour is timesheet-driven, not expense-driven
+      supabase.from('nrg_tce_lines').select('id,item_id,description,source')
+        .eq('project_id', pid).eq('source', 'overhead')
+        .not('item_id', 'is', null).order('item_id'),
     ])
     setExpenses((expData.data || []) as Expense[])
     setResources((resData.data || []) as Resource[])
     setWbsList((wbsData.data || []) as WbsItem[])
+    // Filter to overhead leaf lines only (3-segment IDs are group headers, exclude them)
+    const overheadLeaves = ((tceData.data || []) as {id:string;item_id:string|null;description:string;source:string}[])
+      .filter(l => l.item_id && !/^\d+\.\d+\.\d+$/.test(l.item_id))
+    setTceLines(overheadLeaves)
     setLoading(false)
   }
 
@@ -311,6 +320,16 @@ export function ExpensesPanel() {
                   {wbsList.map(w => <option key={w.id} value={w.code}>{w.code} {w.name ? `— ${w.name}` : ''}</option>)}
                 </select>
               </div>
+              {tceLines.length > 0 && (
+                <div className="fg">
+                  <label>NRG TCE Scope <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— overhead lines only, counts as actuals</span></label>
+                  <select className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))}>
+                    <option value="">— No TCE Link —</option>
+                    {/* CRITICAL: value is item_id (stable text), never the UUID id */}
+                    {tceLines.map(l => <option key={l.id} value={l.item_id || ''}>{l.item_id} — {l.description}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="fg">
                 <label>Notes</label>
                 <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />

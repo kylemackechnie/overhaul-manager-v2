@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
+import { nrgLineActualHours, nrgInvoiceActual, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
@@ -24,6 +25,10 @@ export function NrgTcePanel() {
   const { activeProject } = useAppStore()
   const [lines, setLines] = useState<NrgTceLine[]>([])
   const [wbsList, setWbsList] = useState<{ id: string; code: string; name: string }[]>([])
+  const [timesheets, setTimesheets] = useState<NrgTimesheet[]>([])
+  const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
+  const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
+  const [variations, setVariations] = useState<NrgVariationMin[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | NrgTceLine>(null)
   const [form, setForm] = useState(EMPTY)
@@ -42,17 +47,40 @@ export function NrgTcePanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lRes, wbsRes] = await Promise.all([
+    const [lRes, wbsRes, tsRes, invRes, expRes, varRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
+      supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew')
+        .eq('project_id', pid).eq('status', 'approved'),
+      supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
+      supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
+    setTimesheets((tsRes.data || []) as NrgTimesheet[])
+    setInvoices((invRes.data || []) as NrgInvoiceMin[])
+    setExpenses((expRes.data || []) as NrgExpenseMin[])
+    setVariations((varRes.data || []) as NrgVariationMin[])
     setLoading(false)
   }
 
   const toggleCollapse = (id: string) =>
     setCollapsed(s => { const ns = new Set(s); ns.has(id) ? ns.delete(id) : ns.add(id); return ns })
+
+  function lineActualCost(l: NrgTceLine): number {
+    const { nrgLineActual: calcActual } = { nrgLineActual: (line: {item_id:string|null;source:string;work_order:string;line_type:string}) => {
+      // Labour lines: timesheet hours × rate (rate is 0 here without rate cards loaded)
+      // Non-labour lines: invoices + expenses + approved variations
+      const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
+      if (!isLabour) {
+        return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
+      }
+      // Labour: hours × rate — rate is 0 without rate cards, show hours-only in Act Hrs column
+      return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
+    }}
+    return calcActual({ item_id: l.item_id, source: l.source, work_order: l.work_order || '', line_type: l.line_type || '' })
+  }
 
   async function applyBulkWbs() {
     if (!bulkWbs || selected.size === 0) return
@@ -303,6 +331,7 @@ export function NrgTcePanel() {
                     <th style={{ width: '60px', textAlign: 'right' }}>Act. Hrs</th>
                     <th style={{ width: '74px', textAlign: 'right' }}>TCE Rate</th>
                     <th style={{ width: '82px', textAlign: 'right' }}>TCE Total</th>
+                    <th style={{ width: '82px', textAlign: 'right' }}>Actual Cost</th>
                     <th style={{ width: '40px' }}>KPI</th>
                     <th style={{ width: '110px' }}>Type</th>
                     <th style={{ width: '95px' }}>WBS</th>
@@ -330,6 +359,10 @@ export function NrgTcePanel() {
                           </td>
                           <td colSpan={8} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px' }}>{groupTotal ? fmt(groupTotal) : '—'}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#4f46e5' }}>{(() => {
+                            const groupActual = children.reduce((s, c) => s + lineActualCost(c), 0)
+                            return groupActual > 0 ? fmt(groupActual) : '—'
+                          })()}</td>
                           <td colSpan={3}></td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px' }} onClick={() => openEdit(l)}>✏</button>
@@ -359,9 +392,22 @@ export function NrgTcePanel() {
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{l.unit_type || '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>—</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{(() => {
+                          const hrs = nrgLineActualHours(
+                            { item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type },
+                            timesheets
+                          )
+                          return hrs > 0 ? hrs.toFixed(1) : '—'
+                        })()}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)', fontWeight: 600 }}>{(() => {
+                          const actual = lineActualCost(l)
+                          const over = l.tce_total > 0 && actual > l.tce_total
+                          return actual > 0
+                            ? <span style={{ color: over ? 'var(--red)' : 'var(--green)' }}>{fmt(actual)}</span>
+                            : <span style={{ color: 'var(--text3)' }}>—</span>
+                        })()}</td>
                         <td>
                           {l.kpi_included
                             ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span>
