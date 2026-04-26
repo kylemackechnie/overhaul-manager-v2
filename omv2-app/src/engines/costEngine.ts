@@ -70,19 +70,23 @@ export interface HourSplit {
 
 export function splitHours(
   totalHrs: number,
-  dayType: DayType,
+  dayType: DayType | string,
   shiftType: 'day' | 'night',
   regime: 'lt12' | 'ge12',
   rcRegime?: unknown
 ): HourSplit {
   const split: HourSplit = { dnt: 0, dt15: 0, ddt: 0, ddt15: 0, nnt: 0, ndt: 0, ndt15: 0 }
 
+  // Normalise dayType — accept both snake_case ('public_holiday') and camelCase ('publicHoliday')
+  // HTML stores 'public_holiday', engine type uses 'publicHoliday'
+  const normDay: DayType = dayType === 'public_holiday' ? 'publicHoliday' : dayType as DayType
+
   // Use regime-aware config if provided
   const cfg = rcRegime as Record<string, Record<string, number>> | null | undefined
   const regimeCfg = cfg?.[regime]
 
   if (shiftType === 'night') {
-    if (dayType === 'weekday') {
+    if (normDay === 'weekday') {
       if (regimeCfg) {
         split.nnt = regimeCfg.nnt ?? totalHrs
         split.ndt = regimeCfg.ndt ?? 0
@@ -91,14 +95,14 @@ export function splitHours(
         split.nnt = regime === 'ge12' ? Math.min(totalHrs, 8) : totalHrs
         if (regime === 'ge12') split.ndt = Math.max(0, totalHrs - 8)
       }
-    } else if (dayType === 'saturday' || dayType === 'publicHoliday') {
+    } else if (normDay === 'saturday' || normDay === 'publicHoliday') {
       split.ndt = totalHrs
-    } else if (dayType === 'sunday') {
+    } else if (normDay === 'sunday') {
       split.ndt15 = totalHrs
     }
   } else {
     // day shift
-    if (dayType === 'weekday') {
+    if (normDay === 'weekday') {
       if (regimeCfg) {
         split.dnt = regimeCfg.dnt ?? totalHrs
         split.dt15 = regimeCfg.dt15 ?? 0
@@ -108,10 +112,10 @@ export function splitHours(
         split.dnt = regime === 'ge12' ? Math.min(totalHrs, 8) : totalHrs
         if (regime === 'ge12') split.dt15 = Math.max(0, totalHrs - 8)
       }
-    } else if (dayType === 'saturday') {
+    } else if (normDay === 'saturday') {
       split.ddt = regime === 'ge12' ? Math.min(totalHrs, 8) : totalHrs
       if (regime === 'ge12') split.ddt15 = Math.max(0, totalHrs - 8)
-    } else if (dayType === 'sunday' || dayType === 'publicHoliday') {
+    } else if (normDay === 'sunday' || normDay === 'publicHoliday') {
       split.ddt15 = totalHrs
     }
   }
