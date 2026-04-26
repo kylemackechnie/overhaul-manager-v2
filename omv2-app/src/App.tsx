@@ -100,14 +100,20 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false)
 
   useEffect(() => {
+    const t0 = performance.now()
+    const ms = () => `+${Math.round(performance.now() - t0)}ms`
+    console.log(`[App] ${ms()} mount — persistedProjectId:`, useAppStore.getState().activeProjectId ?? 'none')
     // onAuthStateChange fires INITIAL_SESSION on startup — use that as primary signal.
     // It fires even on refresh with a valid stored session, before getSession() resolves.
     // We DON'T call getSession() separately — it can hang on cold start.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      console.log('[App] auth event:', event, '| uid:', s?.user?.id ?? 'none')
+      console.log(`[App] ${ms()} auth event:`, event, '| uid:', s?.user?.id ?? 'none')
       if (event === 'INITIAL_SESSION') {
         setSession(s ?? null)
-        if (s) setPickerOpen(true)
+        if (s) {
+          console.log(`[App] ${ms()} INITIAL_SESSION with session — opening picker`)
+          setPickerOpen(true)
+        }
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         setSession(s)
         if (s && !useAppStore.getState().activeProject) setPickerOpen(true)
@@ -122,7 +128,7 @@ export default function App() {
     const fallback = setTimeout(() => {
       setSession(prev => {
         if (prev === undefined) {
-          console.warn('[App] INITIAL_SESSION never fired — showing login')
+          console.warn(`[App] ${ms()} INITIAL_SESSION never fired — showing login`)
           return null
         }
         return prev

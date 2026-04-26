@@ -37,6 +37,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
+    console.log('[Picker] mounted — calling load()')
     // Session is guaranteed by App.tsx before this component renders
     load()
     if (activeProject) {
@@ -52,34 +53,48 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   }, [])
 
   async function load() {
+    const t0 = performance.now()
+    const ms = () => `+${Math.round(performance.now() - t0)}ms`
+    console.log(`[Picker] ${ms()} load() entered`)
     setLoading(true)
     setLoadError(null)
     try {
-      // Log session state to diagnose auth issues
-      const { data: { session } } = await supabase.auth.getSession()
-      console.log('[Picker] session uid:', session?.user?.id ?? 'NONE', '| expires:', session?.expires_at ?? 'N/A')
+      // Diagnostic: time getSession() separately — this is suspected to hang on cold-start refresh
+      console.log(`[Picker] ${ms()} calling getSession()...`)
+      const sessionTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('getSession() hung for 5s — auth not initialised')), 5000)
+      )
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        sessionTimeout,
+      ])
+      const session = sessionResult.data.session
+      console.log(`[Picker] ${ms()} getSession() resolved | uid:`, session?.user?.id ?? 'NONE', '| expires:', session?.expires_at ?? 'N/A')
 
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out — Supabase did not respond in 8s. Check network or contact support.')), 8000)
+      console.log(`[Picker] ${ms()} firing projects + sites queries...`)
+      const queryTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('projects/sites query hung for 8s — RLS or network issue')), 8000)
       )
       const [projResult, siteResult] = await Promise.race([
         Promise.all([
           supabase.from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false }),
           supabase.from('sites').select('*').order('name'),
         ]),
-        timeout,
+        queryTimeout,
       ])
-      console.log('[Picker] projects:', projResult.data?.length ?? 'error', projResult.error?.message ?? 'ok')
+      console.log(`[Picker] ${ms()} queries resolved | projects:`, projResult.data?.length ?? 'error', '| sites:', siteResult.data?.length ?? 'error', '| projErr:', projResult.error?.message ?? 'ok', '| siteErr:', siteResult.error?.message ?? 'ok')
       if (projResult.error) throw projResult.error
       if (siteResult.error) throw siteResult.error
       setProjects((projResult.data || []) as Project[])
       setSites((siteResult.data || []) as Site[])
+      console.log(`[Picker] ${ms()} load() complete — state set`)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setLoadError(msg)
-      console.error('[Picker] load error:', e)
+      console.error(`[Picker] ${ms()} load error:`, e)
     } finally {
       setLoading(false)
+      console.log(`[Picker] ${ms()} load() finally — loading=false`)
     }
   }
 
