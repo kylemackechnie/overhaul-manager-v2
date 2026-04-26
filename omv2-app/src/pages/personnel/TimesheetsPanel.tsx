@@ -121,21 +121,35 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
   const isMgmt = rc && (rcX.category === 'management' || rcX.category === 'seag')
   const rcRegime = rcX.regime as RegimeConfig
 
+  // Parse allowance values — DB returns NUMERIC columns as strings from Supabase
+  const pf = (v: unknown, fallback: number) => { const n = parseFloat(String(v || 0)); return isNaN(n) ? fallback : n }
+  const lahaSell  = pf(rcX.laha_sell,  212)
+  const lahaCost  = pf(rcX.laha_cost,  212)
+  const mealSell  = pf(rcX.meal_sell,   94)
+  const mealCost  = pf(rcX.meal_cost,   94)
+  const fsaSell   = pf(rcX.fsa_sell,   183)
+  const fsaCost   = pf(rcX.fsa_cost,   130)
+  const campSell  = pf(rcX.camp,        199)
+  const campCost  = pf(rcX.camp_cost || rcX.camp, 165.20)
+
   Object.entries(member.days || {}).forEach(([, d]) => {
     const day = d as { dayType?:string; shiftType?:string; hours?:number; laha?:boolean; meal?:boolean; fsa?:boolean; camp?:boolean }
+    const h = day.hours || 0
 
-    // Allowances apply even on rest/zero-hour days (e.g. LAHA on a rest day)
-    if (isMgmt) {
-      if (day.fsa)       { allowances += (rcX.fsa_sell as number || 183);  allowCost += (rcX.fsa_cost as number || 130) }
-      else if (day.camp) { allowances += (rcX.camp as number || 199);      allowCost += (rcX.camp_cost as number || 165.20) }
-      else if (day.laha) { allowances += (rcX.fsa_sell as number || 183);  allowCost += (rcX.fsa_cost as number || 130) } // legacy laha = FSA for mgmt
-    } else {
-      if (day.laha)  { allowances += (rcX.laha_sell as number || rcX.laha as number || 212); allowCost += (rcX.laha_cost as number || rcX.laha as number || 212) }
-      if (day.meal)  { allowances += (rcX.meal_sell as number || rcX.meal as number || 94);  allowCost += (rcX.meal_cost as number || rcX.meal as number || 94) }
+    // Allowances apply on worked days (hours > 0) — prevents zero-hour pre-filled cells
+    // from incorrectly accumulating allowances
+    if (h > 0) {
+      if (isMgmt) {
+        if (day.fsa)       { allowances += fsaSell;  allowCost += fsaCost }
+        else if (day.camp) { allowances += campSell; allowCost += campCost }
+        else if (day.laha) { allowances += fsaSell;  allowCost += fsaCost } // legacy laha = FSA for mgmt
+      } else {
+        if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
+        if (day.meal) { allowances += mealSell; allowCost += mealCost }
+      }
     }
 
-    const h = day.hours || 0
-    if (h <= 0) return // skip hour calcs for rest/zero days
+    if (h <= 0) return // skip hour calcs for zero-hour days
 
     // mealBreakAdj: +0.5h to cost/sell calc (not payroll) per HTML
     const adjH = (member.mealBreakAdj && h > 0) ? 0.5 : 0
@@ -144,7 +158,10 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
 
     const split = splitHours(effH, day.dayType || 'weekday', day.shiftType || 'day', regime, rcRegime)
     Object.entries(split).forEach(([b, bh]) => {
-      if (bh > 0) { cost += bh * (cr[b] || 0); sell += bh * (sr[b] || 0) }
+      if (bh > 0) {
+        cost += bh * (parseFloat(String(cr[b] || 0)) || 0)
+        sell += bh * (parseFloat(String(sr[b] || 0)) || 0)
+      }
     })
   })
 
@@ -190,7 +207,7 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
         else if (dt==='saturday') { split.dt15=Math.min(h,3); split.ddt=Math.max(0,h-3) }
         else if (dt==='sunday') split.ddt=h
         else { split.dnt=Math.min(h,7.2); split.dt15=Math.min(Math.max(0,h-7.2),3.3); split.ddt=Math.max(0,h-10.5) }
-        Object.entries(split).forEach(([b,bh]) => { sell += bh*(rates.sell?.[b]||0) })
+        Object.entries(split).forEach(([b,bh]) => { sell += bh*(parseFloat(String(rates.sell?.[b] || 0)) || 0) })
       }
       totalSell += sell
       return `<td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">
