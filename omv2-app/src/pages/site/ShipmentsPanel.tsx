@@ -4,6 +4,8 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Shipment } from '../../types'
 import { downloadCSV } from '../../lib/csv'
+import { generateDHLSLI, generateDHLInvoice, generateDHLPackingList } from '../../lib/docGeneration'
+import type { KolloData, WositPart, DocData, SLIFields, PandIFields } from '../../lib/docGeneration'
 
 type Direction = 'import' | 'export'
 
@@ -272,54 +274,65 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
     const gv = (id: string) => (overlay.querySelector('#' + id) as HTMLInputElement)?.value || ''
     overlay.querySelector('#_sliClose')!.addEventListener('click', () => overlay.remove())
     overlay.querySelector('#_sliCancel')!.addEventListener('click', () => overlay.remove())
-    overlay.querySelector('#_sliPrint')!.addEventListener('click', () => {
-      const kolloRows = kollos.map((k: Record<string,unknown>) =>
-        `<tr><td>${k.vb_no||''}</td><td>Crate (CH)</td><td style="text-align:center">${k.length_cm||''}</td><td style="text-align:center">${k.width_cm||''}</td><td style="text-align:center">${k.height_cm||''}</td><td style="text-align:right">${k.gross_kg||''}</td><td style="text-align:right">${k.net_kg||''}</td><td style="text-align:right">${Number(k.vol_m3||0).toFixed(3)}</td></tr>`
-      ).join('')
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SLI — ${s.reference}</title>
-        <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;padding:20px}
-        h1{font-size:14px;font-weight:700}table{width:100%;border-collapse:collapse;margin-bottom:10px}
-        .ht td{border:1px solid #999;padding:4px 6px;vertical-align:top}
-        .ht .lb{font-weight:600;background:#f5f5f5;width:140px;font-size:9px;color:#444}
-        .dt th{background:#e8e8e8;border:1px solid #999;padding:3px 5px;font-size:8px;text-align:left}
-        .dt td{border:1px solid #ccc;padding:2px 5px;font-size:9px}
-        .logo{font-size:20px;font-weight:900;letter-spacing:1px;color:#009999}
-        .logo2{font-size:16px;font-weight:900;letter-spacing:1px;color:#6b21a8}
-        @media print{button{display:none!important}}</style></head><body>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-          <div><div class="logo">SIEMENS</div><div class="logo2">ENERGY</div></div>
-          <div style="text-align:right"><h1>Shipper's Letter of Instruction</h1><div style="font-size:10px;color:#666">Date: ${today}</div>
-          <button onclick="window.print()" style="margin-top:6px;padding:4px 12px;background:#c2185b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🖨 Print</button></div>
-        </div>
-        <table class="ht">
-          <tr><td class="lb">Shipper:</td><td>${gv('sli-sender-co')}<br>${gv('sli-sender-addr')}</td>
-              <td class="lb">Account No.:</td><td>${gv('sli-acct')}</td></tr>
-          <tr><td class="lb">Contact:</td><td>${gv('sli-contact')}</td>
-              <td class="lb">Telephone:</td><td>${gv('sli-phone')}</td></tr>
-          <tr><td class="lb">Pickup Date:</td><td>${gv('sli-pickup')}</td>
-              <td class="lb">Shipper's Ref:</td><td>${gv('sli-ref')}</td></tr>
-          <tr><td class="lb">Consignee:</td><td>${gv('sli-recv-co')}<br>${gv('sli-recv-addr')}<br>${gv('sli-recv-city')}, ${gv('sli-recv-country')}</td>
-              <td class="lb">Contact:</td><td>${gv('sli-recv-contact')}<br>${gv('sli-recv-phone')}</td></tr>
-          <tr><td class="lb">Airport of Dest.:</td><td>${gv('sli-airport')}</td>
-              <td class="lb">Service:</td><td>${gv('sli-service')}</td></tr>
-          <tr><td class="lb">Description:</td><td>${gv('sli-goods')}</td>
-              <td class="lb">Country of Mfg:</td><td>${gv('sli-mfg')}</td></tr>
-          <tr><td class="lb">HS Code:</td><td>${gv('sli-hs')}</td>
-              <td class="lb">Customs Value:</td><td>${gv('sli-customs')}</td></tr>
-          <tr><td class="lb">Total Pieces:</td><td>${gv('sli-pieces')}</td>
-              <td class="lb">Total Weight (kg):</td><td>${gv('sli-weight')}</td></tr>
-          <tr><td class="lb">Dangerous Goods:</td><td>${gv('sli-dg')}</td>
-              <td class="lb">Insurance:</td><td>${gv('sli-ins')}</td></tr>
-          <tr><td class="lb">EDN:</td><td>${gv('sli-edn')}</td>
-              <td class="lb">Notes:</td><td>${gv('sli-notes')}</td></tr>
-        </table>
-        ${kolloRows ? `<div style="font-weight:700;font-size:10px;margin-bottom:4px">Package Details</div>
-        <table class="dt"><thead><tr><th>UCR/VB No.</th><th>Type</th><th>L(cm)</th><th>W(cm)</th><th>H(cm)</th><th>Gross(kg)</th><th>Net(kg)</th><th>Vol(m³)</th></tr></thead>
-        <tbody>${kolloRows}</tbody></table>` : ''}
-        </body></html>`
-      overlay.remove()
-      const w = window.open('','_blank','width=900,height=1100')
-      if (w) { w.document.write(html); w.document.close() }
+    overlay.querySelector('#_sliPrint')!.addEventListener('click', async () => {
+      const btn = overlay.querySelector('#_sliPrint') as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = 'Generating…'
+      try {
+        const kolloData: KolloData[] = (kollos as Record<string,unknown>[]).map(k => ({
+          kolloId:  String(k.kollo_id || ''),
+          crateNo:  String(k.crate_no || ''),
+          vbNo:     String(k.vb_no || ''),
+          ucrNo:    String(k.ucr_no || ''),
+          packagingType: String(k.packaging_type || 'Crate (CH)'),
+          fertigmeldung: String(k.fertigmeldung || ''),
+          masterKollo: String(k.master_kollo || ''),
+          lengthCm: String(k.length_cm || ''),
+          widthCm:  String(k.width_cm || ''),
+          heightCm: String(k.height_cm || ''),
+          grossKg:  Number(k.gross_kg || 0),
+          netKg:    Number(k.net_kg || 0),
+          volM3:    Number(k.vol_m3 || 0),
+        }))
+        const fields: SLIFields = {
+          acct:          gv('sli-acct'),
+          senderCo:      gv('sli-sender-co'),
+          senderAddr:    gv('sli-sender-addr'),
+          senderContact: gv('sli-contact'),
+          senderPhone:   gv('sli-phone'),
+          pickupDate:    gv('sli-pickup'),
+          pickupAddr:    gv('sli-sender-addr'),
+          shipperRef:    gv('sli-ref'),
+          recvCo:        gv('sli-recv-co'),
+          recvAddr:      gv('sli-recv-addr'),
+          recvCity:      gv('sli-recv-city'),
+          recvCountry:   gv('sli-recv-country'),
+          recvContact:   gv('sli-recv-contact'),
+          recvPhone:     gv('sli-recv-phone'),
+          notes:         gv('sli-notes'),
+          consigneeRef:  gv('sli-recv-co'),
+          airport:       gv('sli-airport'),
+          serviceType:   gv('sli-service'),
+          goodsDesc:     gv('sli-goods'),
+          countryMfg:    gv('sli-mfg'),
+          hsCode:        gv('sli-hs'),
+          customsVal:    gv('sli-customs'),
+          edn:           gv('sli-edn'),
+          insurance:     gv('sli-ins'),
+          pieces:        gv('sli-pieces'),
+          weight:        gv('sli-weight'),
+          dg:            gv('sli-dg'),
+          kollos:        kolloData,
+        }
+        await generateDHLSLI(fields, s.reference || 'SLI', today)
+        overlay.remove()
+        toast('DHL SLI downloaded', 'success')
+      } catch (err) {
+        console.error('SLI generation failed:', err)
+        toast('Failed to generate SLI: ' + String(err), 'error')
+        btn.disabled = false
+        btn.textContent = '📄 Generate SLI'
+      }
     })
   }
 
@@ -384,69 +397,72 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
     const gv = (id: string) => (overlay.querySelector('#' + id) as HTMLInputElement)?.value || ''
     overlay.querySelector('#_docClose')!.addEventListener('click', () => overlay.remove())
     overlay.querySelector('#_docCancel')!.addEventListener('click', () => overlay.remove())
-    overlay.querySelector('#_docPrint')!.addEventListener('click', () => {
-      const currency = gv('pl-currency') || 'EUR'
-      const kolloRows = kollos.map(k =>
-        `<tr><td style="font-family:monospace;font-size:9px">${k.vb_no||''}</td><td>Crate (CH)</td><td style="text-align:center">${k.length_cm||''}</td><td style="text-align:center">${k.width_cm||''}</td><td style="text-align:center">${k.height_cm||''}</td><td style="text-align:right">${k.gross_kg||''}</td><td style="text-align:right">${k.net_kg||''}</td><td style="text-align:right">${Number(k.vol_m3||0).toFixed(3)}</td></tr>`
-      ).join('')
-      const unitPriceBase = replVal && wositParts.length ? replVal / wositParts.reduce((s, p) => s + (Number(p.qty_required)||1), 0) : 0
-      const lineRows = wositParts.map((p, i) => {
-        const qty = Number(p.qty_required) || 1
-        const unitP = unitPriceBase * qty > 0 ? unitPriceBase : 0
-        const lineVal = unitP * qty
-        return `<tr><td style="text-align:center;font-size:9px">${String(i+1).padStart(4,'0')}00</td>
-          <td>${p.description||'—'}<br><span style="font-size:8px;color:#666">Material Nr.: ${p.material_no||''}</span></td>
-          <td style="text-align:center">${qty}</td><td style="text-align:center">${p.unit||'PCE'}</td><td>DE</td>
-          ${showPrices ? `<td style="text-align:right">${unitP.toFixed(2)}</td><td style="text-align:right">${lineVal.toFixed(2)}</td>` : ''}</tr>`
-      }).join('')
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${docTitle} — ${s.reference}</title>
-        <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;padding:20px}
-        h1{font-size:13px;font-weight:700}table{width:100%;border-collapse:collapse;margin-bottom:10px}
-        .ht td{border:1px solid #999;padding:4px 6px;vertical-align:top}
-        .ht .lb{font-weight:600;background:#f5f5f5;width:150px;font-size:9px;color:#444}
-        .dt th{background:#e8e8e8;border:1px solid #999;padding:3px 5px;font-size:8px;text-align:left}
-        .dt td{border:1px solid #ccc;padding:2px 5px;font-size:9px}.totals td{font-weight:700;background:#f0f0f0}
-        .logo{font-size:20px;font-weight:900;letter-spacing:1px;color:#009999}
-        .logo2{font-size:16px;font-weight:900;letter-spacing:1px;color:#6b21a8}
-        .section{font-weight:700;background:#d0d0d0;text-align:center;padding:4px;font-size:10px}
-        @media print{button{display:none!important}}</style></head><body>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-          <div><div class="logo">SIEMENS</div><div class="logo2">ENERGY</div>
-            <div style="font-size:8px;color:#666;margin-top:4px">${gv('pl-recv-co')}<br>${gv('pl-recv-addr')}<br>${gv('pl-recv-city')}, ${gv('pl-recv-country')}</div></div>
-          <div style="text-align:right"><h1>${showPrices ? 'Goods Accompanying Invoice / Warenbegleitende Rechnung' : 'Packing List / Packliste'}</h1>
-            ${showPrices ? `<div style="font-size:11px;font-weight:600;margin-top:4px">${gv('pl-invno')}</div>` : ''}
-            <div style="font-size:10px;color:#666">Date: ${gv('pl-date')}</div>
-            <button onclick="window.print()" style="margin-top:6px;padding:4px 12px;background:#d97706;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">🖨 Print</button></div>
-        </div>
-        <table class="ht">
-          <tr><td colspan="4" class="section">SHIPPER / CONSIGNEE</td></tr>
-          <tr><td class="lb">Shipper:</td><td>${gv('pl-shipper-co')}<br>${gv('pl-shipper-addr')}</td>
-              <td class="lb">Consignee:</td><td>${gv('pl-recv-co')}<br>${gv('pl-recv-addr')}<br>${gv('pl-recv-city')}, ${gv('pl-recv-country')}</td></tr>
-          <tr><td class="lb">Your Order / PO:</td><td>${gv('pl-po')}</td><td class="lb">Project:</td><td>${gv('pl-project')}</td></tr>
-          <tr><td class="lb">Transport:</td><td>${gv('pl-transport')}</td><td class="lb">Incoterms:</td><td>${gv('pl-incoterms')}</td></tr>
-          <tr><td class="lb">Lot / TV No.:</td><td>${gv('pl-lot')}</td><td class="lb">Forwarding Address:</td><td>${gv('pl-recv-addr')}, ${gv('pl-recv-city')}</td></tr>
-        </table>
-        <table class="ht">
-          <tr><td colspan="4" class="section">SHIPMENT SUMMARY</td></tr>
-          <tr><td class="lb">Total Packages:</td><td>${kollos.length || (s as unknown as Record<string,unknown>).packages || '—'}</td>
-              <td class="lb">Total Gross Weight (kg):</td><td>${totalGross.toFixed(3)}</td></tr>
-          <tr><td class="lb">Total Net Weight (kg):</td><td>${totalNet.toFixed(3)}</td>
-              <td class="lb">Total Volume (m³):</td><td>${totalVol.toFixed(3)}</td></tr>
-        </table>
-        ${kolloRows ? `<div style="font-size:10px;font-weight:700;margin-bottom:4px">Package Details</div>
-        <table class="dt"><thead><tr><th>UCR-No. Kollo</th><th>Container Type</th><th>L(cm)</th><th>W(cm)</th><th>H(cm)</th><th>Gross(kg)</th><th>Net(kg)</th><th>Vol(m³)</th></tr></thead>
-        <tbody>${kolloRows}<tr class="totals"><td colspan="5">TOTALS — ${kollos.length} package(s)</td><td style="text-align:right">${totalGross.toFixed(3)}</td><td style="text-align:right">${totalNet.toFixed(3)}</td><td style="text-align:right">${totalVol.toFixed(3)}</td></tr></tbody></table>` : ''}
-        ${wositParts.length ? `<div style="font-size:10px;font-weight:700;margin:8px 0 4px">Detailed Breakdown — ${wositParts.length} items</div>
-        <table class="dt"><thead><tr><th>Pos.</th><th>Description / Material No.</th><th>Qty</th><th>Unit</th><th>Origin</th>${showPrices ? `<th>Unit Price (${currency})</th><th>Total (${currency})</th>` : ''}</tr></thead>
-        <tbody>${lineRows}<tr class="totals"><td colspan="5">TOTAL${showPrices?' AMOUNT INVOICED':''}</td>${showPrices ? `<td></td><td style="text-align:right;font-size:11px">${currency} ${replVal.toLocaleString('en-AU',{minimumFractionDigits:2})}</td>` : ''}</tr></tbody></table>` : '<div style="font-size:10px;color:#666;margin-bottom:10px">No VB Details line items for this TV.</div>'}
-        ${showPrices ? `<table class="ht" style="margin-top:10px">
-          <tr><td class="lb">Total Amount Invoiced:</td><td style="font-weight:700;font-size:12px">${currency} ${replVal.toLocaleString('en-AU',{minimumFractionDigits:2})}</td></tr>
-          <tr><td class="lb">Reason for Export:</td><td>${gv('pl-reason')}</td></tr>
-        </table>` : ''}
-        </body></html>`
-      overlay.remove()
-      const w = window.open('', '_blank', 'width=900,height=1100')
-      if (w) { w.document.write(html); w.document.close() }
+    overlay.querySelector('#_docPrint')!.addEventListener('click', async () => {
+      const btn = overlay.querySelector('#_docPrint') as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = 'Generating…'
+      try {
+        const kolloData: KolloData[] = kollos.map(k => ({
+          kolloId:  String(k.kollo_id || ''),
+          crateNo:  String(k.crate_no || ''),
+          vbNo:     String(k.vb_no || ''),
+          ucrNo:    String(k.ucr_no || ''),
+          packagingType: String(k.packaging_type || 'Crate (CH)'),
+          fertigmeldung: String(k.fertigmeldung || ''),
+          masterKollo: String(k.master_kollo || ''),
+          lengthCm: String(k.length_cm || ''),
+          widthCm:  String(k.width_cm || ''),
+          heightCm: String(k.height_cm || ''),
+          grossKg:  Number(k.gross_kg || 0),
+          netKg:    Number(k.net_kg || 0),
+          volM3:    Number(k.vol_m3 || 0),
+        }))
+        const parts: WositPart[] = wositParts.map(p => ({
+          description: String(p.description || ''),
+          materialNo:  String(p.material_no || ''),
+          qty:         Number(p.qty_required || 1),
+          unit:        String(p.unit || 'ST'),
+          hsCode:      String(p.hs_code || ''),
+          countryOfOrigin: String(p.country_of_origin || 'DE'),
+        }))
+        const docData: DocData = {
+          kollos: kolloData,
+          wositParts: parts,
+          totalGross,
+          totalNet,
+          totalVol,
+          replacementValue: replVal,
+        }
+        const fields: PandIFields = {
+          shipperCo:    gv('pl-shipper-co'),
+          shipperAddr:  gv('pl-shipper-addr'),
+          recvCo:       gv('pl-recv-co'),
+          recvAddr:     gv('pl-recv-addr'),
+          recvCity:     gv('pl-recv-city'),
+          recvCountry:  gv('pl-recv-country'),
+          poNumber:     gv('pl-po'),
+          date:         gv('pl-date'),
+          transport:    gv('pl-transport'),
+          incoterms:    gv('pl-incoterms'),
+          lot:          gv('pl-lot'),
+          currency:     gv('pl-currency') || 'EUR',
+        }
+        const sRec = s as unknown as Record<string, unknown>
+        const projRec = (activeProject || {}) as Record<string, unknown>
+        if (showPrices) {
+          await generateDHLInvoice(fields, sRec, projRec, docData)
+          toast('Invoice .docx downloaded', 'success')
+        } else {
+          await generateDHLPackingList(fields, sRec, projRec, docData)
+          toast('Packing List .docx downloaded', 'success')
+        }
+        overlay.remove()
+      } catch (err) {
+        console.error('Document generation failed:', err)
+        toast('Failed to generate document: ' + String(err), 'error')
+        btn.disabled = false
+        btn.textContent = `${showPrices ? '💰' : '📦'} Generate ${docTitle}`
+      }
     })
   }
 
