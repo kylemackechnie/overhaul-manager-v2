@@ -3,7 +3,11 @@ import { supabase } from '../../lib/supabase'
 import { toast } from '../../components/ui/Toast'
 import type { GlobalDepartment } from '../../types'
 
-const EMPTY = { name:'', rates:{ rentalPct: 2, rateUnit: 'weekly' as 'weekly'|'daily'|'monthly', gmPct: 15 } }
+const EMPTY = { name:'', rates:{
+  rentalPct: 2, rateUnit: 'weekly' as 'weekly'|'daily'|'monthly', gmPct: 15,
+  consigneeCompany: '', shippingAddress: '', consigneeCity: '', consigneeCountry: 'Germany',
+  consigneePhone: '', contact: '', destinationAirport: '',
+} }
 
 export function DepartmentsPanel() {
   const [depts, setDepts] = useState<GlobalDepartment[]>([])
@@ -23,8 +27,14 @@ export function DepartmentsPanel() {
 
   function openNew() { setForm(EMPTY); setModal('new') }
   function openEdit(d: GlobalDepartment) {
-    const rates = d.rates as Record<string,unknown>
-    setForm({ name:d.name, rates:{ rentalPct: Number(rates.rentalPct)||2, rateUnit: (String(rates.rateUnit||'weekly')) as 'weekly'|'daily'|'monthly', gmPct: Number(rates.gmPct)||15 } })
+    const r = d.rates as Record<string,unknown>
+    setForm({ name:d.name, rates:{
+      rentalPct: Number(r.rentalPct)||2, rateUnit: (String(r.rateUnit||'weekly')) as 'weekly'|'daily'|'monthly', gmPct: Number(r.gmPct)||15,
+      consigneeCompany: String(r.consigneeCompany||''), shippingAddress: String(r.shippingAddress||''),
+      consigneeCity: String(r.consigneeCity||''), consigneeCountry: String(r.consigneeCountry||'Germany'),
+      consigneePhone: String(r.consigneePhone||''), contact: String(r.contact||''),
+      destinationAirport: String(r.destinationAirport||''),
+    }})
     setModal(d)
   }
 
@@ -90,13 +100,14 @@ export function DepartmentsPanel() {
 
       {modal && (
         <div className="modal-overlay" onClick={()=>setModal(null)}>
-          <div className="modal" style={{maxWidth:'420px'}} onClick={e=>e.stopPropagation()}>
+          <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'Add Department':'Edit Department'}</h3>
               <button className="btn btn-sm" onClick={()=>setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div className="fg"><label>Department Name</label><input className="input" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Balancing Tools" autoFocus /></div>
+              <div style={{fontSize:'11px',fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',margin:'12px 0 6px'}}>Billing Rates</div>
               <div className="fg-row">
                 <div className="fg"><label>Rental % Factor</label><input type="number" className="input" value={form.rates.rentalPct||''} step={0.1} min={0} onChange={e=>setForm(f=>({...f,rates:{...f.rates,rentalPct:parseFloat(e.target.value)||0}}))} /></div>
                 <div className="fg"><label>Rate Unit</label>
@@ -106,6 +117,18 @@ export function DepartmentsPanel() {
                 </div>
                 <div className="fg"><label>GM %</label><input type="number" className="input" value={form.rates.gmPct||''} step={0.5} min={0} onChange={e=>setForm(f=>({...f,rates:{...f.rates,gmPct:parseFloat(e.target.value)||0}}))} /></div>
               </div>
+              <div style={{fontSize:'11px',fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',margin:'12px 0 6px'}}>Consignee / Return Address (for shipping documents)</div>
+              <div className="fg"><label>Company Name</label><input className="input" value={form.rates.consigneeCompany} placeholder="e.g. Siemens Energy Global GmbH & Co. KG" onChange={e=>setForm(f=>({...f,rates:{...f.rates,consigneeCompany:e.target.value}}))} /></div>
+              <div className="fg"><label>Street Address</label><input className="input" value={form.rates.shippingAddress} placeholder="e.g. Zum Roethepfuhl 1A" onChange={e=>setForm(f=>({...f,rates:{...f.rates,shippingAddress:e.target.value}}))} /></div>
+              <div className="fg-row">
+                <div className="fg"><label>City / Post Code</label><input className="input" value={form.rates.consigneeCity} placeholder="e.g. 14974 Ludwigsfelde" onChange={e=>setForm(f=>({...f,rates:{...f.rates,consigneeCity:e.target.value}}))} /></div>
+                <div className="fg"><label>Country</label><input className="input" value={form.rates.consigneeCountry} onChange={e=>setForm(f=>({...f,rates:{...f.rates,consigneeCountry:e.target.value}}))} /></div>
+              </div>
+              <div className="fg-row">
+                <div className="fg"><label>Contact Name</label><input className="input" value={form.rates.contact} onChange={e=>setForm(f=>({...f,rates:{...f.rates,contact:e.target.value}}))} /></div>
+                <div className="fg"><label>Phone</label><input className="input" value={form.rates.consigneePhone} onChange={e=>setForm(f=>({...f,rates:{...f.rates,consigneePhone:e.target.value}}))} /></div>
+              </div>
+              <div className="fg"><label>Destination Airport</label><input className="input" value={form.rates.destinationAirport} placeholder="e.g. Berlin (BER)" onChange={e=>setForm(f=>({...f,rates:{...f.rates,destinationAirport:e.target.value}}))} /></div>
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={()=>setModal(null)}>Cancel</button>
