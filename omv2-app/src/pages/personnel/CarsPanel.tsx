@@ -59,7 +59,7 @@ export function CarsPanel() {
     const pid = activeProject!.id
     const [carData, resData, poData] = await Promise.all([
       supabase.from('cars').select('*').eq('project_id', pid).order('created_at'),
-      supabase.from('resources').select('id,name,role').eq('project_id', pid).order('name'),
+      supabase.from('resources').select('id,name,role,mob_in,mob_out').eq('project_id', pid).order('name'),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).neq('status','cancelled').order('po_number'),
     ])
     setCars((carData.data || []) as Car[])
@@ -269,6 +269,19 @@ export function CarsPanel() {
                 <div className="fg">
                   <label>End Date</label>
                   <input type="date" className="input" value={form.end_date} onChange={e => update('end_date', e.target.value)} />
+                  {form.person_id && (() => {
+                    const person = resources.find(r => r.id === form.person_id)
+                    return person?.mob_in ? (
+                      <button className="btn btn-sm" style={{marginTop:'4px',fontSize:'11px'}} onClick={() => {
+                        setForm(f => {
+                          const next = { ...f, start_date: person.mob_in || f.start_date, end_date: person.mob_out || f.end_date }
+                          return calcCosts(next)
+                        })
+                      }} title={`Use ${person.name}'s mob dates`}>
+                        ↕ Use {person.name.split(' ')[0]}'s dates
+                      </button>
+                    ) : null
+                  })()}
                 </div>
                 <div className="fg">
                   <label>Daily Rate (ex GST)</label>
