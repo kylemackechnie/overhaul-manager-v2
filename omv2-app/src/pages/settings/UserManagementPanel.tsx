@@ -195,10 +195,12 @@ export function UserManagementPanel() {
       // 4. Link person to app_user
       await supabase.from('persons').update({ app_user_id: newUser.id }).eq('id', person.id)
 
-      // 5. Send Supabase invite email
-      const { error: invErr } = await supabase.auth.admin.inviteUserByEmail(inviteForm.email.trim())
+      // 5. Send magic link — works with anon key (admin.inviteUserByEmail requires service role)
+      const { error: invErr } = await supabase.auth.signInWithOtp({
+        email: inviteForm.email.trim(),
+        options: { shouldCreateUser: false }  // person must have app_users record already (created above)
+      })
       if (invErr) {
-        // Non-fatal — user record exists, they can be sent the link manually
         toast(`User created but invite email failed: ${invErr.message}`, 'error')
       } else {
         toast(`Invite sent to ${inviteForm.email}`, 'success')
