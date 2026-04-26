@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { defaultCurrencyForCategory, getBaseCurrency, CURRENCY_SYMBOLS } from '../../lib/currency'
 import type { RateCard } from '../../types'
 
 const CATEGORIES = ['trades', 'management', 'seag', 'subcontractor'] as const
@@ -13,6 +14,8 @@ const BUCKET_LABELS: Record<string, string> = {
 
 type RateForm = {
   role: string; category: string; subcon_vendor: string
+  /** Native currency for hourly rates */
+  currency: string
   rates: { cost: Record<string,number>; sell: Record<string,number> }
   laha_cost: number; laha_sell: number; fsa_cost: number; fsa_sell: number
   meal_cost: number; meal_sell: number; camp: number
@@ -22,7 +25,7 @@ type RateForm = {
 const emptyRates = () => ({ dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 })
 const EMPTY_REGIME = { wdNT:7.2, wdT15:3.3, satT15:3.0, nightNT:7.2, restNT:7.2 }
 const EMPTY_FORM: RateForm = {
-  role:'', category:'trades', subcon_vendor:'',
+  role:'', category:'trades', subcon_vendor:'', currency: 'AUD',
   rates:{ cost: emptyRates(), sell: emptyRates() },
   laha_cost:0, laha_sell:0, fsa_cost:0, fsa_sell:0, meal_cost:0, meal_sell:0, camp:0,
   regime: { ...EMPTY_REGIME },
@@ -52,7 +55,11 @@ export function RateCardsPanel() {
     setLoading(false)
   }
 
-  function openNew() { setForm({ ...EMPTY_FORM, rates: { cost: emptyRates(), sell: emptyRates() } }); setModal('new') }
+  function openNew() {
+    const cur = defaultCurrencyForCategory('trades', activeProject)
+    setForm({ ...EMPTY_FORM, currency: cur, rates: { cost: emptyRates(), sell: emptyRates() } })
+    setModal('new')
+  }
 
   function applySchedule() {
     const { dayBase, nightBase, shiftAllow, multOT1, multOT2, multSat, multSun, markupMode, markupVal } = sched
@@ -81,8 +88,10 @@ export function RateCardsPanel() {
     const cost = { ...emptyRates(), ...(rc.rates?.cost as Record<string,number> || {}) }
     const sell = { ...emptyRates(), ...(rc.rates?.sell as Record<string,number> || {}) }
     const rcAny = rc as unknown as { regime?: Partial<typeof EMPTY_REGIME> }
+    const rcAny2 = rc as unknown as { currency?: string }
     setForm({
       role: rc.role, category: rc.category, subcon_vendor: rc.subcon_vendor || '',
+      currency: rcAny2.currency || (rc.category === 'seag' ? 'EUR' : getBaseCurrency(activeProject)),
       rates: { cost, sell },
       laha_cost: rc.laha_cost, laha_sell: rc.laha_sell,
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
@@ -98,6 +107,7 @@ export function RateCardsPanel() {
     const payload = {
       project_id: activeProject!.id,
       role: form.role.trim(), category: form.category,
+      currency: form.currency,
       subcon_vendor: form.subcon_vendor || null,
       rates: form.rates,
       laha_cost: form.laha_cost, laha_sell: form.laha_sell,
@@ -200,14 +210,25 @@ export function RateCardsPanel() {
                 const cs = catStyles[rc.category] || {bg:'#f1f5f9',color:'#64748b'}
                 return (
                   <tr key={rc.id}>
-                    <td style={{fontWeight:500}}>{rc.role}{rc.subcon_vendor&&<div style={{fontSize:'10px',color:'var(--text3)'}}>{rc.subcon_vendor}</div>}</td>
-                    <td><span className="badge" style={cs}>{rc.category.slice(0,4)}</span></td>
+                    <td style={{fontWeight:500}}>
+                      {rc.role}
+                      {rc.subcon_vendor&&<div style={{fontSize:'10px',color:'var(--text3)'}}>{rc.subcon_vendor}</div>}
+                    </td>
+                    <td>
+                      <span className="badge" style={cs}>{rc.category.slice(0,4)}</span>
+                      {rc.currency && rc.currency !== (activeProject?.currency||'AUD') && (
+                        <span style={{marginLeft:'4px',fontSize:'9px',background:'#eff6ff',color:'#1d4ed8',padding:'1px 5px',borderRadius:'3px',fontFamily:'var(--mono)',fontWeight:700}}>
+                          {rc.currency}
+                        </span>
+                      )}
+                    </td>
                     {(['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const).map(b=>{
                       const s=(rc.rates as {sell:Record<string,number>})?.sell?.[b]||0
                       const co=(rc.rates as {cost:Record<string,number>})?.cost?.[b]||0
                       const gm=s>0?((s-co)/s*100):null
+                      const sym = rc.currency ? (CURRENCY_SYMBOLS[rc.currency]||'$') : '$'
                       return <td key={b} style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>
-                        {s>0?<><div>${s.toFixed(2)}</div>{gm!==null&&<div style={{fontSize:'9px',color:'var(--green)'}}>{gm.toFixed(0)}%</div>}</>:'—'}
+                        {s>0?<><div>{sym}{s.toFixed(2)}</div>{gm!==null&&<div style={{fontSize:'9px',color:'var(--green)'}}>{gm.toFixed(0)}%</div>}</>:'—'}
                       </td>
                     })}
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>{isMgmtCat(rc.category)?`$${(rc.fsa_sell||0).toFixed(0)}`:`$${(rc.laha_sell||0).toFixed(0)}`}</td>
@@ -240,7 +261,7 @@ export function RateCardsPanel() {
                 </div>
                 <div className="fg">
                   <label>Category</label>
-                  <select className="input" value={form.category} onChange={e => setForm(f=>({...f,category:e.target.value}))}>
+                  <select className="input" value={form.category} onChange={e => { const cat = e.target.value; const cur = defaultCurrencyForCategory(cat, activeProject); setForm(f=>({...f,category:cat,currency:cur})) }}>
                     {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                   </select>
                 </div>
@@ -250,6 +271,21 @@ export function RateCardsPanel() {
                     <input className="input" value={form.subcon_vendor} onChange={e => setForm(f=>({...f,subcon_vendor:e.target.value}))} placeholder="e.g. Acrow, Apave" />
                   </div>
                 )}
+                <div className="fg">
+                  <label>Rate Currency</label>
+                  <select className="input" value={form.currency} onChange={e => setForm(f=>({...f,currency:e.target.value}))}>
+                    <option value="AUD">AUD $</option>
+                    <option value="EUR">EUR €</option>
+                    <option value="USD">USD US$</option>
+                    <option value="GBP">GBP £</option>
+                    <option value="NZD">NZD NZ$</option>
+                  </select>
+                  {form.currency === 'EUR' && (
+                    <div style={{fontSize:'10px',color:'var(--accent)',marginTop:'3px'}}>
+                      ⚠ SE AG rates — stored in EUR, converted to {getBaseCurrency(activeProject)} for cost totals
+                    </div>
+                  )}
+                </div>
               </div>
 
 
@@ -286,10 +322,17 @@ export function RateCardsPanel() {
               </details>
 
               <div>
-                <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Hourly Rates</div>
+                <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>
+                  Hourly Rates
+                  {form.currency !== getBaseCurrency(activeProject) && (
+                    <span style={{marginLeft:'8px',fontSize:'10px',fontWeight:400,color:'var(--orange)',background:'rgba(234,88,12,0.1)',padding:'1px 6px',borderRadius:'4px'}}>
+                      {CURRENCY_SYMBOLS[form.currency] || form.currency} {form.currency} — converted at display
+                    </span>
+                  )}
+                </div>
                 <table style={{fontSize:'12px'}}>
                   <thead>
-                    <tr><th>Bucket</th><th style={{textAlign:'right'}}>Cost ($/hr)</th><th style={{textAlign:'right'}}>Sell ($/hr)</th></tr>
+                    <tr><th>Bucket</th><th style={{textAlign:'right'}}>Cost ({CURRENCY_SYMBOLS[form.currency]||form.currency}/hr)</th><th style={{textAlign:'right'}}>Sell ({CURRENCY_SYMBOLS[form.currency]||form.currency}/hr)</th></tr>
                   </thead>
                   <tbody>
                     {RATE_BUCKETS.map(b => (

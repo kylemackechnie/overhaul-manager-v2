@@ -180,12 +180,15 @@ export function calcCrewMemberTotal(
 export function convertToBase(
   amount: number,
   fromCode: string,
-  currencies: Array<{ code: string; rate: number }>,
+  currencies?: Array<{ code: string; rate: number }> | null,
   baseCurrency = 'AUD'
 ): number {
-  if (fromCode === baseCurrency) return amount
-  const entry = currencies.find(c => c.code === fromCode)
-  const rate = entry?.rate || (fromCode === 'EUR' ? 1.6 : 1)
+  if (!amount) return 0
+  if (!fromCode || fromCode === baseCurrency) return amount
+  const entry = (currencies || []).find(c => c.code === fromCode)
+  // Note: never hardcode a fallback rate — if no rate configured, return 1:1
+  // so the user is alerted by incorrect totals rather than silently wrong ones
+  const rate = entry?.rate ?? 1
   return amount * rate
 }
 
@@ -327,8 +330,18 @@ export function fcAggregate(input: FcAggregateInput): FcAggregateResult {
 
         const day = ensureDay(byDay, d)
         const dk = day[catKey] as { cost: number; sell: number; headcount: number; hours: number }
-        dk.cost += labCost; dk.sell += labSell; dk.headcount += 1; dk.hours += totalHrs
-        const person: PersonDay = { name: r.name, role: r.role || '', category: catKey, cost: labCost, sell: labSell, hours: totalHrs, isMob, isDemob }
+        // SE AG rate cards store amounts in EUR — convert to base currency for totalling.
+        // Allowances (FSA) are already in AUD regardless of category.
+        let finalCost = labCost, finalSell = labSell
+        if (catKey === 'seag') {
+          const rcCurrency = (rc as typeof rc & { currency?: string }).currency || 'EUR'
+          const fsaCost = rc.fsa_cost || 0; const fsaSell = rc.fsa_sell || 0
+          const convertedCost = convertToBase(labCost - fsaCost, rcCurrency, project.currency_rates as {code:string;rate:number}[]|undefined) + fsaCost
+          const convertedSell = convertToBase(labSell - fsaSell, rcCurrency, project.currency_rates as {code:string;rate:number}[]|undefined) + fsaSell
+          finalCost = convertedCost; finalSell = convertedSell
+        }
+        dk.cost += finalCost; dk.sell += finalSell; dk.headcount += 1; dk.hours += totalHrs
+        const person: PersonDay = { name: r.name, role: r.role || '', category: catKey, cost: finalCost, sell: finalSell, hours: totalHrs, isMob, isDemob }
         day.people.push(person)
       })
     })

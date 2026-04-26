@@ -86,6 +86,8 @@ export interface RateCard {
   project_id: string
   role: string
   category: 'trades' | 'management' | 'seag' | 'subcontractor'
+  /** Native currency for hourly rates (EUR for SE AG, AUD for all others) */
+  currency: string
   subcon_vendor: string | null
   rates: RateBuckets
   regime: RegimeConfig | null
@@ -631,7 +633,7 @@ export interface ReportLogEntry { id: string; title: string; type: string; html:
 export interface WositLine { id: string; materialNo: string; tv: string; installLocation: string; [key: string]: unknown }
 export interface IssuedLogEntry { [key: string]: unknown }
 export interface HardwareState { contract: unknown | null; carts: unknown[]; escalationHistory: unknown[]; items: unknown[] }
-export interface SeSupportEntry { id: string; date: string; amount: number; sellPrice: number; [key: string]: unknown }
+export interface SeSupportEntry { id: string; date: string; person: string; description: string; category: string; currency: string; amount: number; sell_price: number; wbs: string; notes: string }
 export interface RfqDoc { id: string; title: string; [key: string]: unknown }
 export interface SparePartItem { id: string; materialNo: string; description: string; [key: string]: unknown }
 export interface ForecastConfig { [key: string]: unknown }

@@ -201,8 +201,23 @@ export function buildForecast(
 
       if (labCost || labSell) {
         const day = ensure(d)
-        day[catKey].cost += labCost
-        day[catKey].sell += labSell
+        // SE AG rate cards are in EUR — convert hourly amounts to base currency.
+        // Allowances (FSA/camp) stay in AUD regardless.
+        if (catKey === 'seag') {
+          const rcCurrency = (rc as RateCard & { currency?: string }).currency || 'EUR'
+          // For seag: hourly portion = total - allowance; convert hourly; re-add allowance
+          const fsaCost = rc.fsa_cost || 0
+          const fsaSell = rc.fsa_sell || 0
+          const hourlyCost = labCost - fsaCost
+          const hourlySell = labSell - fsaSell
+          const convertedCost = toBase(hourlyCost, rcCurrency) + fsaCost
+          const convertedSell = toBase(hourlySell, rcCurrency) + fsaSell
+          day[catKey].cost += convertedCost
+          day[catKey].sell += convertedSell
+        } else {
+          day[catKey].cost += labCost
+          day[catKey].sell += labSell
+        }
         day[catKey].headcount += 1
         day[catKey].hours += hours
       }

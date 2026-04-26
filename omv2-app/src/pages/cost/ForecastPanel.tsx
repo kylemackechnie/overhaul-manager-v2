@@ -57,6 +57,7 @@ export function ForecastPanel() {
     const stdHours = activeProject!.std_hours as { day: Record<string,number>; night: Record<string,number> } || { day:{}, night:{} }
     const publicHolidays = (activeProject!.public_holidays as {date:string}[]) || []
 
+    const fxRates = (activeProject!.currency_rates as {code:string;rate:number}[] | undefined) || []
     const forecast = buildForecast(
       resData.data || [],
       rcData.data || [],
@@ -69,6 +70,7 @@ export function ForecastPanel() {
       publicHolidays,
       activeProject!.start_date,
       activeProject!.end_date,
+      fxRates,
     )
 
     setData(forecast)
