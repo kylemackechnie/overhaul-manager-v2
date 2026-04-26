@@ -85,13 +85,34 @@ export function useAuth() {
       console.log(`[useAuth] ${ms()} loadAppUser query resolved | data:`, !!data, '| error:', error?.message ?? 'none')
 
       if (error || !data) {
-        // First login — create app_user record
+        // First login — try to match an existing invited record by email first
         const { data: authUser } = await supabase.auth.getUser()
         if (authUser?.user) {
+          const email = authUser.user.email || ''
+          // Check if admin pre-created an app_users record via invite (auth_id will be null)
+          const { data: invited } = await supabase
+            .from('app_users')
+            .select('*')
+            .ilike('email', email)
+            .is('auth_id', null)
+            .single()
+
+          if (invited) {
+            // Link the auth_id to the existing invited record
+            const { data: linked } = await supabase
+              .from('app_users')
+              .update({ auth_id: authUser.user.id, last_login: new Date().toISOString() })
+              .eq('id', invited.id)
+              .select()
+              .single()
+            if (linked) { setCurrentUser(linked as AppUser); return }
+          }
+
+          // No invite found — create a new viewer record
           const newUser: Partial<AppUser> = {
             auth_id: authUser.user.id,
-            email: authUser.user.email || '',
-            name: authUser.user.user_metadata?.name || authUser.user.email || '',
+            email,
+            name: authUser.user.user_metadata?.name || email,
             role: 'viewer',
             permissions: {},
             active: true,
@@ -106,7 +127,13 @@ export function useAuth() {
         return
       }
 
-      setCurrentUser(data as AppUser)
+      // Found by auth_id — check force_password_reset flag
+      const user = data as AppUser & { force_password_reset?: boolean }
+      if (user.force_password_reset) {
+        // Store flag in session — App.tsx will redirect to profile
+        sessionStorage.setItem('force_password_reset', '1')
+      }
+      setCurrentUser(user as AppUser)
       console.log(`[useAuth] ${ms()} currentUser set`)
     } catch (e) {
       console.error(`[useAuth] ${ms()} loadAppUser failed:`, (e as Error).message)

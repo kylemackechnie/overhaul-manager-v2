@@ -5,12 +5,15 @@ export interface AppUser {
   auth_id: string | null
   email: string
   name: string
-  role: 'admin' | 'pm' | 'viewer'
-  permissions: Record<string, string>
+  role: 'admin' | 'member' | 'viewer'
+  permissions: Record<string, { read: boolean; write: boolean }>
   active: boolean
   last_login: string | null
   created_at: string
   updated_at: string
+  force_password_reset?: boolean
+  invited_by?: string | null
+  invited_at?: string | null
 }
 
 export interface Site {
@@ -142,6 +145,7 @@ export interface Resource {
   notes: string
   created_at: string
   updated_at: string
+  person_id: string | null
   // Joined
   rate_card?: RateCard
   linked_po?: PurchaseOrder

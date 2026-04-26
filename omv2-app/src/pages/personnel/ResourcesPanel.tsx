@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { findOrCreatePerson, type Person } from '../../lib/persons'
+import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
@@ -115,6 +117,18 @@ export function ResourcesPanel() {
     setSelected(new Set()); setBulkModal(false); load()
   }
 
+  const { cardPerson, openCard, closeCard } = usePersonCard()
+  const [personCache, setPersonCache] = useState<Record<string, Person>>({})
+
+  async function openPersonCard(personId: string) {
+    if (personCache[personId]) { openCard(personCache[personId]); return }
+    const { data } = await supabase.from('persons').select('*').eq('id', personId).single()
+    if (data) {
+      setPersonCache(prev => ({ ...prev, [personId]: data as Person }))
+      openCard(data as Person)
+    }
+  }
+
   function openNew() { setForm({...EMPTY}); setModal('new') }
   function openEdit(r: Resource) { setForm({...r}); setModal(r) }
 
@@ -127,6 +141,19 @@ export function ResourcesPanel() {
   async function save() {
     if (!form.name?.trim()) return toast('Name required', 'error')
     setSaving(true)
+    // Find or create a persistent person record
+    let personId: string | null = null
+    try {
+      const { person } = await findOrCreatePerson({
+        full_name: form.name.trim(),
+        email: form.email || null,
+        phone: form.phone || null,
+        company: form.company || null,
+        default_category: (form.category as 'trades'|'management'|'seag'|'subcontractor') || 'trades',
+        default_role: form.role || null,
+      })
+      personId = person.id
+    } catch { /* non-critical — resource still saves */ }
     const payload = {
       project_id: activeProject!.id,
       name: form.name?.trim(), role: form.role||'', category: form.category||'trades',
@@ -135,6 +162,7 @@ export function ResourcesPanel() {
       allow_laha: form.allow_laha||false, allow_fsa: form.allow_fsa||false, allow_meal: form.allow_meal||false,
       company: form.company||'', phone: form.phone||'', email: form.email||'',
       linked_po_id: form.linked_po_id||null, rate_card_id: form.rate_card_id||null, notes: form.notes||'',
+      person_id: personId,
     }
     const isNew = modal === 'new'
     const { error } = isNew
@@ -185,7 +213,19 @@ export function ResourcesPanel() {
         mob_out: mobOutI >= 0 ? (cols[mobOutI] || null) : null,
         status: 'active',
       }
-      const { error } = await supabase.from('resources').insert(payload)
+      // Find or create persistent person record
+      let personId: string | null = null
+      try {
+        const { person } = await findOrCreatePerson({
+          full_name: name,
+          email: emailI >= 0 ? (cols[emailI]?.trim() || null) : null,
+          phone: phoneI >= 0 ? (cols[phoneI]?.trim() || null) : null,
+          company: compI >= 0 ? (cols[compI]?.trim() || null) : null,
+          default_role: roleI >= 0 ? (cols[roleI]?.trim() || null) : null,
+        })
+        personId = person.id
+      } catch { /* non-critical */ }
+      const { error } = await supabase.from('resources').insert({ ...payload, person_id: personId })
       if (!error) added++
     }
     toast(`Imported ${added} people${skipped ? ` (${skipped} already exist)` : ''}`, 'success')
@@ -361,12 +401,20 @@ export function ResourcesPanel() {
                     <tr key={r.id} style={{verticalAlign:'middle'}}>
                       <td><span className="badge" style={ss}>{ss.label}</span></td>
                       <td style={{fontWeight:600,minWidth:'130px'}}>
-                        <input className="res-inline" defaultValue={r.name}
-                          style={{fontWeight:600,width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'13px',fontFamily:'inherit',color:'inherit',cursor:'pointer',padding:'1px 2px'}}
-                          onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)';(e.target as HTMLInputElement).style.background='var(--bg3)'}}
-                          onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'name',(e.target as HTMLInputElement).value.trim()||r.name)}}
-                          onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
-                        />
+                        <div style={{display:'flex',alignItems:'center',gap:4}}>
+                          <input className="res-inline" defaultValue={r.name}
+                            style={{fontWeight:600,flex:1,background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'13px',fontFamily:'inherit',color:'inherit',cursor:'pointer',padding:'1px 2px'}}
+                            onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)';(e.target as HTMLInputElement).style.background='var(--bg3)'}}
+                            onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'name',(e.target as HTMLInputElement).value.trim()||r.name)}}
+                            onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
+                          />
+                          {((r as unknown as {person_id?:string}).person_id) && (
+                            <button title="View person profile" onClick={() => openPersonCard((r as unknown as {person_id:string}).person_id)}
+                              style={{background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:'12px',padding:'0 2px',flexShrink:0,opacity:0.7}}>
+                              👤
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td style={{minWidth:'140px'}}>
                         <input className="res-inline" defaultValue={r.role||''}
@@ -655,6 +703,7 @@ export function ResourcesPanel() {
         </div>
       )}
 
+      {cardPerson && <PersonCard person={cardPerson} onClose={closeCard} />}
     </div>
   )
 }

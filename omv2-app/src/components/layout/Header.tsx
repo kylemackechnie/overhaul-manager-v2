@@ -9,7 +9,7 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenPicker, onOpenSearch, onOpenSettings }: HeaderProps) {
-  const { activeProject, currentUser, setActiveProject } = useAppStore()
+  const { activeProject, currentUser, setActiveProject, setActivePanel } = useAppStore()
   const [darkMode, setDarkMode] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -118,9 +118,14 @@ export function Header({ onOpenPicker, onOpenSearch, onOpenSettings }: HeaderPro
                 <div className="header-user-info-name">{currentUser?.name || 'User'}</div>
                 <div className="header-user-info-email">{currentUser?.email || ''}</div>
               </div>
-              <button className="header-dropdown-item" onClick={() => { setUserMenuOpen(false); /* user mgmt */ }}>
-                👥 Manage Users
+              <button className="header-dropdown-item" onClick={() => { setUserMenuOpen(false); setActivePanel('profile') }}>
+                👤 My Profile
               </button>
+              {currentUser?.role === 'admin' && (
+                <button className="header-dropdown-item" onClick={() => { setUserMenuOpen(false); setActivePanel('user-management') }}>
+                  👥 Manage Users
+                </button>
+              )}
               <button className="header-dropdown-item danger" onClick={signOut}>
                 ↩ Sign Out
               </button>

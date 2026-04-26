@@ -80,6 +80,7 @@ import { ToolingCostingsPanel } from './pages/tooling/ToolingCostingsPanel'
 import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
+import { ProfilePage } from './pages/settings/ProfilePage'
 import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
 import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
@@ -104,6 +105,13 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   const { activePanel, activeProject, setActivePanel, setActiveProject, restoreProject } = useAppStore()
+
+  // Force password reset — redirect to profile before anything else loads
+  useEffect(() => {
+    if (sessionStorage.getItem('force_password_reset') === '1') {
+      setActivePanel('profile')
+    }
+  }, [])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
   const [restoringProject, setRestoringProject] = useState(false)
@@ -384,6 +392,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-tooling':        return <GlobalToolingPanel />
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
+    case 'profile':               return <ProfilePage />
     case 'sites':                 return <SitesPanel />
     case 'audit-trail':           return <AuditTrailPanel />
     case 'migration':             return <MigrationPanel />
