@@ -450,15 +450,15 @@ export function ShippingImportPanel() {
         await supabase.from('shipments').insert({
           project_id: pid, direction: 'import', ship_type: tv.shipType,
           reference: ref, description: tv.headerName || ref,
-          hawb: tv.hawb || null, mawb: tv.mawb || null, eta: tv.eta || null,
+          hawb: tv.hawb || '', mawb: tv.mawb || '', eta: tv.eta || null,
           status, notes: tv.poNumber ? `PO: ${tv.poNumber}` : '',
           origin: 'Germany',
         })
         shipmentsCreated++
       } else {
         await supabase.from('shipments').update({
-          eta: tv.eta || null, hawb: tv.hawb || null,
-          description: tv.headerName, ship_type: tv.shipType,
+          eta: tv.eta || null, hawb: tv.hawb || '', mawb: tv.mawb || '',
+          description: tv.headerName || ref, ship_type: tv.shipType,
         }).eq('id', (existingShip as { id: string }).id)
       }
     }
