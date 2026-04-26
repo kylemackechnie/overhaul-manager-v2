@@ -40,7 +40,7 @@ export function PartsReceivingPanel() {
   const [step2Warn, setStep2Warn] = useState('')
   const [sessionList, setSessionList] = useState<{ desc: string; matNo: string; location: string; qty: number }[]>([])
 
-  const [fStatus, setFStatus] = useState('pending')
+  const [fStatus, setFStatus] = useState('not_received')
   const [fTV, setFTV] = useState('')
   const [fMat, setFMat] = useState('')
   const [fDesc, setFDesc] = useState('')
@@ -167,7 +167,8 @@ export function PartsReceivingPanel() {
 
   const filtered = lines.filter(l => {
     const st = (l.status || 'pending').toLowerCase()
-    if (fStatus && st !== fStatus) return false
+    if (fStatus === 'not_received' && st === 'received') return false
+    if (fStatus && fStatus !== 'not_received' && st !== fStatus) return false
     if (fTV && !String(l.tv_no || '').toLowerCase().includes(fTV.toLowerCase())) return false
     if (fMat && !(l.material_no || '').toLowerCase().includes(fMat.toLowerCase())) return false
     if (fDesc && !(l.description || '').toLowerCase().includes(fDesc.toLowerCase())) return false
@@ -374,7 +375,8 @@ export function PartsReceivingPanel() {
           <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '8px', background: 'var(--bg3)', flexWrap: 'wrap' }}>
             <select className="input" style={{ width: '110px', padding: '3px 6px', fontSize: '11px' }}
               value={fStatus} onChange={e => setFStatus(e.target.value)}>
-              <option value="">All Status</option>
+              <option value="not_received">Not Received (default)</option>
+              <option value="">All</option>
               <option value="pending">Pending</option>
               <option value="partial">Partial</option>
               <option value="received">Received</option>
