@@ -55,8 +55,12 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
     setLoading(true)
     setLoadError(null)
     try {
+      // Log session state to diagnose auth issues
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('[Picker] session uid:', session?.user?.id ?? 'NONE', '| expires:', session?.expires_at ?? 'N/A')
+
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out — check your connection or try signing out and back in')), 8000)
+        setTimeout(() => reject(new Error('Request timed out — Supabase did not respond in 8s. Check network or contact support.')), 8000)
       )
       const [projResult, siteResult] = await Promise.race([
         Promise.all([
@@ -65,6 +69,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
         ]),
         timeout,
       ])
+      console.log('[Picker] projects:', projResult.data?.length ?? 'error', projResult.error?.message ?? 'ok')
       if (projResult.error) throw projResult.error
       if (siteResult.error) throw siteResult.error
       setProjects((projResult.data || []) as Project[])
@@ -72,7 +77,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setLoadError(msg)
-      console.error('Picker load error:', e)
+      console.error('[Picker] load error:', e)
     } finally {
       setLoading(false)
     }
