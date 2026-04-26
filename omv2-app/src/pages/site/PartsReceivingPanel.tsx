@@ -12,7 +12,7 @@ interface WositLine {
   install_location: string | null
   description: string | null
   qty_required: number
-  received_qty: number | null
+  qty_received: number | null
   status: string | null
 }
 
@@ -56,7 +56,7 @@ export function PartsReceivingPanel() {
     setLoading(true)
     const { data } = await supabase
       .from('wosit_lines')
-      .select('id,tv_no,vb_no,delivery_package,material_no,install_location,description,qty_required,received_qty,status')
+      .select('id,tv_no,vb_no,delivery_package,material_no,install_location,description,qty_required,qty_received,status')
       .eq('project_id', activeProject!.id)
       .order('tv_no')
     setLines((data || []) as WositLine[])
@@ -123,10 +123,10 @@ export function PartsReceivingPanel() {
       qty_delivered: qtyNum, qty_remaining: qtyNum, qty_issued: 0,
     })
     if (error) { toast('Receive failed: ' + error.message, 'error'); return }
-    const prev = Number(sel.received_qty || 0)
+    const prev = Number(sel.qty_received || 0)
     const newTotal = prev + qtyNum
     const newStatus = newTotal >= (sel.qty_required || 0) ? 'received' : 'partial'
-    await supabase.from('wosit_lines').update({ received_qty: newTotal, status: newStatus }).eq('id', sel.id)
+    await supabase.from('wosit_lines').update({ qty_received: newTotal, status: newStatus }).eq('id', sel.id)
     toast(`Received ${qtyNum}× ${sel.description || match.materialNo}`, 'success')
     setSessionList(s => [{ desc: sel.description || match!.materialNo, matNo: match!.materialNo, location, qty: qtyNum }, ...s])
     reset()
@@ -158,7 +158,7 @@ export function PartsReceivingPanel() {
         install_location: l.install_location, description: l.description,
         qty_delivered: q, qty_remaining: q, qty_issued: 0,
       })
-      await supabase.from('wosit_lines').update({ received_qty: q, status: 'received' }).eq('id', l.id)
+      await supabase.from('wosit_lines').update({ qty_received: q, status: 'received' }).eq('id', l.id)
       count++
     }
     toast(`Received ${count} line(s)`, 'success')
@@ -439,8 +439,8 @@ export function PartsReceivingPanel() {
                           <td style={{ padding: '6px 8px', fontSize: '11px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.description}</td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.qty_required}</td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600,
-                            color: Number(l.received_qty) >= l.qty_required ? '#059669' : Number(l.received_qty) > 0 ? '#d97706' : 'var(--text3)' }}>
-                            {Number(l.received_qty) || 0}
+                            color: Number(l.qty_received) >= l.qty_required ? '#059669' : Number(l.qty_received) > 0 ? '#d97706' : 'var(--text3)' }}>
+                            {Number(l.qty_received) || 0}
                           </td>
                         </tr>
                       )
