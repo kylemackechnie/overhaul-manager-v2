@@ -172,6 +172,47 @@ export function VariationsPanel() {
 
   const hasTce = tceLines.length > 0
 
+  function printRegister() {
+    const projectName = activeProject?.name || 'Project'
+    const STATUS_LABELS: Record<string, string> = { draft:'Draft', submitted:'Submitted', approved:'Approved', rejected:'Rejected' }
+    const STATUS_COLORS: Record<string, string> = { draft:'#94a3b8', submitted:'#f59e0b', approved:'#10b981', rejected:'#ef4444' }
+    const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2 })
+    const rows = variations.map(v => {
+      const gm = v.sell_total > 0 ? ((v.sell_total - v.cost_total) / v.sell_total * 100) : 0
+      const col = STATUS_COLORS[v.status] || '#94a3b8'
+      return `<tr>
+        <td class="mono">${v.number}</td>
+        <td>${v.title}</td>
+        <td style="text-align:center"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;background:${col}22;color:${col}">${STATUS_LABELS[v.status] || v.status}</span></td>
+        <td>${v.raised_date || '—'}</td>
+        <td>${v.customer_ref || '—'}</td>
+        <td class="num">${fmt2(v.cost_total || 0)}</td>
+        <td class="num" style="color:#10b981;font-weight:600">${fmt2(v.sell_total || 0)}</td>
+        <td class="num" style="color:${gm>=15?'#10b981':gm>=10?'#f59e0b':'#ef4444'}">${v.sell_total ? gm.toFixed(1)+'%' : '—'}</td>
+      </tr>`
+    }).join('')
+    const totCost = variations.reduce((s,v) => s + (v.cost_total || 0), 0)
+    const totSell = variations.reduce((s,v) => s + (v.sell_total || 0), 0)
+    const totGm   = totSell > 0 ? (totSell - totCost) / totSell * 100 : 0
+    const html = `<!DOCTYPE html><html><head><title>${projectName} — Variation Register</title>
+    <style>body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px}
+    h1{font-size:16px;margin-bottom:4px}p{color:#64748b;font-size:10px;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#f8fafc;padding:6px 8px;text-align:left;font-size:10px;color:#64748b;border-bottom:2px solid #e2e8f0}
+    td{padding:5px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+    .num{text-align:right;font-family:monospace}.mono{font-family:monospace;font-size:10px;font-weight:600}
+    .total td{font-weight:700;background:#f0fdf4;border-top:2px solid #e2e8f0}
+    @media print{@page{size:A4 landscape;margin:12mm}button{display:none}}</style></head>
+    <body><h1>${projectName} — Variation Register</h1>
+    <p>Printed ${new Date().toLocaleDateString('en-AU')} · ${variations.length} variations</p>
+    <table><thead><tr><th>VN #</th><th>Title</th><th>Status</th><th>Raised</th><th>Client Ref</th><th style="text-align:right">Cost</th><th style="text-align:right">Sell</th><th style="text-align:right">GM%</th></tr></thead>
+    <tbody>${rows}
+    <tr class="total"><td colspan="5">TOTAL (${variations.length})</td><td class="num">${fmt2(totCost)}</td><td class="num">${fmt2(totSell)}</td><td class="num">${totSell?totGm.toFixed(1)+'%':'—'}</td></tr>
+    </tbody></table><script>setTimeout(()=>window.print(),300)<\/script></body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+  }
+
   function openNew() {
     const maxNum = variations.reduce((m,v) => Math.max(m, parseInt(String(v.number||'').replace(/\D/g,''))||0), 0)
     setForm({ ...EMPTY_FORM, number: `VN_${String(maxNum+1).padStart(3,'0')}` })
@@ -356,6 +397,7 @@ export function VariationsPanel() {
           </p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
+          <button className="btn btn-sm" onClick={printRegister} disabled={variations.length===0}>🖨 Print Register</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-primary" onClick={openNew}>+ New Variation</button>
         </div>
