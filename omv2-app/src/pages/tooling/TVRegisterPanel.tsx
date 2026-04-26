@@ -26,7 +26,7 @@ export function TVRegisterPanel() {
     setLoading(true)
     const pid = activeProject!.id
     const [ptData, tvData, costData, poData, deptData] = await Promise.all([
-      supabase.from('project_tvs').select('tv_no').eq('project_id',pid),
+      supabase.from('project_tvs').select('tv_no').eq('project_id',pid).eq('tv_type','tooling'),
       supabase.from('global_tvs').select('*,department:global_departments(*)').order('tv_no'),
       supabase.from('tooling_costings').select('*').eq('project_id',pid),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id',pid).neq('status','cancelled'),
@@ -59,7 +59,7 @@ export function TVRegisterPanel() {
     const { error: tvErr } = await supabase.from('global_tvs').upsert({ tv_no: tvNo, header_name:'', site_id: siteId }, { onConflict:'site_id,tv_no', ignoreDuplicates:true })
     if (tvErr) { toast(tvErr.message,'error'); return }
     // Link to project
-    const { error } = await supabase.from('project_tvs').upsert({ project_id:activeProject!.id, tv_no:tvNo, site_id: siteId }, { onConflict:'project_id,tv_no', ignoreDuplicates:true })
+    const { error } = await supabase.from('project_tvs').upsert({ project_id:activeProject!.id, tv_no:tvNo, site_id: siteId, tv_type:'tooling' }, { onConflict:'project_id,tv_no', ignoreDuplicates:true })
     if (error) { toast(error.message,'error'); return }
     toast(`TV${tvNo} added to project`,'success')
     setNewTvNo(''); setAddModal(false); load()

@@ -435,7 +435,7 @@ export function ShippingImportPanel() {
         .select('project_id').eq('project_id', pid).eq('tv_no', tvNoStr).maybeSingle()
       if (!existingLink) {
         const { error: linkErr } = await supabase.from('project_tvs')
-          .insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId })
+          .insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId, tv_type: 'hardware' })
         if (linkErr && !linkErr.message.includes('duplicate')) {
           toast('Error linking TV to project: ' + linkErr.message, 'error'); return
         }

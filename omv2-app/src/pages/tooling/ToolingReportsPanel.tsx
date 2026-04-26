@@ -26,7 +26,7 @@ export function ToolingReportsPanel() {
       supabase.from('global_tvs').select('tv_no,header_name,departure_date,eta_pod').order('tv_no'),
       supabase.from('tooling_costings').select('*').eq('project_id', pid).order('tv_no'),
       supabase.from('global_kollos').select('*').order('tv_no'),
-      supabase.from('project_tvs').select('tv_no').eq('project_id', pid),
+      supabase.from('project_tvs').select('tv_no').eq('project_id', pid).eq('tv_type','tooling'),
     ])
     const projTvNos = new Set((projTvRes.data || []).map(t => t.tv_no))
     setTvs(((tvRes.data || []) as TV[]).filter(t => projTvNos.has(t.tv_no)))
