@@ -629,7 +629,8 @@ export function nrgLineActualHours(
 
 /**
  * nrgLineActual — total actual cost for a TCE line.
- * For Labour lines: walks approved timesheets + rate cards.
+ * For Labour lines: walks approved timesheets + rate cards using splitHours+calcHoursCost
+ * so overtime, night shift, Saturday etc. are correctly costed.
  * For non-Labour: delegates to nrgInvoiceActual.
  */
 export function nrgLineActual(
@@ -638,7 +639,7 @@ export function nrgLineActual(
   invoices: NrgInvoiceMin[],
   expenses: NrgExpenseMin[],
   variations: NrgVariationMin[],
-  getRateForRole: (role: string) => number
+  getRateCardForRole: (role: string) => RateCard | null
 ): number {
   const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
 
@@ -646,18 +647,23 @@ export function nrgLineActual(
     return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
   }
 
-  // Labour: sum hours × sell rate from approved TCE-mode timesheets
+  // Labour: sum cost from approved TCE-mode timesheets using proper rate splitting
   let total = 0
   for (const ts of timesheets) {
     if (ts.status !== 'approved') continue
     if (ts.scope_tracking !== 'tce' && ts.scope_tracking !== 'nrg_tce') continue
     for (const member of ts.crew) {
-      const rate = getRateForRole(member.role)
-      for (const day of Object.values(member.days)) {
+      const rc = getRateCardForRole(member.role)
+      for (const [date, day] of Object.entries(member.days)) {
         if (!day.hours || day.hours <= 0) continue
         const allocs = day.nrgWoAllocations || []
         const match = nrgMatchAllocForLine(allocs, line)
-        if (match) total += match.hours * rate
+        if (!match) continue
+        if (!rc) continue
+        // Use proper split to account for overtime, nights, weekends
+        const dayType = fcDayType(date, [])
+        const split = splitHours(match.hours, dayType, day.shiftType as 'day' | 'night', ts.regime as 'lt12' | 'ge12', rc.regime)
+        total += calcHoursCost(split, rc, 'cost')
       }
     }
   }

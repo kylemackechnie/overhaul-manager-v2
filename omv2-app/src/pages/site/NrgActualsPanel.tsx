@@ -60,12 +60,9 @@ export function NrgActualsPanel() {
     setLoading(false)
   }
 
-  // Rate lookup — sell rate DNT for a role
-  function getRateForRole(role: string): number {
-    const rc = rateCards.find(r => r.role.toLowerCase() === role.toLowerCase())
-    if (!rc) return 0
-    const rates = rc.rates as Record<string, number>
-    return rates?.sell_dnt || rates?.dnt || 0
+  // Rate lookup — returns full RateCard for proper split-based costing
+  function getRateCardForRoleLocal(role: string) {
+    return rateCards.find(r => r.role.toLowerCase() === role.toLowerCase()) || null
   }
 
   // Skip group headers (3-segment IDs)
@@ -76,7 +73,7 @@ export function NrgActualsPanel() {
     .map(l => {
       const actuals = nrgLineActual(
         { item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type },
-        timesheets, invoices, expenses, variations, getRateForRole
+        timesheets, invoices, expenses, variations, getRateCardForRoleLocal
       )
       const tce = l.tce_total || 0
       const pct = tce > 0 ? (actuals / tce) * 100 : null

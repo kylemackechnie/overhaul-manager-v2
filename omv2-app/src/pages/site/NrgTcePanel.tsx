@@ -78,9 +78,7 @@ export function NrgTcePanel() {
       timesheets, invoices, expenses, variations,
       (role: string) => {
         const rc = rateCards.find(r => r.role.toLowerCase() === role.toLowerCase())
-        if (!rc) return 0
-        const rates = rc.rates as Record<string, number>
-        return rates?.sell_dnt || rates?.dnt || 0
+        return rc || null
       }
     )
   }
