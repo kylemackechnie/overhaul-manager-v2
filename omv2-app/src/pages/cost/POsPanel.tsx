@@ -33,6 +33,7 @@ export function POsPanel() {
   const [linkedTS, setLinkedTS] = useState<{id:string;po_id:string|null;type:string;status:string;crew:unknown[]}[]>([])
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -229,11 +230,37 @@ export function POsPanel() {
                     })()}
                     <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{po.raised_date || '—'}</td>
                     <td style={{whiteSpace:'nowrap'}}>
+                      {(() => {
+                        const poInvs = allInvoices.filter(i => i.po_id === po.id)
+                        const isExp  = expanded.has(po.id)
+                        return poInvs.length > 0 ? (
+                          <button className="btn btn-sm" style={{marginRight:'4px'}}
+                            title={`${poInvs.length} invoice(s)`}
+                            onClick={() => setExpanded(s => { const n = new Set(s); isExp ? n.delete(po.id) : n.add(po.id); return n })}>
+                            {isExp ? '▲' : '▼'} {poInvs.length}
+                          </button>
+                        ) : null
+                      })()}
                       <button className="btn btn-sm" onClick={() => openEdit(po)}>Edit</button>
                       <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={() => del(po)}>✕</button>
                     </td>
                   </tr>
-                )
+                  {/* Inline invoice expansion */}
+                  {expanded.has(po.id) && (() => {
+                    const poInvs = allInvoices.filter(i => i.po_id === po.id)
+                    return poInvs.map(inv => (
+                      <tr key={inv.id} style={{background:'var(--bg3)',fontSize:'11px'}}>
+                        <td colSpan={4} style={{paddingLeft:'32px',color:'var(--text3)'}}>
+                          🧾 Invoice
+                        </td>
+                        <td style={{textAlign:'right',fontFamily:'var(--mono)',color:'var(--text2)'}}>{fmtMoney(inv.amount)}</td>
+                        <td colSpan={4}>
+                          <span className="badge" style={{fontSize:'9px',background:'var(--bg2)',color:'var(--text3)'}}>{inv.status}</span>
+                        </td>
+                      </tr>
+                    ))
+                  })()}
+                
               })}
             </tbody>
           </table>

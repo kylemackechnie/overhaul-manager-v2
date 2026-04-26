@@ -91,6 +91,12 @@ import { WODashboard } from './pages/site/WODashboard'
 import { WOActualsPanel } from './pages/site/WOActualsPanel'
 import { ShippingDashboard } from './pages/shipping/ShippingDashboard'
 import { SubconDashboard } from './pages/subcon/SubconDashboard'
+import { SiteDashboardPanel } from './pages/site/SiteDashboardPanel'
+import { GlobalPartsPanel } from './pages/site/GlobalPartsPanel'
+import { PartsReceivingPanel } from './pages/site/PartsReceivingPanel'
+import { PartsIssuePanel } from './pages/site/PartsIssuePanel'
+import { PartsReportsPanel } from './pages/site/PartsReportsPanel'
+import { PartsSearchPanel } from './pages/site/PartsSearchPanel'
 import type { Session } from '@supabase/supabase-js'
 import type { Project } from './types'
 
@@ -346,6 +352,12 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'wo-actuals':            return <WOActualsPanel />
     case 'wo-progress':           return <WOProgressPanel />
     case 'work-orders':           return <WorkOrdersPanel />
+    case 'site-dashboard':        return <SiteDashboardPanel />
+    case 'global-parts':          return <GlobalPartsPanel />
+    case 'parts-receiving':       return <PartsReceivingPanel />
+    case 'parts-issue':           return <PartsIssuePanel />
+    case 'parts-reports':         return <PartsReportsPanel />
+    case 'parts-search':          return <PartsSearchPanel />
     case 'nrg-dashboard':         return <NrgDashboardPanel />
     case 'nrg-tce':               return <NrgTcePanel />
     case 'nrg-ohf':               return <NrgOhfPanel />

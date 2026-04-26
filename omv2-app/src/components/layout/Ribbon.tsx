@@ -125,7 +125,12 @@ const RIBBON_MODULES: RibbonTab[] = [
       { label: 'Hardware', buttons: [
         { icon: '🔧', label: 'Contract', panel: 'hardware-contract' },
         { icon: '🛒', label: 'Carts', panel: 'hardware-carts' },
-        { icon: '🔩', label: 'Spare Parts', panel: 'parts-list' },
+      ]},
+      { label: 'Spare Parts', buttons: [
+        { icon: '🔩', label: 'Inventory', panel: 'parts-list' },
+        { icon: '📬', label: 'Receiving', panel: 'parts-receiving' },
+        { icon: '📋', label: 'Issue Parts', panel: 'parts-issue' },
+        { icon: '📄', label: 'Reports', panel: 'parts-reports' },
       ]},
     ],
   },
@@ -149,10 +154,14 @@ const RIBBON_MODULES: RibbonTab[] = [
   {
     key: 'site', label: 'Site Specific',
     groups: [
+      { label: 'Overview', buttons: [
+        { icon: '🏭', label: 'Site Dashboard', panel: 'site-dashboard' },
+      ]},
       { label: 'Work Orders', buttons: [
         { icon: '📊', label: 'WO Dashboard', panel: 'wo-dashboard' },
         { icon: '⏱', label: 'WO Actuals', panel: 'wo-actuals' },
         { icon: '📋', label: 'Work Orders', panel: 'work-orders' },
+        { icon: '📊', label: 'WO Progress', panel: 'wo-progress' },
       ]},
       { label: 'NRG Gladstone', buttons: [
         { icon: '📊', label: 'NRG Dashboard', panel: 'nrg-dashboard' },
@@ -169,7 +178,8 @@ const RIBBON_MODULES: RibbonTab[] = [
     groups: [
       { label: 'Global Registers', buttons: [
         { icon: '🧰', label: 'Tooling', panel: 'global-tooling' },
-        { icon: '🔩', label: 'Parts', panel: 'global-parts' },
+        { icon: '🔩', label: 'Parts Register', panel: 'global-parts' },
+        { icon: '🔍', label: 'Parts Search', panel: 'parts-search' },
         { icon: '📦', label: 'Kits', panel: 'global-kits' },
       ]},
     ],

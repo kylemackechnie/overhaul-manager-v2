@@ -16,13 +16,16 @@ type RateForm = {
   rates: { cost: Record<string,number>; sell: Record<string,number> }
   laha_cost: number; laha_sell: number; fsa_cost: number; fsa_sell: number
   meal_cost: number; meal_sell: number; camp: number
+  regime: { wdNT: number; wdT15: number; satT15: number; nightNT: number; restNT: number }
 }
 
 const emptyRates = () => ({ dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 })
+const EMPTY_REGIME = { wdNT:7.2, wdT15:3.3, satT15:3.0, nightNT:7.2, restNT:7.2 }
 const EMPTY_FORM: RateForm = {
   role:'', category:'trades', subcon_vendor:'',
   rates:{ cost: emptyRates(), sell: emptyRates() },
   laha_cost:0, laha_sell:0, fsa_cost:0, fsa_sell:0, meal_cost:0, meal_sell:0, camp:0,
+  regime: { ...EMPTY_REGIME },
 }
 
 export function RateCardsPanel() {
@@ -49,12 +52,14 @@ export function RateCardsPanel() {
   function openEdit(rc: RateCard) {
     const cost = { ...emptyRates(), ...(rc.rates?.cost as Record<string,number> || {}) }
     const sell = { ...emptyRates(), ...(rc.rates?.sell as Record<string,number> || {}) }
+    const rcAny = rc as unknown as { regime?: Partial<typeof EMPTY_REGIME> }
     setForm({
       role: rc.role, category: rc.category, subcon_vendor: rc.subcon_vendor || '',
       rates: { cost, sell },
       laha_cost: rc.laha_cost, laha_sell: rc.laha_sell,
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
       meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
+      regime: { ...EMPTY_REGIME, ...(rcAny.regime || {}) },
     })
     setModal(rc)
   }
@@ -70,6 +75,7 @@ export function RateCardsPanel() {
       laha_cost: form.laha_cost, laha_sell: form.laha_sell,
       fsa_cost: form.fsa_cost, fsa_sell: form.fsa_sell,
       meal_cost: form.meal_cost, meal_sell: form.meal_sell, camp: form.camp,
+      regime: form.regime,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('rate_cards').insert(payload)
@@ -323,8 +329,33 @@ export function RateCardsPanel() {
                   <div className="fg"><label>Camp ($/night)</label><input type="number" className="input" value={form.camp} onChange={e=>setForm(f=>({...f,camp:parseFloat(e.target.value)||0}))} /></div>
                 </div>
               </div>
-            </div>
-            <div className="modal-footer">
+              <details style={{border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden',marginTop:'4px'}}>
+                <summary style={{padding:'8px 12px',cursor:'pointer',fontSize:'12px',fontWeight:600,color:'var(--text2)',background:'var(--bg3)',userSelect:'none',listStyle:'none',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  ⚙️ Regime Config <span style={{fontSize:'10px',fontWeight:400,color:'var(--text3)'}}>Hour thresholds for NT/OT splits — defaults: WD NT 7.2h, T1.5 3.3h</span>
+                </summary>
+                <div style={{padding:'12px',background:'var(--bg2)'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:'8px'}}>
+                    {([
+                      ['wdNT',   'Weekday NT (hrs)', 7.2],
+                      ['wdT15',  'Weekday T1.5 (hrs)', 3.3],
+                      ['satT15', 'Sat T1.5 (hrs)', 3.0],
+                      ['nightNT','Night NT (hrs)', 7.2],
+                      ['restNT', 'Rest Day NT (hrs)', 7.2],
+                    ] as [keyof typeof EMPTY_REGIME, string, number][]).map(([key, label, def]) => (
+                      <div key={key} className="fg" style={{margin:0}}>
+                        <label style={{fontSize:'10px'}}>{label}</label>
+                        <input type="number" className="input" min={0} max={24} step={0.1}
+                          value={form.regime[key] ?? def}
+                          onChange={e => setForm(f => ({ ...f, regime: { ...f.regime, [key]: parseFloat(e.target.value) || 0 } }))} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:'10px',color:'var(--text3)',marginTop:'6px'}}>
+                    Weekday day shift: first <b>wdNT</b> hrs = NT, next <b>wdT15</b> = T1.5, remainder = DT. Night: first <b>nightNT</b> = NT, remainder = DT. Sat T1.5 applies before DT on Saturday (lt12 regime).
+                  </div>
+                </div>
+              </details>
+
               {modal !== 'new' && <button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{del(modal as RateCard);setModal(null)}}>Delete</button>}
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
