@@ -55,14 +55,20 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
     setLoading(true)
     setLoadError(null)
     try {
-      const { data: projData, error: projErr } = await supabase
-        .from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false })
-      const { data: siteData, error: siteErr } = await supabase
-        .from('sites').select('*').order('name')
-      if (projErr) throw projErr
-      if (siteErr) throw siteErr
-      setProjects((projData || []) as Project[])
-      setSites((siteData || []) as Site[])
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out — check your connection or try signing out and back in')), 8000)
+      )
+      const [projResult, siteResult] = await Promise.race([
+        Promise.all([
+          supabase.from('projects').select('*, site:sites(id,name)').order('created_at', { ascending: false }),
+          supabase.from('sites').select('*').order('name'),
+        ]),
+        timeout,
+      ])
+      if (projResult.error) throw projResult.error
+      if (siteResult.error) throw siteResult.error
+      setProjects((projResult.data || []) as Project[])
+      setSites((siteResult.data || []) as Site[])
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setLoadError(msg)
@@ -351,19 +357,18 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
       {/* Body */}
       {loading ? (
         <div className="loading-center" style={{ flexDirection: 'column', gap: '12px' }}>
-          {loadError ? (
-            <>
-              <div style={{ color: 'var(--red)', fontSize: '14px', fontWeight: 600 }}>Failed to load projects</div>
-              <div style={{ color: 'var(--text3)', fontSize: '12px', maxWidth: '300px', textAlign: 'center' }}>{loadError}</div>
-              <button className="btn btn-primary" onClick={load}>Retry</button>
-            </>
-          ) : (
-            <>
-              <span className="spinner" style={{ width: '32px', height: '32px' }} />
-              <span style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading projects...</span>
-            </>
-          )}
+          <>
+            <span className="spinner" style={{ width: '32px', height: '32px' }} />
+            <span style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading projects...</span>
+          </>
           {activeProject && <button className="btn" onClick={onClose}>← Back to {activeProject.name}</button>}
+        </div>
+      ) : loadError ? (
+        <div className="loading-center" style={{ flexDirection: 'column', gap: '12px' }}>
+          <div style={{ color: 'var(--red)', fontSize: '14px', fontWeight: 600 }}>Failed to load projects</div>
+          <div style={{ color: 'var(--text3)', fontSize: '12px', maxWidth: '300px', textAlign: 'center' }}>{loadError}</div>
+          <button className="btn btn-primary" onClick={load}>Retry</button>
+          <button className="btn" onClick={() => { supabase.auth.signOut() }}>Sign out &amp; sign in again</button>
         </div>
       ) : (
         <div className="picker-body">
