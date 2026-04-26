@@ -677,7 +677,7 @@ export function nrgLineActual(
       const rc = getRateCardForRole(member.role)
       const rcAny = rc as unknown as Record<string, unknown>
       const isMgmt = rcAny && (rcAny.category === 'management' || rcAny.category === 'seag')
-      for (const [date, day] of Object.entries(member.days)) {
+      for (const [, day] of Object.entries(member.days)) {
         if (!day.hours || day.hours <= 0) continue
         const allocs = day.nrgWoAllocations || []
         const match = nrgMatchAllocForLine(allocs, line)
@@ -689,7 +689,14 @@ export function nrgLineActual(
         const effH = match.hours + adjH
 
         // Hourly sell via proper rate split
-        const dayType = fcDayType(date, [])
+        // Use stored dayType from timesheet — respects PH/travel/rest set by user.
+        // Do NOT recalculate from date (fcDayType with empty holidays misses public holidays).
+        const storedDayType = (day.dayType || 'weekday') as string
+        const dayType: 'weekday'|'saturday'|'sunday'|'publicHoliday' =
+          (storedDayType === 'public_holiday' || storedDayType === 'publicHoliday') ? 'publicHoliday'
+          : storedDayType === 'saturday' ? 'saturday'
+          : storedDayType === 'sunday'   ? 'sunday'
+          : 'weekday'
         const split = splitHours(effH, dayType, day.shiftType as 'day' | 'night', ts.regime as 'lt12' | 'ge12', rc.regime)
         total += calcHoursCost(split, rc, 'sell')
 
