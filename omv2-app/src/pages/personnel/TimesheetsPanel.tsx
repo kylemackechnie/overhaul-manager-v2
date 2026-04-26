@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
 import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
@@ -507,6 +508,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       }
       if (actuals.length) await supabase.from('wo_actuals').insert(actuals)
     } catch { /* non-critical */ }
+    // Write timesheet_cost_lines — single source of truth for TCE actuals + invoicing
+    try {
+      await writeTimesheetCostLines(week, activeProject!.id, rateCards)
+    } catch { /* non-critical */ }
     toast('Saved', 'success')
     setSheets(prev => prev.map(s => s.id === week.id ? week : s))
   }
@@ -825,6 +830,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
                       {s.status !== 'approved' && <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Quick approve" onClick={async()=>{
                         await supabase.from('weekly_timesheets').update({status:'approved'}).eq('id',s.id)
+                        // Re-write cost lines with updated status
+                        try { await writeTimesheetCostLines({...s, status:'approved'}, activeProject!.id, rateCards) } catch { /* non-critical */ }
                         load()
                       }}>✓ Approve</button>}
                       <button className="btn btn-sm" title="Duplicate week" onClick={() => duplicateWeek(s)}>⧉</button>

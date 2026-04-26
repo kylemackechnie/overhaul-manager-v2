@@ -10,9 +10,6 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
-import { splitHours, getRateCardForRole } from '../../lib/calculations'
-import { calcHoursCost } from '../../engines/costEngine'
-import type { RateCard } from '../../types'
 import type { NrgTceLine, NrgCustomerInvoice, NrgInvoiceGroupingRule } from '../../types'
 
 const fmt = (n: number) => n === 0 ? '—' : '$' + Math.round(n).toLocaleString('en-AU')
@@ -40,32 +37,40 @@ export function NrgInvoicingPanel() {
   const [invForm, setInvForm] = useState({ label:'', invoice_number:'', week_ending:'', sent_date:'', notes:'' })
   const [rulesModal, setRulesModal] = useState(false)
   const [rulesForm, setRulesForm] = useState<{group_name:string;triggers_str:string}[]>([])
-  // For period-bounded actuals
-  const [timesheets, setTimesheets] = useState<Record<string,unknown>[]>([])
+  // Cost lines from timesheet_cost_lines — single source of truth for labour actuals
+  const [costLinesByItemAndWeek, setCostLinesByItemAndWeek] = useState<Record<string,Record<string,{cost:number;sell:number}>>>({})
   const [supplierInvoices, setSupplierInvoices] = useState<Record<string,unknown>[]>([])
   const [expenseItems, setExpenseItems] = useState<Record<string,unknown>[]>([])
-  const [rateCards, setRateCards] = useState<Record<string,unknown>[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [linesRes, invRes, rulesRes, tsRes, supInvRes, expRes, rcRes] = await Promise.all([
+    const [linesRes, invRes, rulesRes, clRes, supInvRes, expRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
       supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
-      supabase.from('weekly_timesheets').select('week_start,type,regime,crew,scope_tracking').eq('project_id', pid).eq('status','approved'),
+      supabase.from('timesheet_cost_lines')
+        .select('tce_item_id,week_ending,cost_labour,sell_labour,cost_allowances,sell_allowances')
+        .eq('project_id', pid).eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,invoice_date,amount,status').eq('project_id', pid).neq('status','rejected'),
       supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount').eq('project_id', pid),
-      supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     setTceLines((linesRes.data||[]) as NrgTceLine[])
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
-    setTimesheets((tsRes.data||[]) as Record<string,unknown>[])
+    // Aggregate cost lines: { tce_item_id -> { week_ending -> { cost, sell } } }
+    const byItemWeek: Record<string,Record<string,{cost:number;sell:number}>> = {}
+    for (const r of (clRes.data||[]) as {tce_item_id:string|null;week_ending:string;cost_labour:number;sell_labour:number;cost_allowances:number;sell_allowances:number}[]) {
+      if (!r.tce_item_id) continue
+      if (!byItemWeek[r.tce_item_id]) byItemWeek[r.tce_item_id] = {}
+      if (!byItemWeek[r.tce_item_id][r.week_ending]) byItemWeek[r.tce_item_id][r.week_ending] = {cost:0,sell:0}
+      byItemWeek[r.tce_item_id][r.week_ending].cost += (r.cost_labour||0) + (r.cost_allowances||0)
+      byItemWeek[r.tce_item_id][r.week_ending].sell += (r.sell_labour||0) + (r.sell_allowances||0)
+    }
+    setCostLinesByItemAndWeek(byItemWeek)
     setSupplierInvoices((supInvRes.data||[]) as Record<string,unknown>[])
     setExpenseItems((expRes.data||[]) as Record<string,unknown>[])
-    setRateCards((rcRes.data||[]) as Record<string,unknown>[])
     let rd = (rulesRes.data||[]) as NrgInvoiceGroupingRule[]
     if (rd.length === 0) {
       const { data: nr } = await supabase.from('nrg_invoice_grouping_rules')
@@ -103,60 +108,25 @@ export function NrgInvoicingPanel() {
     return all[idx-1].week_ending || ''
   }
 
-  // Period-bounded actual for a single TCE line — always uses SELL rates to match TCE register
-  // Matches HTML nrgLineActualInPeriod exactly:
-  // - Labour: cost rates (not sell), cell.dayType passed raw (HTML splitHours handles 'public_holiday')
-  // - No allowances — they fall under separate TCE line codes
-  // - Non-labour: supplier invoices + expenses tagged to item_id, dated in period
+  // Labour actuals read from timesheet_cost_lines (pre-calculated).
+  // Non-labour: supplier invoices + expenses dated in period.
+  // Labour: reads pre-calculated rows from costLinesByItemAndWeek (single source of truth).
+  // Non-labour: supplier invoices + expenses dated in period.
   function lineActualInPeriod(line: NrgTceLine, fromWE: string, toWE: string): number {
     if (!toWE) return 0
     const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
 
     if (isLabour) {
+      const buckets = line.item_id ? (costLinesByItemAndWeek[line.item_id] || {}) : {}
       let total = 0
-      for (const ts of timesheets) {
-        const wStart = ((ts.week_start as string)||'').slice(0,10)
-        if (!wStart) continue
-        const wEnd = new Date(wStart + 'T00:00:00')
-        wEnd.setDate(wEnd.getDate() + 6)
-        const wEndStr = wEnd.toISOString().slice(0,10)
-        if (!inPeriod(wEndStr, fromWE, toWE)) continue
-        const scopeTracking = ts.scope_tracking as string
-        if (scopeTracking !== 'tce' && scopeTracking !== 'nrg_tce') continue
-        const regime = ((ts.regime as string) || 'lt12') as 'lt12' | 'ge12'
-        const crew = (ts.crew as Record<string,unknown>[]) || []
-
-        for (const member of crew) {
-          const rc = getRateCardForRole(member.role as string, rateCards as { role: string }[]) as RateCard | null
-          if (!rc) continue
-          const rcAny = rc as unknown as Record<string, unknown>
-          const days = (member.days as Record<string, Record<string,unknown>>) || {}
-
-          for (const day of Object.values(days)) {
-            if (!day.hours) continue
-            const allocs = (day.nrgWoAllocations as Record<string,unknown>[]) || []
-            const match = allocs.find(a =>
-              (a.tceItemId && a.tceItemId === line.item_id) ||
-              (!a.tceItemId && line.work_order && a.wo === line.work_order)
-            )
-            if (!match) continue
-            const effH = Number(match.hours) || 0
-            if (!effH) continue
-
-            // Pass cell.dayType raw — splitHours handles 'public_holiday' natively
-            const dayType = (day.dayType as string) || 'weekday'
-            const shiftType = ((day.shiftType as string) === 'night' ? 'night' : 'day') as 'day' | 'night'
-            const regimeCfg = (rcAny.regime as Parameters<typeof splitHours>[4]) || null
-            const split = splitHours(effH, dayType, shiftType, regime, regimeCfg)
-            // Use cost rates to match HTML nrgLineActualInPeriod
-            total += calcHoursCost(split, rc, 'cost')
-          }
-        }
+      for (const [we, vals] of Object.entries(buckets)) {
+        if (we > toWE) continue
+        if (fromWE && we <= fromWE) continue
+        total += vals.cost
       }
       return total
     }
 
-    // Non-labour: supplier invoices + expenses tagged to item_id, dated in period
     let total = 0
     for (const inv of supplierInvoices) {
       if (inv.tce_item_id !== line.item_id) continue

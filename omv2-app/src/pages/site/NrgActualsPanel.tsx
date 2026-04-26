@@ -1,17 +1,14 @@
 /**
  * NRG Actuals Panel
- * Shows actual cost vs TCE budget per line.
- * Labour actuals: from approved TCE-mode timesheets via _nrgMatchAllocForLine.
+ * Reads from timesheet_cost_lines (single source of truth).
  * Non-labour actuals: invoices + expenses + approved variations tagged to item_id.
- * 
- * CRITICAL: all matching uses item_id (text, stable), never line.id (UUID, regenerates).
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
-import { nrgLineActual, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
-import type { NrgTceLine, RateCard } from '../../types'
+import { nrgInvoiceActual, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import type { NrgTceLine } from '../../types'
 
 function statusBadge(pct: number | null, hasActuals: boolean) {
   if (!hasActuals) return { bg: '#f3f4f6', color: '#9ca3af', label: 'No actuals' }
@@ -24,11 +21,11 @@ function statusBadge(pct: number | null, hasActuals: boolean) {
 export function NrgActualsPanel() {
   const { activeProject } = useAppStore()
   const [lines, setLines] = useState<NrgTceLine[]>([])
-  const [timesheets, setTimesheets] = useState<NrgTimesheet[]>([])
+  // Pre-aggregated labour cost per tce_item_id from timesheet_cost_lines
+  const [labourByItem, setLabourByItem] = useState<Record<string, { cost: number; sell: number }>>({})
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
-  const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -38,31 +35,33 @@ export function NrgActualsPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [linesRes, tsRes, invRes, expRes, varRes, rcRes] = await Promise.all([
+    const [linesRes, clRes, invRes, expRes, varRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
-      // Load all approved timesheets with crew (for labour actuals)
-      supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew')
-        .eq('project_id', pid).eq('status', 'approved'),
-      // Invoices tagged to TCE lines (tce_item_id is now text item_id)
+      // Read from the pre-calculated cost lines table (approved only)
+      supabase.from('timesheet_cost_lines')
+        .select('tce_item_id,work_order,cost_labour,sell_labour,cost_allowances,sell_allowances')
+        .eq('project_id', pid)
+        .eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
-      // Expenses tagged to TCE lines
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
-      // Approved variations with tce_link
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
-      supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     setLines((linesRes.data || []) as NrgTceLine[])
-    setTimesheets((tsRes.data || []) as NrgTimesheet[])
+
+    // Aggregate labour cost by tce_item_id from the cost lines table
+    const agg: Record<string, { cost: number; sell: number }> = {}
+    for (const row of (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; cost_labour: number; sell_labour: number; cost_allowances: number; sell_allowances: number }[]) {
+      const key = row.tce_item_id || ''
+      if (!key) continue
+      if (!agg[key]) agg[key] = { cost: 0, sell: 0 }
+      agg[key].cost += (row.cost_labour || 0) + (row.cost_allowances || 0)
+      agg[key].sell += (row.sell_labour || 0) + (row.sell_allowances || 0)
+    }
+    setLabourByItem(agg)
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
-    setRateCards((rcRes.data || []) as RateCard[])
     setLoading(false)
-  }
-
-  // Rate lookup — returns full RateCard for proper split-based costing
-  function getRateCardForRoleLocal(role: string) {
-    return rateCards.find(r => r.role.toLowerCase() === role.toLowerCase()) || null
   }
 
   // Skip group headers (3-segment IDs)
@@ -71,10 +70,9 @@ export function NrgActualsPanel() {
   const withActuals = lines
     .filter(l => !isGroupHeader(l.item_id))
     .map(l => {
-      const actuals = nrgLineActual(
-        { item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type },
-        timesheets, invoices, expenses, variations, getRateCardForRoleLocal
-      )
+      const labour = (l.item_id ? labourByItem[l.item_id]?.cost || 0 : 0)
+      const nonLabour = nrgInvoiceActual(l.item_id, invoices, expenses, variations)
+      const actuals = labour + nonLabour
       const tce = l.tce_total || 0
       const pct = tce > 0 ? (actuals / tce) * 100 : null
       return { line: l, actuals, tce, pct }
@@ -113,10 +111,12 @@ export function NrgActualsPanel() {
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {withActuals.length} TCE lines · {fmt(totAct)} actual of {fmt(totTce)} TCE
             {totPct !== null && <span style={{ marginLeft: '8px', color: totPct > 100 ? 'var(--red)' : totPct > 80 ? 'var(--amber)' : 'var(--green)' }}>({totPct.toFixed(0)}%)</span>}
-            {timesheets.length > 0 && <span style={{ marginLeft: '8px', color: 'var(--text3)' }}>· {timesheets.length} approved timesheets</span>}
           </p>
         </div>
-        <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-sm" title="Recalculate cost lines from timesheets (run after re-saving timesheets)" onClick={load}>↻ Refresh</button>
+        </div>
       </div>
 
       {/* KPI tiles */}
