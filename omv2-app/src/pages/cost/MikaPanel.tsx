@@ -202,6 +202,20 @@ export function MikaPanel() {
     const { error } = await supabase.from('mika_wbs_lines').insert(inserts)
     if (error) { setStatus({ msg: '✗ Save error: ' + error.message, type: 'error' }); setSaving(false); return }
 
+    // Also sync to wbs_list so CostReport and other panels get WBS structure from MIKA
+    await supabase.from('wbs_list').delete().eq('project_id', activeProject.id)
+    const wbsInserts = preview.lines
+      .filter(l => l.wbs.includes('-') || l.wbs.includes('.')) // skip blank rows
+      .map((l, i) => ({
+        project_id: activeProject.id,
+        code: l.wbs, name: l.desc || l.wbs,
+        level: l.level, pm80: l.pm80tot, pm100: l.pm100,
+        source: 'mika', sort_order: i,
+      }))
+    if (wbsInserts.length) {
+      await supabase.from('wbs_list').insert(wbsInserts)
+    }
+
     // Also keep a lightweight meta blob on projects for dashboard display
     const meta = { projectNo: preview.projectNo, projectName: preview.projectName, period: preview.period, importedAt: preview.importedAt, lineCount: preview.lines.length }
     await supabase.from('projects').update({ mika_data: meta }).eq('id', activeProject.id)
@@ -263,7 +277,7 @@ export function MikaPanel() {
   const statusColors = { info: 'var(--text2)', success: 'var(--green)', error: 'var(--red)' }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px' }}>
+    <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>MIKA Cost Plan</h1>
@@ -393,7 +407,7 @@ export function MikaPanel() {
           {/* Full MIKA table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ fontSize: '11px', minWidth: '900px' }}>
+              <table style={{ fontSize: '11px', width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
                     <th>WBS</th><th>Description</th><th>Lvl</th>
