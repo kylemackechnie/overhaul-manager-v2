@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { toast } from '../../components/ui/Toast'
 import type { GlobalDepartment } from '../../types'
 
-const EMPTY = { name:'', rates:{ costPerDay:0, sellPerDay:0, currency:'EUR' } }
+const EMPTY = { name:'', rates:{ rentalPct: 2, rateUnit: 'weekly' as 'weekly'|'daily'|'monthly', gmPct: 15 } }
 
 export function DepartmentsPanel() {
   const [depts, setDepts] = useState<GlobalDepartment[]>([])
@@ -24,7 +24,7 @@ export function DepartmentsPanel() {
   function openNew() { setForm(EMPTY); setModal('new') }
   function openEdit(d: GlobalDepartment) {
     const rates = d.rates as Record<string,unknown>
-    setForm({ name:d.name, rates:{ costPerDay: Number(rates.costPerDay)||0, sellPerDay: Number(rates.sellPerDay)||0, currency: String(rates.currency||'EUR') } })
+    setForm({ name:d.name, rates:{ rentalPct: Number(rates.rentalPct)||2, rateUnit: (String(rates.rateUnit||'weekly')) as 'weekly'|'daily'|'monthly', gmPct: Number(rates.gmPct)||15 } })
     setModal(d)
   }
 
@@ -66,16 +66,16 @@ export function DepartmentsPanel() {
       ) : (
         <div className="card" style={{padding:0,overflow:'hidden'}}>
           <table>
-            <thead><tr><th>Department</th><th style={{textAlign:'right'}}>Cost/Day</th><th style={{textAlign:'right'}}>Sell/Day</th><th>Currency</th><th></th></tr></thead>
+            <thead><tr><th>Department</th><th style={{textAlign:'right'}}>Rental %</th><th>Rate Unit</th><th style={{textAlign:'right'}}>GM %</th><th></th></tr></thead>
             <tbody>
               {depts.map(d => {
                 const r = d.rates as Record<string,unknown>
                 return (
                   <tr key={d.id}>
                     <td style={{fontWeight:500}}>{d.name}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{Number(r.costPerDay||0).toFixed(2)}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--green)'}}>{Number(r.sellPerDay||0).toFixed(2)}</td>
-                    <td style={{fontSize:'12px',color:'var(--text3)'}}>{String(r.currency||'EUR')}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{Number(r.rentalPct||0)}%</td>
+                    <td style={{fontSize:'12px',color:'var(--text3)'}}>{String(r.rateUnit||'weekly')}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{Number(r.gmPct||0)}%</td>
                     <td style={{whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={()=>openEdit(d)}>Edit</button>
                       <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={()=>del(d)}>✕</button>
@@ -98,13 +98,13 @@ export function DepartmentsPanel() {
             <div className="modal-body">
               <div className="fg"><label>Department Name</label><input className="input" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Balancing Tools" autoFocus /></div>
               <div className="fg-row">
-                <div className="fg"><label>Cost/Day</label><input type="number" className="input" value={form.rates.costPerDay||''} onChange={e=>setForm(f=>({...f,rates:{...f.rates,costPerDay:parseFloat(e.target.value)||0}}))} /></div>
-                <div className="fg"><label>Sell/Day</label><input type="number" className="input" value={form.rates.sellPerDay||''} onChange={e=>setForm(f=>({...f,rates:{...f.rates,sellPerDay:parseFloat(e.target.value)||0}}))} /></div>
-                <div className="fg"><label>Currency</label>
-                  <select className="input" value={form.rates.currency} onChange={e=>setForm(f=>({...f,rates:{...f.rates,currency:e.target.value}}))}>
-                    {['EUR','AUD','USD','GBP'].map(c=><option key={c} value={c}>{c}</option>)}
+                <div className="fg"><label>Rental % Factor</label><input type="number" className="input" value={form.rates.rentalPct||''} step={0.1} min={0} onChange={e=>setForm(f=>({...f,rates:{...f.rates,rentalPct:parseFloat(e.target.value)||0}}))} /></div>
+                <div className="fg"><label>Rate Unit</label>
+                  <select className="input" value={form.rates.rateUnit} onChange={e=>setForm(f=>({...f,rates:{...f.rates,rateUnit:e.target.value as 'weekly'|'daily'|'monthly'}}))}>
+                    {['weekly','daily','monthly'].map(u=><option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+                <div className="fg"><label>GM %</label><input type="number" className="input" value={form.rates.gmPct||''} step={0.5} min={0} onChange={e=>setForm(f=>({...f,rates:{...f.rates,gmPct:parseFloat(e.target.value)||0}}))} /></div>
               </div>
             </div>
             <div className="modal-footer">

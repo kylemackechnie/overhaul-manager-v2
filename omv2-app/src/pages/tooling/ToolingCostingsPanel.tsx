@@ -5,7 +5,16 @@ import { toast } from '../../components/ui/Toast'
 import { calcRentalCost } from '../../lib/calculations'
 import type { ToolingCosting, GlobalTV } from '../../types'
 
-interface Department { id: string; name: string; rental_pct: number; rate_unit: 'weekly'|'daily'|'monthly'; gm_pct: number }
+interface Department { id: string; name: string; rates: Record<string, unknown> }
+
+function deptRentalPct(d: Department) { return Number(d.rates.rentalPct || 0) }
+function deptRateUnit(d: Department): 'weekly' | 'daily' | 'monthly' { return (d.rates.rateUnit as 'weekly'|'daily'|'monthly') || 'weekly' }
+function deptGmPct(d: Department) { return Number(d.rates.gmPct || 0) }
+
+function deptToCalc(d: Department | null | undefined): { rental_pct: number; rate_unit: 'weekly'|'daily'|'monthly'; gm_pct: number } | null {
+  if (!d) return null
+  return { rental_pct: deptRentalPct(d), rate_unit: deptRateUnit(d), gm_pct: deptGmPct(d) }
+}
 interface WbsItem { code: string; name: string }
 interface ProjectRef { id: string; name: string }
 
@@ -130,7 +139,7 @@ export function ToolingCostingsPanel() {
   function calcSplitCost(costing: CostingRow, split: Split, dept: Department | null | undefined): number | null {
     if (!split.startDate || !split.endDate || !dept || !costing.tv?.replacement_value_eur) return null
     const replVal = costing.tv.replacement_value_eur
-    const result = calcRentalCost(replVal, { charge_start: split.startDate, charge_end: split.endDate }, dept)
+    const result = calcRentalCost(replVal, { charge_start: split.startDate, charge_end: split.endDate }, deptToCalc(dept)!)
     if (!result) return null
     const base = result.cost
     if (split.type === 'standby' && split.discountPct) return base * (1 - split.discountPct / 100)
@@ -162,7 +171,7 @@ export function ToolingCostingsPanel() {
             {depts.map(d => (
               <div key={d.id} style={{ padding: '4px 10px', background: 'var(--bg3)', borderRadius: '5px' }}>
                 <span style={{ fontWeight: 600 }}>{d.name}</span>
-                <span style={{ color: 'var(--text3)', marginLeft: '6px' }}>{d.rental_pct}% repl. value / {d.rate_unit}</span>
+                <span style={{ color: 'var(--text3)', marginLeft: '6px' }}>{deptRentalPct(d)}% repl. value / {deptRateUnit(d)}</span>
               </div>
             ))}
           </div>
@@ -175,8 +184,9 @@ export function ToolingCostingsPanel() {
         costings.map(c => {
           const dept = c.tv?.department_id ? depts.find(d => d.id === c.tv!.department_id) : null
           const replVal = c.tv?.replacement_value_eur || 0
-          const calc = dept && c.charge_start && c.charge_end && replVal
-            ? calcRentalCost(replVal, { charge_start: c.charge_start, charge_end: c.charge_end }, dept)
+          const deptCalc = deptToCalc(dept)
+          const calc = deptCalc && c.charge_start && c.charge_end && replVal
+            ? calcRentalCost(replVal, { charge_start: c.charge_start, charge_end: c.charge_end }, deptCalc)
             : null
           const days = c.charge_start && c.charge_end ? daysBetween(c.charge_start, c.charge_end) : null
           const fx = c.fx_rate || 1.65
@@ -245,9 +255,9 @@ export function ToolingCostingsPanel() {
                     onChange={e => updateField(c.id, 'fx_rate', parseFloat(e.target.value) || 1.65)} />
                 </div>
                 <div className="fg" style={{ margin: 0 }}>
-                  <label>Customer Rate Override (EUR/{dept?.rate_unit || 'weekly'}) <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— leave blank to use GM%</span></label>
+                  <label>Customer Rate Override (EUR/{dept ? deptRateUnit(dept) : 'weekly'}) <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— leave blank to use GM%</span></label>
                   <input type="number" className="input" value={(c as unknown as { sell_override_eur?: number }).sell_override_eur || ''} min={0} step={0.01}
-                    placeholder={`e.g. 500 per ${dept?.rate_unit || 'week'}`}
+                    placeholder={`e.g. 500 per ${dept ? deptRateUnit(dept) : 'week'}`}
                     onChange={e => updateField(c.id, 'sell_override_eur', parseFloat(e.target.value) || null)} />
                 </div>
               </div>
