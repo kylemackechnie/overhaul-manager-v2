@@ -51,12 +51,22 @@ export function SubconRFQPanel() {
 
   function openNew() { setForm(EMPTY_CONTRACT); setModal('new') }
   function openEdit(c: SubconContract) {
-    const d = c.details as Record<string,unknown>
-    setForm({ vendor:c.vendor, status:c.status, value:c.value?.toString()||'',
-      description:String(d.description||''), scope:String(d.scope||''),
-      start_date:String(d.start_date||''), end_date:String(d.end_date||''),
-      notes:String(d.notes||''), po_id:String(d.po_id||''),
-      quoted_amount:c.quoted_amount?.toString()||'', response_notes:c.response_notes||'', awarded:c.awarded||false })
+    const d = (c.details || {}) as Record<string,unknown>
+    setForm({
+      vendor: c.vendor,
+      status: c.status,
+      value: c.value?.toString() || '',
+      // Real columns first, fall back to legacy details jsonb if column is empty
+      description: (c as unknown as { description?: string }).description || String(d.description || ''),
+      scope: (c as unknown as { scope?: string }).scope || String(d.scope || ''),
+      start_date: (c as unknown as { start_date?: string }).start_date || String(d.start_date || ''),
+      end_date: (c as unknown as { end_date?: string }).end_date || String(d.end_date || ''),
+      notes: (c as unknown as { notes?: string }).notes || String(d.notes || ''),
+      po_id: (c as unknown as { linked_po_id?: string }).linked_po_id || String(d.po_id || ''),
+      quoted_amount: c.quoted_amount?.toString() || '',
+      response_notes: c.response_notes || '',
+      awarded: c.awarded || false,
+    })
     setModal(c)
   }
 
@@ -64,10 +74,19 @@ export function SubconRFQPanel() {
     if (!form.vendor.trim()) return toast('Vendor required','error')
     setSaving(true)
     const payload = {
-      project_id:activeProject!.id, vendor:form.vendor.trim(), status:form.status,
-      value:form.value?parseFloat(form.value):null,
-      details:{ description:form.description, scope:form.scope, start_date:form.start_date,
-        end_date:form.end_date, notes:form.notes, po_id:form.po_id }
+      project_id: activeProject!.id,
+      vendor: form.vendor.trim(),
+      status: form.status,
+      value: form.value ? parseFloat(form.value) : null,
+      description: form.description,
+      scope: form.scope,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      notes: form.notes,
+      linked_po_id: form.po_id || null,
+      quoted_amount: form.quoted_amount ? parseFloat(form.quoted_amount) : null,
+      response_notes: form.response_notes,
+      awarded: form.awarded,
     }
     if (modal==='new') {
       const { error } = await supabase.from('subcon_contracts').insert(payload)
@@ -144,17 +163,21 @@ export function SubconRFQPanel() {
             <thead><tr><th>Vendor</th><th>Description</th><th>Status</th><th style={{textAlign:'right'}}>Value</th><th>Start</th><th>End</th><th></th></tr></thead>
             <tbody>
               {contracts.map(c => {
-                const d = c.details as Record<string,unknown>
+                const d = (c.details || {}) as Record<string,unknown>
                 const sc = STATUS_COLORS[c.status]||STATUS_COLORS.draft
-              
+                const cExt = c as unknown as { description?: string; start_date?: string; end_date?: string }
+                const desc = cExt.description || String(d.description||'')
+                const sd = cExt.start_date || String(d.start_date||'')
+                const ed = cExt.end_date || String(d.end_date||'')
+
   return (
                   <tr key={c.id}>
                     <td style={{fontWeight:500}}>{c.vendor}</td>
-                    <td style={{fontSize:'12px',color:'var(--text2)',maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{String(d.description||'—')}</td>
+                    <td style={{fontSize:'12px',color:'var(--text2)',maxWidth:'200px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{desc || '—'}</td>
                     <td><span className="badge" style={sc}>{c.status}</span></td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{fmt(c.value)}</td>
-                    <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{String(d.start_date||'—')}</td>
-                    <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{String(d.end_date||'—')}</td>
+                    <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{sd || '—'}</td>
+                    <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{ed || '—'}</td>
                     <td style={{whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={()=>openEdit(c)}>Edit</button>
                       <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={()=>del(c)}>✕</button>

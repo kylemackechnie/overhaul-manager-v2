@@ -207,7 +207,7 @@ export interface PurchaseOrder {
   status: 'draft' | 'quoted' | 'raised' | 'active' | 'closed' | 'cancelled'
   currency: string
   po_value: number | null
-  quote_source: { rfqId: string; docTitle: string } | null
+  quote_source: { type?: 'rfq' | 'manual'; rfqId: string; responseId?: string; docTitle: string } | null
   raised_date: string | null
   closed_date: string | null
   notes: string
@@ -504,8 +504,107 @@ export interface Shipment {
 
 export interface SubconContract {
   id: string; project_id: string; vendor: string; status: string
-  value: number | null; details: Record<string, unknown>
+  value: number | null
+  description: string; scope: string
+  start_date: string | null; end_date: string | null
+  notes: string
+  linked_po_id: string | null
+  quoted_amount: number | null
+  response_notes: string | null
+  awarded: boolean
+  details: Record<string, unknown>
   created_at: string; updated_at: string
+}
+
+export interface RfqDocument {
+  id: string
+  project_id: string
+  title: string
+  stage: 'draft' | 'issued' | 'responses_in' | 'awarded' | 'contracted' | 'cancelled'
+  scope: string
+  start_date: string | null
+  end_date: string | null
+  deadline: string | null
+  contact_name: string
+  contact_role: string
+  contact_email: string
+  contact_phone: string
+  notes: string
+  vendors_sent: string[]
+  awarded_response_id: string | null
+  linked_contract_id: string | null
+  linked_po_id: string | null
+  labour_rows: RfqLabourRow[]
+  equip_rows: RfqEquipRow[]
+  created_at: string
+  updated_at: string
+}
+
+export interface RfqLabourRow {
+  id: string
+  role: string
+  shiftType: 'single' | 'single-night' | 'dual'
+  qty: number
+  durMode: 'shifts' | 'dates'
+  shifts: number
+  dateStart: string | null
+  dateEnd: string | null
+}
+
+export interface RfqEquipRow {
+  id: string
+  desc: string
+  unit: 'days' | 'weeks' | 'lump'
+  durMode: 'qty' | 'dates'
+  dur: number
+  dateStart: string | null
+  dateEnd: string | null
+}
+
+export interface RfqResponse {
+  id: string
+  rfq_document_id: string
+  project_id: string
+  vendor: string
+  received_date: string | null
+  total_quote: number | null
+  currency: string
+  notes: string
+  labour: RfqResponseLabour[]
+  equip: RfqResponseEquip[]
+  quote_pdf_path: string | null
+  quote_pdf_name: string | null
+  quote_pdf_size_bytes: number | null
+  is_awarded: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface RfqResponseLabour {
+  role: string
+  rates: RfqResponseLabourRates
+}
+
+export interface RfqResponseLabourRates {
+  rateMode: 'hourly' | 'flat'
+  // Hourly fields
+  dnt?: number; dt15?: number; ddt?: number; ddt15?: number
+  nnt?: number; ndt?: number; ndt15?: number
+  laha?: number
+  ntHrs?: number; ot1Hrs?: number; shiftHrs?: number
+  satNtHrs?: number; satT15Hrs?: number; satShiftHrs?: number
+  sunT15Hrs?: number; sunShiftHrs?: number
+  nntHrs?: number; nshiftHrs?: number
+  // Flat fields
+  flatDs?: number; flatNs?: number
+}
+
+export interface RfqResponseEquip {
+  desc: string
+  rate: number
+  unit: 'day' | 'week' | 'lump'
+  transportIn: number
+  transportOut: number
 }
 
 export interface WbsItem {
