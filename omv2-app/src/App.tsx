@@ -91,13 +91,15 @@ import { WOActualsPanel } from './pages/site/WOActualsPanel'
 import { ShippingDashboard } from './pages/shipping/ShippingDashboard'
 import { SubconDashboard } from './pages/subcon/SubconDashboard'
 import type { Session } from '@supabase/supabase-js'
+import type { Project } from './types'
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
-  const { activePanel, activeProject, setActivePanel, setActiveProject } = useAppStore()
+  const { activePanel, activeProject, setActivePanel, setActiveProject, restoreProject } = useAppStore()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
+  const [restoringProject, setRestoringProject] = useState(false)
 
   useEffect(() => {
     const t0 = performance.now()
@@ -123,8 +125,34 @@ export default function App() {
         initialSessionSeen = true
         setSession(s ?? null)
         if (s) {
-          console.log(`[App] ${ms()} INITIAL_SESSION with session — opening picker`)
-          if (!useAppStore.getState().activeProject) setPickerOpen(true)
+          // Try to restore the previously-active project. activePanel and activeRibbonTab
+          // are already persisted by zustand, so just rehydrating the project record is
+          // enough to land the user back on the panel they had open before refresh.
+          const persistedId = useAppStore.getState().activeProjectId
+          const inMemoryProject = useAppStore.getState().activeProject
+          if (inMemoryProject) {
+            // Already in memory (HMR or navigation) — nothing to do
+            console.log(`[App] ${ms()} INITIAL_SESSION — project already in memory`)
+          } else if (persistedId) {
+            console.log(`[App] ${ms()} INITIAL_SESSION — restoring project ${persistedId.slice(0, 8)}...`)
+            setRestoringProject(true)
+            // Fire the restore query but don't block on it. If it fails (project deleted,
+            // RLS denies, etc.) we fall back to the picker.
+            supabase.from('projects').select('*, site:sites(id,name)').eq('id', persistedId).single()
+              .then(({ data, error }) => {
+                setRestoringProject(false)
+                if (error || !data) {
+                  console.warn(`[App] project restore failed:`, error?.message ?? 'no data — opening picker')
+                  setPickerOpen(true)
+                } else {
+                  console.log(`[App] project restored: ${data.name}`)
+                  restoreProject(data as Project)
+                }
+              })
+          } else {
+            console.log(`[App] ${ms()} INITIAL_SESSION — no persisted project, opening picker`)
+            setPickerOpen(true)
+          }
         }
       } else if (event === 'SIGNED_IN') {
         if (!initialSessionSeen) {
@@ -234,14 +262,21 @@ export default function App() {
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
         {!activeProject ? (
-          <div className="empty-state" style={{ paddingTop:'80px' }}>
-            <div className="icon">⚙️</div>
-            <h3>Select a project</h3>
-            <p>Click the project pill in the header or the SE logo to open the project picker.</p>
-            <button className="btn btn-primary" style={{ marginTop:'16px' }} onClick={() => setPickerOpen(true)}>
-              Open Project Picker
-            </button>
-          </div>
+          restoringProject ? (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'70vh', gap:'12px' }}>
+              <span className="spinner" style={{ width:'28px', height:'28px' }} />
+              <span style={{ fontSize:'13px', color:'var(--text3)' }}>Restoring your project...</span>
+            </div>
+          ) : (
+            <div className="empty-state" style={{ paddingTop:'80px' }}>
+              <div className="icon">⚙️</div>
+              <h3>Select a project</h3>
+              <p>Click the project pill in the header or the SE logo to open the project picker.</p>
+              <button className="btn btn-primary" style={{ marginTop:'16px' }} onClick={() => setPickerOpen(true)}>
+                Open Project Picker
+              </button>
+            </div>
+          )
         ) : (
           <PanelRouter panel={activePanel} />
         )}
