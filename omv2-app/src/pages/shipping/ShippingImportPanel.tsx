@@ -385,8 +385,8 @@ export function ShippingImportPanel() {
     const tvRows = selected.map(tv => ({
       project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName,
       replacement_value: tv.replacementValue, po_number: tv.poNumber,
-      departure: tv.departure || null, eta: tv.eta || null,
-      hawb: tv.hawb, mawb: tv.mawb, ship_type: tv.shipType,
+      departure_date: tv.departure || null, eta_pod: tv.eta || null,
+      hawb: tv.hawb, mawb: tv.mawb,
     }))
     const { error: tvErr } = await supabase.from('tooling_tvs').upsert(tvRows, { onConflict: 'project_id,tv_no' })
     if (tvErr) { toast('Error saving TVs: ' + tvErr.message, 'error'); return }
@@ -409,7 +409,7 @@ export function ShippingImportPanel() {
       } else {
         await supabase.from('shipments').update({
           eta: tv.eta || null, hawb: tv.hawb,
-          description: tv.headerName, ship_type: tv.shipType,
+          description: tv.headerName,
         }).eq('id', (existing as { id: string }).id)
       }
     }
@@ -547,13 +547,17 @@ export function ShippingImportPanel() {
       const unitIdx    = idx('Cum Quantity Unit')
 
       // Get tooling TVs to skip
-      const { data: toolingTVs } = await supabase.from('tooling_tvs').select('tv_no').eq('project_id', pid).eq('ship_type','tooling')
-      const toolingSet = new Set((toolingTVs || []).map(t => String((t as { tv_no: number }).tv_no)))
+      // Get all TV numbers for this project that are in the shipments as tooling type
+      const { data: toolingShipments } = await supabase.from('shipments').select('reference').eq('project_id', pid).eq('direction','import').eq('ship_type','tooling')
+      const toolingSet = new Set((toolingShipments || []).map(s => {
+        const ref = String((s as { reference: string }).reference || '')
+        return ref.startsWith('TV') ? ref.slice(2) : ref
+      }))
 
       const parts: {
-        project_id: string; tv: string; vb: string; crate_no: string; deliv_pkg: string
+        project_id: string; tv_no: string; vb_no: string; delivery_package: string; deliv_pkg: string
         material_no: string; install_location: string; description: string
-        qty: number; unit: string; received_qty: number; status: string
+        qty_required: number; unit: string; received_qty: number; status: string
       }[] = []
       let skipped = 0
 
@@ -571,10 +575,10 @@ export function ShippingImportPanel() {
 
         parts.push({
           project_id: pid,
-          tv: tvStr, vb: String(row[vbIdx] || ''), crate_no: crateNo, deliv_pkg: delivPkg,
+          tv_no: tvStr, vb_no: String(row[vbIdx] || ''), delivery_package: delivPkg, deliv_pkg: delivPkg,
           material_no: String(row[matColIdx] || ''), install_location: installLoc,
           description: String(row[descEnIdx] || row[descDeIdx] || ''),
-          qty: Number(row[qtyIdx]) || 0, unit: String(row[unitIdx] || 'PCE'),
+          qty_required: Number(row[qtyIdx]) || 0, unit: String(row[unitIdx] || 'PCE'),
           received_qty: 0, status: 'pending',
         })
       }
