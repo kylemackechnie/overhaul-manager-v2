@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import type { NrgTceLine, Resource } from '../../types'
+import { calcOhfLineForecast } from '../../lib/calculations'
+import type { NrgTceLine, Resource, RateCard } from '../../types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -33,15 +34,6 @@ function vc(fc: number, tce: number): string {
   return (fc - tce) > 0 ? 'var(--red)' : (fc - tce) < 0 ? 'var(--green)' : 'var(--text)'
 }
 
-/** Sell-side forecast calc — mirrors nrgOhfCalcLine.
- *  labour/allowances/travel return 0 until rate-card engine is wired up;
- *  tce type returns tce_total directly (the common case). */
-function calcForecast(line: OhfLine): number {
-  if (!line.forecast_enabled) return 0
-  if (line.forecast_type === 'tce') return line.tce_total || 0
-  return 0
-}
-
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function NrgOhfPanel() {
@@ -50,6 +42,7 @@ export function NrgOhfPanel() {
   const [allLines,  setAllLines]  = useState<OhfLine[]>([])
   const [ohfLines,  setOhfLines]  = useState<OhfLine[]>([])
   const [resources, setResources] = useState<Resource[]>([])
+  const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [loading,   setLoading]   = useState(true)
   const [saving,    setSaving]    = useState(false)
 
@@ -86,16 +79,18 @@ export function NrgOhfPanel() {
     setLoading(true)
     const pid    = activeProject!.id
     const ohfIds = getOhfIds()
-    const [tceRes, resRes] = await Promise.all([
+    const [tceRes, resRes, rcRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid),
       supabase.from('resources')
         .select('id,name,role,mob_in,mob_out,shift,travel_days')
         .eq('project_id', pid).order('name'),
+      supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     const all = (tceRes.data || []) as OhfLine[]
     setAllLines(all)
     setOhfLines(all.filter(l => l.source === 'overhead' && ohfIds.includes(l.item_id || '')))
     setResources((resRes.data || []) as Resource[])
+    setRateCards((rcRes.data || []) as RateCard[])
     setLoading(false)
     setChecked([]); setAllChecked(false)
   }
@@ -230,6 +225,27 @@ export function NrgOhfPanel() {
 
   const resMap    = Object.fromEntries(resources.map(r => [r.id, r.name]))
   const sections  = groupBySection(ohfLines)
+  const stdHours  = (activeProject?.std_hours as { day: Record<string,number>; night: Record<string,number> } | undefined)
+  const publicHolidays = (activeProject as unknown as { public_holidays?: { date: string }[] })?.public_holidays || []
+  const aliases   = (activeProject as unknown as { role_aliases?: { from: string; to: string }[] })?.role_aliases || []
+
+  function calcForecast(l: OhfLine): number {
+    return calcOhfLineForecast({
+      forecastType:        l.forecast_type,
+      forecastSubtype:     l.forecast_subtype,
+      forecastEnabled:     l.forecast_enabled,
+      forecastDateFrom:    l.forecast_date_from,
+      forecastDateTo:      l.forecast_date_to,
+      forecastResourceIds: (l.forecast_resources as string[]) || [],
+      tceTotal:            l.tce_total || 0,
+      resources,
+      rateCards:           rateCards as RateCard[],
+      aliases,
+      stdHours:            stdHours || undefined,
+      publicHolidays,
+    })
+  }
+
   let grandTce = 0, grandFc = 0, enabledCount = 0
   for (const l of ohfLines) {
     if (!l.forecast_enabled) continue
