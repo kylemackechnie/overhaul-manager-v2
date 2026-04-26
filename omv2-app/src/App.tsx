@@ -20,6 +20,7 @@ import { PrePlanningReportPanel } from './pages/cost/PrePlanningReportPanel'
 import { SubconVendorSnapshot } from './pages/subcon/SubconVendorSnapshot'
 import { SubconRFQRegisterPanel } from './pages/subcon/SubconRFQRegisterPanel'
 import { SubconRFQDocPanel } from './pages/subcon/SubconRFQDocPanel'
+import { SubconCostModelPanel } from './pages/subcon/SubconCostModelPanel'
 import { ShippingImportPanel } from './pages/shipping/ShippingImportPanel'
 import { WOProgressPanel } from './pages/site/WOProgressPanel'
 import { PartsSiteInventoryPanel } from './pages/site/PartsSiteInventoryPanel'
@@ -312,7 +313,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'invoices':              return <InvoicesPanel />
     case 'expenses':              return <ExpensesPanel />
     case 'sap-recon':             return <SapReconPanel />
-    case 'subcon-rfq':            return <SubconRFQPanel />
+    case 'subcon-rfq':            return <SubconCostModelPanel />
     case 'subcon-dashboard':      return <SubconDashboard />
     case 'subcon-vendor-snapshot': return <SubconVendorSnapshot />
     case 'subcon-rfq-register':    return <SubconRFQRegisterPanel />
