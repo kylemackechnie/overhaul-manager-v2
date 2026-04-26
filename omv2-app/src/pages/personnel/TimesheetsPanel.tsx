@@ -886,6 +886,84 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{member.role || '—'}</div>
                       {!rc && <div style={{ fontSize: '9px', color: 'var(--amber)', marginTop: '2px' }}>⚠ No rate card</div>}
                     </div>
+                    {/* Bulk TCE scope selector — mgmt/seag/subcon most common use case */}
+                    {scopeMode === 'nrg_tce' && (() => {
+                      const tceOpts = getTceOptions()
+                      // Detect current bulk scope: if all worked days share one TCE-mode alloc, pre-select it
+                      const workedDays = days.filter(d => ((member.days[d] as Record<string,unknown>)?.hours as number || 0) > 0)
+                      let currentKey = ''
+                      if (workedDays.length > 0) {
+                        const firstAllocs = ((member.days[workedDays[0]] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId)
+                        if (firstAllocs.length === 1) {
+                          const fk = firstAllocs[0].tceItemId ? `tce:${firstAllocs[0].tceItemId}` : `wo:${firstAllocs[0].wo}`
+                          const allMatch = workedDays.every(d => {
+                            const da = ((member.days[d] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId)
+                            return da.length === 1 && (da[0].tceItemId ? `tce:${da[0].tceItemId}` : `wo:${da[0].wo}`) === fk
+                          })
+                          if (allMatch) currentKey = fk
+                        }
+                      }
+                      return (
+                        <div style={{ marginTop: '2px' }}>
+                          <div style={{ fontSize: '9px', color: '#be185d', fontWeight: 600, marginBottom: '2px' }}>🎯 TCE Scope</div>
+                          <select
+                            value={currentKey}
+                            style={{ width: '100%', fontSize: '9px', padding: '2px 3px', border: `1px solid ${currentKey ? '#be185d' : 'var(--border2)'}`, borderRadius: '3px', background: currentKey ? 'rgba(244,114,182,0.06)' : 'var(--bg3)', color: currentKey ? '#be185d' : 'var(--text3)', cursor: 'pointer' }}
+                            onChange={e => {
+                              const key = e.target.value
+                              if (!key) return
+                              const opt = tceOpts.find(o => o.key === key)
+                              if (!opt) return
+                              // Bulk-apply this scope to every worked day for this person
+                              setActiveWeek(w => {
+                                if (!w) return w
+                                const newCrew = w.crew.map(m => {
+                                  if (m.personId !== member.personId) return m
+                                  const newDays = { ...m.days }
+                                  days.forEach(d => {
+                                    const dayEntry = (m.days[d] || {}) as Record<string,unknown>
+                                    const h = (dayEntry.hours as number) || 0
+                                    if (h <= 0) return
+                                    // Preserve TasTK rows, replace TCE-mode rows
+                                    const existing = (dayEntry.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => !a._tceMode && !a.tceItemId)
+                                    const newAlloc: NrgWoAlloc = key.startsWith('wo:')
+                                      ? { wo: key.slice(3), tceItemId: null, _tceMode: true, hours: h, label: opt.label }
+                                      : { wo: '', tceItemId: key.startsWith('tce:') ? key.slice(4) : key, _tceMode: true, hours: h, label: opt.label }
+                                    newDays[d] = { ...dayEntry, nrgWoAllocations: [...existing, newAlloc] } as unknown as DayEntry
+                                  })
+                                  return { ...m, days: newDays }
+                                })
+                                return { ...w, crew: newCrew }
+                              })
+                            }}
+                          >
+                            <option value="">— Select scope —</option>
+                            {tceOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                          </select>
+                          {currentKey && (
+                            <button
+                              style={{ marginTop: '2px', width: '100%', fontSize: '9px', padding: '1px 3px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}
+                              onClick={() => {
+                                setActiveWeek(w => {
+                                  if (!w) return w
+                                  const newCrew = w.crew.map(m => {
+                                    if (m.personId !== member.personId) return m
+                                    const newDays = { ...m.days }
+                                    days.forEach(d => {
+                                      const dayEntry = (m.days[d] || {}) as Record<string,unknown>
+                                      const preserved = (dayEntry.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => !a._tceMode && !a.tceItemId)
+                                      newDays[d] = { ...dayEntry, nrgWoAllocations: preserved } as unknown as DayEntry
+                                    })
+                                    return { ...m, days: newDays }
+                                  })
+                                  return { ...w, crew: newCrew }
+                                })
+                              }}
+                            >✕ Clear scope</button>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {/* EBA Meal Break Adjustment — trades only (+½h per worked day, cost & sell only) */}
                     {(type === 'trades') && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginTop: '2px' }}
@@ -995,12 +1073,22 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               )
                             })()}
                             {scopeMode === 'nrg_tce' && (() => {
-                              const allocs = ((raw.nrgWoAllocations as {key:string;label:string;hours:number}[]) || []).filter(a=>a.hours>0)
+                              const allocs = ((raw.nrgWoAllocations as NrgWoAlloc[]) || []).filter(a => a._tceMode || a.tceItemId)
+                              const scopeLabel = allocs.length === 1
+                                ? (allocs[0].label || allocs[0].tceItemId || allocs[0].wo || '').replace(/^\[(WO|SL|OH)\]\s*/, '').slice(0, 26)
+                                : allocs.length > 1 ? `${allocs.length} scopes` : ''
                               return (
-                                <button onClick={() => openTceAlloc(member.personId, d, cellHrs, member.name)}
-                                  style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#be185d' : 'var(--border2)'}`, background: allocs.length ? 'rgba(244,114,182,0.08)' : 'transparent', color: allocs.length ? '#be185d' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
-                                  {allocs.length ? `🎯 ${allocs.length} scope${allocs.length > 1 ? 's' : ''}` : '🎯 TCE'}
-                                </button>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                  <button onClick={() => openTceAlloc(member.personId, d, cellHrs, member.name)}
+                                    style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#be185d' : 'var(--border2)'}`, background: allocs.length ? 'rgba(244,114,182,0.08)' : 'transparent', color: allocs.length ? '#be185d' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
+                                    {allocs.length ? `🎯 ${allocs.length} alloc${allocs.length > 1 ? 's' : ''}` : '🎯 TCE'}
+                                  </button>
+                                  {scopeLabel && (
+                                    <div style={{ fontSize: '8px', color: '#be185d', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={allocs[0]?.label || ''}>
+                                      {scopeLabel}
+                                    </div>
+                                  )}
+                                </div>
                               )
                             })()}
                           </div>
