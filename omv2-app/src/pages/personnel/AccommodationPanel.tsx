@@ -295,9 +295,10 @@ export function AccommodationPanel() {
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ Add Room</button>
+          <button className="btn btn-sm" onClick={() => setBulkModal(true)}>👥 Bookings</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={printVendorSummary}>🖨 Vendor</button>
-          <button className="btn btn-sm" onClick={printBookingConfirmation}>🖨 Bookings</button>
+          <button className="btn btn-sm" onClick={printBookingConfirmation}>🖨 Conf</button>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>

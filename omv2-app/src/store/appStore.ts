@@ -23,6 +23,10 @@ interface AppStore {
   // Sidebar collapse (for mobile)
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
+
+  // Cross-panel navigation intent (e.g. RFQ → auto-open PO edit)
+  pendingPoId: string | null
+  setPendingPoId: (id: string | null) => void
 }
 
 export const useAppStore = create<AppStore>()(
@@ -54,6 +58,9 @@ export const useAppStore = create<AppStore>()(
 
       sidebarOpen: true,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+      pendingPoId: null,
+      setPendingPoId: (id) => set({ pendingPoId: id }),
     }),
     {
       name: 'omv2-app-store',

@@ -23,7 +23,7 @@ const fmtMoney = (n: number | null) => n ? '$' + Number(n).toLocaleString('en-AU
 const todayStr = new Date().toISOString().slice(0, 10)
 
 export function SubconRFQRegisterPanel() {
-  const { activeProject, setActivePanel } = useAppStore()
+  const { activeProject, setActivePanel, setPendingPoId } = useAppStore()
   const [docs, setDocs] = useState<RfqDocument[]>([])
   const [responses, setResponses] = useState<RfqResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -143,21 +143,45 @@ export function SubconRFQRegisterPanel() {
 
   async function createPOFromRFQ(doc: RfqDocument, resp: RfqResponse) {
     if (!confirm(`Create a PO for ${resp.vendor} from this RFQ?`)) return
+
+    // Build line items from RFQ response cost model
+    const lineItems = [
+      ...(resp.labour || []).map(l => ({
+        id: Math.random().toString(36).slice(2),
+        description: l.role || 'Labour',
+        wbs: '',
+        value: 0, // user to fill in per-WBS
+        notes: '',
+      })),
+      ...(resp.equip || []).map(e => ({
+        id: Math.random().toString(36).slice(2),
+        description: e.desc || 'Equipment',
+        wbs: '',
+        value: e.rate || 0,
+        notes: '',
+      })),
+    ]
+    if (!lineItems.length) lineItems.push({ id: Math.random().toString(36).slice(2), description: doc.title || 'Subcontract', wbs: '', value: resp.total_quote || 0, notes: '' })
+
     const { data: po, error } = await supabase.from('purchase_orders').insert({
       project_id: activeProject!.id,
       vendor: resp.vendor,
       description: doc.title || 'Subcontract work',
-      status: 'draft',
+      status: 'quoted',
       currency: resp.currency || 'AUD',
       po_value: resp.total_quote || null,
+      po_type: 'rates',
       notes: `Created from RFQ: ${doc.title}`,
       quote_source: { type: 'rfq', rfqId: doc.id, responseId: resp.id, docTitle: doc.title },
+      line_items: lineItems,
     }).select().single()
     if (error) { toast(error.message, 'error'); return }
-    // Write linked_po_id back on the RFQ doc
     await supabase.from('rfq_documents').update({ linked_po_id: po.id }).eq('id', doc.id)
     setDocs(docs.map(d => d.id === doc.id ? { ...d, linked_po_id: po.id } : d))
-    toast(`PO created: ${(po as { po_number?: string }).po_number || 'New PO'}`, 'success')
+    toast('PO created — opening editor…', 'success')
+    // Navigate to POs panel and trigger edit modal
+    setPendingPoId((po as { id: string }).id)
+    setActivePanel('cost-pos')
   }
 
   async function viewPdf(path: string) {

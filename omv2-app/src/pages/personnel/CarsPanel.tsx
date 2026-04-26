@@ -124,13 +124,14 @@ export function CarsPanel() {
     setSaving(true)
     const payload = {
       project_id: activeProject!.id,
-      vehicle_type: form.vehicle_type, rego: form.rego, vendor: form.vendor,
+      vehicle_type: form.vehicle_type || null, rego: form.rego || null, vendor: form.vendor,
       person_id: form.person_id || null,
       start_date: form.start_date || null, end_date: form.end_date || null,
+      daily_rate: form.daily_rate || null,
       total_cost: form.total_cost, customer_total: form.customer_total, gm_pct: form.gm_pct,
       linked_po_id: form.linked_po_id || null,
-      notes: form.notes,
-      flags: { daily_rate: form.daily_rate, pickup_loc: form.pickup_loc, return_loc: form.return_loc },
+      pickup_loc: form.pickup_loc || null, return_loc: form.return_loc || null,
+      notes: form.notes || null,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('cars').insert(payload)
@@ -285,7 +286,13 @@ export function CarsPanel() {
                 </div>
                 <div className="fg">
                   <label>Daily Rate (ex GST)</label>
-                  <input type="number" className="input" value={form.daily_rate || ''} onChange={e => update('daily_rate', parseFloat(e.target.value) || 0)} />
+                  <input type="number" className="input" value={form.daily_rate || ''} placeholder="0.00"
+                    onChange={e => update('daily_rate', parseFloat(e.target.value) || 0)} />
+                </div>
+                <div className="fg">
+                  <label>Daily Rate (incl GST)</label>
+                  <input type="number" className="input" value={form.daily_rate ? parseFloat((form.daily_rate * 1.1).toFixed(2)) : ''} placeholder="0.00"
+                    onChange={e => update('daily_rate', parseFloat((parseFloat(e.target.value) / 1.1).toFixed(2)) || 0)} />
                 </div>
               </div>
 

@@ -75,7 +75,7 @@ const EMPTY_FORM: InvForm = {
 }
 
 export function InvoicesPanel() {
-  const { activeProject } = useAppStore()
+  const { activeProject, currentUser } = useAppStore()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PO[]>([])
   const [loading, setLoading] = useState(true)
@@ -116,7 +116,8 @@ export function InvoicesPanel() {
 
   async function doTransition(inv: Invoice, toStatus: string, note: string, paidDate?: string) {
     const now = new Date().toISOString()
-    const entry: StatusHistoryEntry = { status: toStatus, setBy: 'local', setAt: now, note }
+    const setBy = currentUser?.email || currentUser?.name || 'local'
+    const entry: StatusHistoryEntry = { status: toStatus, setBy, setAt: now, note }
     const newHistory = [...(inv.status_history || []), entry]
     const updatePayload: Record<string,unknown> = { status: toStatus, status_history: newHistory, updated_at: now }
     if (paidDate) updatePayload.paid_date = paidDate

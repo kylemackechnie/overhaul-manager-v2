@@ -86,6 +86,8 @@ export function ProjectSettingsPanel() {
     const { error } = await supabase.from('projects').update({ shift_patterns: newPatterns }).eq('id', activeProject.id)
     if (error) { toast(error.message,'error'); return }
     setPatterns(newPatterns)
+    // Update store so HirePanel and other panels see the new patterns immediately
+    setActiveProject({ ...activeProject, shift_patterns: newPatterns as unknown as typeof activeProject.shift_patterns })
     setPatternModal(null)
     toast(`Pattern "${pattern.name}" saved`,'success')
   }
@@ -96,6 +98,7 @@ export function ProjectSettingsPanel() {
     const { error } = await supabase.from('projects').update({ shift_patterns: newPatterns }).eq('id', activeProject.id)
     if (error) { toast(error.message,'error'); return }
     setPatterns(newPatterns)
+    setActiveProject({ ...activeProject, shift_patterns: newPatterns as unknown as typeof activeProject.shift_patterns })
     toast('Pattern deleted','info')
   }
 

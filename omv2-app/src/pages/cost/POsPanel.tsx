@@ -50,7 +50,7 @@ type CarRow  = { id: string; linked_po_id: string|null; total_cost: number }
 type AcRow   = { id: string; linked_po_id: string|null; total_cost: number }
 
 export function POsPanel() {
-  const { activeProject, setActivePanel } = useAppStore()
+  const { activeProject, setActivePanel, pendingPoId, setPendingPoId } = useAppStore()
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [invoices, setInvoices] = useState<InvRow[]>([])
   const [hire, setHire] = useState<HireRow[]>([])
@@ -67,6 +67,13 @@ export function POsPanel() {
   const [wbsList, setWbsList] = useState<{id:string;code:string;name:string}[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+
+  // Auto-open edit modal for a PO created from RFQ award flow
+  useEffect(() => {
+    if (!pendingPoId || pos.length === 0) return
+    const po = pos.find(p => p.id === pendingPoId)
+    if (po) { openEdit(po); setPendingPoId(null) }
+  }, [pendingPoId, pos])
 
   async function load() {
     setLoading(true)
