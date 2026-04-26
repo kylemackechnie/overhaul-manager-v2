@@ -30,9 +30,18 @@ function fmtDate(v: unknown): string {
     return d.toISOString().slice(0, 10)
   }
   const s = String(v).trim()
+  // DD.MM.YYYY
   const dmy = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`
-  return s
+  // DD/MM/YYYY
+  const dmy2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy2) return `${dmy2[3]}-${dmy2[2].padStart(2,'0')}-${dmy2[1].padStart(2,'0')}`
+  // YYYY-MM-DD already valid
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  // Try JS Date parse as last resort
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+  return ''
 }
 
 function colFind(headers: string[], ...terms: string[]): number {
@@ -388,10 +397,10 @@ export function ShippingImportPanel() {
     const existingSet = new Set((existingTVs || []).map(t => (t as { tv_no: number }).tv_no))
 
     const toInsert = selected.filter(tv => !existingSet.has(tv.tvNo)).map(tv => ({
-      project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName,
-      replacement_value: tv.replacementValue, po_number: tv.poNumber,
+      project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName || null,
+      replacement_value: tv.replacementValue || null, po_number: tv.poNumber || null,
       departure: tv.departure || null, eta: tv.eta || null,
-      hawb: tv.hawb, mawb: tv.mawb,
+      hawb: tv.hawb || null, mawb: tv.mawb || null,
     }))
     const toUpdate = selected.filter(tv => existingSet.has(tv.tvNo))
 
