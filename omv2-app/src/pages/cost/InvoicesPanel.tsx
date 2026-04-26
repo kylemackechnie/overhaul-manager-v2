@@ -1,323 +1,409 @@
-import * as XLSX from 'xlsx'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
-import type { Invoice, PurchaseOrder, InvoiceStatus } from '../../types'
 
+// ── Status workflow (mirrors HTML INV_STATUS / INV_TRANSITIONS) ───────────────
+const INV_STATUS: Record<string,{label:string;color:string;bg:string}> = {
+  received: { label:'Received', color:'#d97706', bg:'#fef3c7' },
+  checked:  { label:'Checked',  color:'#7c3aed', bg:'#ede9fe' },
+  approved: { label:'Approved', color:'#0369a1', bg:'#dbeafe' },
+  paid:     { label:'Paid',     color:'#059669', bg:'#d1fae5' },
+  disputed: { label:'Disputed', color:'#dc2626', bg:'#fee2e2' },
+}
+const INV_TRANSITIONS: Record<string,string[]> = {
+  received: ['checked', 'disputed'],
+  checked:  ['approved', 'disputed'],
+  approved: ['paid', 'disputed'],
+  paid:     ['disputed'],
+  disputed: ['checked'],
+}
+const BTN_STYLE: Record<string,string> = {
+  checked:  'background:#7c3aed;color:#fff;border:none',
+  approved: 'background:#0369a1;color:#fff;border:none',
+  paid:     'background:#059669;color:#fff;border:none',
+  disputed: 'background:#dc2626;color:#fff;border:none',
+}
+const BTN_LABEL: Record<string,string> = {
+  checked:'Check ✓', approved:'Approve ✓', paid:'Mark Paid', disputed:'Dispute',
+}
+const STATUS_ORDER_NUM: Record<string,number> = { received:0, checked:1, disputed:2, approved:3, paid:4 }
 
-const STATUS_FLOW: InvoiceStatus[] = ['received','checked','approved','paid']
-const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
-  received:{bg:'#dbeafe',color:'#1e40af'}, checked:{bg:'#fef3c7',color:'#92400e'},
-  approved:{bg:'#d1fae5',color:'#065f46'}, paid:{bg:'#e5e7eb',color:'#374151'},
-  disputed:{bg:'#fee2e2',color:'#7f1d1d'},
+const fmt = (v: number|null|undefined, sym = '$') => v ? sym + Number(v).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'
+const fmtK = (v: number) => '$' + Math.round(v).toLocaleString()
+const fmtDate = (s?: string|null) => s ? s.split('-').reverse().join('/') : '—'
+const fmtDateTime = (iso?: string|null) => {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:false})
+}
+const fmtUser = (email?: string|null) => {
+  if (!email || email === 'local') return 'Local user'
+  return email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,(c:string)=>c.toUpperCase())
 }
 
-const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', expected_amount:'', currency:'AUD', invoice_date:'', received_date:'', paid_date:'', period_from:'', period_to:'', notes:'', tce_item_id:'' }
+interface StatusHistoryEntry { status: string; setBy: string; setAt: string; note?: string }
+
+interface Invoice {
+  id: string; project_id: string; po_id: string|null; invoice_number: string|null
+  vendor_ref: string|null; vendor_details: string|null; status: string; amount: number|null
+  expected_amount: number|null; currency: string|null; invoice_date: string|null
+  due_date: string|null; paid_date: string|null; received_date: string|null
+  period_from: string|null; period_to: string|null; source: string|null
+  sap_doc_number: string|null; sap_wbs: string|null; tce_item_id: string|null
+  status_history: StatusHistoryEntry[]; notes: string|null; dispute_note: string|null
+  created_at: string
+}
+
+interface PO { id: string; po_number: string|null; internal_ref: string|null; vendor: string|null; currency: string|null }
+
+type SortCol = 'invoice'|'po'|'date'|'due'|'expected'|'amount'|'status'|'lastaction'
+type SortDir = 'asc'|'desc'
+
+type InvForm = {
+  invoice_number: string; vendor_ref: string; vendor_details: string
+  po_id: string; tce_item_id: string; status: string; currency: string
+  amount: string; expected_amount: string
+  invoice_date: string; due_date: string; period_from: string; period_to: string
+  notes: string
+}
+const EMPTY_FORM: InvForm = {
+  invoice_number:'', vendor_ref:'', vendor_details:'', po_id:'', tce_item_id:'',
+  status:'received', currency:'AUD', amount:'', expected_amount:'',
+  invoice_date:'', due_date:'', period_from:'', period_to:'', notes:'',
+}
 
 export function InvoicesPanel() {
-  const { activeProject, currentUser } = useAppStore()
+  const { activeProject } = useAppStore()
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [pos, setPos] = useState<PurchaseOrder[]>([])
-  const [_linkedHire, setLinkedHire] = useState<{id:string;name:string;linked_po_id:string|null;hire_cost:number;customer_total:number;start_date:string|null;end_date:string|null}[]>([])
-  const [tceLines, setTceLines] = useState<{id:string;item_id:string|null;description:string}[]>([])
+  const [pos, setPos] = useState<PO[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Invoice>(null)
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm] = useState<InvForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
-  const [sapImporting, setSapImporting] = useState(false)
-  const [sapRows, setSapRows] = useState<{invNum:string;vendor:string;poNum:string;poId:string|null;date:string;due:string;currency:string;amount:number;isDup:boolean;include:boolean}[]>([])
-  const [showSap, setShowSap] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterPO, setFilterPO] = useState('')
+  const [sortCol, setSortCol] = useState<SortCol>('status')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
+  const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
+  const [payDateModal, setPayDateModal] = useState<{inv:Invoice;date:string}|null>(null)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [invData, poData] = await Promise.all([
-      supabase.from('invoices').select('*,po:purchase_orders(id,po_number,vendor)').eq('project_id',pid).order('invoice_date',{ascending:false}),
-      supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id',pid).order('po_number'),
+    const [invRes, poRes] = await Promise.all([
+      supabase.from('invoices').select('*').eq('project_id', pid),
+      supabase.from('purchase_orders').select('id,po_number,internal_ref,vendor,currency').eq('project_id', pid),
     ])
-    setInvoices((invData.data || []) as Invoice[])
-    setPos((poData.data || []) as PurchaseOrder[])
-    const [tceRes, hireRes] = await Promise.all([
-      supabase.from('nrg_tce_lines').select('id,item_id,description').eq('project_id',pid).order('item_id'),
-      supabase.from('hire_items').select('id,name,linked_po_id,hire_cost,customer_total,start_date,end_date').eq('project_id',pid),
-    ])
-    setTceLines((tceRes.data||[]) as {id:string;item_id:string|null;description:string}[])
-    setLinkedHire((hireRes.data||[]) as typeof _linkedHire)
+    setInvoices((invRes.data||[]) as Invoice[])
+    setPos((poRes.data||[]) as PO[])
     setLoading(false)
   }
 
-  async function cycleStatus(inv: Invoice) {
-    const order = ['received','checked','approved','paid','disputed']
-    const cur = order.indexOf(inv.status)
-    const next = order[(cur + 1) % order.length]
-    const historyEntry = { to: next, by: currentUser?.name || '', byEmail: currentUser?.email || '', at: new Date().toISOString() }
-    const history = [...(inv.status_history as typeof historyEntry[] || []), historyEntry]
-    await supabase.from('invoices').update({ status: next, status_history: history }).eq('id', inv.id)
+  const poMap = Object.fromEntries(pos.map(p => [p.id, p]))
+
+  // ── Approval workflow transition ──────────────────────────────────────────
+  async function transition(inv: Invoice, toStatus: string) {
+    if (toStatus === 'disputed') { setDisputeModal({ inv, note:'' }); return }
+    if (toStatus === 'paid') { setPayDateModal({ inv, date: new Date().toISOString().slice(0,10) }); return }
+    await doTransition(inv, toStatus, '')
+  }
+
+  async function doTransition(inv: Invoice, toStatus: string, note: string, paidDate?: string) {
+    const now = new Date().toISOString()
+    const entry: StatusHistoryEntry = { status: toStatus, setBy: 'local', setAt: now, note }
+    const newHistory = [...(inv.status_history || []), entry]
+    const updatePayload: Record<string,unknown> = { status: toStatus, status_history: newHistory, updated_at: now }
+    if (paidDate) updatePayload.paid_date = paidDate
+    const { error } = await supabase.from('invoices').update(updatePayload).eq('id', inv.id)
+    if (error) { toast(error.message,'error'); return }
+    toast(`Invoice marked ${INV_STATUS[toStatus]?.label || toStatus}`,'success')
     load()
   }
 
-  function openNew() {
-    const maxNum = invoices.reduce((m, i) => {
-      const n = parseInt(String(i.invoice_number || '').replace(/\D/g, '')) || 0
-      return Math.max(m, n)
-    }, 0)
-    const today = new Date().toISOString().slice(0, 10)
-    setForm({ ...EMPTY, invoice_number: String(maxNum + 1).padStart(4, '0'), invoice_date: today })
-    setModal('new')
-  }
-  function openEdit(inv: Invoice) {
-    setForm({
-      po_id: inv.po_id || '',
-      invoice_number: inv.invoice_number,
-      vendor_ref: inv.vendor_ref || '',
-      amount: inv.amount.toString(),
-      expected_amount: inv.expected_amount ? inv.expected_amount.toString() : '',
-      currency: inv.currency,
-      invoice_date: inv.invoice_date || '',
-      received_date: inv.received_date || '',
-      paid_date: inv.paid_date || '',
-      period_from: inv.period_from || '',
-      period_to: inv.period_to || '',
-      notes: inv.notes || '',
-      tce_item_id: inv.tce_item_id || '',
-    })
-    setModal(inv)
-  }
-
+  // ── Save modal ────────────────────────────────────────────────────────────
   async function save() {
-    if (!form.invoice_number.trim()) { toast('Invoice number is required', 'error'); return }
-    if (!parseFloat(form.amount))    { toast('Invoice amount is required', 'error'); return }
-    if (!form.invoice_date)          { toast('Invoice date is required', 'error'); return }
     setSaving(true)
     const payload = {
-      project_id:      activeProject!.id,
-      po_id:           form.po_id || null,
-      invoice_number:  form.invoice_number.trim(),
-      vendor_ref:      form.vendor_ref.trim(),
-      amount:          parseFloat(form.amount) || 0,
-      expected_amount: parseFloat(form.expected_amount) || 0,
-      currency:        form.currency,
-      invoice_date:    form.invoice_date || null,
-      received_date:   form.received_date || null,
-      paid_date:       form.paid_date || null,
-      period_from:     form.period_from || null,
-      period_to:       form.period_to || null,
-      notes:           form.notes || '',
-      tce_item_id:     form.tce_item_id || null,
+      project_id: activeProject!.id,
+      invoice_number: form.invoice_number || null,
+      vendor_ref: form.vendor_ref || null,
+      vendor_details: form.vendor_details || null,
+      po_id: form.po_id || null,
+      tce_item_id: form.tce_item_id || null,
+      status: form.status,
+      currency: form.currency || 'AUD',
+      amount: parseFloat(form.amount) || null,
+      expected_amount: parseFloat(form.expected_amount) || null,
+      invoice_date: form.invoice_date || null,
+      due_date: form.due_date || null,
+      period_from: form.period_from || null,
+      period_to: form.period_to || null,
+      notes: form.notes || null,
     }
-    if (modal === 'new') {
-      const { error } = await supabase.from('invoices').insert({
-        ...payload, status: 'received',
-        status_history: [{ to:'received', by: currentUser?.name||'', byEmail: currentUser?.email||'', at: new Date().toISOString() }]
-      })
-      if (error) { toast(error.message,'error'); setSaving(false); return }
-      toast('Invoice added','success')
-    } else {
-      const { error } = await supabase.from('invoices').update(payload).eq('id',(modal as Invoice).id)
-      if (error) { toast(error.message,'error'); setSaving(false); return }
-      toast('Invoice saved','success')
-    }
+    const isNew = modal === 'new'
+    const { error } = isNew
+      ? await supabase.from('invoices').insert(payload)
+      : await supabase.from('invoices').update(payload).eq('id', (modal as Invoice).id)
+    if (error) { toast(error.message,'error'); setSaving(false); return }
+    toast(isNew ? 'Invoice added' : 'Invoice saved','success')
     setSaving(false); setModal(null); load()
   }
 
-  async function transition(inv: Invoice, to: InvoiceStatus) {
-    const history = [...(inv.status_history || []), {
-      from: inv.status, to, by: currentUser?.name||'', byEmail: currentUser?.email||'',
-      at: new Date().toISOString()
-    }]
-    const { error } = await supabase.from('invoices').update({ status: to, status_history: history }).eq('id', inv.id)
-    if (error) { toast(error.message,'error'); return }
-    toast(`Moved to ${to}`, 'success'); load()
-  }
-
-  async function del(inv: Invoice) {
+  async function deleteInvoice(inv: Invoice) {
     if (!confirm(`Delete invoice ${inv.invoice_number || inv.id.slice(0,8)}?`)) return
     await supabase.from('invoices').delete().eq('id', inv.id)
-    toast('Deleted','info'); load()
+    toast('Invoice deleted','info'); load()
   }
 
-  const filtered = invoices.filter(i => statusFilter === 'all' || i.status === statusFilter)
-  const totalValue = filtered.reduce((s, i) => s + (i.amount || 0), 0)
-  function excelDateToISO(v: unknown): string {
-    if (!v) return ''
-    if (typeof v === 'number') {
-      const d = new Date(Math.round((v - 25569) * 86400 * 1000))
-      return d.toISOString().slice(0, 10)
-    }
-    const s = String(v).trim()
-    const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`
-    const m2 = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-    if (m2) return `${m2[3]}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`
-    return ''
+  // ── Sorting ───────────────────────────────────────────────────────────────
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
   }
 
-  async function handleSapFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file) return
-    setSapImporting(true)
-    try {
-      const buffer = await file.arrayBuffer()
-      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][]
-      if (!rows.length) { toast('File appears empty', 'error'); setSapImporting(false); return }
-      const hdrs = (rows[0] as string[]).map(h => String(h || '').trim().toLowerCase())
-      const col = (...names: string[]) => names.map(n => hdrs.indexOf(n.toLowerCase())).find(i => i >= 0) ?? -1
-      const refI = col('reference'); const amtI = col('net amount', 'amount')
-      if (refI < 0 || amtI < 0) { toast('Missing required columns (Reference, Net Amount)', 'error'); setSapImporting(false); return }
-      const vendI = col('vendor details', 'vendor'); const poI = col('purchasing document', 'po number')
-      const dateI = col('document date', 'invoice date'); const dueI = col('net due date', 'due date')
-      const curI = col('currency')
-      const existNums = new Set(invoices.map(i => i.invoice_number.trim()))
-      const parsed = rows.slice(1).filter(r => (r as unknown[])[refI]).map(row => {
-        const r = row as unknown[]
-        const invNum = String(r[refI] || '').trim()
-        const poNum = poI >= 0 ? String(r[poI] || '').trim() : ''
-        const matchedPO = pos.find(p => p.po_number && p.po_number.trim() === poNum)
-        return {
-          invNum, vendor: vendI >= 0 ? String(r[vendI] || '').trim() : '',
-          poNum, poId: matchedPO ? matchedPO.id : null,
-          date: dateI >= 0 ? excelDateToISO(r[dateI]) : '',
-          due: dueI >= 0 ? excelDateToISO(r[dueI]) : '',
-          currency: curI >= 0 ? String(r[curI] || 'AUD').trim() : 'AUD',
-          amount: parseFloat(String(r[amtI] || '0')) || 0,
-          isDup: existNums.has(invNum), include: !existNums.has(invNum),
-        }
-      }).filter(r => r.invNum)
-      setSapRows(parsed); setShowSap(true)
-    } catch (e2) { toast((e2 as Error).message, 'error') }
-    setSapImporting(false)
-    e.target.value = ''
-  }
-
-  async function confirmSapImport() {
-    const toImport = sapRows.filter(r => r.include && !r.isDup)
-    if (!toImport.length) { toast('No invoices to import', 'error'); return }
-    setSapImporting(true)
-    let imported = 0
-    for (const row of toImport) {
-      const payload = {
-        project_id: activeProject!.id,
-        invoice_number: row.invNum, vendor_ref: row.vendor,
-        po_id: row.poId || null, amount: row.amount, currency: row.currency,
-        invoice_date: row.date || null, due_date: row.due || null,
-        status: 'received', source: 'sap_import', notes: row.poNum ? `SAP PO: ${row.poNum}` : '',
-      }
-      const { error } = await supabase.from('invoices').insert(payload)
-      if (!error) imported++
-    }
-    toast(`Imported ${imported} invoices`, 'success')
-    setShowSap(false); setSapRows([]); setSapImporting(false); load()
-  }
-
-    function exportCSV() {
-    downloadCSV(
-      [
-        ['Invoice #','Vendor','Date','Due Date','Amount','Currency','Status','Notes'],
-        ...invoices.map(i => [i.invoice_number||'', i.vendor_ref||'', i.invoice_date||'', i.due_date||'', i.amount||0, i.currency||'AUD', i.status||'', i.notes||''])
-      ],
-      'invoices_'+(activeProject?.name||'project')
+  function SortTh({ col, label, align = 'left' }: { col: SortCol; label: string; align?: string }) {
+    const active = sortCol === col
+    return (
+      <th onClick={() => toggleSort(col)} style={{padding:'8px 10px',textAlign:align as 'left'|'right'|'center',cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',background:'var(--bg3)',color:active?'var(--accent)':'var(--text2)',fontSize:'11px'}}>
+        {label} {active ? (sortDir==='asc'?'↑':'↓') : ''}
+      </th>
     )
   }
 
-  const fmtMoney = (n: number) => '$' + n.toLocaleString('en-AU', {minimumFractionDigits:0,maximumFractionDigits:0})
-
-  function nextStatus(status: InvoiceStatus): InvoiceStatus|null {
-    const idx = STATUS_FLOW.indexOf(status)
-    return idx >= 0 && idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx+1] : null
-  }
-
-
-  // Keyboard shortcut: N = New
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !(e.target as Element)?.closest('input,textarea,select')) {
-        openNew()
-      }
+  // ── Filter + sort ─────────────────────────────────────────────────────────
+  let filtered = invoices.filter(inv => {
+    if (filterStatus && inv.status !== filterStatus) return false
+    if (filterPO && inv.po_id !== filterPO) return false
+    if (search) {
+      const po = inv.po_id ? poMap[inv.po_id] : null
+      const hay = [inv.invoice_number, inv.vendor_ref, inv.vendor_details, po?.po_number, po?.vendor, inv.sap_doc_number].join(' ').toLowerCase()
+      if (!hay.includes(search.toLowerCase())) return false
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
+    return true
+  })
+
+  filtered = [...filtered].sort((a, b) => {
+    const pa = a.po_id ? poMap[a.po_id] : null
+    const pb = b.po_id ? poMap[b.po_id] : null
+    let va: string|number = '', vb: string|number = ''
+    switch (sortCol) {
+      case 'invoice':    va = a.invoice_number||''; vb = b.invoice_number||''; break
+      case 'po':         va = (pa?.po_number||pa?.vendor||'').toLowerCase(); vb = (pb?.po_number||pb?.vendor||'').toLowerCase(); break
+      case 'date':       va = a.invoice_date||''; vb = b.invoice_date||''; break
+      case 'due':        va = a.due_date||''; vb = b.due_date||''; break
+      case 'expected':   va = a.expected_amount||0; vb = b.expected_amount||0; break
+      case 'amount':     va = a.amount||0; vb = b.amount||0; break
+      case 'status':     va = STATUS_ORDER_NUM[a.status]??9; vb = STATUS_ORDER_NUM[b.status]??9; break
+      case 'lastaction': va = a.status_history?.at(-1)?.setAt||''; vb = b.status_history?.at(-1)?.setAt||''; break
+    }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1
+    if (va > vb) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const totalAmt  = filtered.reduce((s, i) => s + (i.amount||0), 0)
+  const unpaidAmt = filtered.filter(i => i.status !== 'paid').reduce((s, i) => s + (i.amount||0), 0)
+  const statusCounts = Object.fromEntries(Object.keys(INV_STATUS).map(k => [k, invoices.filter(i=>i.status===k).length]))
+
+  if (loading) return <div style={{padding:'24px'}}><div className="loading-center"><span className="spinner"/></div></div>
 
   return (
-    <div style={{padding:'24px',maxWidth:'1200px'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
+    <div style={{padding:'24px'}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px',flexWrap:'wrap',gap:'8px'}}>
         <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>Invoices</h1>
-          <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{invoices.length} invoices · {fmtMoney(invoices.reduce((s,i)=>s+(i.amount||0),0))} total</p>
+          <h1 style={{fontSize:'20px',fontWeight:700}}>Invoices</h1>
+          <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
+            {invoices.length} invoice{invoices.length!==1?'s':''} · {fmtK(invoices.reduce((s,i)=>s+(i.amount||0),0))} total
+          </p>
         </div>
-        <div style={{display:"flex",gap:"8px"}}><button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button><label className="btn btn-sm" style={{cursor:"pointer"}}>{sapImporting?<span className="spinner" style={{width:"14px",height:"14px"}}/>:"📥"} SAP Import<input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleSapFile}/></label><button className="btn btn-primary" onClick={openNew}>+ New Invoice</button></div>
+        <div style={{display:'flex',gap:'8px'}}>
+          <button className="btn btn-sm" onClick={() => {
+            const rows = [['Invoice #','Vendor Ref','PO','Status','Amount','Currency','Invoice Date','Due Date']]
+            filtered.forEach(i => {
+              const po = i.po_id ? poMap[i.po_id] : null
+              rows.push([i.invoice_number||'', i.vendor_ref||'', po?.po_number||'', i.status, String(i.amount||0), i.currency||'AUD', i.invoice_date||'', i.due_date||''])
+            })
+            downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
+          }}>↓ CSV</button>
+          <button className="btn btn-primary" onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
+        </div>
       </div>
 
-      {/* Status filter + summary */}
-      <div style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap',alignItems:'center'}}>
-        {(['all','received','checked','approved','paid','disputed'] as string[]).map(s => {
-          const count = s === 'all' ? invoices.length : invoices.filter(i=>i.status===s).length
-          return (
-            <button key={s} className="btn btn-sm"
-              style={{background:statusFilter===s?'var(--accent)':'var(--bg)',color:statusFilter===s?'#fff':'var(--text)'}}
-              onClick={() => setStatusFilter(s)}>
-              {s.charAt(0).toUpperCase()+s.slice(1)} ({count})
-            </button>
-          )
-        })}
-        {statusFilter !== 'all' && <span style={{fontSize:'12px',color:'var(--text3)',marginLeft:'8px'}}>{fmtMoney(totalValue)}</span>}
+      {/* Status filter tabs */}
+      <div style={{display:'flex',gap:'6px',marginBottom:'12px',flexWrap:'wrap'}}>
+        {[{k:'',l:`All (${invoices.length})`}, ...Object.entries(INV_STATUS).map(([k,v])=>({k,l:`${v.label} (${statusCounts[k]||0})`}))].map(({k,l}) => (
+          <button key={k} onClick={()=>setFilterStatus(k)} style={{padding:'4px 12px',fontSize:'12px',borderRadius:'4px',border:'none',cursor:'pointer',fontWeight:filterStatus===k?700:400,background:filterStatus===k?(k?INV_STATUS[k].bg:'var(--accent)20'):'var(--bg3)',color:filterStatus===k?(k?INV_STATUS[k].color:'var(--accent)'):'var(--text2)'}}>
+            {l}
+          </button>
+        ))}
       </div>
 
-      {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
-      : filtered.length === 0 ? (
-        <div className="empty-state">
-          <div className="icon">💳</div>
-          <h3>No invoices</h3>
-          <p>Add invoices to track costs against this project.</p>
+      {/* Filters */}
+      <div style={{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap',alignItems:'center'}}>
+        <input className="input" style={{width:'260px'}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Invoice number, vendor ref, PO number..." />
+        <select className="input" style={{width:'200px'}} value={filterPO} onChange={e=>setFilterPO(e.target.value)}>
+          <option value="">All POs</option>
+          {pos.map(p => <option key={p.id} value={p.id}>{p.po_number || p.internal_ref || p.vendor || p.id.slice(0,8)}</option>)}
+        </select>
+      </div>
+
+      {/* Summary bar */}
+      {filtered.length > 0 && (
+        <div className="card" style={{padding:'10px 16px',marginBottom:'12px',display:'flex',gap:'24px',fontSize:'12px',alignItems:'center',flexWrap:'wrap'}}>
+          <span style={{color:'var(--text3)'}}>{filtered.length} invoice{filtered.length!==1?'s':''}</span>
+          <span>Total: <b style={{fontFamily:'var(--mono)',color:'#1e40af'}}>{fmtK(totalAmt)} AUD</b></span>
+          <span>Unpaid: <b style={{fontFamily:'var(--mono)',color:'var(--orange)'}}>{fmtK(unpaidAmt)} AUD</b></span>
         </div>
+      )}
+
+      {invoices.length === 0 ? (
+        <div className="card" style={{padding:'48px',textAlign:'center'}}>
+          <div style={{fontSize:'36px',marginBottom:'12px'}}>🧾</div>
+          <div style={{fontSize:'16px',fontWeight:600,marginBottom:'4px'}}>No invoices yet</div>
+          <div style={{fontSize:'13px',color:'var(--text3)',marginBottom:'20px'}}>Add invoices against active POs to track what's been billed.</div>
+          <button className="btn btn-primary" onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
       ) : (
-        <div className="card" style={{padding:0,overflow:'hidden'}}>
-          <table>
+        <div className="card" style={{padding:0,overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',minWidth:'1000px'}}>
             <thead>
               <tr>
-                <th>Invoice #</th><th>PO</th><th>Status</th>
-                <th style={{textAlign:'right'}}>Amount</th>
-                <th>Date</th><th>Period</th><th>Actions</th><th></th>
+                <SortTh col="invoice" label="Invoice #" />
+                <SortTh col="po" label="PO / Vendor" />
+                <SortTh col="date" label="Inv Date" align="center" />
+                <SortTh col="due" label="Due Date" align="center" />
+                <SortTh col="expected" label="Expected" align="right" />
+                <SortTh col="amount" label="Amount" align="right" />
+                <SortTh col="status" label="Status" />
+                <SortTh col="lastaction" label="Last Action" />
+                <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>DTP</th>
+                <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(inv => {
-                const sc = STATUS_COLORS[inv.status] || STATUS_COLORS.received
-                const next = nextStatus(inv.status as InvoiceStatus)
-                const po = inv.po as unknown as {po_number:string,vendor:string}|null
+                const po = inv.po_id ? poMap[inv.po_id] : null
+                const sc = INV_STATUS[inv.status] || INV_STATUS.received
+                const cur = inv.currency || po?.currency || 'AUD'
+                const sym = cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : cur === 'USD' ? 'US$' : '$'
+                const lastAction = inv.status_history?.at(-1)
+                const transitions = INV_TRANSITIONS[inv.status] || []
+                const unlinked = !inv.po_id
+                const isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && inv.status !== 'paid'
+
+                // Days-to-pay calculation
+                let dtp: number|null = null
+                if (inv.status === 'paid' && inv.paid_date && inv.invoice_date) {
+                  dtp = Math.round((new Date(inv.paid_date).getTime() - new Date(inv.invoice_date).getTime()) / 86400000)
+                } else if (inv.due_date && inv.invoice_date && inv.status !== 'paid') {
+                  dtp = Math.round((new Date(inv.due_date).getTime() - new Date().getTime()) / 86400000)
+                }
+
+                // Amount variance
+                let varianceEl = null
+                if (inv.expected_amount && inv.amount) {
+                  const diff = inv.amount - inv.expected_amount
+                  if (Math.abs(diff) > 0.01) {
+                    varianceEl = <div style={{fontSize:'9px',color:diff>0?'var(--red)':'#059669'}}>{diff>0?'▲ +':'▼ '}{fmt(Math.abs(diff),sym)}</div>
+                  } else {
+                    varianceEl = <div style={{fontSize:'9px',color:'#059669'}}>✓ matches</div>
+                  }
+                }
+
                 return (
-                  <tr key={inv.id}>
-                    <td style={{fontFamily:'var(--mono)',fontWeight:500,fontSize:'12px'}}>{inv.invoice_number || '—'}</td>
-                    <td style={{fontSize:'12px',color:'var(--text2)'}}>{po ? `${po.po_number||''} ${po.vendor||''}`.trim() : '—'}</td>
-                    <td><span className="badge" style={{...sc,cursor:'pointer'}} title="Click to advance status" onClick={()=>cycleStatus(inv)}>{inv.status}</span></td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',fontWeight:600}}>{fmtMoney(inv.amount)}</td>
-                    <td style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)'}}>{inv.invoice_date || '—'}</td>
-                    <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>
-                      {inv.period_from && inv.period_to ? `${inv.period_from} → ${inv.period_to}` : '—'}
+                  <tr key={inv.id} style={{borderBottom:'1px solid var(--border)',background:unlinked?'#fffbeb':'transparent'}}>
+                    {/* Invoice # */}
+                    <td style={{padding:'8px 10px',verticalAlign:'top'}}>
+                      <div style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:'12px'}}>{inv.invoice_number || '—'}</div>
+                      {inv.vendor_ref && <div style={{fontSize:'10px',color:'var(--text3)'}}>{inv.vendor_ref}</div>}
+                      {inv.source === 'sap_import' && <div style={{fontSize:'9px',color:'#7c3aed'}}>SAP Import</div>}
                     </td>
-                    <td style={{whiteSpace:'nowrap'}}>
-                      {next && inv.status !== 'disputed' && (
-                        <button className="btn btn-sm btn-primary" style={{fontSize:'11px',padding:'3px 8px'}} onClick={() => transition(inv, next)}>
-                          → {next}
-                        </button>
+                    {/* PO / Vendor */}
+                    <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'10px'}}>
+                      {po ? (
+                        <>
+                          <div style={{fontFamily:'var(--mono)',fontWeight:600}}>{po.po_number || po.internal_ref || '—'}</div>
+                          <div style={{color:'var(--text3)'}}>{po.vendor}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{color:'var(--text3)',fontStyle:'italic'}}>{inv.vendor_details || inv.vendor_ref || '—'}
+                            <span style={{fontSize:'9px',fontWeight:700,padding:'1px 5px',borderRadius:'3px',background:'#fef3c7',color:'#d97706',marginLeft:'4px'}}>⚠ No PO</span>
+                          </div>
+                        </>
                       )}
-                      {inv.status !== 'disputed' && inv.status !== 'paid' && (
-                        <button className="btn btn-sm" style={{fontSize:'11px',padding:'3px 8px',marginLeft:'4px',color:'var(--red)'}}
-                          onClick={() => transition(inv, 'disputed')}>Dispute</button>
-                      )}
-                      <button className="btn btn-sm" style={{fontSize:'11px',padding:'3px 8px',marginLeft:'4px'}}
-                        onClick={() => setHistoryModal(inv)}>History</button>
                     </td>
-                    <td style={{whiteSpace:'nowrap'}}>
-                      <button className="btn btn-sm" onClick={() => openEdit(inv)}>Edit</button>
-                      <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={() => del(inv)}>✕</button>
+                    {/* Inv Date */}
+                    <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top'}}>{fmtDate(inv.invoice_date)}</td>
+                    {/* Due Date */}
+                    <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',color:isOverdue?'var(--red)':'var(--text2)',fontWeight:isOverdue?600:400}}>
+                      {fmtDate(inv.due_date)}{isOverdue?' ⚠':''}
+                    </td>
+                    {/* Expected */}
+                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text3)',verticalAlign:'top'}}>
+                      {inv.expected_amount ? fmt(inv.expected_amount, sym) : '—'}
+                    </td>
+                    {/* Amount */}
+                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:700,color:'#1e40af',verticalAlign:'top'}}>
+                      {fmt(inv.amount, sym)}
+                      {varianceEl}
+                      {cur !== 'AUD' && <div style={{fontSize:'9px',color:'var(--text3)'}}>{cur}</div>}
+                    </td>
+                    {/* Status */}
+                    <td style={{padding:'8px 10px',verticalAlign:'top'}}>
+                      <span style={{fontSize:'10px',fontWeight:700,padding:'3px 8px',borderRadius:'3px',background:sc.bg,color:sc.color}}>{sc.label}</span>
+                    </td>
+                    {/* Last Action */}
+                    <td style={{padding:'8px 10px',verticalAlign:'top',minWidth:'140px'}}>
+                      {lastAction ? (
+                        <>
+                          <div style={{fontSize:'10px',fontWeight:600,color:INV_STATUS[lastAction.status]?.color||'var(--text2)'}}>{INV_STATUS[lastAction.status]?.label||lastAction.status}</div>
+                          <div style={{fontSize:'10px',color:'var(--text3)'}}>{fmtUser(lastAction.setBy)}</div>
+                          <div style={{fontSize:'9px',color:'var(--text3)'}}>{fmtDateTime(lastAction.setAt)}</div>
+                          {lastAction.note && <div style={{fontSize:'9px',color:'#dc2626',fontStyle:'italic',maxWidth:'160px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={lastAction.note}>{lastAction.note}</div>}
+                        </>
+                      ) : <span style={{color:'var(--text3)',fontSize:'10px'}}>—</span>}
+                    </td>
+                    {/* DTP */}
+                    <td style={{padding:'8px 10px',textAlign:'center',fontFamily:'var(--mono)',verticalAlign:'top',color:inv.status==='paid'?'#059669':dtp!=null&&dtp>30?'var(--red)':dtp!=null&&dtp>14?'var(--orange)':'var(--text3)'}}>
+                      {inv.status==='paid'?'✓':dtp!=null?dtp+'d':'—'}
+                    </td>
+                    {/* Actions */}
+                    <td style={{padding:'8px 10px',verticalAlign:'top',whiteSpace:'nowrap'}}>
+                      <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
+                        <div style={{display:'flex',gap:'3px'}}>
+                          {transitions.map(t => (
+                            <button key={t} onClick={()=>transition(inv, t)} style={{fontSize:'10px',padding:'3px 7px',borderRadius:'4px',cursor:'pointer',fontWeight:600,...Object.fromEntries(BTN_STYLE[t].split(';').map(s=>{const [k,v]=s.split(':');return [k?.trim()?.replace(/-([a-z])/g,(_:string,g:string)=>g.toUpperCase()),v?.trim()]}))}}>
+                              {BTN_LABEL[t]}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{display:'flex',gap:'3px'}}>
+                          <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>{
+                            setForm({
+                              invoice_number: inv.invoice_number||'', vendor_ref: inv.vendor_ref||'',
+                              vendor_details: inv.vendor_details||'', po_id: inv.po_id||'',
+                              tce_item_id: inv.tce_item_id||'', status: inv.status, currency: inv.currency||'AUD',
+                              amount: String(inv.amount||''), expected_amount: String(inv.expected_amount||''),
+                              invoice_date: inv.invoice_date||'', due_date: inv.due_date||'',
+                              period_from: inv.period_from||'', period_to: inv.period_to||'', notes: inv.notes||'',
+                            })
+                            setModal(inv)
+                          }}>Edit</button>
+                          <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>setHistoryModal(inv)}>History</button>
+                          <button className="btn btn-sm" style={{fontSize:'10px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -327,225 +413,138 @@ export function InvoicesPanel() {
         </div>
       )}
 
-      {/* Add/Edit modal */}
-      {showSap && sapRows.length > 0 && (
-        <div className="modal-overlay" onClick={() => setShowSap(false)}>
-          <div className="modal" style={{maxWidth:'800px',maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>SAP Invoice Import — {sapRows.length} rows found</h3>
-              <button className="btn btn-sm" onClick={() => setShowSap(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div style={{display:'flex',gap:'10px',marginBottom:'12px',flexWrap:'wrap'}}>
-                {[
-                  {label:'New', value: sapRows.filter(r=>!r.isDup).length, color:'var(--green)'},
-                  {label:'Duplicates (skipped)', value: sapRows.filter(r=>r.isDup).length, color:'var(--amber)'},
-                  {label:'PO Matched', value: sapRows.filter(r=>r.poId).length, color:'var(--accent)'},
-                ].map(t=>(
-                  <div key={t.label} style={{padding:'6px 12px',borderRadius:'6px',background:'var(--bg3)',fontSize:'12px'}}>
-                    <span style={{fontWeight:700,color:t.color,fontFamily:'var(--mono)'}}>{t.value}</span> {t.label}
-                  </div>
-                ))}
-              </div>
-              <div style={{overflowX:'auto'}}>
-                <table style={{fontSize:'11px',width:'100%'}}>
-                  <thead><tr style={{background:'var(--bg3)'}}>
-                    <th style={{padding:'6px 8px'}}><input type="checkbox" onChange={e => setSapRows(rows => rows.map(r => ({...r, include: r.isDup ? false : e.target.checked})))} /></th>
-                    <th>Invoice #</th><th>Vendor</th><th>PO #</th><th>Date</th><th style={{textAlign:'right'}}>Amount</th><th>Cur</th><th>Status</th>
-                  </tr></thead>
-                  <tbody>
-                    {sapRows.map((r,i) => (
-                      <tr key={i} style={{opacity: r.isDup ? 0.5 : 1, background: r.isDup ? 'var(--bg3)' : ''}}>
-                        <td style={{padding:'4px 8px'}}><input type="checkbox" checked={r.include} disabled={r.isDup} onChange={e => setSapRows(rows => rows.map((row,j) => j===i?{...row,include:e.target.checked}:row))} /></td>
-                        <td style={{fontFamily:'var(--mono)',fontWeight:600}}>{r.invNum}</td>
-                        <td style={{maxWidth:'150px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.vendor||'—'}</td>
-                        <td style={{fontFamily:'var(--mono)',color:r.poId?'var(--green)':'var(--amber)'}}>{r.poNum||'—'}</td>
-                        <td style={{fontFamily:'var(--mono)'}}>{r.date||'—'}</td>
-                        <td style={{textAlign:'right',fontFamily:'var(--mono)',fontWeight:600}}>{r.amount.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                        <td style={{fontSize:'10px',color:'var(--text3)'}}>{r.currency}</td>
-                        <td>{r.isDup?<span style={{fontSize:'10px',padding:'1px 6px',borderRadius:'3px',background:'#fef3c7',color:'#d97706'}}>Duplicate</span>:r.poId?<span style={{fontSize:'10px',padding:'1px 6px',borderRadius:'3px',background:'#d1fae5',color:'#065f46'}}>PO Matched</span>:<span style={{fontSize:'10px',padding:'1px 6px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b'}}>No PO</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setShowSap(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={confirmSapImport} disabled={sapImporting}>
-                {sapImporting?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Import {sapRows.filter(r=>r.include&&!r.isDup).length} Invoices
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Add/Edit Invoice Modal */}
       {modal && (
-        <div className="modal-overlay open" onClick={() => setModal(null)}>
-          <div className="modal" style={{maxWidth:'640px',maxHeight:'92vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={()=>setModal(null)}>
+          <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{modal === 'new' ? '🧾 New Invoice' : '✏️ Edit Invoice'}</h3>
-              <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
+              <h3>{modal==='new'?'+ New Invoice':`Edit Invoice — ${(modal as Invoice).invoice_number||'—'}`}</h3>
+              <button className="btn btn-sm" onClick={()=>setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
-
-              {/* Row 1: PO + Invoice number */}
               <div className="fg-row">
-                <div className="fg">
-                  <label>Purchase Order *</label>
-                  <select className="input" value={form.po_id} onChange={e=>setForm(f=>({...f,po_id:e.target.value}))}>
-                    <option value="">— Select PO —</option>
-                    {pos.map(po=><option key={po.id} value={po.id}>{po.po_number||'No PO#'} — {po.vendor}</option>)}
-                  </select>
+                <div className="fg" style={{flex:2}}>
+                  <label>Invoice Number *</label>
+                  <input className="input" value={form.invoice_number} onChange={e=>setForm(f=>({...f,invoice_number:e.target.value}))} placeholder="INV-12345" autoFocus />
                 </div>
                 <div className="fg">
-                  <label>Invoice Number *</label>
-                  <input className="input" value={form.invoice_number} onChange={e=>setForm(f=>({...f,invoice_number:e.target.value}))} placeholder="e.g. INV-2026-0042" autoFocus />
+                  <label>Vendor Ref</label>
+                  <input className="input" value={form.vendor_ref} onChange={e=>setForm(f=>({...f,vendor_ref:e.target.value}))} />
                 </div>
               </div>
-
-              {/* Row 2: Vendor ref + Status display */}
               <div className="fg-row">
                 <div className="fg">
-                  <label>Vendor Reference <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>(vendor's own invoice ref)</span></label>
-                  <input className="input" value={form.vendor_ref} onChange={e=>setForm(f=>({...f,vendor_ref:e.target.value}))} placeholder="e.g. SI-2026-99872" />
+                  <label>Linked PO</label>
+                  <select className="input" value={form.po_id} onChange={e=>setForm(f=>({...f,po_id:e.target.value}))}>
+                    <option value="">— No PO —</option>
+                    {pos.map(p=><option key={p.id} value={p.id}>{p.po_number||p.internal_ref||'—'} {p.vendor}</option>)}
+                  </select>
                 </div>
                 <div className="fg">
                   <label>Status</label>
-                  <div style={{padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'6px',background:'var(--bg3)'}}>
-                    {modal !== 'new' ? (
-                      <>
-                        <span className="badge" style={STATUS_COLORS[(modal as Invoice).status] || STATUS_COLORS.received}>
-                          {(modal as Invoice).status}
-                        </span>
-                        <span style={{fontSize:'10px',color:'var(--text3)',marginLeft:'8px'}}>Use workflow buttons in register to advance</span>
-                      </>
-                    ) : (
-                      <span className="badge" style={STATUS_COLORS.received}>received</span>
-                    )}
-                  </div>
+                  <select className="input" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
+                    {Object.entries(INV_STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                  </select>
                 </div>
               </div>
-
-              {/* Row 3: Invoice date + Received date + Paid date */}
+              {!form.po_id && (
+                <div className="fg">
+                  <label>Vendor Details <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>(if no PO)</span></label>
+                  <input className="input" value={form.vendor_details} onChange={e=>setForm(f=>({...f,vendor_details:e.target.value}))} placeholder="Vendor name / details" />
+                </div>
+              )}
               <div className="fg-row">
                 <div className="fg">
-                  <label>Invoice Date *</label>
-                  <input type="date" className="input" value={form.invoice_date} onChange={e=>setForm(f=>({...f,invoice_date:e.target.value}))} />
+                  <label>Amount</label>
+                  <input type="number" className="input" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" />
                 </div>
-                <div className="fg">
-                  <label>Received Date</label>
-                  <input type="date" className="input" value={form.received_date} onChange={e=>setForm(f=>({...f,received_date:e.target.value}))} />
-                </div>
-                <div className="fg">
-                  <label>Paid Date <span style={{fontWeight:400,color:'var(--text3)',fontSize:'10px'}}>(for days-to-pay)</span></label>
-                  <input type="date" className="input" value={form.paid_date} onChange={e=>setForm(f=>({...f,paid_date:e.target.value}))} />
-                </div>
-              </div>
-
-              {/* Row 4: Period from/to */}
-              <div className="fg-row">
-                <div className="fg">
-                  <label>Period From</label>
-                  <input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} />
-                </div>
-                <div className="fg">
-                  <label>Period To</label>
-                  <input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} />
-                </div>
-              </div>
-
-              {/* Row 5: Expected + Actual amount + Currency */}
-              <div className="fg-row">
                 <div className="fg">
                   <label>Expected Amount</label>
-                  <input type="number" step="0.01" className="input" value={form.expected_amount} onChange={e=>setForm(f=>({...f,expected_amount:e.target.value}))} placeholder="0.00" />
+                  <input type="number" className="input" value={form.expected_amount} onChange={e=>setForm(f=>({...f,expected_amount:e.target.value}))} placeholder="0.00" />
                 </div>
                 <div className="fg">
-                  <label>Invoice Amount *</label>
-                  <input type="number" step="0.01" className="input" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" />
-                </div>
-                <div className="fg" style={{maxWidth:'100px'}}>
                   <label>Currency</label>
                   <select className="input" value={form.currency} onChange={e=>setForm(f=>({...f,currency:e.target.value}))}>
-                    {['AUD','EUR','USD','GBP'].map(c=><option key={c} value={c}>{c}</option>)}
+                    {['AUD','EUR','USD','GBP','NZD'].map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
-
-              {/* Variance row */}
-              {form.expected_amount && form.amount && (() => {
-                const exp = parseFloat(form.expected_amount) || 0
-                const act = parseFloat(form.amount) || 0
-                const diff = act - exp
-                const col = diff > 0 ? 'var(--red)' : diff < 0 ? 'var(--green)' : 'var(--text3)'
-                return exp > 0 ? (
-                  <div style={{fontSize:'11px',color:col,marginTop:'2px'}}>
-                    Variance: {diff >= 0 ? '+' : ''}{diff.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}
-                    {' '}({exp > 0 ? (diff/exp*100).toFixed(1) : '—'}%)
-                  </div>
-                ) : null
-              })()}
-
-              {/* TCE Item ID */}
-              <div className="fg" style={{marginTop:'10px'}}>
-                <label>TCE Item ID <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— links this invoice to a NRG TCE scope line</span></label>
-                {tceLines.length > 0 ? (
-                  <select className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))}>
-                    <option value="">— No TCE Link —</option>
-                    {tceLines.map(l=><option key={l.id} value={l.item_id||''}>{l.item_id||''} — {l.description}</option>)}
-                  </select>
-                ) : (
-                  <input className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))} placeholder="e.g. 2.02.4.1 — leave blank if not a TCE invoice" />
-                )}
+              <div className="fg-row">
+                <div className="fg"><label>Invoice Date</label><input type="date" className="input" value={form.invoice_date} onChange={e=>setForm(f=>({...f,invoice_date:e.target.value}))} /></div>
+                <div className="fg"><label>Due Date</label><input type="date" className="input" value={form.due_date} onChange={e=>setForm(f=>({...f,due_date:e.target.value}))} /></div>
               </div>
-
-              {/* Notes */}
-              <div className="fg" style={{marginTop:'6px'}}>
-                <label>Notes</label>
-                <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Any notes about this invoice..." style={{resize:'vertical'}} />
+              <div className="fg-row">
+                <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} /></div>
+                <div className="fg"><label>Period To</label><input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} /></div>
               </div>
+              <div className="fg"><label>TCE Item ID</label><input className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))} placeholder="e.g. 2.02.4.1 — links to TCE scope" /></div>
+              <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
             </div>
             <div className="modal-footer">
-              {modal !== 'new' && (
-                <button className="btn btn-danger btn-sm" style={{marginRight:'auto'}} onClick={() => { setModal(null); del(modal as Invoice) }}>
-                  🗑 Delete
-                </button>
-              )}
-              <button className="btn" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} 💾 Save
-              </button>
+              {modal!=='new'&&<button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{deleteInvoice(modal as Invoice);setModal(null)}}>Delete</button>}
+              <button className="btn" onClick={()=>setModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Save</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* History modal */}
+      {/* History Modal */}
       {historyModal && (
-        <div className="modal-overlay" onClick={() => setHistoryModal(null)}>
-          <div className="modal" style={{maxWidth:'480px'}} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={()=>setHistoryModal(null)}>
+          <div className="modal" style={{maxWidth:'500px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Invoice History: {historyModal.invoice_number}</h3>
-              <button className="btn btn-sm" onClick={() => setHistoryModal(null)}>✕</button>
+              <h3>🕒 Invoice History — {historyModal.invoice_number||'—'}</h3>
+              <button className="btn btn-sm" onClick={()=>setHistoryModal(null)}>✕</button>
             </div>
             <div className="modal-body">
-              {(historyModal.status_history || []).length === 0 ? (
-                <p style={{color:'var(--text3)',fontSize:'13px'}}>No history recorded.</p>
-              ) : (
-                <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
-                  {[...(historyModal.status_history || [])].reverse().map((h, i) => (
-                    <div key={i} style={{display:'flex',gap:'12px',alignItems:'flex-start',padding:'8px',background:'var(--bg2)',borderRadius:'6px'}}>
-                      <span className="badge" style={STATUS_COLORS[h.to] || STATUS_COLORS.received}>{h.to}</span>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:'12px',fontWeight:500}}>{h.by || h.byEmail || 'System'}</div>
-                        <div style={{fontSize:'11px',color:'var(--text3)'}}>{h.at ? new Date(h.at).toLocaleString() : ''}</div>
-                        {h.note && <div style={{fontSize:'12px',color:'var(--text2)',marginTop:'2px'}}>{h.note}</div>}
-                      </div>
+              {(historyModal.status_history||[]).length === 0 ? (
+                <div style={{color:'var(--text3)',fontSize:'12px'}}>No status history recorded.</div>
+              ) : [...(historyModal.status_history||[])].reverse().map((h, i) => {
+                const sc = INV_STATUS[h.status] || { label:h.status, color:'var(--text2)', bg:'var(--bg3)' }
+                return (
+                  <div key={i} style={{padding:'10px 12px',borderBottom:'1px solid var(--border)',display:'flex',gap:'10px',alignItems:'flex-start'}}>
+                    <span style={{fontSize:'10px',fontWeight:700,padding:'2px 8px',borderRadius:'3px',background:sc.bg,color:sc.color,whiteSpace:'nowrap'}}>{sc.label}</span>
+                    <div>
+                      <div style={{fontSize:'11px',color:'var(--text2)'}}>{fmtUser(h.setBy)} · {fmtDateTime(h.setAt)}</div>
+                      {h.note && <div style={{fontSize:'11px',color:'#dc2626',marginTop:'2px',fontStyle:'italic'}}>{h.note}</div>}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="modal-footer"><button className="btn" onClick={()=>setHistoryModal(null)}>Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Note Modal */}
+      {disputeModal && (
+        <div className="modal-overlay" onClick={()=>setDisputeModal(null)}>
+          <div className="modal" style={{maxWidth:'420px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>⚠ Flag as Disputed</h3><button className="btn btn-sm" onClick={()=>setDisputeModal(null)}>✕</button></div>
+            <div className="modal-body">
+              <div className="fg"><label>Dispute Reason *</label><textarea className="input" rows={3} value={disputeModal.note} onChange={e=>setDisputeModal(d=>d?{...d,note:e.target.value}:d)} placeholder="Describe the dispute or discrepancy..." style={{resize:'vertical'}} autoFocus /></div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setDisputeModal(null)}>Cancel</button>
+              <button className="btn" style={{background:'#dc2626',color:'#fff',border:'none'}} onClick={async()=>{await doTransition(disputeModal.inv,'disputed',disputeModal.note);setDisputeModal(null)}}>Flag Disputed</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pay Date Modal */}
+      {payDateModal && (
+        <div className="modal-overlay" onClick={()=>setPayDateModal(null)}>
+          <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>✓ Mark as Paid</h3><button className="btn btn-sm" onClick={()=>setPayDateModal(null)}>✕</button></div>
+            <div className="modal-body">
+              <div className="fg"><label>Payment Date</label><input type="date" className="input" value={payDateModal.date} onChange={e=>setPayDateModal(d=>d?{...d,date:e.target.value}:d)} autoFocus /></div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setPayDateModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={async()=>{await doTransition(payDateModal.inv,'paid','',payDateModal.date);setPayDateModal(null)}}>Confirm Payment</button>
             </div>
           </div>
         </div>
