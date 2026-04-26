@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
@@ -5,10 +6,6 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import type { Invoice, PurchaseOrder, InvoiceStatus } from '../../types'
 
-declare const XLSX: {
-  read: (data: Uint8Array, opts: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> }
-  utils: { sheet_to_json: (sheet: unknown, opts?: { header?: number; defval?: unknown }) => unknown[][] }
-}
 
 const STATUS_FLOW: InvoiceStatus[] = ['received','checked','approved','paid']
 const STATUS_COLORS: Record<string,{bg:string,color:string}> = {

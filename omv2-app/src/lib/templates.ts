@@ -1,16 +1,9 @@
+import * as XLSX from 'xlsx'
 /**
  * Template downloads — generates blank XLSX/CSV templates for import
  * Uses the globally-loaded XLSX from CDN
  */
 
-declare const XLSX: {
-  utils: {
-    book_new: () => { SheetNames: string[]; Sheets: Record<string, unknown> }
-    aoa_to_sheet: (data: unknown[][]) => unknown
-    book_append_sheet: (wb: unknown, ws: unknown, name: string) => void
-  }
-  writeFile: (wb: unknown, name: string) => void
-}
 
 function xlsxTemplate(filename: string, headers: string[], example: unknown[]) {
   const wb = XLSX.utils.book_new()

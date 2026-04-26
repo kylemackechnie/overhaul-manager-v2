@@ -1,12 +1,9 @@
+import * as XLSX from 'xlsx'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 
-declare const XLSX: {
-  read: (data: ArrayBuffer, opts: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> }
-  utils: { sheet_to_json: (sheet: unknown, opts?: { header?: number; defval?: string }) => Record<string, string>[] }
-}
 
 interface InductionPerson { name: string; company: string; inducted_at?: string; [key: string]: unknown }
 

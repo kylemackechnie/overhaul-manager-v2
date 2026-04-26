@@ -1,13 +1,10 @@
+import * as XLSX from 'xlsx'
 /**
  * NRG TCE XLSX Import
  * Parses two-tab XLSX (Overheads + Skilled Labour) using synonym-based header detection.
  * Smart re-import: back-fills blank fields only, never overwrites user edits.
  */
 
-declare const XLSX: {
-  read: (data: Uint8Array, opts: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> }
-  utils: { sheet_to_json: (sheet: unknown, opts?: { header?: number; defval?: unknown }) => unknown[][] }
-}
 
 const OH_SYNONYMS: Record<string, string[]> = {
   workOrder:     ['work order'],

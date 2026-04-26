@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx'
 /**
  * OPSA/SPASS hardware contract XLSX import
  * Reads the German SE contract format:
@@ -6,16 +7,6 @@
  * - Row 18 (index 17): units row (skip)
  * - Row 19+ (index 18+): part data lines
  */
-
-declare const XLSX: {
-  read: (data: ArrayBuffer, opts: Record<string, unknown>) => {
-    SheetNames: string[]
-    Sheets: Record<string, unknown>
-  }
-  utils: {
-    sheet_to_json: (ws: unknown, opts: Record<string, unknown>) => unknown[][]
-  }
-}
 
 export interface ContractMeta {
   projectName: string

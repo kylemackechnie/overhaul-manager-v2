@@ -1,12 +1,9 @@
+import * as XLSX from 'xlsx'
 import { useState } from 'react'
 import { toast } from './ui/Toast'
 import { downloadTemplate } from '../lib/templates'
 import type { WeeklyTimesheet } from '../types'
 
-declare const XLSX: {
-  read: (data: Uint8Array, opts: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> }
-  utils: { sheet_to_json: (sheet: unknown, opts?: { header?: number; defval?: unknown }) => unknown[][] }
-}
 
 type DayEntry = { hours?: number; dayType?: string; shiftType?: string; laha?: boolean; meal?: boolean }
 type CrewMember = { personId: string; name: string; role: string; wbs: string; days: Record<string, DayEntry>; mealBreakAdj?: boolean }
