@@ -168,7 +168,7 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
           <input type="checkbox" value="${s.id}" style="width:16px;height:16px;accent-color:#d97706">
           <div>
             <div style="font-size:13px;font-weight:600">${s.reference || '—'} — ${s.description || '—'}</div>
-            <div style="font-size:11px;color:#64748b">${(s as Record<string,unknown>).ship_type || '—'} · ${(s as Record<string,unknown>).packages || 0} pkgs · ${(s as Record<string,unknown>).gross_kg || 0}kg</div>
+            <div style="font-size:11px;color:#64748b">${(s as unknown as Record<string,unknown>).ship_type || '—'} · ${(s as unknown as Record<string,unknown>).packages || 0} pkgs · ${(s as unknown as Record<string,unknown>).gross_kg || 0}kg</div>
           </div>
         </label>`).join('')
       overlay.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:520px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
@@ -218,8 +218,8 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
     const proj = projRes.data as Record<string,unknown> | null
     const dept = tv?.department_id ? (depts.find((d: Record<string,unknown>) => d.id === tv.department_id) as Record<string,unknown> | undefined) : null
     const rates = (dept?.rates || {}) as Record<string,unknown>
-    const totalPkgs = kollos.length || (s as Record<string,unknown>).packages || 0
-    const totalWeight = kollos.reduce((sum: number, k: Record<string,unknown>) => sum + (Number(k.gross_kg) || 0), 0) || Number((s as Record<string,unknown>).gross_kg) || 0
+    const totalPkgs = kollos.length || (s as unknown as Record<string,unknown>).packages || 0
+    const totalWeight = kollos.reduce((sum: number, k: Record<string,unknown>) => sum + (Number(k.gross_kg) || 0), 0) || Number((s as unknown as Record<string,unknown>).gross_kg) || 0
     const hasDG = kollos.some((k: Record<string,unknown>) => k.dangerous_goods)
     const goodsDesc = s.description?.replace(/ \(return\)$/, '') || ''
     const today = new Date().toISOString().slice(0,10)
@@ -428,7 +428,7 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
         </table>
         <table class="ht">
           <tr><td colspan="4" class="section">SHIPMENT SUMMARY</td></tr>
-          <tr><td class="lb">Total Packages:</td><td>${kollos.length || (s as Record<string,unknown>).packages || '—'}</td>
+          <tr><td class="lb">Total Packages:</td><td>${kollos.length || (s as unknown as Record<string,unknown>).packages || '—'}</td>
               <td class="lb">Total Gross Weight (kg):</td><td>${totalGross.toFixed(3)}</td></tr>
           <tr><td class="lb">Total Net Weight (kg):</td><td>${totalNet.toFixed(3)}</td>
               <td class="lb">Total Volume (m³):</td><td>${totalVol.toFixed(3)}</td></tr>
@@ -572,3 +572,4 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
     </div>
   )
 }
+// cast fix 1777206221
