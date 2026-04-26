@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
 import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry } from '../../types'
@@ -234,7 +235,7 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
       totalSell += sell
       return `<td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">
         <div style="font-weight:700">${effH.toFixed(1)}h</div>
-        ${sell>0?`<div style="font-size:9px;color:#059669">$${sell.toFixed(0)}</div>`:''}
+        ${sell>0?`<div style="font-size:9px;color:#059669">${week.type==='seag'?'€':'$'}${sell.toFixed(0)}</div>`:''}
       </td>`
     }).join('')
 
@@ -696,7 +697,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const regime = activeWeek?.regime || 'lt12'
   const days = activeWeek ? weekDays(activeWeek.week_start) : []
   const inCrew = new Set(activeWeek?.crew.map(m => m.personId) || [])
-  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
+  // For SE AG weeks, rates are natively EUR — display with € symbol
+  const isSeagWeek = type === 'seag'
+  const eurToAud = getEurToBase(activeProject)
+  const fmt = (n: number) => {
+    if (!(n > 0)) return '—'
+    if (isSeagWeek) return '€' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+    return '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+  }
+  // AUD-equivalent display for SE AG (used in week list subtitle)
+  const fmtAudEquiv = (n: number) => n > 0 ? ' ≈$' + Math.round(n * eurToAud).toLocaleString('en-AU') : ''
 
   function weekTotals(s: WeeklyTimesheet) {
     let hours = 0, sell = 0, cost = 0
@@ -777,7 +787,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   { label: 'Weeks', value: sheets.length, color: TYPE_COLOR[type] },
                   { label: 'Approved', value: `${approved}/${sheets.length}`, color: 'var(--green)' },
                   { label: 'Total Hours', value: totals.hours.toFixed(1) + 'h', color: TYPE_COLOR[type] },
-                  { label: 'Total Sell', value: totals.sell > 0 ? fmt(totals.sell) : '—', color: 'var(--green)' },
+                  { label: isSeagWeek ? 'Total Sell (EUR)' : 'Total Sell', value: totals.sell > 0 ? fmt(totals.sell) : '—', color: 'var(--green)' },
                 ].map(t => (
                   <div key={t.label} className="card" style={{ padding: '12px', borderTop: `3px solid ${t.color}` }}>
                     <div style={{ fontSize: '16px', fontWeight: 700, fontFamily: 'var(--mono)', color: t.color }}>{t.value}</div>
@@ -802,8 +812,15 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{s.crew.length} people{s.notes ? ` · ${s.notes}` : ''}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type] }}>{hours.toFixed(1)}h</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Total hours</div></div>
-                    {sell > 0 && <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmt(sell)}</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Sell value</div></div>}
-                    {cost > 0 && cost !== sell && <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{fmt(cost)}</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Cost</div></div>}
+                    {sell > 0 && <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmt(sell)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Sell (EUR)' : 'Sell value'}</div>
+                      {isSeagWeek && eurToAud > 1 && <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{fmtAudEquiv(sell)} AUD</div>}
+                    </div>}
+                    {cost > 0 && cost !== sell && <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{fmt(cost)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Cost (EUR)' : 'Cost'}</div>
+                    </div>}
                     <span className="badge" style={sc}>{s.status}</span>
                     <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
                       {s.status !== 'approved' && <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Quick approve" onClick={async()=>{
@@ -1099,9 +1116,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   {/* Totals cell */}
                   <div style={{ background: 'var(--bg2)', padding: '8px', textAlign: 'right' }}>
                     <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type], fontSize: '13px' }}>{hours.toFixed(1)}h</div>
-                    {sell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)', marginTop: '2px' }}>{fmt(sell)}</div>}
+                    {sell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)', marginTop: '2px' }}>{fmt(sell)}{isSeagWeek && <span style={{ fontSize: '9px', color: 'var(--text3)', marginLeft: '2px' }}>EUR</span>}</div>}
+                    {isSeagWeek && sell > 0 && eurToAud > 1 && <div style={{ fontFamily: 'var(--mono)', fontSize: '9px', color: 'var(--text3)' }}>{fmtAudEquiv(sell)} AUD</div>}
                     {allowances > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>incl. {fmt(allowances)} allow</div>}
-                    {cost > 0 && cost !== sell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(cost)}</div>}
+                    {cost > 0 && cost !== sell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(cost)}{isSeagWeek && <span style={{ fontSize: '9px', marginLeft: '2px' }}>EUR</span>}</div>}
                   </div>
                 </div>
               </div>
@@ -1121,8 +1139,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type] }}>{tHrs.toFixed(1)}h</div>
-                  {tSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)' }}>{fmt(tSell)}</div>}
-                  {tCost > 0 && tCost !== tSell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(tCost)}</div>}
+                  {tSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)' }}>{fmt(tSell)}{isSeagWeek && <span style={{ fontSize: '9px', color: 'var(--text3)', marginLeft: '2px' }}>EUR</span>}</div>}
+                  {isSeagWeek && tSell > 0 && eurToAud > 1 && <div style={{ fontFamily: 'var(--mono)', fontSize: '9px', color: 'var(--text3)' }}>{fmtAudEquiv(tSell)} AUD</div>}
+                  {tCost > 0 && tCost !== tSell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(tCost)}{isSeagWeek && <span style={{ fontSize: '9px', marginLeft: '2px' }}>EUR</span>}</div>}
                 </div>
               </div>
             )
