@@ -350,21 +350,62 @@ export async function generateDHLSLI(
     29: true,
   }
 
-  // Fill FORMTEXT fields by sequential position
+  // Fix broken attachedTemplate reference that causes Word to refuse opening the file.
+  // The SLI template was saved with a local Windows temp file path in settings.xml.rels.
+  const settingsRels = await zip.file('word/_rels/settings.xml.rels')?.async('string')
+  if (settingsRels) {
+    const fixedRels = settingsRels.replace(
+      /<Relationship[^>]*attachedTemplate[^>]*\/>/g, ''
+    )
+    zip.file('word/_rels/settings.xml.rels', fixedRels)
+  }
+  // Also remove the w:attachedTemplate element from settings.xml itself
+  const settingsXml = await zip.file('word/settings.xml')?.async('string')
+  if (settingsXml) {
+    const fixedSettings = settingsXml.replace(/<w:attachedTemplate[^>]*\/>/g, '')
+    zip.file('word/settings.xml', fixedSettings)
+  }
+
+  // Fill FORMTEXT fields by sequential position.
+  // The SLI template has fields split across multiple <w:r> runs:
+  //   Run A: <w:fldChar begin> + <w:ffData> + </w:fldChar>
+  //   Run B: <w:instrText> FORMTEXT </w:instrText>
+  //   Run C-G: <w:fldChar separate/> then 5 runs each with <w:t>\u2002</w:t>
+  //   Run H: (open) <w:rPr>...</w:rPr>  [group 3 end tag goes here, then </w:r> closes it]
+  //
+  // The regex captures: (up to and including <fldChar separate/>)(middle)(end fldChar)
+  // 'middle' starts with </w:r> and ends with an open <w:r><w:rPr>...</w:rPr>
+  // 'end fldChar' is <w:fldChar end/> which goes inside that open run
+  //
+  // Correct replacement:
+  //   before + </w:r> + value run + last-run-opener + end fldChar
+  //   (the </w:r> that was already after the match closes the end-fldChar run)
   let textFieldIdx = 0
   docXml = docXml.replace(
-    /(<w:fldChar w:fldCharType="begin">\s*<w:ffData>[\s\S]*?<\/w:ffData>\s*<\/w:fldChar>[\s\S]*?<w:instrText[^>]*>\s*FORMTEXT\s*<\/w:instrText>[\s\S]*?<w:fldChar w:fldCharType="separate"\/>)([\s\S]*?)(<w:fldChar w:fldCharType="end"[\s]*\/>)/g,
-    (_match: string, before: string, _valuePart: string, after: string) => {
+    /(<w:fldChar w:fldCharType="begin">[\s\S]*?<\/w:ffData>\s*<\/w:fldChar>[\s\S]*?<w:instrText[^>]*>\s*FORMTEXT\s*<\/w:instrText>[\s\S]*?<w:fldChar w:fldCharType="separate"\/>)([\s\S]*?)(<w:fldChar w:fldCharType="end"\s*\/>)/g,
+    (_match: string, before: string, middle: string, endTag: string) => {
       const idx = textFieldIdx++
       const newVal = textValues[idx] !== undefined ? textValues[idx] : ''
+
+      // Find the last open run in middle — it stays open to hold the end fldChar
+      const lastWrIdx = Math.max(middle.lastIndexOf('<w:r '), middle.lastIndexOf('<w:r>'))
+      const lastRunOpen = lastWrIdx >= 0 ? middle.substring(lastWrIdx) : '<w:r>'
+
       if (newVal) {
-        return before + '<w:t xml:space="preserve">' + newVal.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</w:t>' + after
+        const esc = newVal.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        const valRun = `</w:r><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${esc}</w:t></w:r>`
+        return before + valRun + lastRunOpen + endTag
       }
-      return before + _valuePart + after
+      // No value — keep original structure intact
+      return before + middle + endTag
     }
   )
 
-  // Fill FORMCHECKBOX fields by sequential position
+  // Fill FORMCHECKBOX fields by sequential position.
+  // The checked state is stored in <w:checkBox><w:checked w:val="0/1"/></w:checkBox>
+  // inside the ffData of the begin fldChar. Template has either:
+  //   <w:checkBox><w:sizeAuto/><w:default w:val="0"/></w:checkBox>  (unchecked, no w:checked)
+  //   <w:checkBox><w:sizeAuto/><w:default w:val="0"/><w:checked w:val="0"/></w:checkBox>
   let checkFieldIdx = 0
   docXml = docXml.replace(
     /<w:fldChar w:fldCharType="begin">\s*<w:ffData>\s*<w:name w:val="[^"]*"\/>\s*<w:enabled\/>\s*<w:calcOnExit w:val="0"\/>\s*<w:checkBox>([\s\S]*?)<\/w:checkBox>\s*<\/w:ffData>\s*<\/w:fldChar>/g,
