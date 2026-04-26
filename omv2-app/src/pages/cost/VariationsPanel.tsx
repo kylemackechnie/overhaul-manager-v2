@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import type { Variation, VariationLine, NrgTceLine } from '../../types'
+import type { Variation, VariationLine, NrgTceLine, RateCard } from '../../types'
 
 const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
   draft:     {bg:'#f1f5f9',color:'#64748b'},
@@ -43,11 +43,14 @@ type LineForm = {
   id: string; category: string; wbs: string; wbs_name: string
   description: string; qty: string; unit: string; unit_cost: string; unit_sell: string
   cost_total: number; sell_total: number
+  // Labour-only fields
+  role: string; hours: string; day_type: string; shift_type: string
 }
 
 const mkLine = (): LineForm => ({
   id: Math.random().toString(36).slice(2), category:'other', wbs:'', wbs_name:'',
   description:'', qty:'1', unit:'lump', unit_cost:'', unit_sell:'', cost_total:0, sell_total:0,
+  role:'', hours:'', day_type:'weekday', shift_type:'day',
 })
 
 const EMPTY_FORM = {
@@ -56,12 +59,39 @@ const EMPTY_FORM = {
   notes:'', wo_ref:'', tce_link:'',
 }
 
-function computeLine(l: LineForm, gmPct: number): LineForm {
-  const qty = parseFloat(l.qty)||1
-  const uc = parseFloat(l.unit_cost)||0
-  const us = parseFloat(l.unit_sell)||0
-  const cost_total = l.category.startsWith('labour') ? uc : qty * uc
-  const sell_total = us > 0 ? (l.category.startsWith('labour') ? us : qty * us)
+function computeLine(l: LineForm, gmPct: number, rateCards: RateCard[]): LineForm {
+  if (l.category.startsWith('labour')) {
+    const hours = parseFloat(l.hours) || 0
+    // Find matching rate card for this role
+    const rc = rateCards.find(r => r.role.toLowerCase() === l.role.toLowerCase())
+    if (rc && hours > 0) {
+      const rates = rc.rates as Record<string, number>
+      // Use day normal time rates as base (simplified — full split-hours would require shift logic)
+      const costRate = rates?.cost_dnt || rates?.dnt || parseFloat(l.unit_cost) || 0
+      const sellRate = rates?.sell_dnt || rates?.sell || parseFloat(l.unit_sell) || 0
+      const costTotal = parseFloat((hours * costRate).toFixed(2))
+      const sellTotal = parseFloat((hours * sellRate).toFixed(2))
+      return {
+        ...l,
+        unit_cost: String(costRate),
+        unit_sell: String(sellRate),
+        cost_total: costTotal,
+        sell_total: sellTotal > 0 ? sellTotal : costTotal > 0 ? parseFloat((costTotal / (1 - gmPct/100)).toFixed(2)) : 0,
+      }
+    }
+    // No rate card match — use manual cost_total/sell_total from unit_cost/unit_sell fields
+    const uc = parseFloat(l.unit_cost) || 0
+    const us = parseFloat(l.unit_sell) || 0
+    const cost_total = hours > 0 ? hours * uc : uc
+    const sell_total = us > 0 ? (hours > 0 ? hours * us : us)
+      : cost_total > 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
+    return { ...l, cost_total, sell_total }
+  }
+  const qty = parseFloat(l.qty) || 1
+  const uc = parseFloat(l.unit_cost) || 0
+  const us = parseFloat(l.unit_sell) || 0
+  const cost_total = qty * uc
+  const sell_total = us > 0 ? qty * us
     : cost_total > 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
   return { ...l, cost_total, sell_total }
 }
@@ -105,6 +135,7 @@ export function VariationsPanel() {
   const [variations, setVariations] = useState<Variation[]>([])
   const [variationLines, setVariationLines] = useState<Map<string, VariationLine[]>>(new Map())
   const [wbsList, setWbsList] = useState<{id:string;code:string;name:string}[]>([])
+  const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [tceLines, setTceLines] = useState<NrgTceLine[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Variation>(null)
@@ -119,12 +150,13 @@ export function VariationsPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [varRes, linesRes, wbsRes, tceRes] = await Promise.all([
+    const [varRes, linesRes, wbsRes, tceRes, rcRes] = await Promise.all([
       supabase.from('variations').select('*').eq('project_id', pid).order('number'),
       supabase.from('variation_lines').select('*').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('nrg_tce_lines').select('id,item_id,description,source').eq('project_id', pid)
         .not('item_id','like','%.%%.%%').order('item_id'),
+      supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     const vars = (varRes.data||[]) as Variation[]
     const allLines = (linesRes.data||[]) as VariationLine[]
@@ -134,6 +166,7 @@ export function VariationsPanel() {
     setVariationLines(linesMap)
     setWbsList((wbsRes.data||[]) as {id:string;code:string;name:string}[])
     setTceLines((tceRes.data||[]) as NrgTceLine[])
+    setRateCards((rcRes.data||[]) as RateCard[])
     setLoading(false)
   }
 
@@ -163,6 +196,8 @@ export function VariationsPanel() {
           description:l.description, qty:String(l.qty??1), unit:l.unit||'lump',
           unit_cost:String(l.unit_cost??0), unit_sell:String(l.unit_sell??0),
           cost_total:l.cost_total, sell_total:l.sell_total,
+          role:l.role||'', hours:String(l.hours||''),
+          day_type:l.day_type||'weekday', shift_type:l.shift_type||'day',
         }))
       : [mkLine()])
     setActiveTab('details')
@@ -174,7 +209,7 @@ export function VariationsPanel() {
       const updated = prev.map((l,i) => {
         if (i !== idx) return l
         const next = { ...l, [field]: value }
-        return computeLine(next, activeProject?.default_gm||15)
+        return computeLine(next, activeProject?.default_gm||15, rateCards)
       })
       return updated
     })
@@ -242,6 +277,10 @@ export function VariationsPanel() {
           unit_cost: parseFloat(l.unit_cost)||0,
           unit_sell: parseFloat(l.unit_sell)||0,
           cost_total: l.cost_total, sell_total: l.sell_total,
+          role: l.role||null,
+          hours: parseFloat(l.hours)||null,
+          day_type: l.day_type||null,
+          shift_type: l.shift_type||null,
           breakdown: [],
         }
       })
@@ -486,9 +525,9 @@ export function VariationsPanel() {
                         <th style={{padding:'6px 8px',textAlign:'left',width:'120px'}}>Category</th>
                         <th style={{padding:'6px 8px',textAlign:'left'}}>Description</th>
                         <th style={{padding:'6px 8px',width:'120px'}}>WBS</th>
-                        <th style={{padding:'6px 8px',width:'60px',textAlign:'right'}}>Qty</th>
-                        <th style={{padding:'6px 8px',width:'90px',textAlign:'right'}}>Cost/Unit</th>
-                        <th style={{padding:'6px 8px',width:'90px',textAlign:'right'}}>Sell/Unit</th>
+                        <th style={{padding:'6px 8px',width:'90px',textAlign:'right'}}>Qty / Role</th>
+                        <th style={{padding:'6px 8px',width:'80px',textAlign:'right'}}>Hrs / Cost</th>
+                        <th style={{padding:'6px 8px',width:'80px',textAlign:'right'}}>$/h / Sell</th>
                         <th style={{padding:'6px 8px',width:'80px',textAlign:'right'}}>Cost $</th>
                         <th style={{padding:'6px 8px',width:'80px',textAlign:'right',color:'var(--green)'}}>Sell $</th>
                         <th style={{width:'28px'}}></th>
@@ -511,8 +550,24 @@ export function VariationsPanel() {
                           </td>
                           {l.category.startsWith('labour') ? (
                             <>
-                              <td colSpan={2} style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_cost||''} onChange={e=>setLineField(i,'unit_cost',e.target.value)} placeholder="Cost total"/></td>
-                              <td style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_sell||''} onChange={e=>setLineField(i,'unit_sell',e.target.value)} placeholder="Sell total"/></td>
+                              {/* Role from rate card */}
+                              <td style={{padding:'3px 4px'}}>
+                                <select className="input" style={{padding:'3px 5px',fontSize:'11px'}} value={l.role} onChange={e=>setLineField(i,'role',e.target.value)}>
+                                  <option value="">— Role —</option>
+                                  {rateCards.filter(r=>r.category===l.category.replace('labour_','')||r.category==='trades').map(r=>(
+                                    <option key={r.id} value={r.role}>{r.role}</option>
+                                  ))}
+                                  {rateCards.length === 0 && <option disabled>No rate cards</option>}
+                                </select>
+                              </td>
+                              {/* Hours — triggers auto-calc */}
+                              <td style={{padding:'3px 4px'}}>
+                                <input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.hours} onChange={e=>setLineField(i,'hours',e.target.value)} placeholder="hrs" min={0} step={0.5}/>
+                              </td>
+                              {/* Manual override if no rate card match */}
+                              <td style={{padding:'3px 4px'}}>
+                                <input type="number" className="input" style={{padding:'3px 6px',fontSize:'11px',textAlign:'right',color:'var(--text3)'}} value={l.unit_sell||''} onChange={e=>setLineField(i,'unit_sell',e.target.value)} placeholder="$/h sell" title="Sell rate/hr (auto-fills from rate card)"/>
+                              </td>
                             </>
                           ) : (
                             <>
