@@ -94,9 +94,19 @@ const RIBBON_MODULES: RibbonTab[] = [
   {
     key: 'subcon', label: 'Subcontractors',
     groups: [
-      { label: 'Subcontractors', buttons: [
-        { icon: '🤝', label: 'RFQ Register', panel: 'subcon-rfq' },
+      { label: 'Overview', buttons: [
+        { icon: '🏢', label: 'Dashboard', panel: 'subcon-dashboard' },
+      ]},
+      { label: 'RFQs', buttons: [
+        { icon: '📝', label: 'RFQ Document', panel: 'subcon-rfq-doc' },
+        { icon: '📊', label: 'RFQ Register', panel: 'subcon-rfq-register' },
+        { icon: '📈', label: 'Cost Model', panel: 'subcon-rfq' },
+      ]},
+      { label: 'Contracts', buttons: [
         { icon: '📃', label: 'Contracts', panel: 'subcon-contracts' },
+      ]},
+      { label: 'Vendors', buttons: [
+        { icon: '📊', label: 'Vendor Snapshot', panel: 'subcon-vendor-snapshot' },
       ]},
     ],
   },
