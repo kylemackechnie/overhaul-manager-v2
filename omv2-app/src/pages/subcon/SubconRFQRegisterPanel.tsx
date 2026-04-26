@@ -33,6 +33,11 @@ export function SubconRFQRegisterPanel() {
   const [responseModal, setResponseModal] = useState<{ doc: RfqDocument; existing: RfqResponse | null } | null>(null)
   const [vendorsSentModal, setVendorsSentModal] = useState<RfqDocument | null>(null)
   const [linkContractModal, setLinkContractModal] = useState<{ doc: RfqDocument; vendor: string } | null>(null)
+  const [importWizard, setImportWizard] = useState<{
+    doc: RfqDocument; resp: RfqResponse
+    rows: { role: string; mob_in: string; mob_out: string; name: string; include: boolean }[]
+  } | null>(null)
+  const [importSaving, setImportSaving] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -85,7 +90,6 @@ export function SubconRFQRegisterPanel() {
   async function awardResponse(doc: RfqDocument, resp: RfqResponse) {
     if (!confirm(`Award this RFQ to ${resp.vendor}?`)) return
     const docResponses = responses.filter(r => r.rfq_document_id === doc.id)
-    // Clear is_awarded on all responses for this doc, set on the chosen one
     await supabase.from('rfq_responses').update({ is_awarded: false }).eq('rfq_document_id', doc.id)
     const { error: e1 } = await supabase.from('rfq_responses').update({ is_awarded: true }).eq('id', resp.id)
     if (e1) { toast(e1.message, 'error'); return }
@@ -97,6 +101,44 @@ export function SubconRFQRegisterPanel() {
       .concat(responses.filter(r => r.rfq_document_id !== doc.id)))
     setDocs(docs.map(d => d.id === doc.id ? { ...d, awarded_response_id: resp.id, stage: 'awarded' } : d))
     toast(`Awarded to ${resp.vendor}`, 'success')
+
+    // Open resource import wizard if the response has labour roles
+    const labourRows = (resp.labour || []) as { role?: string; qty?: number }[]
+    if (labourRows.length > 0) {
+      const wizardRows = labourRows.flatMap(lr => {
+        const qty = parseInt(String(lr.qty || 1)) || 1
+        return Array.from({ length: qty }, () => ({
+          role: lr.role || '',
+          mob_in: doc.start_date || '',
+          mob_out: doc.end_date || '',
+          name: '',
+          include: true,
+        }))
+      })
+      setImportWizard({ doc, resp, rows: wizardRows })
+    }
+  }
+
+  async function execImportResources() {
+    if (!importWizard || !activeProject) return
+    setImportSaving(true)
+    const toInsert = importWizard.rows
+      .filter(r => r.include && r.name.trim())
+      .map(r => ({
+        project_id: activeProject.id,
+        name: r.name.trim(),
+        role: r.role,
+        company: importWizard.resp.vendor,
+        type: 'subcontractor',
+        mob_in: r.mob_in || null,
+        mob_out: r.mob_out || null,
+      }))
+    if (!toInsert.length) { toast('Fill in at least one name to import', 'info'); setImportSaving(false); return }
+    const { error } = await supabase.from('resources').insert(toInsert)
+    setImportSaving(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`${toInsert.length} resource${toInsert.length !== 1 ? 's' : ''} imported from ${importWizard.resp.vendor}`, 'success')
+    setImportWizard(null)
   }
 
   async function createPOFromRFQ(doc: RfqDocument, resp: RfqResponse) {
@@ -347,6 +389,76 @@ export function SubconRFQRegisterPanel() {
           onClose={() => setLinkContractModal(null)}
           onLinked={(contractId) => setDocs(docs.map(d => d.id === linkContractModal.doc.id ? { ...d, linked_contract_id: contractId, stage: 'contracted' } : d))}
         />
+      )}
+
+      {/* Resource Import Wizard — opens after awarding to a vendor with labour roles */}
+      {importWizard && (
+        <div className="modal-overlay" onClick={() => setImportWizard(null)}>
+          <div className="modal" style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>👥 Import Resources from Award</h3>
+              <button className="btn btn-sm" onClick={() => setImportWizard(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '14px' }}>
+                Vendor: <strong style={{ color: '#7c3aed' }}>{importWizard.resp.vendor}</strong> · {importWizard.rows.length} position{importWizard.rows.length !== 1 ? 's' : ''} from RFQ labour roles.
+                Fill in names then click Import. Leave name blank to skip a row.
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg3)' }}>
+                      <th style={{ padding: '7px 8px', width: '32px', textAlign: 'center' }}>
+                        <input type="checkbox" checked={importWizard.rows.every(r => r.include)}
+                          onChange={e => setImportWizard(w => w ? { ...w, rows: w.rows.map(r => ({ ...r, include: e.target.checked })) } : w)}
+                          style={{ accentColor: '#7c3aed' }} />
+                      </th>
+                      <th style={{ padding: '7px 8px', textAlign: 'left' }}>Role / Name</th>
+                      <th style={{ padding: '7px 8px', textAlign: 'left', width: '120px' }}>Mob In</th>
+                      <th style={{ padding: '7px 8px', textAlign: 'left', width: '120px' }}>Mob Out</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importWizard.rows.map((row, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)', opacity: row.include ? 1 : 0.4 }}>
+                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                          <input type="checkbox" checked={row.include} style={{ accentColor: '#7c3aed' }}
+                            onChange={e => setImportWizard(w => w ? { ...w, rows: w.rows.map((r, j) => j === i ? { ...r, include: e.target.checked } : r) } : w)} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#7c3aed', marginBottom: '3px' }}>{row.role || '—'}</div>
+                          <input className="input" placeholder="Full name" value={row.name}
+                            onChange={e => setImportWizard(w => w ? { ...w, rows: w.rows.map((r, j) => j === i ? { ...r, name: e.target.value } : r) } : w)}
+                            style={{ fontSize: '12px', padding: '4px 8px' }} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="date" className="input" value={row.mob_in}
+                            onChange={e => setImportWizard(w => w ? { ...w, rows: w.rows.map((r, j) => j === i ? { ...r, mob_in: e.target.value } : r) } : w)}
+                            style={{ fontSize: '11px', padding: '4px 6px' }} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="date" className="input" value={row.mob_out}
+                            onChange={e => setImportWizard(w => w ? { ...w, rows: w.rows.map((r, j) => j === i ? { ...r, mob_out: e.target.value } : r) } : w)}
+                            style={{ fontSize: '11px', padding: '4px 6px' }} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '10px' }}>
+                Resources will be added as <strong>Subcontractor</strong> type with company set to <strong>{importWizard.resp.vendor}</strong>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setImportWizard(null)}>Skip</button>
+              <button className="btn btn-primary" style={{ background: '#7c3aed' }} onClick={execImportResources} disabled={importSaving}>
+                {importSaving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null}
+                Import Selected
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

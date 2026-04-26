@@ -15,7 +15,7 @@ type HireForm = {
   daily_rate: number; weekly_rate: number; charge_unit: string
   currency: string; transport_in: number; transport_out: number
   standby_rate: number; qty: number
-  linked_po_id: string; notes: string
+  linked_po_id: string; notes: string; wbs: string
   // Wet hire specific
   rate_ds: number; rate_ns: number; rate_wds: number; rate_wns: number
   rate_sdd: number; rate_sdn: number; daa_rate: number
@@ -29,7 +29,7 @@ const EMPTY: HireForm = {
   start_date: '', end_date: '',
   hire_cost: 0, customer_total: 0, gm_pct: 15, daily_rate: 0, weekly_rate: 0, charge_unit: 'daily',
   currency: 'AUD', transport_in: 0, transport_out: 0, standby_rate: 0, qty: 1,
-  linked_po_id: '', notes: '',
+  linked_po_id: '', notes: '', wbs: '',
   rate_ds: 0, rate_ns: 0, rate_wds: 0, rate_wns: 0, rate_sdd: 0, rate_sdn: 0, daa_rate: 0,
   crew: [], active_days: null,
 }
@@ -98,7 +98,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       charge_unit: hi.charge_unit || 'daily',
       currency: h.currency, transport_in: hi.transport_in || 0, transport_out: hi.transport_out || 0,
       standby_rate: hi.standby_rate || 0, qty: hi.qty || 1,
-      linked_po_id: h.linked_po_id || '', notes: h.notes,
+      linked_po_id: h.linked_po_id || '', notes: h.notes || '', wbs: (h as HireItem & {wbs?:string}).wbs || '',
       // Wet hire rates
       rate_ds: hi.rates?.ds || 0, rate_ns: hi.rates?.ns || 0,
       rate_wds: hi.rates?.wds || 0, rate_wns: hi.rates?.wns || 0,
@@ -113,6 +113,22 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   function setFormAndCalc(updater: (f: HireForm) => HireForm) {
     setForm(prev => {
       const next = updater(prev)
+      if (hireType === 'local') {
+        // Local hire uses usage/standby split — calc inline
+        const d = daysBetween(next.start_date, next.end_date)
+        if (d > 0 && next.daily_rate) {
+          const qty = next.qty || 1
+          const activeDays = next.active_days !== null && next.standby_rate > 0
+            ? Math.min(next.active_days ?? d, d) : d
+          const standbyDays = next.standby_rate > 0 ? d - activeDays : 0
+          const unit = next.charge_unit
+          const ap = unit === 'weekly' ? Math.ceil(activeDays / 7) : activeDays
+          const sp = unit === 'weekly' ? Math.ceil(standbyDays / 7) : standbyDays
+          const cost = (next.daily_rate * ap + (next.standby_rate || 0) * sp) * qty + (next.transport_in || 0) + (next.transport_out || 0)
+          return { ...next, hire_cost: cost, customer_total: calcCustomerPrice(cost, next.gm_pct) }
+        }
+        return next
+      }
       const auto = autoCalcHireCost(next)
       if (auto !== null) {
         return { ...next, hire_cost: auto, customer_total: calcCustomerPrice(auto, next.gm_pct) }
@@ -130,17 +146,18 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
     setSaving(true)
     const payload = {
       project_id: activeProject!.id, hire_type: hireType,
-      name: form.name.trim(), vendor: form.vendor, description: form.description,
+      name: form.name.trim(), vendor: form.vendor || null, description: form.description || null,
       start_date: form.start_date || null, end_date: form.end_date || null,
-      hire_cost: form.hire_cost, customer_total: form.customer_total, gm_pct: form.gm_pct,
+      hire_cost: form.hire_cost || 0, customer_total: form.customer_total || 0, gm_pct: form.gm_pct || 0,
       daily_rate: form.daily_rate || null, weekly_rate: form.weekly_rate || null,
-      charge_unit: form.charge_unit, qty: form.qty || 1,
-      currency: form.currency, transport_in: form.transport_in, transport_out: form.transport_out,
+      charge_unit: form.charge_unit || 'daily', qty: form.qty || 1,
+      currency: form.currency || 'AUD', transport_in: form.transport_in || 0, transport_out: form.transport_out || 0,
       standby_rate: form.standby_rate || null,
-      linked_po_id: form.linked_po_id || null, notes: form.notes,
+      wbs: form.wbs || null,
+      linked_po_id: form.linked_po_id || null, notes: form.notes || null,
       // Wet hire specific
       rates: hireType === 'wet' ? { ds: form.rate_ds, ns: form.rate_ns, wds: form.rate_wds, wns: form.rate_wns, sdd: form.rate_sdd, sdn: form.rate_sdn } : null,
-      daa_rate: hireType === 'wet' ? form.daa_rate : null,
+      daa_rate: hireType === 'wet' ? (form.daa_rate || null) : null,
       crew: hireType === 'wet' ? form.crew : null,
       // Local hire specific
       active_days: hireType === 'local' ? (form.active_days ?? null) : null,
@@ -514,8 +531,8 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                 </div>
               </div>
 
-              {/* Auto-calculated preview */}
-              {autoCost !== null && days > 0 && (
+              {/* Auto-calculated preview — dry hire only */}
+              {hireType === 'dry' && autoCost !== null && days > 0 && (
                 <div style={{ padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', marginBottom: '10px' }}>
                   <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 600, marginBottom: '6px' }}>📐 Auto-calculated from rates & dates</div>
                   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
@@ -631,8 +648,22 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               </div>
               <div className="modal-body">
                 {/* Pattern shortcuts */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', alignItems: 'center' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text3)', alignSelf: 'center' }}>Apply pattern:</span>
+                  {/* Saved project patterns */}
+                  {((activeProject as typeof activeProject & { shift_patterns?: {name:string;days:Record<number,Record<string,boolean>>}[] })?.shift_patterns as unknown as {name:string;days:Record<number,Record<string,boolean>>}[] || []).map((p, pi) => (
+                    <button key={`saved-${pi}`} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--mod-hire,#f97316)', color: '#fff', border: 'none' }} onClick={() => {
+                      const d: typeof calendarData = {}
+                      dates.forEach(dt => {
+                        const dow = dt.getDay()
+                        const ds = dt.toISOString().slice(0,10)
+                        const dayShifts = p.days?.[dow] || {}
+                        if (Object.values(dayShifts).some(Boolean)) d[ds] = { ...dayShifts } as Record<string,boolean>
+                      })
+                      setCalendarData(d)
+                    }}>{p.name}</button>
+                  ))}
+                  {/* Built-in presets */}
                   {[
                     { label: 'Standard (DS weekdays)', fn: () => { const d: typeof calendarData = {}; dates.forEach(dt => { const dow = dt.getDay(); const ds = dt.toISOString().slice(0,10); if (dow>0&&dow<6) d[ds]={ds:true,ns:false,wds:false,wns:false,sdd:false,sdn:false}; else if(dow===6) d[ds]={ds:false,ns:false,wds:true,wns:false,sdd:false,sdn:false} }); setCalendarData(d) }},
                     { label: 'DS Only', fn: () => { const d: typeof calendarData = {}; dates.forEach(dt => { const dow=dt.getDay(); const ds=dt.toISOString().slice(0,10); d[ds]={ds:dow>0&&dow<6,ns:false,wds:dow===6,wns:false,sdd:false,sdn:false} }); setCalendarData(d) }},

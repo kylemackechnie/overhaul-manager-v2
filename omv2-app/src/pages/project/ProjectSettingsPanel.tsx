@@ -27,6 +27,78 @@ export function ProjectSettingsPanel() {
   const [saving, setSaving] = useState(false)
   const [sites, setSites] = useState<{id:string,name:string}[]>([])
 
+  // Shift patterns for wet hire calendars (keyed by DOW 0-6)
+  type WetHirePattern = { name: string; days: Record<number, Record<string,boolean>> }
+  const [patterns, setPatterns] = useState<WetHirePattern[]>([])
+  const [patternModal, setPatternModal] = useState<null | { idx: number | null; name: string; days: Record<number,Record<string,boolean>> }>(null)
+
+  const SHIFT_KEYS = ['ds','ns','wds','wns','sdd','sdn'] as const
+  type ShiftKey = typeof SHIFT_KEYS[number]
+  const SHIFT_LABELS: Record<ShiftKey,string> = { ds:'Day Shift',ns:'Night Shift',wds:'Wknd Day',wns:'Wknd Night',sdd:'Stdwn DS',sdn:'Stdwn NS' }
+  const SHIFT_COLORS: Record<ShiftKey,string> = { ds:'var(--accent)',ns:'#8b5cf6',wds:'var(--orange)',wns:'var(--red)',sdd:'#92400e',sdn:'#6b4c1e' }
+  const DOW = [0,1,2,3,4,5,6]
+  const DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
+  function emptyDays(): Record<number,Record<string,boolean>> {
+    return Object.fromEntries(DOW.map(d => [d, {}]))
+  }
+
+  function openNewPattern() {
+    setPatternModal({ idx: null, name: '', days: emptyDays() })
+  }
+
+  function openEditPattern(idx: number) {
+    const p = patterns[idx]
+    setPatternModal({ idx, name: p.name, days: JSON.parse(JSON.stringify(p.days)) })
+  }
+
+  function quickFill(preset: 'standard'|'dayonly'|'nightonly'|'clear') {
+    if (!patternModal) return
+    const configs: Record<string, Record<number, Partial<Record<ShiftKey,boolean>>>> = {
+      standard: { 1:{ds:true,ns:true},2:{ds:true,ns:true},3:{ds:true,ns:true},4:{ds:true,ns:true},5:{ds:true,ns:true},6:{wds:true,sdn:true},0:{wns:true,sdd:true} },
+      dayonly:  { 1:{ds:true},2:{ds:true},3:{ds:true},4:{ds:true},5:{ds:true},6:{wds:true} },
+      nightonly:{ 0:{wns:true},1:{ns:true},2:{ns:true},3:{ns:true},4:{ns:true},5:{ns:true},6:{sdn:true} },
+      clear:    {},
+    }
+    const cfg = configs[preset] || {}
+    const days: Record<number,Record<string,boolean>> = {}
+    DOW.forEach(d => { days[d] = {}; SHIFT_KEYS.forEach(k => { if (cfg[d]?.[k]) days[d][k] = true }) })
+    setPatternModal(m => m ? { ...m, days } : m)
+  }
+
+  function togglePatternShift(dow: number, key: ShiftKey, checked: boolean) {
+    setPatternModal(m => {
+      if (!m) return m
+      const days = JSON.parse(JSON.stringify(m.days))
+      if (!days[dow]) days[dow] = {}
+      if (checked) days[dow][key] = true; else delete days[dow][key]
+      return { ...m, days }
+    })
+  }
+
+  async function savePattern() {
+    if (!patternModal || !activeProject) return
+    if (!patternModal.name.trim()) { toast('Pattern name required','error'); return }
+    const newPatterns = [...patterns]
+    const pattern: WetHirePattern = { name: patternModal.name.trim(), days: patternModal.days }
+    if (patternModal.idx !== null) newPatterns[patternModal.idx] = pattern
+    else newPatterns.push(pattern)
+    const { error } = await supabase.from('projects').update({ shift_patterns: newPatterns }).eq('id', activeProject.id)
+    if (error) { toast(error.message,'error'); return }
+    setPatterns(newPatterns)
+    setPatternModal(null)
+    toast(`Pattern "${pattern.name}" saved`,'success')
+  }
+
+  async function deletePattern(idx: number) {
+    if (!activeProject || !confirm(`Delete "${patterns[idx].name}"?`)) return
+    const newPatterns = patterns.filter((_,i) => i !== idx)
+    const { error } = await supabase.from('projects').update({ shift_patterns: newPatterns }).eq('id', activeProject.id)
+    if (error) { toast(error.message,'error'); return }
+    setPatterns(newPatterns)
+    toast('Pattern deleted','info')
+  }
+
   useEffect(() => {
     if (!activeProject) return
     supabase.from('sites').select('id,name').order('name').then(({data}) => setSites((data||[]) as {id:string,name:string}[]))
@@ -49,6 +121,7 @@ export function ProjectSettingsPanel() {
       std_hours_day: { ...(activeProject.std_hours?.day as Record<string,number> || {}) },
       std_hours_night: { ...(activeProject.std_hours?.night as Record<string,number> || {}) },
     })
+    setPatterns((activeProject.shift_patterns as unknown as WetHirePattern[] || []))
   }, [activeProject?.id])
 
   async function save() {
@@ -280,11 +353,105 @@ export function ProjectSettingsPanel() {
         </div>
       </div>
 
+      {/* ── Wet Hire Shift Patterns ── */}
+      <div className="card" style={{marginBottom:'20px'}}>
+        {section('Wet Hire Shift Patterns')}
+        <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'14px'}}>
+          Define reusable shift patterns here — they appear as preset buttons in every wet hire shift calendar.
+        </p>
+        {patterns.length === 0 ? (
+          <div style={{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}}>No patterns defined yet. Add one below to use as presets in the shift calendar.</div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:'6px',marginBottom:'12px'}}>
+            {patterns.map((p, idx) => (
+              <div key={idx} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 12px',border:'1px solid var(--border)',borderRadius:'6px',background:'var(--bg3)'}}>
+                <div style={{fontWeight:600,fontSize:'13px',minWidth:'160px'}}>{p.name}</div>
+                <div style={{display:'flex',gap:'4px',flex:1,flexWrap:'wrap'}}>
+                  {SHIFT_KEYS.map(k => {
+                    const dayCount = DOW.filter(d => p.days?.[d]?.[k]).length
+                    return dayCount > 0 ? (
+                      <span key={k} style={{fontSize:'10px',padding:'2px 6px',borderRadius:'3px',border:`1px solid ${SHIFT_COLORS[k]}`,color:SHIFT_COLORS[k],fontFamily:'var(--mono)',fontWeight:700}}>
+                        {k.toUpperCase()} {dayCount}d
+                      </span>
+                    ) : null
+                  })}
+                </div>
+                <button className="btn btn-sm" style={{fontSize:'11px'}} onClick={() => openEditPattern(idx)}>Edit</button>
+                <button className="btn btn-sm" style={{fontSize:'11px',color:'var(--red)'}} onClick={() => deletePattern(idx)}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="btn btn-sm" style={{background:'var(--mod-hire,#f97316)',color:'#fff',border:'none'}} onClick={openNewPattern}>+ Add Pattern</button>
+      </div>
+
       <div style={{display:'flex',justifyContent:'flex-end'}}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null} Save Settings
         </button>
       </div>
+
+      {/* Pattern modal */}
+      {patternModal && (
+        <div className="modal-overlay" onClick={() => setPatternModal(null)}>
+          <div className="modal" style={{maxWidth:'620px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>🗓 {patternModal.idx !== null ? 'Edit' : 'New'} Shift Pattern</h3>
+              <button className="btn btn-sm" onClick={() => setPatternModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="fg">
+                <label>Pattern Name *</label>
+                <input className="input" value={patternModal.name} onChange={e => setPatternModal(m => m ? {...m, name: e.target.value} : m)} placeholder="e.g. Standard 12hr, Weekdays DS Only..." autoFocus />
+              </div>
+              <div style={{display:'flex',gap:'6px',marginBottom:'12px',flexWrap:'wrap',alignItems:'center'}}>
+                <span style={{fontSize:'11px',color:'var(--text3)'}}>Quick fill:</span>
+                {(['standard','dayonly','nightonly','clear'] as const).map(p => (
+                  <button key={p} className="btn btn-sm" style={{fontSize:'11px'}} onClick={() => quickFill(p)}>
+                    {p === 'standard' ? 'Standard (DS+NS)' : p === 'dayonly' ? 'Day Only' : p === 'nightonly' ? 'Night Only' : 'Clear All'}
+                  </button>
+                ))}
+              </div>
+              <div style={{overflowX:'auto',border:'1px solid var(--border)',borderRadius:'6px'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                  <thead>
+                    <tr style={{background:'var(--bg3)'}}>
+                      <th style={{padding:'6px 10px',textAlign:'left',fontSize:'11px',color:'var(--text3)'}}>Day</th>
+                      {SHIFT_KEYS.map(k => (
+                        <th key={k} style={{padding:'6px 8px',textAlign:'center',fontSize:'10px',fontFamily:'var(--mono)',color:SHIFT_COLORS[k],whiteSpace:'nowrap'}}>
+                          {SHIFT_LABELS[k].split(' ')[0]}<br/>{SHIFT_LABELS[k].split(' ')[1]||''}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DOW.map(d => {
+                      const isWknd = d === 0 || d === 6
+                      return (
+                        <tr key={d} style={{borderTop:'1px solid var(--border)',background:isWknd?'rgba(234,179,8,0.04)':'transparent'}}>
+                          <td style={{padding:'6px 10px',fontFamily:'var(--mono)',fontSize:'12px',fontWeight:isWknd?600:400,color:d===0?'var(--red)':isWknd?'var(--amber)':'var(--text2)'}}>
+                            {DOW_LABELS[d]}
+                          </td>
+                          {SHIFT_KEYS.map(k => (
+                            <td key={k} style={{padding:'6px 8px',textAlign:'center'}}>
+                              <input type="checkbox" checked={!!patternModal.days?.[d]?.[k]} style={{accentColor:SHIFT_COLORS[k],width:'15px',height:'15px',cursor:'pointer'}}
+                                onChange={e => togglePatternShift(d, k, e.target.checked)} />
+                            </td>
+                          ))}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setPatternModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={savePattern}>Save Pattern</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
