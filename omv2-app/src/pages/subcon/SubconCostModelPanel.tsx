@@ -789,7 +789,7 @@ function CumulativeChart({ result }: { result: CostModelResult }) {
     return `<text x="${xPos(i)}" y="${H - PAD.bottom + 14}" text-anchor="middle" font-size="9" fill="var(--text3)">${wk.slice(5)}</text>`
   }).join('')
 
-  const vendorPaths = result.vendors.map((v, ci) => {
+  const vendorPaths = result.vendors.map((_v, ci) => {
     const col = COLOURS[ci % COLOURS.length]
     const cumCosts = allCums[ci]
     const pts = cumCosts.map((c, i) => `${xPos(i)},${yPos(c)}`).join(' ')
@@ -838,7 +838,6 @@ function SectionTable({ children, title }: { children: React.ReactNode; title?: 
 function buildPrintHTML(result: CostModelResult, doc: RfqDocument, startDate: string, endDate: string, pattern: string, notes: string, projectName: string): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const labourRoles = doc.labour_rows || []
-  const equipRows   = doc.equip_rows  || []
 
   const vendorCards = result.vendors.map((v, i) => {
     const isBest = i === 0

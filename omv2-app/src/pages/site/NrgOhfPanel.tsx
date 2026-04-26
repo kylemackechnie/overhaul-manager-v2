@@ -6,9 +6,7 @@ import type { NrgTceLine, Resource } from '../../types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface OhfLine extends NrgTceLine {
-  forecast_subtype?: string | null
-}
+type OhfLine = NrgTceLine
 
 const NRG_OHF_TYPES = [
   { value: 'labour',     label: 'Labour Hours'     },
