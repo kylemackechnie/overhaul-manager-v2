@@ -103,20 +103,38 @@ export default function App() {
     const t0 = performance.now()
     const ms = () => `+${Math.round(performance.now() - t0)}ms`
     console.log(`[App] ${ms()} mount — persistedProjectId:`, useAppStore.getState().activeProjectId ?? 'none')
-    // onAuthStateChange fires INITIAL_SESSION on startup — use that as primary signal.
-    // It fires even on refresh with a valid stored session, before getSession() resolves.
-    // We DON'T call getSession() separately — it can hang on cold start.
+
+    // Detect whether a stored session exists. If yes, we should wait for the
+    // token refresh to complete (signalled by INITIAL_SESSION) — no matter how
+    // long it takes — rather than punting to the login page after a fixed timeout.
+    let hasStoredSession = false
+    try {
+      hasStoredSession = !!window.localStorage.getItem('om-v2-auth')
+    } catch { /* localStorage blocked — assume no stored session */ }
+    console.log(`[App] ${ms()} hasStoredSession:`, hasStoredSession)
+
+    // Same pattern as useAuth: ignore SIGNED_IN until INITIAL_SESSION fires,
+    // because the first SIGNED_IN on refresh has a stale (expired) JWT.
+    let initialSessionSeen = false
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      console.log(`[App] ${ms()} auth event:`, event, '| uid:', s?.user?.id ?? 'none')
+      console.log(`[App] ${ms()} auth event:`, event, '| uid:', s?.user?.id ?? 'none', '| initialSeen:', initialSessionSeen)
       if (event === 'INITIAL_SESSION') {
+        initialSessionSeen = true
         setSession(s ?? null)
         if (s) {
           console.log(`[App] ${ms()} INITIAL_SESSION with session — opening picker`)
-          setPickerOpen(true)
+          if (!useAppStore.getState().activeProject) setPickerOpen(true)
         }
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      } else if (event === 'SIGNED_IN') {
+        if (!initialSessionSeen) {
+          console.log(`[App] ${ms()} ignoring stale SIGNED_IN (waiting for INITIAL_SESSION)`)
+          return
+        }
         setSession(s)
         if (s && !useAppStore.getState().activeProject) setPickerOpen(true)
+      } else if (event === 'TOKEN_REFRESHED') {
+        setSession(s)
       } else if (event === 'SIGNED_OUT') {
         setSession(null)
         setActiveProject(null)
@@ -124,18 +142,26 @@ export default function App() {
       }
     })
 
-    // Fallback: if INITIAL_SESSION hasn't fired after 3s, unblock the UI
-    const fallback = setTimeout(() => {
-      setSession(prev => {
-        if (prev === undefined) {
-          console.warn(`[App] ${ms()} INITIAL_SESSION never fired — showing login`)
-          return null
-        }
-        return prev
-      })
-    }, 3000)
+    // Fallback: only applies when there's NO stored session. If there IS a stored
+    // session, we wait indefinitely for the token refresh — even if it takes 40s.
+    // Showing the login page mid-refresh would force a redundant re-auth.
+    let fallback: ReturnType<typeof setTimeout> | undefined
+    if (!hasStoredSession) {
+      fallback = setTimeout(() => {
+        setSession(prev => {
+          if (prev === undefined) {
+            console.warn(`[App] ${ms()} no stored session and no auth event in 3s — showing login`)
+            return null
+          }
+          return prev
+        })
+      }, 3000)
+    }
 
-    return () => { subscription.unsubscribe(); clearTimeout(fallback) }
+    return () => {
+      subscription.unsubscribe()
+      if (fallback) clearTimeout(fallback)
+    }
   }, [])
 
   // Ctrl+K handler
@@ -149,14 +175,33 @@ export default function App() {
 
   useAuth()
 
+  // Progressive loading message — most refreshes resolve in <2s, but tracking
+  // prevention or slow networks can stretch the auth handshake to 30s+. We
+  // update the message so the user knows the app hasn't frozen.
+  const [loadingPhase, setLoadingPhase] = useState(0)
+  useEffect(() => {
+    if (session !== undefined) return
+    const timers = [
+      setTimeout(() => setLoadingPhase(1), 3000),
+      setTimeout(() => setLoadingPhase(2), 10000),
+    ]
+    return () => timers.forEach(clearTimeout)
+  }, [session])
+
   // Only block render if session is truly unknown (first frame)
-  // If we have a persisted project, show a minimal loading state rather than blank
   if (session === undefined) {
     const hasPersistedProject = !!useAppStore.getState().activeProjectId
+    const messages = hasPersistedProject
+      ? ['Resuming session...', 'Refreshing authentication...', 'Still working — this can take up to 30 seconds on a slow network']
+      : ['', 'Connecting...', 'Connection slow — please wait']
     return (
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:'12px' }}>
         <span className="spinner" style={{ width:'32px', height:'32px' }} />
-        {hasPersistedProject && <span style={{ fontSize:'13px', color:'var(--text3)' }}>Resuming session...</span>}
+        {messages[loadingPhase] && (
+          <span style={{ fontSize:'13px', color:'var(--text3)', maxWidth:'320px', textAlign:'center' }}>
+            {messages[loadingPhase]}
+          </span>
+        )}
       </div>
     )
   }

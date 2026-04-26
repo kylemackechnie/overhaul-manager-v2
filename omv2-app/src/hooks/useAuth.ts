@@ -11,29 +11,55 @@ export function useAuth() {
     const ms = () => `+${Math.round(performance.now() - t0)}ms`
     console.log(`[useAuth] ${ms()} effect mounted`)
 
-    // NO getSession() call — it serializes through the same internal auth lock as the
-    // token refresh that runs on cold start, causing all concurrent auth calls to hang
-    // for 5+ seconds. The auth listener below covers both fresh signins (SIGNED_IN)
-    // and page refreshes with stored sessions (INITIAL_SESSION) — that's all we need.
+    // CRITICAL: On refresh, Supabase fires SIGNED_IN almost immediately with a
+    // STALE session whose JWT is expired. PostgREST queries against that JWT will
+    // hang on the auth lock until the token refresh completes (which can take
+    // 30+ seconds on slow networks or when storage was cleared by tracking
+    // prevention). The ONLY events that signal a usable JWT are:
+    //   - INITIAL_SESSION (fires on refresh AFTER token refresh completes)
+    //   - TOKEN_REFRESHED (fires when an active session refreshes its token)
+    //   - SIGNED_IN with no prior INITIAL_SESSION (fresh login from LoginPage)
+    //
+    // We track whether we've seen INITIAL_SESSION yet — if not, we ignore the
+    // first SIGNED_IN because it's a stale-token replay. Once INITIAL_SESSION
+    // fires (which means the auth refresh has completed), subsequent SIGNED_IN
+    // events are genuine fresh logins.
+    let initialSessionSeen = false
+    let hasLoaded = false
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[useAuth] ${ms()} auth event:`, event, '| uid:', session?.user?.id ?? 'NONE')
-      if (event === 'SIGNED_IN' && session?.user) {
-        await loadAppUser(session.user.id)
-        // Update last_login (fire-and-forget — don't block on it)
-        supabase
-          .from('app_users')
-          .update({ last_login: new Date().toISOString() })
-          .eq('auth_id', session.user.id)
-          .then(({ error }) => {
-            if (error) console.warn('[useAuth] last_login update failed:', error.message)
-          })
-      } else if (event === 'INITIAL_SESSION' && session?.user) {
-        // Fires on page refresh when a valid session is already in storage
-        await loadAppUser(session.user.id)
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        // Token rolled over — no need to reload app_user, just keep listening
+      console.log(`[useAuth] ${ms()} auth event:`, event, '| uid:', session?.user?.id ?? 'NONE', '| initialSeen:', initialSessionSeen, '| hasLoaded:', hasLoaded)
+
+      if (event === 'INITIAL_SESSION') {
+        initialSessionSeen = true
+        if (session?.user && !hasLoaded) {
+          hasLoaded = true
+          await loadAppUser(session.user.id)
+        }
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        if (!initialSessionSeen) {
+          // Stale-token replay during cold-start refresh — ignore it.
+          // The real INITIAL_SESSION event will fire after the token refresh
+          // completes and we'll load app_user from there.
+          console.log(`[useAuth] ${ms()} ignoring stale SIGNED_IN (waiting for INITIAL_SESSION)`)
+          return
+        }
+        if (!hasLoaded) {
+          hasLoaded = true
+          await loadAppUser(session.user.id)
+          // Update last_login (fire-and-forget)
+          supabase
+            .from('app_users')
+            .update({ last_login: new Date().toISOString() })
+            .eq('auth_id', session.user.id)
+            .then(({ error }) => {
+              if (error) console.warn('[useAuth] last_login update failed:', error.message)
+            })
+        }
+      } else if (event === 'TOKEN_REFRESHED') {
+        // No-op — token rolled, currentUser already loaded
       } else if (event === 'SIGNED_OUT') {
+        hasLoaded = false
         setCurrentUser(null)
       }
     })
@@ -41,16 +67,14 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadAppUser(authId: string, attempt = 1) {
+  async function loadAppUser(authId: string) {
     const t0 = performance.now()
     const ms = () => `+${Math.round(performance.now() - t0)}ms`
-    console.log(`[useAuth] ${ms()} loadAppUser(${authId.slice(0, 8)}...) called (attempt ${attempt})`)
-    // Use a tighter timeout on early attempts — if the JWT isn't ready, the query
-    // will hang waiting on the auth lock, and we want to retry quickly rather than
-    // spend 8s on a doomed first attempt.
-    const timeoutMs = attempt === 1 ? 2000 : 8000
+    console.log(`[useAuth] ${ms()} loadAppUser(${authId.slice(0, 8)}...) called`)
+    // No retry needed — we only call this AFTER INITIAL_SESSION fires, which
+    // means the auth refresh has completed and the JWT is valid.
     const queryTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`loadAppUser query hung for ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs)
+      setTimeout(() => reject(new Error('loadAppUser query hung for 8s')), 8000)
     )
     try {
       const result = await Promise.race([
@@ -85,16 +109,7 @@ export function useAuth() {
       setCurrentUser(data as AppUser)
       console.log(`[useAuth] ${ms()} currentUser set`)
     } catch (e) {
-      console.warn(`[useAuth] ${ms()} loadAppUser attempt ${attempt} failed:`, (e as Error).message)
-      if (attempt < 5) {
-        // Exponential-ish backoff: 500ms, 1s, 2s, 3s — gives the token refresh
-        // time to complete before retrying. Total max wait ~6.5s before giving up.
-        const backoff = attempt === 1 ? 500 : attempt === 2 ? 1000 : attempt === 3 ? 2000 : 3000
-        console.log(`[useAuth] ${ms()} retrying in ${backoff}ms...`)
-        await new Promise(r => setTimeout(r, backoff))
-        return loadAppUser(authId, attempt + 1)
-      }
-      console.error(`[useAuth] ${ms()} loadAppUser exhausted retries`)
+      console.error(`[useAuth] ${ms()} loadAppUser failed:`, (e as Error).message)
     }
   }
 
