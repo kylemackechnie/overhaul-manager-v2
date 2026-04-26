@@ -36,6 +36,11 @@ export function RateCardsPanel() {
   const [form, setForm] = useState<RateForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [catFilter, setCatFilter] = useState('all')
+  const [sched, setSched] = useState({
+    dayBase:0, nightBase:0, shiftAllow:0,
+    multOT1:1.5, multOT2:2.0, multSat:1.5, multSun:2.0,
+    markupMode:'pct' as 'pct'|'fixed'|'none', markupVal:15
+  })
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -48,6 +53,29 @@ export function RateCardsPanel() {
   }
 
   function openNew() { setForm({ ...EMPTY_FORM, rates: { cost: emptyRates(), sell: emptyRates() } }); setModal('new') }
+
+  function applySchedule() {
+    const { dayBase, nightBase, shiftAllow, multOT1, multOT2, multSat, multSun, markupMode, markupVal } = sched
+    if (!dayBase) return
+    const nb = nightBase || dayBase
+    const cost = {
+      dnt: +dayBase.toFixed(2),
+      dt15: +(dayBase * multOT1).toFixed(2),
+      ddt: +(dayBase * multOT2).toFixed(2),
+      ddt15: +(dayBase * multSun).toFixed(2),
+      nnt: +(nb + shiftAllow).toFixed(2),
+      ndt: +((nb + shiftAllow) * multSat).toFixed(2),
+      ndt15: +((nb + shiftAllow) * multSun).toFixed(2),
+    }
+    function applySell(c: number) {
+      if (markupMode === 'none') return c
+      if (markupMode === 'fixed') return +(c + markupVal).toFixed(2)
+      const gm = Math.min(markupVal, 99) / 100
+      return gm > 0 ? +(c / (1 - gm)).toFixed(2) : c
+    }
+    const sell = Object.fromEntries(Object.entries(cost).map(([k,v]) => [k, applySell(v)])) as typeof cost
+    setForm(f => ({ ...f, rates: { cost, sell } }))
+  }
 
   function openEdit(rc: RateCard) {
     const cost = { ...emptyRates(), ...(rc.rates?.cost as Record<string,number> || {}) }
@@ -231,36 +259,7 @@ export function RateCardsPanel() {
                   <span style={{fontSize:'10px',fontWeight:400,color:'var(--text3)'}}>Enter base rate → fill all 7 buckets</span>
                 </summary>
                 <div style={{padding:'12px',background:'var(--bg2)'}}>
-                  {(() => {
-                    const [sched, setSched] = useState({
-                      dayBase:0, nightBase:0, shiftAllow:0,
-                      multOT1:1.5, multOT2:2.0, multSat:1.5, multSun:2.0,
-                      markupMode:'pct' as 'pct'|'fixed'|'none', markupVal:15
-                    })
-                    function applySchedule() {
-                      const { dayBase, nightBase, shiftAllow, multOT1, multOT2, multSat, multSun, markupMode, markupVal } = sched
-                      if (!dayBase) return
-                      const nb = nightBase || dayBase
-                      const cost = {
-                        dnt: +dayBase.toFixed(2),
-                        dt15: +(dayBase * multOT1).toFixed(2),
-                        ddt: +(dayBase * multOT2).toFixed(2),
-                        ddt15: +(dayBase * multSun).toFixed(2),
-                        nnt: +(nb + shiftAllow).toFixed(2),
-                        ndt: +((nb + shiftAllow) * multSat).toFixed(2),
-                        ndt15: +((nb + shiftAllow) * multSun).toFixed(2),
-                      }
-                      function applySell(c: number) {
-                        if (markupMode === 'none') return c
-                        if (markupMode === 'fixed') return +(c + markupVal).toFixed(2)
-                        const gm = Math.min(markupVal, 99) / 100
-                        return gm > 0 ? +(c / (1 - gm)).toFixed(2) : c
-                      }
-                      const sell = Object.fromEntries(Object.entries(cost).map(([k,v]) => [k, applySell(v)]))
-                      setForm(f => ({ ...f, rates: { cost, sell } }))
-                    }
-                    return (
-                      <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                  <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
                         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px'}}>
                           <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Day Base ($/hr)</label><input type="number" className="input" placeholder="e.g. 58.50" min={0} step={0.5} value={sched.dayBase||''} onChange={e=>setSched(s=>({...s,dayBase:parseFloat(e.target.value)||0}))} /></div>
                           <div className="fg" style={{margin:0}}><label style={{fontSize:'10px'}}>Night Base ($/hr)</label><input type="number" className="input" placeholder="Same as day if blank" min={0} step={0.5} value={sched.nightBase||''} onChange={e=>setSched(s=>({...s,nightBase:parseFloat(e.target.value)||0}))} /></div>
@@ -283,8 +282,6 @@ export function RateCardsPanel() {
                           ⚡ Apply — fill all 7 buckets
                         </button>
                       </div>
-                    )
-                  })()}
                 </div>
               </details>
 

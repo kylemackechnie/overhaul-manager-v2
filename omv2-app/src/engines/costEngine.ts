@@ -663,7 +663,7 @@ export function nrgLineActual(
         // Use proper split to account for overtime, nights, weekends
         const dayType = fcDayType(date, [])
         const split = splitHours(match.hours, dayType, day.shiftType as 'day' | 'night', ts.regime as 'lt12' | 'ge12', rc.regime)
-        total += calcHoursCost(split, rc, 'cost')
+        total += calcHoursCost(split, rc, 'sell')
       }
     }
   }
