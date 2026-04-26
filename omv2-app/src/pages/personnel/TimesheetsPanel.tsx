@@ -244,6 +244,19 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
   if (win) { win.document.write(html); win.document.close() }
 }
 
+// Spec shape for nrgWoAllocations[] entries in day cells
+// These three shapes coexist in the same array:
+// 1. TasTK-imported: { wo, hours } — no _tceMode, no tceItemId — NEVER overwrite
+// 2. Manual WO-keyed: { wo, tceItemId:null, _tceMode:true, hours, label } — skilled labour by WO
+// 3. Manual item-keyed: { wo:'', tceItemId, _tceMode:true, hours, label } — overheads or skilled no-WO
+interface NrgWoAlloc {
+  wo: string
+  tceItemId: string | null
+  _tceMode?: true
+  hours: number
+  label?: string
+}
+
 export function TimesheetsPanel({ type }: { type: TsType }) {
   const { activeProject } = useAppStore()
   const [sheets, setSheets] = useState<WeeklyTimesheet[]>([])
@@ -284,10 +297,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     if (activeProject) {
       supabase.from('work_orders').select('id,wo_number,description').eq('project_id', activeProject.id).neq('status','cancelled').order('wo_number')
         .then(r => setWorkOrders((r.data||[]) as {id:string;wo_number:string;description:string}[]))
-      if (activeProject.scope_tracking === 'nrg_tce') {
-        supabase.from('nrg_tce_lines').select('item_id,description,work_order,source').eq('project_id', activeProject.id).order('item_id')
-          .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string}[]))
-      }
+      // Always load TCE lines when project has them — needed for allocation modal regardless of scope_tracking
+      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source').eq('project_id', activeProject.id).order('item_id')
+        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string}[]))
     }
   }, [activeProject?.id])
 
@@ -468,8 +480,19 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
   function openTceAlloc(personId: string, date: string, hours: number, name: string) {
     const member = activeWeek?.crew.find(m => m.personId === personId)
-    const existing = ((member?.days?.[date] as Record<string,unknown>)?.nrgWoAllocations as {key:string;label:string;hours:number}[]) || []
-    setTceAllocRows(existing.length ? [...existing] : [])
+    const allAllocs = ((member?.days?.[date] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[]) || []
+    // Only show TCE-mode rows in the editor — preserve TasTK rows on save
+    // TCE-mode rows have _tceMode=true or tceItemId set
+    const tceRows = allAllocs
+      .filter(a => a._tceMode || a.tceItemId)
+      .map(a => ({
+        key: a.tceItemId ? `tce:${a.tceItemId}` : `wo:${a.wo}`,
+        label: a.label || (a.tceItemId ? a.tceItemId : a.wo) || '',
+        hours: a.hours,
+        wo: a.wo || '',
+        tceItemId: a.tceItemId || null,
+      }))
+    setTceAllocRows(tceRows.length ? tceRows : [])
     setTceAllocModal({ personId, date, hours, name })
   }
 
@@ -479,30 +502,59 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     if (total > tceAllocModal.hours + 0.01) { toast(`Total exceeds shift hours`, 'error'); return }
     const updated = activeWeek.crew.map(m => {
       if (m.personId !== tceAllocModal.personId) return m
-      const existing: Record<string, unknown> = (m.days?.[tceAllocModal.date] as Record<string,unknown>) || {}
-      return { ...m, days: { ...m.days, [tceAllocModal.date]: { ...existing, nrgWoAllocations: tceAllocRows.filter(r=>r.hours>0) } as unknown as DayEntry } }
+      const allAllocs = ((m.days?.[tceAllocModal.date] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[]) || []
+      // Preserve TasTK-imported rows (no _tceMode, no tceItemId) — spec: never overwrite these
+      const preserved = allAllocs.filter(a => !a._tceMode && !a.tceItemId)
+      // Convert editor rows to correct spec shape
+      const tceFinal: NrgWoAlloc[] = tceAllocRows.filter(r => r.hours > 0 && r.key).map(r => {
+        if (r.key.startsWith('wo:')) {
+          const wo = r.key.slice(3)
+          return { wo, tceItemId: null, _tceMode: true as const, hours: r.hours, label: r.label }
+        } else {
+          const tceItemId = r.key.startsWith('tce:') ? r.key.slice(4) : r.key
+          return { wo: '', tceItemId, _tceMode: true as const, hours: r.hours, label: r.label }
+        }
+      })
+      const dayEntry = (m.days?.[tceAllocModal.date] as Record<string,unknown>) || {}
+      return { ...m, days: { ...m.days, [tceAllocModal.date]: { ...dayEntry, nrgWoAllocations: [...preserved, ...tceFinal] } as unknown as DayEntry } }
     })
     setActiveWeek({ ...activeWeek, crew: updated })
     setTceAllocModal(null)
     toast('TCE allocations saved', 'success')
   }
 
-  // Build TCE dropdown options grouped by WO (mirrors HTML _getNrgTceAllocOptions)
+  // Three-tier dropdown per spec _getNrgTceAllocOptions():
+  // Tier 1: [WO] Skilled labour grouped by Work Order (345 scopes → ~207 WO entries)
+  // Tier 2: [SL] Skilled labour without a Work Order (direct item_id allocation)
+  // Tier 3: [OH] Overhead lines (per item_id)
+  // Must read tceLines live — do NOT memoize (edits in TCE register must reflect immediately)
   function getTceOptions(): {key:string; label:string}[] {
+    const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
     const opts: {key:string;label:string}[] = []
-    // Work orders with TCE lines
-    const byWo: Record<string, typeof tceLines> = {}
-    tceLines.filter(l => l.work_order).forEach(l => {
-      if (!byWo[l.work_order!]) byWo[l.work_order!] = []
-      byWo[l.work_order!].push(l)
+
+    // Tier 1: Skilled labour with WO — grouped by WO
+    const skilledWithWo = tceLines.filter(l => l.source === 'skilled' && l.work_order && !isGroupHeader(l.item_id))
+    const byWo: Record<string, typeof skilledWithWo> = {}
+    skilledWithWo.forEach(l => {
+      const wo = l.work_order!
+      if (!byWo[wo]) byWo[wo] = []
+      byWo[wo].push(l)
     })
-    Object.entries(byWo).sort((a, b) => a[0].localeCompare(b[0], undefined, {numeric:true})).forEach(([wo, ls]) => {
-      opts.push({ key: `wo:${wo}`, label: `WO ${wo} — ${ls[0]?.description?.slice(0,45) || ''}${ls.length > 1 ? ` (+${ls.length-1})` : ''}` })
+    Object.entries(byWo).sort((a,b) => a[0].localeCompare(b[0], undefined, {numeric:true})).forEach(([wo, ls]) => {
+      const extra = ls.length > 1 ? ` (+${ls.length-1} scopes)` : ''
+      opts.push({ key: `wo:${wo}`, label: `[WO] ${wo} — ${ls[0]?.description?.slice(0,40)||''}${extra}` })
     })
-    // Overhead / direct lines without WO
-    tceLines.filter(l => !l.work_order && l.description).forEach(l => {
-      opts.push({ key: `tce:${l.item_id}`, label: `${l.item_id} — ${l.description?.slice(0,50) || ''}` })
+
+    // Tier 2: Skilled labour WITHOUT a Work Order (fallback, direct item_id)
+    tceLines.filter(l => l.source === 'skilled' && !l.work_order && !isGroupHeader(l.item_id)).forEach(l => {
+      opts.push({ key: `tce:${l.item_id}`, label: `[SL] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
     })
+
+    // Tier 3: Overhead lines (not WO-tracked, allocate by item_id)
+    tceLines.filter(l => l.source === 'overhead' && !isGroupHeader(l.item_id)).forEach(l => {
+      opts.push({ key: `tce:${l.item_id}`, label: `[OH] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
+    })
+
     return opts
   }
 
@@ -1062,14 +1114,15 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       {/* TCE Scope Allocation Modal */}
       {tceAllocModal && (
         <div className="modal-overlay" onClick={() => setTceAllocModal(null)}>
-          <div className="modal" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>🎯 TCE Scopes — {tceAllocModal.name} ({tceAllocModal.date})</h3>
+              <h3>🎯 TCE Scopes — {tceAllocModal.name}</h3>
               <button className="btn btn-sm" onClick={() => setTceAllocModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
-                Shift: <strong style={{ fontFamily: 'var(--mono)' }}>{tceAllocModal.hours}h</strong>. Allocate to TCE scopes or Work Orders.
+                {tceAllocModal.date} · Shift: <strong style={{ fontFamily: 'var(--mono)' }}>{tceAllocModal.hours}h</strong>
+                {tceLines.length === 0 && <span style={{ color: 'var(--amber)', marginLeft: '8px' }}>⚠ No TCE lines — import a TCE file first</span>}
               </p>
               {tceAllocRows.map((r, i) => (
                 <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
@@ -1078,36 +1131,83 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       const opt = getTceOptions().find(o => o.key === e.target.value)
                       setTceAllocRows(rows => rows.map((x, j) => j === i ? { ...x, key: e.target.value, label: opt?.label || '' } : x))
                     }}>
-                    <option value="">Select scope...</option>
-                    {getTceOptions().map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    <option value="">— Select scope —</option>
+                    {getTceOptions().filter(o => o.key.startsWith('wo:')).length > 0 && (
+                      <optgroup label="Work Orders (Skilled Labour)">
+                        {getTceOptions().filter(o => o.key.startsWith('wo:')).map(o => (
+                          <option key={o.key} value={o.key}>{o.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {getTceOptions().filter(o => o.label.startsWith('[SL]')).length > 0 && (
+                      <optgroup label="Skilled Labour (no WO)">
+                        {getTceOptions().filter(o => o.label.startsWith('[SL]')).map(o => (
+                          <option key={o.key} value={o.key}>{o.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {getTceOptions().filter(o => o.label.startsWith('[OH]')).length > 0 && (
+                      <optgroup label="Overheads">
+                        {getTceOptions().filter(o => o.label.startsWith('[OH]')).map(o => (
+                          <option key={o.key} value={o.key}>{o.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
-                  <input type="number" className="input" style={{ width: '68px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '13px' }}
+                  <input type="number" className="input"
+                    style={{ width: '72px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 700 }}
                     value={r.hours || ''} min={0} max={tceAllocModal.hours} step={0.5} placeholder="h"
                     onChange={e => setTceAllocRows(rows => rows.map((x, j) => j === i ? { ...x, hours: parseFloat(e.target.value) || 0 } : x))} />
-                  <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => setTceAllocRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
+                  <button className="btn btn-sm" style={{ color: 'var(--red)', flexShrink: 0 }}
+                    onClick={() => setTceAllocRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
-              <button className="btn btn-sm" style={{ marginBottom: '12px' }} onClick={() => setTceAllocRows(rows => [...rows, { key: '', label: '', hours: 0 }])}>+ Add Scope</button>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <button className="btn btn-sm" onClick={() => setTceAllocRows(rows => [...rows, { key: '', label: '', hours: 0 }])}>+ Add Scope</button>
+                {(() => {
+                  const allocated = tceAllocRows.reduce((s,r) => s+(r.hours||0), 0)
+                  const remaining = parseFloat((tceAllocModal.hours - allocated).toFixed(2))
+                  return remaining > 0.01 && tceAllocRows.length > 0 ? (
+                    <button className="btn btn-sm" style={{ color: 'var(--accent)' }}
+                      onClick={() => setTceAllocRows(rows => rows.map((r,i) => i===rows.length-1 ? {...r, hours: parseFloat((r.hours+remaining).toFixed(2))} : r))}>
+                      ↑ Fill {remaining}h to last line
+                    </button>
+                  ) : null
+                })()}
+              </div>
               {(() => {
                 const total = tceAllocRows.reduce((s, r) => s + (r.hours || 0), 0)
-                const diff = tceAllocModal.hours - total
+                const diff = parseFloat((tceAllocModal.hours - total).toFixed(2))
                 const over = diff < -0.01
                 return (
-                  <div style={{ padding: '8px 12px', background: 'var(--bg3)', borderRadius: '6px', display: 'flex', gap: '16px', fontSize: '12px' }}>
-                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>SHIFT</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{tceAllocModal.hours}h</div></div>
-                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>ALLOCATED</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: '#be185d' }}>{total.toFixed(1)}h</div></div>
-                    <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{over ? 'OVER' : 'REMAINING'}</div>
+                  <div style={{ padding: '10px 14px', background: 'var(--bg3)', borderRadius: '6px', display: 'flex', gap: '20px', fontSize: '12px', border: `1px solid ${over ? 'var(--red)' : 'var(--border)'}` }}>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)', marginBottom: '2px' }}>SHIFT</div>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{tceAllocModal.hours}h</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)', marginBottom: '2px' }}>ALLOCATED</div>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: '#be185d' }}>{total.toFixed(1)}h</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)', marginBottom: '2px' }}>{over ? 'OVER' : 'REMAINING'}</div>
                       <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: over ? 'var(--red)' : diff > 0.01 ? 'var(--amber)' : 'var(--green)' }}>
-                        {over ? `+${Math.abs(diff).toFixed(1)}h` : diff.toFixed(1)+'h'}
+                        {over ? `+${Math.abs(diff).toFixed(1)}h` : `${diff.toFixed(1)}h`}
                       </div>
                     </div>
+                    {!over && diff <= 0.01 && total > 0 && (
+                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                        <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>✓ Fully allocated</span>
+                      </div>
+                    )}
                   </div>
                 )
               })()}
             </div>
             <div className="modal-footer">
+              <button className="btn" style={{ marginRight: 'auto' }} onClick={() => { setTceAllocRows([]); saveTceAlloc() }}>Clear All</button>
               <button className="btn" onClick={() => setTceAllocModal(null)}>Cancel</button>
-              <button className="btn btn-primary" style={{ background: '#be185d' }} onClick={saveTceAlloc}>Save</button>
+              <button className="btn btn-primary" style={{ background: '#be185d' }} onClick={saveTceAlloc}>Save Allocations</button>
             </div>
           </div>
         </div>
