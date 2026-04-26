@@ -236,6 +236,7 @@ export function Ribbon() {
                   { icon: '👥', label: 'User Management', panel: 'user-management' },
                   { icon: '📋', label: 'Audit Trail', panel: 'audit-trail' },
                   { icon: '📑', label: 'Reports Database', panel: 'reports-db' },
+                  { icon: '🔄', label: 'Data Migration', panel: 'migration' },
                 ].map(item => (
                   <button
                     key={item.panel}
