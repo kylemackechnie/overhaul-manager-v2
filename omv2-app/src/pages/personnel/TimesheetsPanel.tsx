@@ -534,6 +534,22 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     })
   }
 
+  // Set multiple day fields atomically (used by FSA/Camp radio buttons)
+  function setDayMulti(personId: string, date: string, fields: Record<string, unknown>) {
+    if (!activeWeek) return
+    setActiveWeek({
+      ...activeWeek,
+      crew: activeWeek.crew.map(m => {
+        if (m.personId !== personId) return m
+        const rawEntry = m.days[date]
+        const existing: DayEntry = rawEntry
+          ? rawEntry as DayEntry
+          : { dayType: autoType(date, holidays), shiftType: 'day' as const, hours: 0, laha: false, meal: false }
+        return { ...m, days: { ...m.days, [date]: { ...existing, ...fields } as DayEntry } }
+      })
+    })
+  }
+
 
   function openTceAlloc(personId: string, date: string, hours: number, name: string) {
     const member = activeWeek?.crew.find(m => m.personId === personId)
@@ -870,16 +886,18 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{member.role || '—'}</div>
                       {!rc && <div style={{ fontSize: '9px', color: 'var(--amber)', marginTop: '2px' }}>⚠ No rate card</div>}
                     </div>
-                    {/* EBA meal break adjustment — +0.5h per worked day, cost & sell only */}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginTop: '2px' }}
-                      title="+0.5h per worked day (EBA meal break adjustment — cost & charge only, payroll unaffected)">
-                      <input type="checkbox" checked={!!member.mealBreakAdj} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }}
-                        onChange={e => {
-                          const updated = { ...member, mealBreakAdj: e.target.checked }
-                          setActiveWeek(w => w ? ({ ...w, crew: w.crew.map(m => m.personId === member.personId ? updated : m) }) : w)
-                        }} />
-                      <span style={{ fontSize: '9px', color: member.mealBreakAdj ? TYPE_COLOR[type] : 'var(--text3)' }}>+½h/day adj.</span>
-                    </label>
+                    {/* EBA Meal Break Adjustment — trades only (+½h per worked day, cost & sell only) */}
+                    {(type === 'trades') && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginTop: '2px' }}
+                        title="+0.5h per worked day (EBA meal break adjustment — cost & charge only, payroll unaffected)">
+                        <input type="checkbox" checked={!!member.mealBreakAdj} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }}
+                          onChange={e => {
+                            const updated = { ...member, mealBreakAdj: e.target.checked }
+                            setActiveWeek(w => w ? ({ ...w, crew: w.crew.map(m => m.personId === member.personId ? updated : m) }) : w)
+                          }} />
+                        <span style={{ fontSize: '9px', color: member.mealBreakAdj ? TYPE_COLOR[type] : 'var(--text3)' }}>+½h/day adj.</span>
+                      </label>
+                    )}
                     <button className="btn btn-sm" style={{ fontSize: '10px', padding: '2px 6px', color: 'var(--red)', alignSelf: 'flex-start' }} onClick={() => removePerson(member.personId)}>✕ Remove</button>
                   </div>
                   {/* Day cells */}
@@ -925,14 +943,46 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                           </div>
                         )}
                         {/* LAHA/Meal always visible — allowances paid every day on site */}
-                        <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px' }}>
-                          <label style={{ cursor: 'pointer', color: laha ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <input type="checkbox" checked={laha} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'laha', e.target.checked)} /> LAHA
-                          </label>
-                          <label style={{ cursor: 'pointer', color: meal ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
-                          </label>
-                        </div>
+                        {(type === 'mgmt' || type === 'seag') ? (
+                          // Management & SE AG: FSA / Camp / None radio (mutually exclusive)
+                          (() => {
+                            const fsa  = (raw.fsa  as boolean) || false
+                            const camp = (raw.camp as boolean) || false
+                            const allowVal = fsa ? 'fsa' : camp ? 'camp' : 'none'
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', marginTop: '2px', fontSize: '9px' }}>
+                                {[
+                                  { val: 'fsa',  label: 'FSA'  },
+                                  { val: 'camp', label: 'Camp' },
+                                  { val: 'none', label: 'None' },
+                                ].map(opt => (
+                                  <label key={opt.val} style={{ cursor: 'pointer', color: allowVal === opt.val && opt.val !== 'none' ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                    <input type="radio" name={`allow_${member.personId}_${d}`} checked={allowVal === opt.val}
+                                      style={{ accentColor: TYPE_COLOR[type], width: '9px', height: '9px' }}
+                                      onChange={() => {
+                                        setDayMulti(member.personId, d, {
+                                          fsa:  opt.val === 'fsa',
+                                          camp: opt.val === 'camp',
+                                          laha: false,
+                                        })
+                                      }} />
+                                    {opt.label}
+                                  </label>
+                                ))}
+                              </div>
+                            )
+                          })()
+                        ) : (
+                          // Trades & Subcon: LAHA + Meal checkboxes
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px' }}>
+                            <label style={{ cursor: 'pointer', color: laha ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="checkbox" checked={laha} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'laha', e.target.checked)} /> LAHA
+                            </label>
+                            <label style={{ cursor: 'pointer', color: meal ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
+                            </label>
+                          </div>
+                        )}
                         {cellHrs > 0 && (
                           <div style={{ display: 'flex', gap: '4px', marginTop: '2px', fontSize: '9px', flexDirection: 'column' }}>
                             {scopeMode === 'work_orders' && workOrders.length > 0 && (() => {
