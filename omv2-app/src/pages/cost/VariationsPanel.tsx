@@ -45,12 +45,15 @@ type LineForm = {
   cost_total: number; sell_total: number
   // Labour-only fields
   role: string; hours: string; day_type: string; shift_type: string
+  allowances: boolean
+  // Breakdown for display
+  breakdown?: { label: string; hrs: number | null; costRate: number; sellRate: number; costAmt: number; sellAmt: number; isAllowance?: boolean; shifts?: number }[]
 }
 
 const mkLine = (): LineForm => ({
   id: Math.random().toString(36).slice(2), category:'other', wbs:'', wbs_name:'',
   description:'', qty:'1', unit:'lump', unit_cost:'', unit_sell:'', cost_total:0, sell_total:0,
-  role:'', hours:'', day_type:'weekday', shift_type:'day',
+  role:'', hours:'', day_type:'weekday', shift_type:'day', allowances:true, breakdown:[],
 })
 
 const EMPTY_FORM = {
@@ -59,33 +62,115 @@ const EMPTY_FORM = {
   notes:'', wo_ref:'', tce_link:'',
 }
 
+// Rate key buckets matching splitHours output
+const BKTS = ['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const
+const BKT_LABELS: Record<string,string> = {
+  dnt:'Normal Time', dt15:'Time & Half', ddt:'Double Time', ddt15:'DT+Half (PH)',
+  nnt:'Night Normal', ndt:'Night DT', ndt15:'Night PH',
+}
+
+function splitHoursVn(
+  totalHrs: number,
+  dayType: string,
+  shiftType: string,
+  regime: 'lt12' | 'ge12',
+  rc: RateCard
+): Record<string, number> {
+  const h = totalHrs
+  const night = shiftType === 'night'
+  const rcfg = (rc.regime || {}) as Record<string, number>
+  const WD_NT   = rcfg.wdNT   ?? 7.2
+  const WD_T15  = rcfg.wdT15  ?? 3.3
+  const SAT_T15 = rcfg.satT15 ?? 3
+  const NIGHT_NT = rcfg.nightNT ?? 7.2
+  const zero = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
+
+  if (dayType === 'public_holiday') return night ? { ...zero, ndt15:h } : { ...zero, ddt15:h }
+  if (dayType === 'rest' || dayType === 'travel') return night ? { ...zero, nnt:h } : { ...zero, dnt:h }
+
+  if (night) {
+    if (dayType === 'saturday' || dayType === 'sunday') return { ...zero, ndt:h }
+    const nt = Math.min(h, NIGHT_NT), ddt = Math.max(0, h - NIGHT_NT)
+    return { ...zero, nnt:nt, ndt:ddt }
+  }
+
+  if (dayType === 'saturday') {
+    if (regime === 'lt12') { const t15 = Math.min(h, SAT_T15), ddt = Math.max(0, h - SAT_T15); return { ...zero, dt15:t15, ddt } }
+    return { ...zero, ddt:h }
+  }
+  if (dayType === 'sunday') return { ...zero, ddt:h }
+
+  // Weekday day
+  if (regime === 'lt12') {
+    const nt = Math.min(h, WD_NT), t15 = Math.min(Math.max(0, h - WD_NT), WD_T15), ddt = Math.max(0, h - WD_NT - WD_T15)
+    return { ...zero, dnt:nt, dt15:t15, ddt }
+  }
+  const nt = Math.min(h, WD_NT), ddt = Math.max(0, h - WD_NT)
+  return { ...zero, dnt:nt, ddt }
+}
+
 function computeLine(l: LineForm, gmPct: number, rateCards: RateCard[]): LineForm {
   if (l.category.startsWith('labour')) {
     const hours = parseFloat(l.hours) || 0
-    // Find matching rate card for this role
     const rc = rateCards.find(r => r.role.toLowerCase() === l.role.toLowerCase())
     if (rc && hours > 0) {
-      const rates = rc.rates as Record<string, number>
-      // Use day normal time rates as base (simplified — full split-hours would require shift logic)
-      const costRate = rates?.cost_dnt || rates?.dnt || parseFloat(l.unit_cost) || 0
-      const sellRate = rates?.sell_dnt || rates?.sell || parseFloat(l.unit_sell) || 0
-      const costTotal = parseFloat((hours * costRate).toFixed(2))
-      const sellTotal = parseFloat((hours * sellRate).toFixed(2))
+      const rates = rc.rates as { cost?: Record<string,number>; sell?: Record<string,number> }
+      const costRates = rates.cost || {}
+      const sellRates = rates.sell || {}
+
+      // Standard shift hours — use 10.5 default (matched to HTML's stdH default)
+      const shHrs = 10.5
+      const regime: 'lt12' | 'ge12' = shHrs >= 12 ? 'ge12' : 'lt12'
+      const fullShifts = Math.floor(hours / shHrs)
+      const rem = +(hours % shHrs).toFixed(2)
+      const nShifts = fullShifts + (rem > 0 ? 1 : 0)
+
+      // Accumulate hour buckets across all shifts
+      const buckets: Record<string, number> = {}
+      const calcShift = (hrs: number) => {
+        const sp = splitHoursVn(hrs, l.day_type || 'weekday', l.shift_type || 'day', regime, rc)
+        for (const b of BKTS) { if (sp[b]) buckets[b] = (buckets[b] || 0) + sp[b] }
+      }
+      for (let s = 0; s < fullShifts; s++) calcShift(shHrs)
+      if (rem > 0) calcShift(rem)
+
+      let labCost = 0, labSell = 0
+      const breakdown: LineForm['breakdown'] = []
+      for (const b of BKTS) {
+        if (buckets[b]) {
+          const cr = costRates[b] || 0, sr = sellRates[b] || 0
+          labCost += buckets[b] * cr; labSell += buckets[b] * sr
+          breakdown!.push({ label: BKT_LABELS[b], hrs: +buckets[b].toFixed(2), costRate: cr, sellRate: sr, costAmt: +(buckets[b]*cr).toFixed(2), sellAmt: +(buckets[b]*sr).toFixed(2) })
+        }
+      }
+
+      // Allowances (LAHA for trades, FSA for management)
+      if (l.allowances !== false) {
+        const isTrades = rc.category === 'trades' || l.category === 'labour_trades'
+        const aC = isTrades ? (Number(rc.laha_cost) || 0) : (Number(rc.fsa_cost) || 0)
+        const aS = isTrades ? (Number(rc.laha_sell) || 0) : (Number(rc.fsa_sell) || 0)
+        if (aC || aS) {
+          labCost += aC * nShifts; labSell += aS * nShifts
+          breakdown!.push({ label: isTrades ? 'LAHA' : 'FSA', hrs: null, costRate: aC, sellRate: aS, costAmt: +(aC*nShifts).toFixed(2), sellAmt: +(aS*nShifts).toFixed(2), isAllowance: true, shifts: nShifts })
+        }
+      }
+
       return {
         ...l,
-        unit_cost: String(costRate),
-        unit_sell: String(sellRate),
-        cost_total: costTotal,
-        sell_total: sellTotal > 0 ? sellTotal : costTotal > 0 ? parseFloat((costTotal / (1 - gmPct/100)).toFixed(2)) : 0,
+        unit_cost: String((costRates.dnt || 0).toFixed(2)),
+        unit_sell: String((sellRates.dnt || 0).toFixed(2)),
+        cost_total: +labCost.toFixed(2),
+        sell_total: +labSell.toFixed(2),
+        breakdown,
       }
     }
-    // No rate card match — use manual cost_total/sell_total from unit_cost/unit_sell fields
+    // No rate card — manual entry
     const uc = parseFloat(l.unit_cost) || 0
     const us = parseFloat(l.unit_sell) || 0
     const cost_total = hours > 0 ? hours * uc : uc
     const sell_total = us > 0 ? (hours > 0 ? hours * us : us)
       : cost_total > 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
-    return { ...l, cost_total, sell_total }
+    return { ...l, cost_total, sell_total, breakdown: [] }
   }
   const qty = parseFloat(l.qty) || 1
   const uc = parseFloat(l.unit_cost) || 0
@@ -239,13 +324,14 @@ export function VariationsPanel() {
           cost_total:l.cost_total, sell_total:l.sell_total,
           role:l.role||'', hours:String(l.hours||''),
           day_type:l.day_type||'weekday', shift_type:l.shift_type||'day',
+          allowances: (l as unknown as LineForm).allowances !== false, breakdown:[],
         }))
       : [mkLine()])
     setActiveTab('details')
     setModal(v)
   }
 
-  function setLineField(idx: number, field: keyof LineForm, value: string) {
+  function setLineField(idx: number, field: keyof LineForm, value: string | boolean) {
     setLines(prev => {
       const updated = prev.map((l,i) => {
         if (i !== idx) return l
@@ -567,9 +653,10 @@ export function VariationsPanel() {
                         <th style={{padding:'6px 8px',textAlign:'left',width:'120px'}}>Category</th>
                         <th style={{padding:'6px 8px',textAlign:'left'}}>Description</th>
                         <th style={{padding:'6px 8px',width:'120px'}}>WBS</th>
-                        <th style={{padding:'6px 8px',width:'90px',textAlign:'right'}}>Qty / Role</th>
-                        <th style={{padding:'6px 8px',width:'80px',textAlign:'right'}}>Hrs / Cost</th>
-                        <th style={{padding:'6px 8px',width:'80px',textAlign:'right'}}>$/h / Sell</th>
+                        <th style={{padding:'6px 8px',width:'140px',textAlign:'left'}}>Qty / Role</th>
+                        <th style={{padding:'6px 8px',width:'70px',textAlign:'right'}}>Hrs / Cost</th>
+                        <th style={{padding:'6px 8px',width:'90px',textAlign:'left'}}>Day Type</th>
+                        <th style={{padding:'6px 8px',width:'70px',textAlign:'left'}}>Shift</th>
                         <th style={{padding:'6px 8px',width:'80px',textAlign:'right'}}>Cost $</th>
                         <th style={{padding:'6px 8px',width:'80px',textAlign:'right',color:'var(--green)'}}>Sell $</th>
                         <th style={{width:'28px'}}></th>
@@ -577,7 +664,7 @@ export function VariationsPanel() {
                     </thead>
                     <tbody>
                       {lines.map((l,i)=>(
-                        <tr key={l.id} style={{borderBottom:'1px solid var(--border)'}}>
+                        <><tr key={l.id} style={{borderBottom:'1px solid var(--border)'}}>
                           <td style={{padding:'3px 4px'}}>
                             <select className="input" style={{padding:'3px 5px',fontSize:'11px'}} value={l.category} onChange={e=>setLineField(i,'category',e.target.value)}>
                               {Object.entries(CAT_LABELS).map(([v,lbl])=><option key={v} value={v}>{lbl}</option>)}
@@ -592,30 +679,41 @@ export function VariationsPanel() {
                           </td>
                           {l.category.startsWith('labour') ? (
                             <>
-                              {/* Role from rate card */}
+                              {/* Role from rate card — triggers auto-calc */}
                               <td style={{padding:'3px 4px'}}>
                                 <select className="input" style={{padding:'3px 5px',fontSize:'11px'}} value={l.role} onChange={e=>setLineField(i,'role',e.target.value)}>
                                   <option value="">— Role —</option>
-                                  {rateCards.filter(r=>r.category===l.category.replace('labour_','')||r.category==='trades').map(r=>(
+                                  {rateCards.map(r=>(
                                     <option key={r.id} value={r.role}>{r.role}</option>
                                   ))}
                                   {rateCards.length === 0 && <option disabled>No rate cards</option>}
                                 </select>
                               </td>
-                              {/* Hours — triggers auto-calc */}
+                              {/* Hours */}
                               <td style={{padding:'3px 4px'}}>
                                 <input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.hours} onChange={e=>setLineField(i,'hours',e.target.value)} placeholder="hrs" min={0} step={0.5}/>
                               </td>
-                              {/* Manual override if no rate card match */}
+                              {/* Day type */}
                               <td style={{padding:'3px 4px'}}>
-                                <input type="number" className="input" style={{padding:'3px 6px',fontSize:'11px',textAlign:'right',color:'var(--text3)'}} value={l.unit_sell||''} onChange={e=>setLineField(i,'unit_sell',e.target.value)} placeholder="$/h sell" title="Sell rate/hr (auto-fills from rate card)"/>
+                                <select className="input" style={{padding:'3px 4px',fontSize:'11px'}} value={l.day_type||'weekday'} onChange={e=>setLineField(i,'day_type',e.target.value)}>
+                                  {['weekday','saturday','sunday','public_holiday','travel','mob'].map(d=>(
+                                    <option key={d} value={d}>{d.replace('_',' ')}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              {/* Shift type */}
+                              <td style={{padding:'3px 4px'}}>
+                                <select className="input" style={{padding:'3px 4px',fontSize:'11px'}} value={l.shift_type||'day'} onChange={e=>setLineField(i,'shift_type',e.target.value)}>
+                                  <option value="day">Day</option>
+                                  <option value="night">Night</option>
+                                </select>
                               </td>
                             </>
                           ) : (
                             <>
                               <td style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.qty} onChange={e=>setLineField(i,'qty',e.target.value)} placeholder="1"/></td>
                               <td style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_cost||''} onChange={e=>setLineField(i,'unit_cost',e.target.value)} placeholder="0"/></td>
-                              <td style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_sell||''} onChange={e=>setLineField(i,'unit_sell',e.target.value)} placeholder="0"/></td>
+                              <td colSpan={2} style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_sell||''} onChange={e=>setLineField(i,'unit_sell',e.target.value)} placeholder="0"/></td>
                             </>
                           )}
                           <td style={{padding:'3px 8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text2)'}}>{l.cost_total>0?fmt(l.cost_total):'—'}</td>
@@ -624,6 +722,50 @@ export function VariationsPanel() {
                             <button className="btn btn-sm" style={{color:'var(--red)',padding:'2px 5px'}} onClick={()=>setLines(ls=>ls.filter((_,j)=>j!==i))}>✕</button>
                           </td>
                         </tr>
+                        {/* Labour: allowances toggle + rate breakdown */}
+                        {l.category.startsWith('labour') && (
+                          <tr style={{borderBottom:'1px solid var(--border)',background:'var(--bg3)'}}>
+                            <td colSpan={9} style={{padding:'6px 12px'}}>
+                              <label style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'11px',cursor:'pointer',marginBottom: l.breakdown?.length ? '8px' : 0}}>
+                                <input type="checkbox" checked={l.allowances !== false}
+                                  onChange={e=>setLineField(i,'allowances',e.target.checked)} />
+                                Include allowances (LAHA / FSA)
+                                {l.role && !rateCards.find(r=>r.role.toLowerCase()===l.role.toLowerCase()) && (
+                                  <span style={{color:'#d97706',marginLeft:'8px'}}>⚠ No rate card for this role</span>
+                                )}
+                              </label>
+                              {l.breakdown && l.breakdown.length > 0 && (
+                                <table style={{width:'auto',borderCollapse:'collapse',fontSize:'11px',background:'var(--bg2)',borderRadius:'4px',overflow:'hidden'}}>
+                                  <thead>
+                                    <tr style={{color:'var(--text3)'}}>
+                                      <th style={{padding:'2px 8px',textAlign:'left',fontWeight:500}}>Rate Type</th>
+                                      <th style={{padding:'2px 8px',textAlign:'right',fontWeight:500}}>Qty</th>
+                                      <th style={{padding:'2px 8px',textAlign:'right',fontWeight:500}}>Sell Rate</th>
+                                      <th style={{padding:'2px 8px',textAlign:'right',fontWeight:500}}>Sell $</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {l.breakdown.map((b,bi)=>(
+                                      <tr key={bi} style={{borderTop:'1px solid var(--border)'}}>
+                                        <td style={{padding:'2px 8px'}}>{b.label}</td>
+                                        <td style={{padding:'2px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>
+                                          {b.isAllowance ? `${b.shifts} shift${b.shifts!==1?'s':''}` : `${b.hrs}h`}
+                                        </td>
+                                        <td style={{padding:'2px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>
+                                          {b.isAllowance ? '—' : fmt(b.sellRate)}
+                                        </td>
+                                        <td style={{padding:'2px 8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--green)'}}>
+                                          {fmt(b.sellAmt)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                        </>
                       ))}
                     </tbody>
                     {lines.some(l=>l.description.trim()) && (
