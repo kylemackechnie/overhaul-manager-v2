@@ -368,6 +368,7 @@ Max available: ${maxQty}`, '1')
           <div className="card" style={{padding:0,overflow:'auto'}}>
             <table style={{minWidth:'900px'}}>
               <thead><tr>
+                <th></th>
                 <th>Item No</th><th>Description</th><th>Material No</th>
                 <th>TV</th><th>Location</th>
                 <th style={{textAlign:'right'}}>Req</th>
