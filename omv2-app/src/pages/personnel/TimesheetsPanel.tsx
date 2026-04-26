@@ -274,7 +274,17 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [woAllocModal, setWoAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [woAllocRows, setWoAllocRows] = useState<{woId:string;woNumber:string;hours:number}[]>([])
   const [workOrders, setWorkOrders] = useState<{id:string;wo_number:string;description:string}[]>([])
-  const scopeMode = activeProject?.scope_tracking || 'none'
+  // Spec: scopeTracking is per-week on weekly_timesheets, not project-level.
+  // Read from activeWeek if available, fall back to project setting.
+  // getScopeTrackingMode(week): reads week.scope_tracking if present,
+  // else maps legacy week.woTracking===true to 'wo' (migration path).
+  const scopeMode = (() => {
+    if (!activeWeek) return activeProject?.scope_tracking || 'none'
+    const ws = activeWeek as WeeklyTimesheet & { scope_tracking?: string; woTracking?: boolean }
+    if (ws.scope_tracking) return ws.scope_tracking
+    if (ws.woTracking === true) return 'work_orders'  // legacy migration
+    return activeProject?.scope_tracking || 'none'
+  })()
 
   // Mirror HTML getTsRoleType logic
   function getTsRoleType(r: Resource): TsType {
@@ -403,7 +413,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           const d = new Date(ds + 'T12:00:00'); d.setDate(d.getDate() + 7)
           const newDs = d.toISOString().slice(0, 10)
           newDays[newDs] = { ...(cell as object), dayType: autoType(newDs, holidays) }
+          // Clear both WO allocation types — they are date-specific and don't carry forward
           delete (newDays[newDs] as Record<string,unknown>).woAllocations
+          delete (newDays[newDs] as Record<string,unknown>).nrgWoAllocations
         })
         return { ...m, days: newDays }
       } else if (mode === 'standard' && std) {
@@ -435,6 +447,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   async function saveWeek(week: WeeklyTimesheet) {
     const { error } = await supabase.from('weekly_timesheets').update({
       crew: week.crew, regime: week.regime, status: week.status, wbs: week.wbs, notes: week.notes,
+      scope_tracking: (week as WeeklyTimesheet & { scope_tracking?: string }).scope_tracking || 'none',
     }).eq('id', week.id)
     if (error) { toast(error.message, 'error'); return }
     // Write wo_actuals rows for reporting
@@ -768,6 +781,15 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 <select className="input" style={{ width: '130px', fontSize: '12px', padding: '3px 6px' }} value={activeWeek.regime || 'lt12'} onChange={e => setActiveWeek({ ...activeWeek, regime: e.target.value as 'lt12' | 'ge12' })}>
                   <option value="lt12">{'< 12hr shifts'}</option>
                   <option value="ge12">{'≥ 12hr shifts'}</option>
+                </select>
+                {/* Scope tracking: per-week mode for WO or NRG TCE allocation */}
+                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Scope:</span>
+                <select className="input" style={{ width: '140px', fontSize: '12px', padding: '3px 6px' }}
+                  value={(activeWeek as WeeklyTimesheet & { scope_tracking?: string }).scope_tracking || 'none'}
+                  onChange={e => setActiveWeek({ ...activeWeek, scope_tracking: e.target.value } as WeeklyTimesheet)}>
+                  <option value="none">No tracking</option>
+                  <option value="work_orders">Work Orders</option>
+                  {tceLines.length > 0 && <option value="nrg_tce">NRG TCE</option>}
                 </select>
               </div>
             </div>

@@ -437,6 +437,10 @@ export function NrgTcePanel() {
                   <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                     <td colSpan={10} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id)).length} lines)</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{(() => {
+                      const tot = filtered.filter(l => !isGroupHeader(l.item_id)).reduce((s, l) => s + lineActualCost(l), 0)
+                      return tot > 0 ? fmt(tot) : '—'
+                    })()}</td>
                     <td colSpan={4} />
                   </tr>
                 </tfoot>
