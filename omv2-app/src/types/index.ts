@@ -229,8 +229,11 @@ export interface Invoice {
   vendor_ref: string
   status: InvoiceStatus
   amount: number
+  expected_amount: number
   currency: string
   invoice_date: string | null
+  received_date: string | null
+  paid_date: string | null
   due_date: string | null
   period_from: string | null
   period_to: string | null

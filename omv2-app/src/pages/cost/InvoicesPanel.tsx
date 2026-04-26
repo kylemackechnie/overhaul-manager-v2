@@ -14,7 +14,7 @@ const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
   disputed:{bg:'#fee2e2',color:'#7f1d1d'},
 }
 
-const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', expected_amount:'', currency:'AUD', invoice_date:'', period_from:'', period_to:'', notes:'', tce_item_id:'' }
+const EMPTY = { po_id:'', invoice_number:'', vendor_ref:'', amount:'', expected_amount:'', currency:'AUD', invoice_date:'', received_date:'', paid_date:'', period_from:'', period_to:'', notes:'', tce_item_id:'' }
 
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
@@ -73,29 +73,43 @@ export function InvoicesPanel() {
   }
   function openEdit(inv: Invoice) {
     setForm({
-      po_id: inv.po_id || '', invoice_number: inv.invoice_number,
-      vendor_ref: inv.vendor_ref, amount: inv.amount.toString(), expected_amount: '',
-      currency: inv.currency, invoice_date: inv.invoice_date || '',
-      period_from: inv.period_from || '', period_to: inv.period_to || '',
-      notes: inv.notes, tce_item_id: inv.tce_item_id || '',
+      po_id: inv.po_id || '',
+      invoice_number: inv.invoice_number,
+      vendor_ref: inv.vendor_ref || '',
+      amount: inv.amount.toString(),
+      expected_amount: inv.expected_amount ? inv.expected_amount.toString() : '',
+      currency: inv.currency,
+      invoice_date: inv.invoice_date || '',
+      received_date: inv.received_date || '',
+      paid_date: inv.paid_date || '',
+      period_from: inv.period_from || '',
+      period_to: inv.period_to || '',
+      notes: inv.notes || '',
+      tce_item_id: inv.tce_item_id || '',
     })
     setModal(inv)
   }
 
   async function save() {
+    if (!form.invoice_number.trim()) { toast('Invoice number is required', 'error'); return }
+    if (!parseFloat(form.amount))    { toast('Invoice amount is required', 'error'); return }
+    if (!form.invoice_date)          { toast('Invoice date is required', 'error'); return }
     setSaving(true)
     const payload = {
-      project_id: activeProject!.id,
-      po_id: form.po_id || null,
-      invoice_number: form.invoice_number.trim(),
-      vendor_ref: form.vendor_ref.trim(),
-      amount: parseFloat(form.amount) || 0,
-      currency: form.currency,
-      invoice_date: form.invoice_date || null,
-      period_from: form.period_from || null,
-      period_to: form.period_to || null,
-      notes: form.notes,
-      tce_item_id: form.tce_item_id || null,
+      project_id:      activeProject!.id,
+      po_id:           form.po_id || null,
+      invoice_number:  form.invoice_number.trim(),
+      vendor_ref:      form.vendor_ref.trim(),
+      amount:          parseFloat(form.amount) || 0,
+      expected_amount: parseFloat(form.expected_amount) || 0,
+      currency:        form.currency,
+      invoice_date:    form.invoice_date || null,
+      received_date:   form.received_date || null,
+      paid_date:       form.paid_date || null,
+      period_from:     form.period_from || null,
+      period_to:       form.period_to || null,
+      notes:           form.notes || '',
+      tce_item_id:     form.tce_item_id || null,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('invoices').insert({
@@ -367,46 +381,69 @@ export function InvoicesPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
-          <div className="modal" style={{maxWidth:'580px'}} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay open" onClick={() => setModal(null)}>
+          <div className="modal" style={{maxWidth:'640px',maxHeight:'92vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{modal === 'new' ? 'New Invoice' : 'Edit Invoice'}</h3>
+              <h3>{modal === 'new' ? '🧾 New Invoice' : '✏️ Edit Invoice'}</h3>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
+
+              {/* Row 1: PO + Invoice number */}
               <div className="fg-row">
-                <div className="fg" style={{flex:2}}>
-                  <label>Invoice Number</label>
-                  <input className="input" value={form.invoice_number} onChange={e=>setForm(f=>({...f,invoice_number:e.target.value}))} placeholder="e.g. INV-2026-001" autoFocus />
-                </div>
                 <div className="fg">
-                  <label>Vendor Ref</label>
-                  <input className="input" value={form.vendor_ref} onChange={e=>setForm(f=>({...f,vendor_ref:e.target.value}))} />
-                </div>
-              </div>
-              <div className="fg">
-                <label>Linked PO</label>
-                <select className="input" value={form.po_id} onChange={e=>setForm(f=>({...f,po_id:e.target.value}))}>
-                  <option value="">— No PO —</option>
-                  {pos.map(po=><option key={po.id} value={po.id}>{po.po_number||'No PO#'} — {po.vendor}</option>)}
-                </select>
-              </div>
-              <div className="fg-row">
-                <div className="fg" style={{flex:2}}>
-                  <label>Amount</label>
-                  <input type="number" className="input" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0" />
-                </div>
-                <div className="fg">
-                  <label>Currency</label>
-                  <select className="input" value={form.currency} onChange={e=>setForm(f=>({...f,currency:e.target.value}))}>
-                    {['AUD','EUR','USD','GBP'].map(c=><option key={c} value={c}>{c}</option>)}
+                  <label>Purchase Order *</label>
+                  <select className="input" value={form.po_id} onChange={e=>setForm(f=>({...f,po_id:e.target.value}))}>
+                    <option value="">— Select PO —</option>
+                    {pos.map(po=><option key={po.id} value={po.id}>{po.po_number||'No PO#'} — {po.vendor}</option>)}
                   </select>
                 </div>
                 <div className="fg">
-                  <label>Invoice Date</label>
-                  <input type="date" className="input" value={form.invoice_date} onChange={e=>setForm(f=>({...f,invoice_date:e.target.value}))} />
+                  <label>Invoice Number *</label>
+                  <input className="input" value={form.invoice_number} onChange={e=>setForm(f=>({...f,invoice_number:e.target.value}))} placeholder="e.g. INV-2026-0042" autoFocus />
                 </div>
               </div>
+
+              {/* Row 2: Vendor ref + Status display */}
+              <div className="fg-row">
+                <div className="fg">
+                  <label>Vendor Reference <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>(vendor's own invoice ref)</span></label>
+                  <input className="input" value={form.vendor_ref} onChange={e=>setForm(f=>({...f,vendor_ref:e.target.value}))} placeholder="e.g. SI-2026-99872" />
+                </div>
+                <div className="fg">
+                  <label>Status</label>
+                  <div style={{padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'6px',background:'var(--bg3)'}}>
+                    {modal !== 'new' ? (
+                      <>
+                        <span className="badge" style={STATUS_COLORS[(modal as Invoice).status] || STATUS_COLORS.received}>
+                          {(modal as Invoice).status}
+                        </span>
+                        <span style={{fontSize:'10px',color:'var(--text3)',marginLeft:'8px'}}>Use workflow buttons in register to advance</span>
+                      </>
+                    ) : (
+                      <span className="badge" style={STATUS_COLORS.received}>received</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Invoice date + Received date + Paid date */}
+              <div className="fg-row">
+                <div className="fg">
+                  <label>Invoice Date *</label>
+                  <input type="date" className="input" value={form.invoice_date} onChange={e=>setForm(f=>({...f,invoice_date:e.target.value}))} />
+                </div>
+                <div className="fg">
+                  <label>Received Date</label>
+                  <input type="date" className="input" value={form.received_date} onChange={e=>setForm(f=>({...f,received_date:e.target.value}))} />
+                </div>
+                <div className="fg">
+                  <label>Paid Date <span style={{fontWeight:400,color:'var(--text3)',fontSize:'10px'}}>(for days-to-pay)</span></label>
+                  <input type="date" className="input" value={form.paid_date} onChange={e=>setForm(f=>({...f,paid_date:e.target.value}))} />
+                </div>
+              </div>
+
+              {/* Row 4: Period from/to */}
               <div className="fg-row">
                 <div className="fg">
                   <label>Period From</label>
@@ -417,24 +454,67 @@ export function InvoicesPanel() {
                   <input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} />
                 </div>
               </div>
-              {tceLines.length > 0 && (
+
+              {/* Row 5: Expected + Actual amount + Currency */}
+              <div className="fg-row">
                 <div className="fg">
-                  <label>NRG TCE Line <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— optional, counts as actuals in KPI/Actuals</span></label>
+                  <label>Expected Amount</label>
+                  <input type="number" step="0.01" className="input" value={form.expected_amount} onChange={e=>setForm(f=>({...f,expected_amount:e.target.value}))} placeholder="0.00" />
+                </div>
+                <div className="fg">
+                  <label>Invoice Amount *</label>
+                  <input type="number" step="0.01" className="input" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" />
+                </div>
+                <div className="fg" style={{maxWidth:'100px'}}>
+                  <label>Currency</label>
+                  <select className="input" value={form.currency} onChange={e=>setForm(f=>({...f,currency:e.target.value}))}>
+                    {['AUD','EUR','USD','GBP'].map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Variance row */}
+              {form.expected_amount && form.amount && (() => {
+                const exp = parseFloat(form.expected_amount) || 0
+                const act = parseFloat(form.amount) || 0
+                const diff = act - exp
+                const col = diff > 0 ? 'var(--red)' : diff < 0 ? 'var(--green)' : 'var(--text3)'
+                return exp > 0 ? (
+                  <div style={{fontSize:'11px',color:col,marginTop:'2px'}}>
+                    Variance: {diff >= 0 ? '+' : ''}{diff.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    {' '}({exp > 0 ? (diff/exp*100).toFixed(1) : '—'}%)
+                  </div>
+                ) : null
+              })()}
+
+              {/* TCE Item ID */}
+              <div className="fg" style={{marginTop:'10px'}}>
+                <label>TCE Item ID <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— links this invoice to a NRG TCE scope line</span></label>
+                {tceLines.length > 0 ? (
                   <select className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))}>
                     <option value="">— No TCE Link —</option>
                     {tceLines.map(l=><option key={l.id} value={l.item_id||''}>{l.item_id||''} — {l.description}</option>)}
                   </select>
-                </div>
-              )}
-              <div className="fg">
+                ) : (
+                  <input className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))} placeholder="e.g. 2.02.4.1 — leave blank if not a TCE invoice" />
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="fg" style={{marginTop:'6px'}}>
                 <label>Notes</label>
-                <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} />
+                <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Any notes about this invoice..." style={{resize:'vertical'}} />
               </div>
             </div>
             <div className="modal-footer">
+              {modal !== 'new' && (
+                <button className="btn btn-danger btn-sm" style={{marginRight:'auto'}} onClick={() => { setModal(null); del(modal as Invoice) }}>
+                  🗑 Delete
+                </button>
+              )}
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Save
+                {saving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} 💾 Save
               </button>
             </div>
           </div>
