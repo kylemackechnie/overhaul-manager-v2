@@ -395,7 +395,6 @@ export async function generateDHLInvoice(
   const zip = await JSZip.loadAsync(templateBytes)
   let xml = await zip.file('word/document.xml')!.async('string')
 
-  const gv = (id: string): string => (fields as unknown as Record<string, string>)[_fieldMap[id]] || ''
   const headerName = String(s.header_name || s.description || '').replace(/ \(return\)$/, '')
 
   // Build cover-page-compatible gv lookup from PandIFields
@@ -580,9 +579,6 @@ export async function generateDHLPackingList(
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-// Maps the PandIFields struct keys to the `gv()` id strings used in fillCoverPage
-const _fieldMap: Record<string, string> = {}
-
 // Build a simple id→value lookup from PandIFields so fillCoverPage's gv() works
 function _buildFakeOverlay(fields: PandIFields): Record<string, string> {
   return {
