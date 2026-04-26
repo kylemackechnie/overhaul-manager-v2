@@ -30,7 +30,9 @@ export function ToolingDashboard() {
     setLoading(true)
     const pid = activeProject!.id
     const [tvRes, costRes, deptRes, kolloRes] = await Promise.all([
-      supabase.from('project_tvs').select('tv_no,header_name,department_id,replacement_value_eur').eq('project_id', pid).order('tv_no'),
+      supabase.from('global_tvs').select('tv_no,header_name,department_id,replacement_value_eur')
+        .in('tv_no', (await supabase.from('project_tvs').select('tv_no').eq('project_id', pid)).data?.map(r => r.tv_no) || [])
+        .order('tv_no'),
       supabase.from('tooling_costings').select('tv_no,charge_start,charge_end,cost_eur,sell_eur,notes').eq('project_id', pid),
       supabase.from('global_departments').select('id,name'),
       supabase.from('project_kollos').select('id', { count: 'exact', head: true }).eq('project_id', pid),

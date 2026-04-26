@@ -185,7 +185,7 @@ export function ToolingCostingsPanel() {
           const dept = c.tv?.department_id ? depts.find(d => d.id === c.tv!.department_id) : null
           const replVal = c.tv?.replacement_value_eur || 0
           const deptCalc = deptToCalc(dept)
-          const calc = deptCalc && c.charge_start && c.charge_end && replVal
+          const calc = deptCalc && c.charge_start && c.charge_end && replVal > 0
             ? calcRentalCost(replVal, { charge_start: c.charge_start, charge_end: c.charge_end }, deptCalc)
             : null
           const days = c.charge_start && c.charge_end ? daysBetween(c.charge_start, c.charge_end) : null
@@ -247,8 +247,20 @@ export function ToolingCostingsPanel() {
                 </div>
               </div>
 
-              {/* FX rate + sell override */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+              {/* FX rate + sell override + replacement value */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                <div className="fg" style={{ margin: 0 }}>
+                  <label>Replacement Value (EUR)</label>
+                  <input type="number" className="input" value={replVal || ''} min={0} step={1}
+                    placeholder="e.g. 250000"
+                    onChange={e => {
+                      const val = parseFloat(e.target.value) || null
+                      supabase.from('global_tvs').update({ replacement_value_eur: val }).eq('tv_no', c.tv_no).then(({ error }) => {
+                        if (error) toast(error.message, 'error')
+                        else setCostings(cs => cs.map(x => x.id === c.id ? { ...x, tv: x.tv ? { ...x.tv, replacement_value_eur: val } : x.tv } : x))
+                      })
+                    }} />
+                </div>
                 <div className="fg" style={{ margin: 0 }}>
                   <label>FX Rate EUR → AUD</label>
                   <input type="number" className="input" value={c.fx_rate || 1.65} min={0.1} step={0.01}
@@ -288,7 +300,10 @@ export function ToolingCostingsPanel() {
                 </div>
               ) : (
                 <div style={{ padding: '9px 13px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: '12px', color: 'var(--text3)', marginBottom: '14px' }}>
-                  {!dept ? '⚠ Assign a department in the TV Register to calculate rental cost.' : '⚠ Set charge start and end dates to calculate cost.'}
+                  {!dept ? '⚠ Assign a department in the TV Register to calculate rental cost.'
+                    : !c.charge_start || !c.charge_end ? '⚠ Set charge start and end dates to calculate cost.'
+                    : replVal === 0 ? '⚠ No replacement value set — enter a replacement value below to calculate cost.'
+                    : '⚠ Cannot calculate cost.'}
                 </div>
               )}
 
