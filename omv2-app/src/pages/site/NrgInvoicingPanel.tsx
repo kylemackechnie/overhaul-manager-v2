@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { splitHours, calcHoursCost, getRateCardForRole } from '../../lib/calculations'
 import type { NrgTceLine, NrgCustomerInvoice, NrgInvoiceGroupingRule } from '../../types'
 
 const fmt = (n: number) => n === 0 ? '—' : '$' + Math.round(n).toLocaleString('en-AU')
@@ -100,12 +101,14 @@ export function NrgInvoicingPanel() {
     return all[idx-1].week_ending || ''
   }
 
-  // Period-bounded actual for a single TCE line
+  // Period-bounded actual for a single TCE line — always uses SELL rates to match TCE register
   function lineActualInPeriod(line: NrgTceLine, fromWE: string, toWE: string): number {
     if (!toWE) return 0
     const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
     if (isLabour) {
       let total = 0
+      const pf = (v: unknown) => { const n = parseFloat(String(v || 0)); return isNaN(n) ? 0 : n }
+
       for (const ts of timesheets) {
         const wStart = ((ts.week_start as string)||'').slice(0,10)
         if (!wStart) continue
@@ -116,26 +119,56 @@ export function NrgInvoicingPanel() {
         if (!inPeriod(wEndStr, fromWE, toWE)) continue
         const scopeTracking = ts.scope_tracking as string
         if (scopeTracking !== 'tce' && scopeTracking !== 'nrg_tce') continue
+        const regime = ((ts.regime as string) || 'lt12') as 'lt12' | 'ge12'
         const crew = (ts.crew as Record<string,unknown>[]) || []
+
         for (const member of crew) {
-          const rc = (rateCards as Record<string,unknown>[]).find((r: Record<string,unknown>) => (r.role as string)?.toLowerCase() === (member.role as string)?.toLowerCase())
-          const days = (member.days as Record<string,Record<string,unknown>>) || {}
+          const rc = getRateCardForRole(member.role as string, rateCards as { role: string }[])
+          if (!rc) continue
+          const rcAny = rc as Record<string, unknown>
+          const rates = rcAny.rates as { sell?: Record<string,number>; cost?: Record<string,number> } | null
+          const isMgmt = rcAny.category === 'management' || rcAny.category === 'seag'
+          const days = (member.days as Record<string, Record<string,unknown>>) || {}
+
           for (const day of Object.values(days)) {
             const allocs = (day.nrgWoAllocations as Record<string,unknown>[]) || []
-            const match = allocs.find(a => (a.tceItemId && a.tceItemId === line.item_id) || (!a.tceItemId && line.work_order && a.wo === line.work_order))
+            const match = allocs.find(a =>
+              (a.tceItemId && a.tceItemId === line.item_id) ||
+              (!a.tceItemId && line.work_order && a.wo === line.work_order)
+            )
             if (!match) continue
-            const effHours = Number(match.hours) || 0
-            if (!effHours || !rc) continue
-            // Simple sell rate × hours (proper split not available without importing costEngine here)
-            const rates = (rc.rates as Record<string,Record<string,number>>)
-            const sellDnt = rates?.sell?.dnt || 0
-            total += effHours * sellDnt
+
+            // Use allocated hours (may be partial if split across scopes)
+            const allocHours = Number(match.hours) || 0
+            if (!allocHours) continue
+
+            // mealBreakAdj: +0.5h per worked day (EBA, trades only)
+            const adjH = ((member.mealBreakAdj as boolean) && allocHours > 0 && !isMgmt) ? 0.5 : 0
+            const effH = allocHours + adjH
+
+            // Full split → sell using shared engine (matches TimesheetsPanel exactly)
+            const dayType = (day.dayType as string) || 'weekday'
+            const shiftType = ((day.shiftType as string) === 'night' ? 'night' : 'day') as 'day' | 'night'
+            const regimeCfg = (rcAny.regime as Parameters<typeof splitHours>[4]) || null
+            const split = splitHours(effH, dayType, shiftType, regime, regimeCfg)
+            if (rates) total += calcHoursCost(split, rates, 'sell')
+
+            // Allowances (sell): LAHA/Meal for trades/subcon, FSA/Camp for mgmt/seag
+            if (isMgmt) {
+              if (day.fsa)       total += pf(rcAny.fsa_sell)  || 183
+              else if (day.camp) total += pf(rcAny.camp)       || 199
+              else if (day.laha) total += pf(rcAny.fsa_sell)  || 183
+            } else {
+              if (day.laha) total += pf(rcAny.laha_sell) || 212
+              if (day.meal) total += pf(rcAny.meal_sell) || 94
+            }
           }
         }
       }
       return total
     }
-    // Non-labour: supplier invoices + expenses in period
+
+    // Non-labour: supplier invoices + expenses in period (unchanged)
     let total = 0
     for (const inv of supplierInvoices) {
       if (inv.tce_item_id !== line.item_id) continue
