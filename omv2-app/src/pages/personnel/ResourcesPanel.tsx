@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { findOrCreatePerson, type Person } from '../../lib/persons'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
@@ -40,6 +41,7 @@ type SortCol = 'status'|'name'|'role'|'shift'|'company'|'mob_in'|'mob_out'|'allo
 
 export function ResourcesPanel() {
   const { activeProject } = useAppStore()
+  const { canWrite } = usePermissions()
   const [resources, setResources] = useState<Resource[]>([])
   const [rcs, setRcs] = useState<RateCard[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
@@ -317,7 +319,7 @@ export function ResourcesPanel() {
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
           <button className="btn btn-sm" onClick={() => setShowImport(s => !s)}>📥 Import CSV</button>
-          <button className="btn btn-primary" onClick={openNew}>+ Add Person</button>
+          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')}>+ Add Person</button>
         </div>
       </div>
 

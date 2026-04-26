@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Expense, Resource, WbsItem } from '../../types'
@@ -26,6 +27,7 @@ function calcSell(cost: number, gm: number): number {
 
 export function ExpensesPanel() {
   const { activeProject } = useAppStore()
+  const { canWrite } = usePermissions()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [wbsList, setWbsList] = useState<WbsItem[]>([])
@@ -190,7 +192,7 @@ export function ExpensesPanel() {
             {expenses.length} items · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>+ Add Expense</button>
+        <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ Add Expense</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
       </div>
 
@@ -347,7 +349,7 @@ export function ExpensesPanel() {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>
+              <button className="btn btn-primary" onClick={save} disabled={saving || !canWrite('cost_tracking')}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
             </div>

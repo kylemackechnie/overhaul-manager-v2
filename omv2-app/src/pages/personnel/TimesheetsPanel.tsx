@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
 import { getEurToBase } from '../../lib/currency'
@@ -300,6 +301,7 @@ interface NrgWoAlloc {
 
 export function TimesheetsPanel({ type }: { type: TsType }) {
   const { activeProject } = useAppStore()
+  const { canWrite } = usePermissions()
   const [sheets, setSheets] = useState<WeeklyTimesheet[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [rateCards, setRateCards] = useState<RateCard[]>([])
@@ -753,7 +755,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {activeWeek && <>
-            <button className="btn" onClick={() => { saveWeek(activeWeek); setActiveWeek(null) }}>💾 Save & Close</button>
+            <button className="btn" onClick={() => { saveWeek(activeWeek); setActiveWeek(null) }} disabled={!canWrite('personnel')}>💾 Save & Close</button>
             <button className="btn btn-sm" onClick={async () => {
               await saveWeek(activeWeek)
               const nextWk = getNextMon(activeWeek.week_start)
@@ -769,7 +771,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             <button className="btn btn-sm" onClick={exportTimesheetCSV}>⬇ CSV</button>
             <button className="btn btn-sm" onClick={applyAllowances} title="Apply LAHA/meal defaults from resource list">🏷 Allowances</button>
           </>}
-          <button className="btn btn-primary" onClick={() => setShowNewModal(true)}>+ New Week</button>
+          <button className="btn btn-primary" onClick={() => setShowNewModal(true)} disabled={!canWrite('personnel')}>+ New Week</button>
         </div>
       </div>
 
@@ -1164,7 +1166,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` — ${r.role}` : ''}</option>)}
             </select>
             <button className="btn btn-sm" onClick={() => printTimesheet(activeWeek, activeProject?.name||'', rateCards, holidays)}>🖨 Print</button>
-            <button className="btn btn-primary" onClick={() => saveWeek(activeWeek)}>💾 Save</button>
+            <button className="btn btn-primary" onClick={() => saveWeek(activeWeek)} disabled={!canWrite('personnel')}>💾 Save</button>
           </div>
         </div>
       )}
@@ -1251,7 +1253,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowNewModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createWeek} disabled={saving}>
+              <button className="btn btn-primary" onClick={createWeek} disabled={saving || !canWrite('personnel')}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Create Week
               </button>
             </div>

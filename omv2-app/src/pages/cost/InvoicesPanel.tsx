@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
@@ -76,6 +77,7 @@ const EMPTY_FORM: InvForm = {
 
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
+  const { canWrite } = usePermissions()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PO[]>([])
   const [loading, setLoading] = useState(true)
@@ -234,7 +236,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          <button className="btn btn-primary" onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
         </div>
       </div>
 

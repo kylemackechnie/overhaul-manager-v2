@@ -76,6 +76,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '⏱️', label: 'SE AG', panel: 'hr-timesheets-seag' },
         { icon: '⏱️', label: 'Subcon', panel: 'hr-timesheets-subcon' },
         { icon: '🏢', label: 'Back Office', panel: 'hr-backoffice' },
+        { icon: '📊', label: 'Utilisation', panel: 'hr-utilisation' },
       ]},
       { label: 'Accommodation', buttons: [
         { icon: '🚗', label: 'Cars', panel: 'hr-cars' },

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
@@ -51,6 +52,7 @@ type AcRow   = { id: string; linked_po_id: string|null; total_cost: number }
 
 export function POsPanel() {
   const { activeProject, setActivePanel, pendingPoId, setPendingPoId } = useAppStore()
+  const { canWrite } = usePermissions()
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [invoices, setInvoices] = useState<InvRow[]>([])
   const [hire, setHire] = useState<HireRow[]>([])
@@ -229,7 +231,7 @@ export function POsPanel() {
         </div>
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>↓ Export CSV</button>
-          <button className="btn btn-primary" onClick={openNew}>+ New PO</button>
+          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ New PO</button>
         </div>
       </div>
 
@@ -268,7 +270,7 @@ export function POsPanel() {
           <div style={{fontSize:'36px',marginBottom:'12px'}}>💼</div>
           <div style={{fontSize:'16px',fontWeight:600,marginBottom:'4px'}}>No purchase orders yet</div>
           <div style={{fontSize:'13px',color:'var(--text3)',marginBottom:'20px'}}>Create a new PO to start tracking committed costs and invoices.</div>
-          <button className="btn btn-primary" onClick={openNew}>+ New PO</button>
+          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ New PO</button>
         </div>
       ) : (
         STATUS_ORDER.map(status => {

@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Variation, VariationLine, NrgTceLine, RateCard } from '../../types'
@@ -217,6 +218,7 @@ ${v.exclusions?`<h2>Exclusions</h2><p style="white-space:pre-wrap">${v.exclusion
 
 export function VariationsPanel() {
   const { activeProject } = useAppStore()
+  const { canWrite } = usePermissions()
   const [variations, setVariations] = useState<Variation[]>([])
   const [variationLines, setVariationLines] = useState<Map<string, VariationLine[]>>(new Map())
   const [wbsList, setWbsList] = useState<{id:string;code:string;name:string}[]>([])
@@ -485,7 +487,7 @@ export function VariationsPanel() {
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={printRegister} disabled={variations.length===0}>🖨 Print Register</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
-          <button className="btn btn-primary" onClick={openNew}>+ New Variation</button>
+          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={openNew}>+ New Variation</button>
         </div>
       </div>
 
