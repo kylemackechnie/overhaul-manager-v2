@@ -40,6 +40,29 @@ function autoType(dateStr: string, holidays: Set<string>): string {
   if (dow === 6) return 'saturday'
   return 'weekday'
 }
+
+// Mirrors HTML PH override: walk all day entries and force dayType='public_holiday'
+// for any date in the project's holidays set. Called whenever a week becomes active.
+function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>): WeeklyTimesheet {
+  if (!holidays.size) return week
+  return {
+    ...week,
+    crew: week.crew.map(m => {
+      const days = { ...m.days }
+      let changed = false
+      Object.keys(days).forEach(ds => {
+        if (holidays.has(ds)) {
+          const cell = days[ds] as Record<string,unknown>
+          if (cell && cell.dayType !== 'public_holiday') {
+            days[ds] = { ...cell, dayType: 'public_holiday' } as unknown as typeof days[typeof ds]
+            changed = true
+          }
+        }
+      })
+      return changed ? { ...m, days } : m
+    })
+  }
+}
 // Exact port of HTML splitHours() — all 8 day types, all 7 buckets, regimeConfig from rate card
 type HourSplit = { dnt:number; dt15:number; ddt:number; ddt15:number; nnt:number; ndt:number; ndt15:number }
 type RegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
@@ -363,7 +386,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     if (error) { console.error('createWeek error:', error); toast(error.message + (error.details ? ' — ' + error.details : ''), 'error'); setSaving(false); return }
     toast('Week created', 'success'); setSaving(false); setShowNewModal(false)
     setNewForm({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
-    setActiveWeek(data as WeeklyTimesheet); load()
+    setActiveWeek(applyPHOverrides(data as WeeklyTimesheet, holidays)); load()
   }
 
 
@@ -500,7 +523,12 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       ...activeWeek,
       crew: activeWeek.crew.map(m => {
         if (m.personId !== personId) return m
-        const existing: DayEntry = m.days[date] || { dayType: autoType(date, holidays), shiftType: 'day' as const, hours: 0, laha: false, meal: false }
+        const rawEntry = m.days[date]
+        const existing: DayEntry = rawEntry
+          ? (holidays.has(date) && (rawEntry as Record<string,unknown>).dayType !== 'public_holiday'
+              ? { ...(rawEntry as DayEntry), dayType: 'public_holiday' }
+              : rawEntry as DayEntry)
+          : { dayType: autoType(date, holidays), shiftType: 'day' as const, hours: 0, laha: false, meal: false }
         return { ...m, days: { ...m.days, [date]: { ...existing, [field]: value } as DayEntry } }
       })
     })
@@ -749,7 +777,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               const { hours, sell, cost } = weekTotals(s)
               const endD = new Date(s.week_start + 'T12:00:00'); endD.setDate(endD.getDate() + 6)
               return (
-                <div key={s.id} className="card" style={{ borderLeft: `3px solid ${TYPE_COLOR[type]}`, cursor: 'pointer' }} onClick={() => setActiveWeek(s)}>
+                <div key={s.id} className="card" style={{ borderLeft: `3px solid ${TYPE_COLOR[type]}`, cursor: 'pointer' }} onClick={() => setActiveWeek(applyPHOverrides(s, holidays))}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '180px' }}>
                       <div style={{ fontWeight: 700, fontSize: '14px' }}>
@@ -858,7 +886,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   {days.map((d, i) => {
                     const raw = (member.days[d] || {}) as Record<string, unknown>
                     const cellHrs = (raw.hours as number) || 0
-                    const dayType = (raw.dayType as string) || autoType(d, holidays)
+                    const rawDayType = (raw.dayType as string) || autoType(d, holidays)
+                    const dayType = holidays.has(d) ? 'public_holiday' : rawDayType
                     const shiftType = (raw.shiftType as string) || 'day'
                     const laha = (raw.laha as boolean) || false
                     const meal = (raw.meal as boolean) || false
