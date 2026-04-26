@@ -100,44 +100,36 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false)
 
   useEffect(() => {
-    // Get session — if we have one, show app immediately
-    // Project restore happens in ProjectPicker if needed
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session ?? null)
-      if (session) {
-        const store = useAppStore.getState()
-        if (!store.activeProject && store.activeProjectId) {
-          // Restore persisted project from Supabase
-          const { data } = await supabase
-            .from('projects')
-            .select('*')
-            .eq('id', store.activeProjectId)
-            .single()
-          if (data) {
-            store.restoreProject(data as unknown as Parameters<typeof store.restoreProject>[0])
-          } else {
-            setPickerOpen(true)
-          }
-        } else if (!store.activeProject) {
-          setPickerOpen(true)
-        }
-      }
-    })
-
+    // onAuthStateChange fires INITIAL_SESSION on startup — use that as primary signal.
+    // It fires even on refresh with a valid stored session, before getSession() resolves.
+    // We DON'T call getSession() separately — it can hang on cold start.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      // Don't flash login screen during token refresh — only clear session on explicit sign-out
-      if (event === 'SIGNED_OUT') {
+      console.log('[App] auth event:', event, '| uid:', s?.user?.id ?? 'none')
+      if (event === 'INITIAL_SESSION') {
+        setSession(s ?? null)
+        if (s) setPickerOpen(true)
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setSession(s)
+        if (s && !useAppStore.getState().activeProject) setPickerOpen(true)
+      } else if (event === 'SIGNED_OUT') {
         setSession(null)
         setActiveProject(null)
         setPickerOpen(false)
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        setSession(s)
-        if (s && !useAppStore.getState().activeProject) {
-          setPickerOpen(true)
-        }
       }
     })
-    return () => subscription.unsubscribe()
+
+    // Fallback: if INITIAL_SESSION hasn't fired after 3s, unblock the UI
+    const fallback = setTimeout(() => {
+      setSession(prev => {
+        if (prev === undefined) {
+          console.warn('[App] INITIAL_SESSION never fired — showing login')
+          return null
+        }
+        return prev
+      })
+    }, 3000)
+
+    return () => { subscription.unsubscribe(); clearTimeout(fallback) }
   }, [])
 
   // Ctrl+K handler
