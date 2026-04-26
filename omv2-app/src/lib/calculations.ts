@@ -230,6 +230,8 @@ export interface HoursSplit {
 
 export interface RegimeCfg {
   wdNT?: number; wdT15?: number; satT15?: number; nightNT?: number; restNT?: number
+  lt12?: Record<string, number>; ge12?: Record<string, number>
+  [key: string]: unknown
 }
 
 export interface RateCardCalc {
@@ -237,7 +239,7 @@ export interface RateCardCalc {
   category?: string
   laha_sell: number; fsa_sell: number; meal_sell: number; camp: number
   rates: { sell?: Record<string, number>; cost?: Record<string, number> }
-  regime: RegimeCfg | null
+  regime: RegimeCfg | null | undefined
 }
 
 export interface ResourceCalc {

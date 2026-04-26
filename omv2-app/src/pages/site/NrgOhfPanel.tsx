@@ -239,7 +239,7 @@ export function NrgOhfPanel() {
       forecastResourceIds: (l.forecast_resources as string[]) || [],
       tceTotal:            l.tce_total || 0,
       resources,
-      rateCards:           rateCards as RateCard[],
+      rateCards:           rateCards,
       aliases,
       stdHours:            stdHours || undefined,
       publicHolidays,
