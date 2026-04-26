@@ -5,7 +5,7 @@ import { useAppStore } from '../../store/appStore'
 const COLOR = '#7c3aed'
 const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
 
-interface Contract { id: string; vendor: string; status: string; value: number | null; quoted_amount: number | null; awarded: boolean; description: string }
+interface Contract { id: string; vendor: string; status: string; value: number | null; quoted_amount: number | null; awarded: boolean; details: { description?: string } | null }
 
 export function SubconDashboard() {
   const { activeProject, setActivePanel } = useAppStore()
@@ -19,7 +19,7 @@ export function SubconDashboard() {
     setLoading(true)
     const pid = activeProject!.id
     const [cRes, rfqRes] = await Promise.all([
-      supabase.from('subcon_contracts').select('id,vendor,status,value,quoted_amount,awarded,description').eq('project_id', pid).order('created_at'),
+      supabase.from('subcon_contracts').select('id,vendor,status,value,quoted_amount,awarded,details').eq('project_id', pid).order('created_at'),
       supabase.from('rfq_documents').select('id', { count: 'exact', head: true }).eq('project_id', pid),
     ])
     setContracts((cRes.data || []) as Contract[])
@@ -88,7 +88,7 @@ export function SubconDashboard() {
               {contracts.map(c => (
                 <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => setActivePanel('subcon-contracts')}>
                   <td style={{ fontWeight: 500 }}>{c.vendor || '—'}</td>
-                  <td style={{ color: 'var(--text2)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.description || '—'}</td>
+                  <td style={{ color: 'var(--text2)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.details?.description || '—'}</td>
                   <td>
                     <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '3px', background: c.status === 'active' ? '#d1fae5' : c.status === 'approved' ? '#d1fae5' : '#f1f5f9', color: c.status === 'active' || c.status === 'approved' ? '#065f46' : '#64748b', fontWeight: 600 }}>
                       {c.status}

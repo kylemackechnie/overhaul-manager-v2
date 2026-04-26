@@ -11,7 +11,7 @@ interface RFQDoc {
   id: string; title: string; stage: string
   deadline: string | null; start_date: string | null; end_date: string | null
   vendor: string | null; quoted_amount: number | null; awarded: boolean
-  response_notes: string | null; notes: string | null
+  notes: string | null
   created_at: string
 }
 
@@ -29,7 +29,7 @@ export function SubconRFQRegisterPanel() {
   async function load() {
     setLoading(true)
     const { data } = await supabase.from('rfq_documents')
-      .select('id,title,stage,deadline,start_date,end_date,vendor,quoted_amount,awarded,response_notes,notes,created_at')
+      .select('id,title,stage,deadline,start_date,end_date,vendor,quoted_amount,awarded,notes,created_at')
       .eq('project_id', activeProject!.id)
       .order('created_at', { ascending: false })
     setDocs((data || []) as RFQDoc[])
@@ -80,8 +80,8 @@ export function SubconRFQRegisterPanel() {
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>All RFQ documents for this project</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-sm" onClick={() => setActivePanel('subcon-rfq')}>📋 Contracts</button>
-          <button className="btn btn-primary" onClick={() => setActivePanel('subcon-dashboard')}>+ New RFQ</button>
+          <button className="btn btn-sm" onClick={() => setActivePanel('subcon-contracts')}>📋 Contracts</button>
+          <button className="btn btn-primary" onClick={() => setActivePanel('subcon-rfq-doc')}>+ New RFQ</button>
         </div>
       </div>
 
@@ -105,7 +105,7 @@ export function SubconRFQRegisterPanel() {
           <div className="icon">📝</div>
           <h3>No RFQ documents yet</h3>
           <p>Create RFQ documents in the Subcontractors section to track vendor responses.</p>
-          <button className="btn btn-sm" style={{ background: '#7c3aed', color: '#fff', marginTop: '12px' }} onClick={() => setActivePanel('subcon-dashboard')}>Create First RFQ</button>
+          <button className="btn btn-sm" style={{ background: '#7c3aed', color: '#fff', marginTop: '12px' }} onClick={() => setActivePanel('subcon-rfq-doc')}>Create First RFQ</button>
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
