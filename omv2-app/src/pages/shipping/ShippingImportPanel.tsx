@@ -381,15 +381,30 @@ export function ShippingImportPanel() {
     if (!selected.length) { toast('Select at least one TV', 'error'); return }
     const pid = activeProject.id
 
-    // Upsert tooling_tvs
-    const tvRows = selected.map(tv => ({
+    // Insert tooling_tvs — check existing first to avoid conflict issues
+    const { data: existingTVs } = await supabase.from('tooling_tvs')
+      .select('tv_no').eq('project_id', pid)
+    const existingSet = new Set((existingTVs || []).map(t => (t as { tv_no: number }).tv_no))
+
+    const toInsert = selected.filter(tv => !existingSet.has(tv.tvNo)).map(tv => ({
       project_id: pid, tv_no: tv.tvNo, header_name: tv.headerName,
       replacement_value: tv.replacementValue, po_number: tv.poNumber,
-      departure_date: tv.departure || null, eta_pod: tv.eta || null,
+      departure: tv.departure || null, eta: tv.eta || null,
       hawb: tv.hawb, mawb: tv.mawb,
     }))
-    const { error: tvErr } = await supabase.from('tooling_tvs').upsert(tvRows, { onConflict: 'project_id,tv_no' })
-    if (tvErr) { toast('Error saving TVs: ' + tvErr.message, 'error'); return }
+    const toUpdate = selected.filter(tv => existingSet.has(tv.tvNo))
+
+    if (toInsert.length) {
+      const { error: insErr } = await supabase.from('tooling_tvs').insert(toInsert)
+      if (insErr) { toast('Error saving TVs: ' + insErr.message, 'error'); return }
+    }
+    for (const tv of toUpdate) {
+      await supabase.from('tooling_tvs').update({
+        header_name: tv.headerName, replacement_value: tv.replacementValue,
+        departure: tv.departure || null, eta: tv.eta || null,
+        hawb: tv.hawb, mawb: tv.mawb,
+      }).eq('project_id', pid).eq('tv_no', tv.tvNo)
+    }
 
     // Upsert shipment records
     let shipmentsCreated = 0
