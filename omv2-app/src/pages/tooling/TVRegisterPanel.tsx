@@ -46,7 +46,7 @@ export function TVRegisterPanel() {
       .eq('tv_no', tvNo)
     if (error) { toast(error.message, 'error'); return }
     setAllTVs(tvs => tvs.map(tv => tv.tv_no === tvNo
-      ? { ...tv, department_id: deptId || null, department: departments.find(d => d.id === deptId) || null }
+      ? { ...tv, department_id: deptId || null, department: departments.find(d => d.id === deptId) ?? undefined } as GlobalTV
       : tv
     ))
   }
