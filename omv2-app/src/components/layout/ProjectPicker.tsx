@@ -37,9 +37,17 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    console.log('[Picker] mounted — calling load()')
-    // Session is guaranteed by App.tsx before this component renders
-    load()
+    console.log('[Picker] mounted')
+    // Wait for currentUser to be loaded before firing queries — this is our proof
+    // that the JWT is valid (loadAppUser had to succeed against PostgREST to set it).
+    // Without this gate, the picker fires queries before the auth refresh completes
+    // and they hang for 8s on the auth lock.
+    if (currentUser) {
+      console.log('[Picker] currentUser ready — calling load()')
+      load()
+    } else {
+      console.log('[Picker] waiting for currentUser before loading...')
+    }
     if (activeProject) {
       const siteId = (activeProject as Project & { site_id?: string }).site_id
       if (siteId) setActiveSiteKey(siteId)
@@ -50,7 +58,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [])
+  }, [currentUser])
 
   async function load() {
     const t0 = performance.now()

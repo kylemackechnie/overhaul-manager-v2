@@ -41,12 +41,16 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadAppUser(authId: string) {
+  async function loadAppUser(authId: string, attempt = 1) {
     const t0 = performance.now()
     const ms = () => `+${Math.round(performance.now() - t0)}ms`
-    console.log(`[useAuth] ${ms()} loadAppUser(${authId.slice(0, 8)}...) called`)
+    console.log(`[useAuth] ${ms()} loadAppUser(${authId.slice(0, 8)}...) called (attempt ${attempt})`)
+    // Use a tighter timeout on early attempts — if the JWT isn't ready, the query
+    // will hang waiting on the auth lock, and we want to retry quickly rather than
+    // spend 8s on a doomed first attempt.
+    const timeoutMs = attempt === 1 ? 2000 : 8000
     const queryTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('loadAppUser query hung for 8s')), 8000)
+      setTimeout(() => reject(new Error(`loadAppUser query hung for ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs)
     )
     try {
       const result = await Promise.race([
@@ -81,7 +85,16 @@ export function useAuth() {
       setCurrentUser(data as AppUser)
       console.log(`[useAuth] ${ms()} currentUser set`)
     } catch (e) {
-      console.error(`[useAuth] ${ms()} loadAppUser failed:`, e)
+      console.warn(`[useAuth] ${ms()} loadAppUser attempt ${attempt} failed:`, (e as Error).message)
+      if (attempt < 5) {
+        // Exponential-ish backoff: 500ms, 1s, 2s, 3s — gives the token refresh
+        // time to complete before retrying. Total max wait ~6.5s before giving up.
+        const backoff = attempt === 1 ? 500 : attempt === 2 ? 1000 : attempt === 3 ? 2000 : 3000
+        console.log(`[useAuth] ${ms()} retrying in ${backoff}ms...`)
+        await new Promise(r => setTimeout(r, backoff))
+        return loadAppUser(authId, attempt + 1)
+      }
+      console.error(`[useAuth] ${ms()} loadAppUser exhausted retries`)
     }
   }
 
