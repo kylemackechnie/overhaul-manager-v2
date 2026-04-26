@@ -514,12 +514,18 @@ export interface NrgTimesheetCrewDay {
   shiftType: string
   hours: number
   nrgWoAllocations?: NrgWoAlloc[]
+  // Allowance flags (same as DayEntry in full types)
+  laha?: boolean
+  meal?: boolean
+  fsa?: boolean
+  camp?: boolean
 }
 
 export interface NrgTimesheetCrew {
   personId: string
   name: string
   role: string
+  mealBreakAdj?: boolean
   days: Record<string, NrgTimesheetCrewDay>
 }
 
@@ -661,22 +667,40 @@ export function nrgLineActual(
   }
 
   // Labour: sum cost from approved TCE-mode timesheets using proper rate splitting
+  // Matches NrgInvoicingPanel.lineActualInPeriod — includes allowances + mealBreakAdj.
   let total = 0
   for (const ts of timesheets) {
     if (ts.status !== 'approved') continue
     if (ts.scope_tracking !== 'tce' && ts.scope_tracking !== 'nrg_tce') continue
+    const pf = (v: unknown) => { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
     for (const member of ts.crew) {
       const rc = getRateCardForRole(member.role)
+      const rcAny = rc as unknown as Record<string, unknown>
+      const isMgmt = rcAny && (rcAny.category === 'management' || rcAny.category === 'seag')
       for (const [date, day] of Object.entries(member.days)) {
         if (!day.hours || day.hours <= 0) continue
         const allocs = day.nrgWoAllocations || []
         const match = nrgMatchAllocForLine(allocs, line)
         if (!match) continue
         if (!rc) continue
-        // Use proper split to account for overtime, nights, weekends
+
+        // mealBreakAdj: +0.5h per worked day for trades/subcon (EBA)
+        const adjH = (member.mealBreakAdj && match.hours > 0 && !isMgmt) ? 0.5 : 0
+        const effH = match.hours + adjH
+
+        // Hourly sell via proper rate split
         const dayType = fcDayType(date, [])
-        const split = splitHours(match.hours, dayType, day.shiftType as 'day' | 'night', ts.regime as 'lt12' | 'ge12', rc.regime)
+        const split = splitHours(effH, dayType, day.shiftType as 'day' | 'night', ts.regime as 'lt12' | 'ge12', rc.regime)
         total += calcHoursCost(split, rc, 'sell')
+
+        // Allowances (sell) — must match invoicing panel logic exactly
+        if (isMgmt) {
+          if (day.fsa || day.camp)  total += pf(rcAny.fsa_sell)  || 0
+          else if (day.laha)        total += pf(rcAny.fsa_sell)  || 0
+        } else {
+          if (day.laha) total += pf(rcAny.laha_sell) || 0
+          if (day.meal) total += pf(rcAny.meal_sell) || 0
+        }
       }
     }
   }
