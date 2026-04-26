@@ -39,6 +39,10 @@ export function CostReportPanel() {
     setLoading(false)
   }
 
+  const grandTotal = rows.reduce((s,r)=>s+r.total,0)
+  const grandSell = rows.reduce((s,r)=>s+r.totalSell,0)
+  const grandMargin = grandSell > 0 ? (grandSell-grandTotal)/grandSell*100 : null
+
   function printByModule() {
     const MODULES = [
       { key: 'trades',    label: '👷 Trades Labour',    col: (r: typeof rows[0]) => r.labourTrades },
@@ -77,9 +81,6 @@ export function CostReportPanel() {
     if (w) { w.document.write(html); w.document.close() }
   }
 
-
-  const grandSell = rows.reduce((s,r)=>s+r.totalSell,0)
-  const grandMargin = grandSell > 0 ? (grandSell-grandTotal)/grandSell*100 : null
 
   function exportCSV() {
     const lines = ['WBS Code,Description,Labour Trades,Labour Mgmt,Labour SE AG,Hire,Cars,Accommodation,Tooling,Total Cost,Total Sell,Margin %']

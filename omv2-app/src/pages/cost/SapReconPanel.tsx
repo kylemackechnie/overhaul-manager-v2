@@ -40,12 +40,6 @@ function nameSimilarity(a: string, b: string): number {
   return 0
 }
 
-function deltaColor(v: number, threshold = 500) {
-  if (v > threshold)  return 'var(--red)'
-  if (v < -threshold) return 'var(--green)'
-  return 'var(--text3)'
-}
-
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function SapReconPanel() {
