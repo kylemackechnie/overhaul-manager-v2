@@ -5,8 +5,8 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
-import { nrgLineActualHours, nrgInvoiceActual, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
-import type { NrgTceLine } from '../../types'
+import { nrgLineActual, nrgLineActualHours, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
 const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other'] as const
@@ -29,6 +29,7 @@ export function NrgTcePanel() {
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
+  const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | NrgTceLine>(null)
   const [form, setForm] = useState(EMPTY)
@@ -36,6 +37,7 @@ export function NrgTcePanel() {
   const [search, setSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [hideUnused, setHideUnused] = useState(false)
+  const [showWeekly, setShowWeekly] = useState(false)
   const [importing, setImporting] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -47,7 +49,7 @@ export function NrgTcePanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lRes, wbsRes, tsRes, invRes, expRes, varRes] = await Promise.all([
+    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew')
@@ -55,6 +57,7 @@ export function NrgTcePanel() {
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
+      supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
@@ -62,6 +65,7 @@ export function NrgTcePanel() {
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
+    setRateCards((rcRes.data || []) as RateCard[])
     setLoading(false)
   }
 
@@ -69,17 +73,16 @@ export function NrgTcePanel() {
     setCollapsed(s => { const ns = new Set(s); ns.has(id) ? ns.delete(id) : ns.add(id); return ns })
 
   function lineActualCost(l: NrgTceLine): number {
-    const { nrgLineActual: calcActual } = { nrgLineActual: (line: {item_id:string|null;source:string;work_order:string;line_type:string}) => {
-      // Labour lines: timesheet hours × rate (rate is 0 here without rate cards loaded)
-      // Non-labour lines: invoices + expenses + approved variations
-      const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
-      if (!isLabour) {
-        return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
+    return nrgLineActual(
+      { item_id: l.item_id, source: l.source, work_order: l.work_order || '', line_type: l.line_type || '' },
+      timesheets, invoices, expenses, variations,
+      (role: string) => {
+        const rc = rateCards.find(r => r.role.toLowerCase() === role.toLowerCase())
+        if (!rc) return 0
+        const rates = rc.rates as Record<string, number>
+        return rates?.sell_dnt || rates?.dnt || 0
       }
-      // Labour: hours × rate — rate is 0 without rate cards, show hours-only in Act Hrs column
-      return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
-    }}
-    return calcActual({ item_id: l.item_id, source: l.source, work_order: l.work_order || '', line_type: l.line_type || '' })
+    )
   }
 
   async function applyBulkWbs() {
@@ -245,6 +248,11 @@ export function NrgTcePanel() {
   const allLeafSel = leafIds.length > 0 && leafIds.every(id => selected.has(id))
   const totalTce = filtered.filter(l => !isGroupHeader(l.item_id)).reduce((s, l) => s + (l.tce_total || 0), 0)
 
+  // Get sorted unique week keys from timesheets for weekly columns
+  const weekKeys = showWeekly
+    ? [...new Set(timesheets.map(ts => ts.week_start))].sort()
+    : []
+
   const sourceBadge = (src: string) => (
     <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
       background: src === 'skilled' ? '#dbeafe' : '#fef3c7',
@@ -286,6 +294,10 @@ export function NrgTcePanel() {
         <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--bg3)', cursor: 'pointer' }}>
           <input type="checkbox" checked={hideUnused} onChange={e => setHideUnused(e.target.checked)} />
           Hide unused
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: showWeekly ? '#eff6ff' : 'var(--bg3)', cursor: 'pointer', color: showWeekly ? '#1d4ed8' : 'var(--text)' }}>
+          <input type="checkbox" checked={showWeekly} onChange={e => setShowWeekly(e.target.checked)} />
+          Show Weekly
         </label>
         {collapsed.size > 0 && (
           <button className="btn btn-sm" style={{ color: 'var(--text3)' }} onClick={() => setCollapsed(new Set())}>Expand All</button>
@@ -335,6 +347,11 @@ export function NrgTcePanel() {
                     <th style={{ width: '40px' }}>KPI</th>
                     <th style={{ width: '110px' }}>Type</th>
                     <th style={{ width: '95px' }}>WBS</th>
+                    {showWeekly && weekKeys.map(wk => (
+                      <th key={wk} style={{ width: '80px', textAlign: 'right', fontSize: '10px', color: 'var(--text3)' }}>
+                        {new Date(wk + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short' })}
+                      </th>
+                    ))}
                     <th style={{ width: '60px' }}></th>
                   </tr>
                 </thead>
@@ -425,6 +442,27 @@ export function NrgTcePanel() {
                             ? <span style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px' }}>{l.wbs_code}</span>
                             : <span style={{ color: 'var(--text3)' }}>—</span>}
                         </td>
+                        {showWeekly && weekKeys.map(wk => {
+                          // Weekly hours from approved TCE-mode timesheets for this line
+                          const wkHrs = timesheets.filter(ts => ts.week_start === wk).reduce((s, ts) => {
+                            for (const m of ts.crew) {
+                              for (const day of Object.values(m.days)) {
+                                const allocs = (day as {nrgWoAllocations?: {wo:string;tceItemId:string|null;hours:number}[]}).nrgWoAllocations || []
+                                const match = allocs.find(a =>
+                                  (a.tceItemId && a.tceItemId === l.item_id) ||
+                                  (!a.tceItemId && a.wo === l.work_order && l.work_order)
+                                )
+                                if (match) s += match.hours
+                              }
+                            }
+                            return s
+                          }, 0)
+                          return (
+                            <td key={wk} style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '10px', color: wkHrs > 0 ? '#be185d' : 'var(--text3)' }}>
+                              {wkHrs > 0 ? wkHrs.toFixed(1) + 'h' : '—'}
+                            </td>
+                          )
+                        })}
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px' }} onClick={() => openEdit(l)}>✏</button>
                           <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginLeft: '3px', color: 'var(--red)' }} onClick={() => del(l)}>🗑</button>
