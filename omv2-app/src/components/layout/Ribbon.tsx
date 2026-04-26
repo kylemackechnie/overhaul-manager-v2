@@ -46,6 +46,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '💰', label: 'Dashboard', panel: 'cost-dashboard' },
         { icon: '📈', label: 'Forecast', panel: 'cost-forecast' },
         { icon: '📉', label: 'S-Curve', panel: 'cost-scurve' },
+        { icon: '📊', label: 'MIKA', panel: 'cost-mika' },
       ]},
       { label: 'Records', buttons: [
         { icon: '🧾', label: 'Expenses', panel: 'expenses' },
@@ -55,6 +56,8 @@ const RIBBON_MODULES: RibbonTab[] = [
       ]},
       { label: 'Reports', buttons: [
         { icon: '📑', label: 'Cost Report', panel: 'cost-report' },
+        { icon: '👤', label: 'Customer Report', panel: 'cost-customer-report' },
+        { icon: '📝', label: 'Pre-Planning', panel: 'pre-planning-report' },
         { icon: '📦', label: 'Reports DB', panel: 'reports-db' },
       ]},
     ],
@@ -114,6 +117,8 @@ const RIBBON_MODULES: RibbonTab[] = [
     key: 'logistics', label: 'Logistics',
     groups: [
       { label: 'Shipping', buttons: [
+        { icon: '🚢', label: 'Dashboard', panel: 'shipping-dashboard' },
+        { icon: '📥', label: 'Import', panel: 'shipping-import' },
         { icon: '📦', label: 'Inbound', panel: 'shipping-inbound' },
         { icon: '🚚', label: 'Outbound', panel: 'shipping-outbound' },
       ]},
@@ -123,13 +128,19 @@ const RIBBON_MODULES: RibbonTab[] = [
     key: 'hardware', label: 'Hardware',
     groups: [
       { label: 'Hardware', buttons: [
-        { icon: '🔧', label: 'Contract', panel: 'hardware-contract' },
-        { icon: '🛒', label: 'Carts', panel: 'hardware-carts' },
+        { icon: '💰', label: 'Dashboard', panel: 'hardware-dashboard' },
+        { icon: '📥', label: 'Import (OPSA)', panel: 'hardware-import' },
+        { icon: '📃', label: 'Contract Register', panel: 'hardware-contract' },
+        { icon: '📈', label: 'Escalation', panel: 'hardware-escalation' },
+        { icon: '🛒', label: 'Carts & Offers', panel: 'hardware-carts' },
+        { icon: '📄', label: 'Reports', panel: 'hardware-reports' },
       ]},
       { label: 'Spare Parts', buttons: [
-        { icon: '🔩', label: 'Inventory', panel: 'parts-list' },
+        { icon: '📦', label: 'Parts Dashboard', panel: 'parts-dashboard' },
+        { icon: '🔩', label: 'Parts List', panel: 'parts-list' },
         { icon: '📬', label: 'Receiving', panel: 'parts-receiving' },
         { icon: '📋', label: 'Issue Parts', panel: 'parts-issue' },
+        { icon: '🗄️', label: 'Inventory', panel: 'parts-inventory' },
         { icon: '📄', label: 'Reports', panel: 'parts-reports' },
       ]},
     ],
@@ -138,17 +149,21 @@ const RIBBON_MODULES: RibbonTab[] = [
     key: 'tooling', label: 'Tooling',
     groups: [
       { label: 'SE AG Tooling', buttons: [
+        { icon: '🔩', label: 'Dashboard', panel: 'tooling-dashboard' },
+        { icon: '📥', label: 'Import', panel: 'tooling-import' },
         { icon: '🧰', label: 'TV Register', panel: 'tooling-tvs' },
         { icon: '📦', label: 'Kollos', panel: 'tooling-kollos' },
         { icon: '💶', label: 'Costings', panel: 'tooling-costings' },
         { icon: '🏢', label: 'Departments', panel: 'tooling-departments' },
-        { icon: '📥', label: 'Import', panel: 'tooling-import' },
+        { icon: '📄', label: 'Reports', panel: 'tooling-reports' },
+        { icon: '🗺️', label: 'Tour View', panel: 'tooling-tour' },
       ]},
       { label: 'Equipment Hire', buttons: [
         { icon: '📊', label: 'Dashboard', panel: 'hire-dashboard' },
         { icon: '🚜', label: 'Dry Hire', panel: 'hire-dry' },
         { icon: '🏗️', label: 'Wet Hire', panel: 'hire-wet' },
         { icon: '🧰', label: 'Local Hire', panel: 'hire-local' },
+        { icon: '📄', label: 'Hire Reports', panel: 'hire-reports' },
       ]},
     ],
   },
