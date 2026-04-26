@@ -76,14 +76,14 @@ export function AccommodationPanel() {
       project_id: pid,
       property: bulkForm.property.trim(),
       room: `Room ${i+1}`,
-      vendor: bulkForm.vendor.trim(),
+      vendor: bulkForm.vendor.trim() || null,
       check_in: bulkForm.check_in || null,
       check_out: bulkForm.check_out || null,
       nights: days,
       total_cost: 0,
       customer_total: 0,
       gm_pct: bulkForm.gm_pct,
-      wbs: bulkForm.wbs,
+      wbs: bulkForm.wbs || null,
       occupants: [],
       inclusive: false,
     }))
@@ -165,11 +165,11 @@ export function AccommodationPanel() {
     setSaving(true)
     const payload = {
       project_id: activeProject!.id,
-      property: form.property, room: form.room, vendor: form.vendor,
+      property: form.property, room: form.room || null, vendor: form.vendor || null,
       check_in: form.check_in || null, check_out: form.check_out || null,
       nights: form.nights, total_cost: form.total_cost, customer_total: form.customer_total,
       gm_pct: form.gm_pct, inclusive: form.inclusive, linked_po_id: form.linked_po_id || null,
-      notes: form.notes, occupants: form.occupant_ids,
+      notes: form.notes || null, occupants: form.occupant_ids,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('accommodation').insert(payload)
@@ -265,8 +265,8 @@ export function AccommodationPanel() {
       return {
         project_id: pid,
         property: bulkForm.property.trim(),
-        room: formExt.room_type || '',
-        vendor: bulkForm.vendor,
+        room: formExt.room_type || null,
+        vendor: bulkForm.vendor || null,
         check_in: res?.mob_in || null,
         check_out: res?.mob_out || null,
         nights,
@@ -274,7 +274,7 @@ export function AccommodationPanel() {
         total_cost: totalCost,
         customer_total: customerTotal,
         gm_pct: gm,
-        wbs: bulkForm.wbs,
+        wbs: bulkForm.wbs || null,
         occupants: [resId],
       }
     })
