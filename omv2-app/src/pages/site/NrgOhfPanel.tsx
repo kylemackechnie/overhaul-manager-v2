@@ -111,7 +111,7 @@ export function NrgOhfPanel() {
       .single()
     if (error) { toast(error.message, 'error'); return false }
     const { useAppStore: s } = await import('../../store/appStore')
-    s.getState().setActiveProject(data as typeof activeProject)
+    s.getState().restoreProject(data as typeof activeProject)
     return true
   }
 
