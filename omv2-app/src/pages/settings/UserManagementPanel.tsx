@@ -212,13 +212,24 @@ export function UserManagementPanel() {
       // 4. Link person to app_user
       await supabase.from('persons').update({ app_user_id: newUser.id }).eq('id', person.id)
 
-      // 5. Send magic link — works with anon key (admin.inviteUserByEmail requires service role)
-      const { error: invErr } = await supabase.auth.signInWithOtp({
-        email: inviteForm.email.trim(),
-        options: { shouldCreateUser: false }  // person must have app_users record already (created above)
+      // 5. Send the invite via the invite-user edge function. The function
+      //    uses the service role to call auth.admin.inviteUserByEmail, which
+      //    works regardless of the project's "Allow new signups" setting and
+      //    sends the styled invite email. Anon-key signInWithOtp can't do
+      //    this — it returns "Signups not allowed for otp" when signups are
+      //    disabled, even though we WANT the user created here.
+      const redirectTo = `${window.location.origin}/`
+      const { data: invRes, error: invErr } = await supabase.functions.invoke('invite-user', {
+        body: {
+          email: inviteForm.email.trim().toLowerCase(),
+          name: inviteForm.name.trim(),
+          role: inviteForm.role,
+          redirect_to: redirectTo,
+        },
       })
-      if (invErr) {
-        toast(`User created but invite email failed: ${invErr.message}`, 'error')
+      if (invErr || (invRes && invRes.error)) {
+        const msg = invErr?.message || invRes?.error || 'Unknown error'
+        toast(`User created but invite email failed: ${msg}`, 'error')
       } else {
         toast(`Invite sent to ${inviteForm.email}`, 'success')
       }
