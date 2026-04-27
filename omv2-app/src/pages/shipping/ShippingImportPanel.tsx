@@ -432,13 +432,18 @@ export function ShippingImportPanel() {
 
       // 2. Link to project in project_tvs — ignore if already exists (409)
       const { data: existingLink } = await supabase.from('project_tvs')
-        .select('project_id').eq('project_id', pid).eq('tv_no', tvNoStr).maybeSingle()
+        .select('project_id, tv_type').eq('project_id', pid).eq('tv_no', tvNoStr).maybeSingle()
       if (!existingLink) {
         const { error: linkErr } = await supabase.from('project_tvs')
-          .insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId, tv_type: 'hardware' })
+          .insert({ project_id: pid, tv_no: tvNoStr, site_id: siteId, tv_type: tv.shipType })
         if (linkErr && !linkErr.message.includes('duplicate')) {
           toast('Error linking TV to project: ' + linkErr.message, 'error'); return
         }
+      } else if ((existingLink as { tv_type: string }).tv_type !== tv.shipType) {
+        // User reclassified an existing project TV — update tv_type so it shows in the right register
+        await supabase.from('project_tvs')
+          .update({ tv_type: tv.shipType })
+          .eq('project_id', pid).eq('tv_no', tvNoStr)
       }
 
       // 3. Create import shipment record
