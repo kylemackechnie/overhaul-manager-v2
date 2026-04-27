@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { findOrCreatePerson, type Person } from '../../lib/persons'
+import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -318,25 +319,37 @@ export function ResourcesPanel() {
 
     if (!parsed.length) { toast('No valid resource rows found — check file format', 'error'); setImporting(false); return }
 
-    let added = 0, skipped = 0, failed = 0
+    let added = 0, skipped = 0, failed = 0, unmapped = 0
     let firstError: string | null = null
+    const projAliases = (activeProject?.role_aliases as { from: string; to: string }[]) || []
     for (const p of parsed) {
       if (resources.some(r => r.name.toLowerCase() === p.name.toLowerCase())) { skipped++; continue }
+
+      // Resolve raw roster role → known rate-card role + shift, mirroring the
+      // HTML's resolveImportRole/resolveImportShift. After this point the
+      // resource's role IS the rate-card role verbatim, so every downstream
+      // lookup is a plain exact match.
+      const resolvedRole = resolveImportRole(p.role, rcs, projAliases)
+      const resolvedShift = resolveImportShift(p.role)
+      const matchedCard = rcs.find(rc => rc.role.toLowerCase() === resolvedRole.toLowerCase())
+      if (!matchedCard) unmapped++
+      const category = matchedCard?.category || 'trades'
+
       const payload = {
         project_id: activeProject!.id,
         name: p.name,
-        role: p.role,
-        category: 'trades' as const,
+        role: resolvedRole,
+        category,
         company: p.company,
         email: p.email,
         phone: p.phone,
         mob_in: p.mobIn || null,
         mob_out: p.mobOut || null,
-        shift: 'day',
+        shift: resolvedShift,
       }
       let personId: string | null = null
       try {
-        const { person } = await findOrCreatePerson({ full_name: p.name, email: p.email||null, phone: p.phone||null, company: p.company||null, default_role: p.role||null })
+        const { person } = await findOrCreatePerson({ full_name: p.name, email: p.email||null, phone: p.phone||null, company: p.company||null, default_role: resolvedRole })
         personId = person.id
       } catch { /* non-critical */ }
       const { error } = await supabase.from('resources').insert({ ...payload, person_id: personId })
@@ -348,7 +361,9 @@ export function ResourcesPanel() {
       }
     }
     if (failed) {
-      toast(`Imported ${added}, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}${firstError ? ` — ${firstError}` : ''}`, 'error')
+      toast(`Imported ${added}, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}${unmapped ? `, ${unmapped} unmapped roles` : ''}${firstError ? ` — ${firstError}` : ''}`, 'error')
+    } else if (unmapped) {
+      toast(`Imported ${added} people${skipped ? ` (${skipped} already exist)` : ''} — ⚠ ${unmapped} role${unmapped===1?'':'s'} unmapped, add a project alias under Rate Cards`, 'error')
     } else {
       toast(`Imported ${added} people${skipped ? ` (${skipped} already exist)` : ''}`, 'success')
     }
