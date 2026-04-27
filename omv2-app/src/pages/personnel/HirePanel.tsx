@@ -144,21 +144,35 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   async function save() {
     if (!form.name.trim()) return toast('Name required', 'error')
     setSaving(true)
+    // Required text fields default to '' (matches DB column defaults).
+    // `... || null` would coerce empty strings to null and break the NOT NULL
+    // constraint on description/vendor/notes/wbs. Only fields that are
+    // actually nullable in the schema are allowed to be null.
     const payload = {
       project_id: activeProject!.id, hire_type: hireType,
-      name: form.name.trim(), vendor: form.vendor || null, description: form.description || null,
-      start_date: form.start_date || null, end_date: form.end_date || null,
-      hire_cost: form.hire_cost || 0, customer_total: form.customer_total || 0, gm_pct: form.gm_pct || 0,
-      daily_rate: form.daily_rate || null, weekly_rate: form.weekly_rate || null,
-      charge_unit: form.charge_unit || 'daily', qty: form.qty || 1,
-      currency: form.currency || 'AUD', transport_in: form.transport_in || 0, transport_out: form.transport_out || 0,
+      name: form.name.trim(),
+      vendor: form.vendor || '',
+      description: form.description || '',
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      hire_cost: form.hire_cost || 0,
+      customer_total: form.customer_total || 0,
+      gm_pct: form.gm_pct || 0,
+      daily_rate: form.daily_rate || null,
+      weekly_rate: form.weekly_rate || null,
+      charge_unit: form.charge_unit || 'daily',
+      qty: form.qty || 1,
+      currency: form.currency || 'AUD',
+      transport_in: form.transport_in || 0,
+      transport_out: form.transport_out || 0,
       standby_rate: form.standby_rate || null,
-      wbs: form.wbs || null,
-      linked_po_id: form.linked_po_id || null, notes: form.notes || null,
+      wbs: form.wbs || '',
+      linked_po_id: form.linked_po_id || null,
+      notes: form.notes || '',
       // Wet hire specific
       rates: hireType === 'wet' ? { ds: form.rate_ds, ns: form.rate_ns, wds: form.rate_wds, wns: form.rate_wns, sdd: form.rate_sdd, sdn: form.rate_sdn } : null,
-      daa_rate: hireType === 'wet' ? (form.daa_rate || null) : null,
-      crew: hireType === 'wet' ? form.crew : null,
+      daa_rate: hireType === 'wet' ? (form.daa_rate || 0) : 0,
+      crew: hireType === 'wet' ? form.crew : [],
       // Local hire specific
       active_days: hireType === 'local' ? (form.active_days ?? null) : null,
     }
