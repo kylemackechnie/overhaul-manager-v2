@@ -573,18 +573,22 @@ export interface NrgInvoiceMin {
   tce_item_id: string | null
   amount: number
   status: string
+  period_from?: string | null
+  period_to?: string | null
 }
 
 export interface NrgExpenseMin {
   tce_item_id: string | null
   cost_ex_gst: number
   amount: number
+  date?: string | null
 }
 
 export interface NrgVariationMin {
   status: string
   tce_link: string
   sell_total: number
+  approved_date?: string | null
 }
 
 /**
@@ -648,6 +652,52 @@ export function nrgInvoiceActual(
     .reduce((s, e) => s + (e.cost_ex_gst || e.amount || 0), 0)
 
   const vnTotal = nrgVariationActual(itemId, variations)
+
+  return invTotal + expTotal + vnTotal
+}
+
+/**
+ * nrgInvoiceActualForWeek — same shape as nrgInvoiceActual but filters
+ * to a date window. Used by NrgActualsPanel's "this week" column.
+ *
+ * Date semantics:
+ *   • Invoices: period_from / period_to overlap the window. If both null,
+ *     the invoice has no period and is excluded (would have to attribute
+ *     its full amount to every week, which over-counts).
+ *   • Expenses: date falls within the window.
+ *   • Variations: approved_date falls within the window. Unapproved
+ *     variations are excluded entirely (consistent with nrgVariationActual).
+ */
+export function nrgInvoiceActualForWeek(
+  itemId: string | null,
+  invoices: NrgInvoiceMin[],
+  expenses: NrgExpenseMin[],
+  variations: NrgVariationMin[],
+  weekStart: string,
+  weekEnd: string
+): number {
+  if (!itemId) return 0
+
+  // Invoice period overlaps the week if (from <= weekEnd) AND (to >= weekStart).
+  const invTotal = invoices
+    .filter(i => {
+      if (i.tce_item_id !== itemId) return false
+      if (i.status === 'rejected') return false
+      const f = i.period_from || ''
+      const t = i.period_to || ''
+      if (!f || !t) return false  // no period, can't slice
+      return f <= weekEnd && t >= weekStart
+    })
+    .reduce((s, i) => s + (i.amount || 0), 0)
+
+  const expTotal = expenses
+    .filter(e => e.tce_item_id === itemId && e.date && e.date >= weekStart && e.date <= weekEnd)
+    .reduce((s, e) => s + (e.cost_ex_gst || e.amount || 0), 0)
+
+  const vnTotal = variations
+    .filter(v => v.tce_link === itemId && v.status === 'approved'
+      && v.approved_date && v.approved_date >= weekStart && v.approved_date <= weekEnd)
+    .reduce((s, v) => s + (v.sell_total || 0), 0)
 
   return invTotal + expTotal + vnTotal
 }

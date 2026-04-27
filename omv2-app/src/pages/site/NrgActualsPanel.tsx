@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
-import { nrgInvoiceActual, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { nrgInvoiceActual, nrgInvoiceActualForWeek, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
 import type { RateCard, WeeklyTimesheet } from '../../types'
 import type { NrgTceLine } from '../../types'
@@ -20,17 +20,32 @@ function statusBadge(pct: number | null, hasActuals: boolean) {
   return { bg: '#d1fae5', color: '#065f46', label: 'On track' }
 }
 
+interface CostLineRow {
+  tce_item_id: string | null
+  work_order: string | null
+  work_date: string | null
+  cost_labour: number
+  sell_labour: number
+  cost_allowances: number
+  sell_allowances: number
+}
+
 export function NrgActualsPanel() {
   const { activeProject } = useAppStore()
   const [lines, setLines] = useState<NrgTceLine[]>([])
-  // Pre-aggregated labour cost per tce_item_id from timesheet_cost_lines
+  // Pre-aggregated labour cost per tce_item_id from timesheet_cost_lines (project total).
   const [labourByItem, setLabourByItem] = useState<Record<string, { cost: number; sell: number }>>({})
+  // Raw cost-line rows kept for the per-week aggregation in the "this week" column.
+  const [costLines, setCostLines] = useState<CostLineRow[]>([])
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
+  // Selected week for the "this week" column. Empty = no filter (column hidden).
+  // Stored as Monday's ISO date.
+  const [weekFilter, setWeekFilter] = useState<string>('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -59,20 +74,23 @@ export function NrgActualsPanel() {
     }
 
     const [clRes, invRes, expRes, varRes] = await Promise.all([
-      // Read from the pre-calculated cost lines table (approved only)
+      // Read from the pre-calculated cost lines table (approved only).
+      // Include work_date so we can aggregate by week for the "this week" column.
       supabase.from('timesheet_cost_lines')
-        .select('tce_item_id,work_order,cost_labour,sell_labour,cost_allowances,sell_allowances')
+        .select('tce_item_id,work_order,work_date,cost_labour,sell_labour,cost_allowances,sell_allowances')
         .eq('project_id', pid)
         .eq('timesheet_status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
-      supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
+      supabase.from('invoices').select('tce_item_id,amount,status,period_from,period_to').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,date').eq('project_id', pid),
+      supabase.from('variations').select('status,tce_link,sell_total,approved_date').eq('project_id', pid),
     ])
     setLines(tceLines)
 
-    // Aggregate labour cost by tce_item_id from the cost lines table
+    // Aggregate labour cost by tce_item_id from the cost lines table — full project total
     const agg: Record<string, { cost: number; sell: number }> = {}
-    for (const row of (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; cost_labour: number; sell_labour: number; cost_allowances: number; sell_allowances: number }[]) {
+    // Also keep cost lines for per-week filtering
+    const clRows = (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; work_date: string | null; cost_labour: number; sell_labour: number; cost_allowances: number; sell_allowances: number }[]
+    for (const row of clRows) {
       const key = row.tce_item_id || ''
       if (!key) continue
       if (!agg[key]) agg[key] = { cost: 0, sell: 0 }
@@ -80,6 +98,7 @@ export function NrgActualsPanel() {
       agg[key].sell += (row.sell_labour || 0) + (row.sell_allowances || 0)
     }
     setLabourByItem(agg)
+    setCostLines(clRows)
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
@@ -89,6 +108,47 @@ export function NrgActualsPanel() {
   // Skip group headers (3-segment IDs)
   const isGroupHeader = (id: string | null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
 
+  // ─── Weekly slice ────────────────────────────────────────────────────────
+  // Build the list of weeks we have any data in — Monday-anchored.
+  // Week selector picks one of these; defaults to "no filter" (column hidden).
+  const monday = (d: string): string => {
+    const dt = new Date(d + 'T00:00:00')
+    const dow = dt.getUTCDay()
+    const offset = dow === 0 ? 6 : dow - 1  // shift Sunday back to previous Monday
+    dt.setUTCDate(dt.getUTCDate() - offset)
+    return dt.toISOString().slice(0, 10)
+  }
+  const availableWeeks = (() => {
+    const set = new Set<string>()
+    costLines.forEach(r => { if (r.work_date) set.add(monday(r.work_date)) })
+    invoices.forEach(i => { if (i.period_from) set.add(monday(i.period_from)) })
+    expenses.forEach(e => { if (e.date) set.add(monday(e.date)) })
+    return [...set].sort().reverse()
+  })()
+
+  // Weekly window: Monday to Sunday (inclusive) of the selected week.
+  const weekStart = weekFilter
+  const weekEnd = (() => {
+    if (!weekFilter) return ''
+    const dt = new Date(weekFilter + 'T00:00:00')
+    dt.setUTCDate(dt.getUTCDate() + 6)
+    return dt.toISOString().slice(0, 10)
+  })()
+
+  // Per-item labour aggregation filtered to the selected week.
+  const labourByItemWeekly = (() => {
+    const agg: Record<string, { cost: number; sell: number }> = {}
+    if (!weekFilter) return agg
+    for (const row of costLines) {
+      if (!row.tce_item_id || !row.work_date) continue
+      if (row.work_date < weekStart || row.work_date > weekEnd) continue
+      if (!agg[row.tce_item_id]) agg[row.tce_item_id] = { cost: 0, sell: 0 }
+      agg[row.tce_item_id].cost += (row.cost_labour || 0) + (row.cost_allowances || 0)
+      agg[row.tce_item_id].sell += (row.sell_labour || 0) + (row.sell_allowances || 0)
+    }
+    return agg
+  })()
+
   const withActuals = lines
     .filter(l => !isGroupHeader(l.item_id))
     .map(l => {
@@ -97,13 +157,22 @@ export function NrgActualsPanel() {
       // straight through as the actuals figure. Skip labour/invoice/expense
       // aggregation — these lines aren't rate-driven.
       if (l.line_type === 'Fixed Price') {
-        return { line: l, actuals: tce, tce, pct: tce > 0 ? 100 : null }
+        // For Fixed Price lines the weekly figure is also the planned amount —
+        // there's no time-based attribution, so we display the same value.
+        // The user can interpret this as "100% of the cost is recognised".
+        return { line: l, actuals: tce, tce, pct: tce > 0 ? 100 : null, weekActuals: weekFilter ? tce : 0 }
       }
       const labour = (l.item_id ? labourByItem[l.item_id]?.sell || 0 : 0)
       const nonLabour = nrgInvoiceActual(l.item_id, invoices, expenses, variations)
       const actuals = labour + nonLabour
       const pct = tce > 0 ? (actuals / tce) * 100 : null
-      return { line: l, actuals, tce, pct }
+      // Weekly slice
+      const weekLabour = weekFilter && l.item_id ? (labourByItemWeekly[l.item_id]?.sell || 0) : 0
+      const weekNonLabour = weekFilter
+        ? nrgInvoiceActualForWeek(l.item_id, invoices, expenses, variations, weekStart, weekEnd)
+        : 0
+      const weekActuals = weekLabour + weekNonLabour
+      return { line: l, actuals, tce, pct, weekActuals }
     })
 
   let displayed = withActuals
@@ -120,13 +189,21 @@ export function NrgActualsPanel() {
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
 
   function exportCSV() {
-    const rows = [['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'TCE Value', 'Actuals', 'Remaining', '% Used']]
-    displayed.forEach(({ line, actuals, tce, pct }) => rows.push([
-      line.item_id || '', line.source, line.description, line.work_order || '',
-      line.contract_scope || '', String(tce), String(actuals),
-      String(tce - actuals), pct !== null ? pct.toFixed(1) + '%' : '—',
-    ]))
-    downloadCSV(rows, `nrg_actuals_${activeProject?.name || 'project'}`)
+    const header = ['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'TCE Value', 'Actuals']
+    if (weekFilter) header.push(`Week ${weekStart}`)
+    header.push('Remaining', '% Used')
+    const rows: (string|number)[][] = [header]
+    displayed.forEach(({ line, actuals, tce, pct, weekActuals }) => {
+      const row: (string|number)[] = [
+        line.item_id || '', line.source, line.description, line.work_order || '',
+        line.contract_scope || '', String(tce), String(actuals),
+      ]
+      if (weekFilter) row.push(String(weekActuals || 0))
+      row.push(String(tce - actuals), pct !== null ? pct.toFixed(1) + '%' : '—')
+      rows.push(row)
+    })
+    const suffix = weekFilter ? `_week_${weekStart}` : ''
+    downloadCSV(rows, `nrg_actuals_${activeProject?.name || 'project'}${suffix}`)
   }
 
   if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
@@ -148,13 +225,16 @@ export function NrgActualsPanel() {
       </div>
 
       {/* KPI tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
-        {[
+      <div style={{ display: 'grid', gridTemplateColumns: weekFilter ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+        {([
           { label: 'TCE Value', value: fmt(totTce), color: '#0284c7' },
           { label: 'Actuals to Date', value: fmt(totAct), color: 'var(--green)' },
+          weekFilter
+            ? { label: `This Week (${weekStart})`, value: fmt(withActuals.reduce((s, x) => s + (x.weekActuals || 0), 0)), color: '#1e40af' }
+            : null,
           { label: 'Remaining', value: fmt(totTce - totAct), color: totTce - totAct < 0 ? 'var(--red)' : 'var(--text2)' },
           { label: '% Used', value: totPct !== null ? totPct.toFixed(1) + '%' : '—', color: totPct && totPct > 100 ? 'var(--red)' : totPct && totPct > 80 ? 'var(--amber)' : 'var(--green)' },
-        ].map(t => (
+        ].filter(Boolean) as { label: string; value: string; color: string }[]).map(t => (
           <div key={t.label} className="card" style={{ padding: '12px 16px', borderTop: `3px solid ${t.color}` }}>
             <div style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'var(--mono)', color: t.color }}>{t.value}</div>
             <div style={{ fontSize: '12px', marginTop: '2px' }}>{t.label}</div>
@@ -176,7 +256,7 @@ export function NrgActualsPanel() {
       )}
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         {[
           { key: 'all', label: `All (${withActuals.length})` },
           { key: 'with_actuals', label: `Has Actuals (${withActuals.filter(x => x.actuals > 0).length})` },
@@ -194,6 +274,20 @@ export function NrgActualsPanel() {
             style={{ background: sourceFilter === s ? '#6366f1' : '', color: sourceFilter === s ? '#fff' : '' }}
             onClick={() => setSourceFilter(s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
         ))}
+        <div style={{ borderLeft: '1px solid var(--border)', margin: '0 4px' }} />
+        {/* Week filter — adds a "This Week" column showing labour + invoice/expense/variation
+            actuals that fall in the selected Mon-Sun window. Empty option = no column. */}
+        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>This week:</span>
+        <select className="input" style={{ fontSize: '12px', padding: '3px 6px', height: '28px' }}
+          value={weekFilter} onChange={e => setWeekFilter(e.target.value)}>
+          <option value="">— Project to date —</option>
+          {availableWeeks.map(w => {
+            const dt = new Date(w + 'T00:00:00')
+            const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate() + 6)
+            const lbl = `${dt.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })} – ${sun.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })}`
+            return <option key={w} value={w}>{lbl}</option>
+          })}
+        </select>
       </div>
 
       {lines.length === 0 ? (
@@ -217,13 +311,14 @@ export function NrgActualsPanel() {
                   <th style={{ width: '100px' }}>Contract</th>
                   <th style={{ textAlign: 'right', width: '90px' }}>TCE Value</th>
                   <th style={{ textAlign: 'right', width: '90px' }}>Actuals</th>
+                  {weekFilter && <th style={{ textAlign: 'right', width: '95px', background: '#eff6ff' }} title="Labour + invoices/expenses/variations falling in this week">This Week</th>}
                   <th style={{ textAlign: 'right', width: '90px' }}>Remaining</th>
                   <th style={{ width: '120px' }}>Progress</th>
                   <th style={{ width: '90px' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {displayed.map(({ line, actuals, tce, pct }) => {
+                {displayed.map(({ line, actuals, tce, pct, weekActuals }) => {
                   const rem = tce - actuals
                   const pctNum = pct !== null ? Math.round(pct) : null
                   const barColor = pctNum === null ? 'var(--text3)' : pctNum > 100 ? 'var(--red)' : pctNum > 80 ? 'var(--amber)' : 'var(--green)'
@@ -259,6 +354,11 @@ export function NrgActualsPanel() {
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(tce)}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : 'var(--text3)' }}>{fmt(actuals)}</td>
+                      {weekFilter && (
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', background: '#eff6ff', color: weekActuals > 0 ? '#1e40af' : 'var(--text3)' }}>
+                          {fmt(weekActuals)}
+                        </td>
+                      )}
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: rem < 0 ? 'var(--red)' : 'var(--text2)' }}>{fmt(rem)}</td>
                       <td>
                         {pctNum !== null ? (
@@ -280,6 +380,11 @@ export function NrgActualsPanel() {
                   <td colSpan={5} style={{ padding: '8px 12px' }}>TOTAL ({displayed.length} lines)</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s, x) => s + x.tce, 0))}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s, x) => s + x.actuals, 0))}</td>
+                  {weekFilter && (
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', background: '#dbeafe', color: '#1e40af' }}>
+                      {fmt(displayed.reduce((s, x) => s + (x.weekActuals || 0), 0))}
+                    </td>
+                  )}
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: displayed.reduce((s, x) => s + x.tce - x.actuals, 0) < 0 ? 'var(--red)' : 'var(--text)' }}>
                     {fmt(displayed.reduce((s, x) => s + x.tce - x.actuals, 0))}
                   </td>
