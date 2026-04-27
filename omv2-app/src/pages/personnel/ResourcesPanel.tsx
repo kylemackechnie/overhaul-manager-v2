@@ -552,12 +552,26 @@ export function ResourcesPanel() {
                         </div>
                       </td>
                       <td style={{minWidth:'140px'}}>
-                        <input className="res-inline" defaultValue={r.role||''}
-                          style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:'var(--text2)',cursor:'pointer',padding:'1px 2px'}}
-                          onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)';(e.target as HTMLInputElement).style.background='var(--bg3)'}}
-                          onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'role',(e.target as HTMLInputElement).value.trim())}}
-                          onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
-                        />
+                        {(() => {
+                          const isInRc = rcs.some(rc => rc.role === r.role)
+                          const colour = !r.role ? 'var(--text3)' : isInRc ? 'var(--text2)' : 'var(--red)'
+                          return (
+                            <select
+                              defaultValue={r.role||''}
+                              title={!isInRc && r.role ? `"${r.role}" is not in the current rate cards — pick one or update Rate Cards.` : ''}
+                              style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:colour,cursor:'pointer',padding:'1px 2px',appearance:'none'}}
+                              onFocus={e=>{(e.target as HTMLSelectElement).style.borderBottomColor='var(--accent)';(e.target as HTMLSelectElement).style.background='var(--bg3)'}}
+                              onBlur={e=>{(e.target as HTMLSelectElement).style.borderBottomColor='transparent';(e.target as HTMLSelectElement).style.background='transparent'}}
+                              onChange={e=>saveInline(r.id,'role',(e.target as HTMLSelectElement).value)}
+                            >
+                              <option value="">— select role —</option>
+                              {r.role && !isInRc && (
+                                <option value={r.role}>{r.role} (not in rate cards)</option>
+                              )}
+                              {rcs.map(rc => <option key={rc.id} value={rc.role}>{rc.role}</option>)}
+                            </select>
+                          )
+                        })()}
                       </td>
                       <td style={{fontSize:'12px',color:'var(--text3)'}}>{r.shift||'day'}</td>
                       <td style={{minWidth:'110px'}}>
@@ -701,8 +715,21 @@ export function ResourcesPanel() {
                 </div>
                 <div className="fg" style={{flex:2}}>
                   <label>Role / Trade</label>
-                  <input className="input" value={form.role||''} onChange={e=>setForm(f=>({...f,role:e.target.value}))} placeholder="e.g. Fitter, Project Manager" list="rc-roles" />
-                  <datalist id="rc-roles">{rcs.map(rc=><option key={rc.id} value={rc.role}/>)}</datalist>
+                  {rcs.length === 0 ? (
+                    <div style={{ fontSize:'12px', color:'var(--amber)', padding:'8px 10px', background:'var(--bg3)', borderRadius:'6px' }}>
+                      No rate cards yet — set them up under <strong>Rate Cards</strong> first, then assign roles here.
+                    </div>
+                  ) : (
+                    <select className="input" value={form.role||''} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
+                      <option value="">— select role —</option>
+                      {/* If the resource has a legacy role not in the current rate-card list,
+                          show it at the top so we don't silently lose the value on save. */}
+                      {form.role && !rcs.some(rc => rc.role === form.role) && (
+                        <option value={form.role}>{form.role} (not in rate cards)</option>
+                      )}
+                      {rcs.map(rc => <option key={rc.id} value={rc.role}>{rc.role}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
               <div className="fg-row">
