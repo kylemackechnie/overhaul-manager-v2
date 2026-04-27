@@ -74,7 +74,7 @@ export function NrgTcePanel() {
 
   function lineActualCost(l: NrgTceLine): number {
     return nrgLineActual(
-      { item_id: l.item_id, source: l.source, work_order: l.work_order || '', line_type: l.line_type || '' },
+      { item_id: l.item_id, source: l.source, work_order: l.work_order || '', line_type: l.line_type || '', tce_total: l.tce_total || 0 },
       timesheets, invoices, expenses, variations,
       (role: string) => {
         const rc = rateCards.find(r => r.role.toLowerCase() === role.toLowerCase())
