@@ -181,27 +181,55 @@ export function ResourcesPanel() {
     toast('Removed', 'info'); load()
   }
 
-  // Parse a CSV line respecting quoted fields (commas inside quotes)
-  function parseCSVLine(line: string): string[] {
-    const result: string[] = []
-    let cur = '', inQ = false
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i]
-      if (c === '"') { inQ = !inQ }
-      else if (c === ',' && !inQ) { result.push(cur.trim()); cur = '' }
-      else { cur += c }
+  // RFC 4180 CSV parser — handles quoted fields with embedded newlines/commas/escaped quotes.
+  // Same algorithm as the HTML app's parseCSV. Splits the entire text into rows, not line-by-line,
+  // so cells containing newlines (e.g. "EHS 29/05/2025\nQUAL 29/05/2025") parse correctly.
+  function parseCSV(text: string): string[][] {
+    // Strip BOM if present
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
+    const rows: string[][] = []
+    let row: string[] = [], cur = '', inQuote = false
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]
+      const next = text[i + 1]
+      if (c === '"') {
+        if (inQuote && next === '"') { cur += '"'; i++ }       // escaped quote
+        else inQuote = !inQuote                                 // toggle quote mode
+      } else if (c === ',' && !inQuote) {
+        row.push(cur); cur = ''                                 // field separator
+      } else if ((c === '\n' || (c === '\r' && next === '\n')) && !inQuote) {
+        if (c === '\r') i++                                     // skip \n in \r\n
+        row.push(cur); cur = ''
+        rows.push(row); row = []
+      } else if (c === '\r' && !inQuote) {
+        row.push(cur); cur = ''
+        rows.push(row); row = []
+      } else {
+        cur += c                                                // normal char (incl. embedded newlines in quotes)
+      }
     }
-    result.push(cur.trim())
-    return result
+    if (cur || row.length) { row.push(cur); rows.push(row) }
+    return rows
   }
 
-  // Parse NRG date strings like "Sun 26 Apr 26" → "2026-04-26"
+  // Parse date strings — handles DD/MM/YYYY, D/M/YY, and "Sun 26 Apr 26" forms → "YYYY-MM-DD"
   function parseNRGDate(s: string): string {
     if (!s || !s.trim()) return ''
+    // Strip trailing notes like "(DL)" and surrounding whitespace
+    const clean = s.trim().replace(/\s*\(.*?\)\s*/g, '').trim()
     // Already ISO
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s.trim())) return s.trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean
+    // DD/MM/YYYY or D/M/YY (or with hyphens)
+    const slash = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
+    if (slash) {
+      // eslint-disable-next-line prefer-const
+      let [, d, mo, y] = slash
+      if (y.length === 2) y = '20' + y
+      return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`
+    }
+    // "Sun 26 Apr 26" / "26 Apr 26" / "Apr 26 26"
     const months: Record<string,string> = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}
-    const m = s.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})/) || s.match(/([A-Za-z]{3})\s+(\d{1,2})\s+(\d{2,4})/)
+    const m = clean.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})/) || clean.match(/([A-Za-z]{3})\s+(\d{1,2})\s+(\d{2,4})/)
     if (!m) return ''
     const day = m[1].padStart(2,'0'), mon = months[m[2].toLowerCase()] || months[m[1].toLowerCase()], yr = m[3].length === 2 ? '20'+m[3] : m[3]
     return mon ? `${yr}-${mon}-${day}` : ''
@@ -210,21 +238,20 @@ export function ResourcesPanel() {
   interface ParsedResource { name:string; role:string; company:string; email:string; phone:string; mobIn:string; mobOut:string; shift:string }
 
   async function handleImportCSV(text: string) {
-    const rawLines = text.replace(/\r/g,'').split('\n')
-    const rows = rawLines.map(l => parseCSVLine(l))
+    const rows = parseCSV(text)
     if (rows.length < 2) { toast('No data to import', 'error'); return }
     setImporting(true)
 
-    // Auto-detect format — matches HTML importResourceCSV exactly
-    const firstRowLower = rows[0].map(c => c.toLowerCase().trim())
+    // Auto-detect format — matches HTML importResourceCSV
+    const firstRowLower = rows[0].map(c => (c || '').toLowerCase().trim())
     const isStandard = firstRowLower.includes('name') || firstRowLower.includes('full name')
 
-    const SECTION_HEADERS = ['management','day shift','night shift','subcontractor','trades','roster','overhead']
+    const SECTION_HEADERS = ['management','day shift','night shift','subcontractor','trades','roster','overhead','day shift trades','night shift trades']
     let parsed: ParsedResource[] = []
 
     if (isStandard) {
       // Standard export format — row 0 is headers
-      const hdr = rows[0].map(c => c.toLowerCase().trim())
+      const hdr = rows[0].map(c => (c || '').toLowerCase().trim())
       const col = (...terms: string[]) => hdr.findIndex(h => terms.some(t => h.includes(t)))
       const nameI  = col('name','full name','employee')
       const roleI  = col('role','position','trade','classification')
@@ -235,20 +262,29 @@ export function ResourcesPanel() {
       const mobOutI= col('mob out','mobout','demob','finish','end')
       if (nameI < 0) { toast('Could not find Name column', 'error'); setImporting(false); return }
       for (const r of rows.slice(1)) {
-        const name = r[nameI]?.trim()
+        const name = (r[nameI] || '').trim()
         if (!name) continue
-        parsed.push({ name, role: r[roleI]||'', company: r[compI]||'', email: r[emailI]||'', phone: r[phoneI]||'', mobIn: r[mobInI]||'', mobOut: r[mobOutI]||'', shift: 'day' })
+        parsed.push({
+          name,
+          role:    (roleI    >= 0 ? r[roleI]    : '').trim(),
+          company: (compI    >= 0 ? r[compI]    : '').trim(),
+          email:   (emailI   >= 0 ? r[emailI]   : '').trim(),
+          phone:   (phoneI   >= 0 ? r[phoneI]   : '').trim(),
+          mobIn:   parseNRGDate(mobInI  >= 0 ? r[mobInI]  : ''),
+          mobOut:  parseNRGDate(mobOutI >= 0 ? r[mobOutI] : ''),
+          shift:   'day',
+        })
       }
     } else {
       // NRG/multi-header format — scan first 8 rows for the data header row
       let headerRowIdx = -1
       const hdrMap: Record<string,number> = {}
       for (let i = 0; i < Math.min(rows.length, 8); i++) {
-        const rowLower = rows[i].map(c => c.toLowerCase().trim())
+        const rowLower = rows[i].map(c => (c || '').toLowerCase().trim())
         const col2 = rowLower[2] || ''
         if (col2 === 'employee' || col2 === 'name' || rowLower.includes('employee') || (rowLower.includes('mobile') && rowLower.includes('role'))) {
           headerRowIdx = i
-          rows[i].forEach((cell, j) => { hdrMap[cell.toLowerCase().trim()] = j })
+          rows[i].forEach((cell, j) => { hdrMap[(cell || '').toLowerCase().trim()] = j })
           break
         }
       }
@@ -263,12 +299,12 @@ export function ResourcesPanel() {
 
       for (let i = dataStart; i < rows.length; i++) {
         const r = rows[i]
-        const name = r[colName]?.trim() || ''
-        const role = r[colRole]?.trim() || ''
+        const name = (r[colName] || '').trim()
+        const role = (r[colRole] || '').trim()
         if (!name || !role) continue
         if (SECTION_HEADERS.some(s => role.toLowerCase() === s || name.toLowerCase() === s)) continue
-        const email = r[colEmail]?.trim() || ''
-        const phone = (r[colPhone]?.trim() || '').replace(/\s/g,'')
+        const email = (r[colEmail] || '').trim()
+        const phone = (r[colPhone] || '').trim().replace(/\s/g,'')
         // NRG format: skip rows with no email AND no phone (likely blank/section rows)
         if (!email && !phone) continue
         parsed.push({
@@ -282,15 +318,21 @@ export function ResourcesPanel() {
 
     if (!parsed.length) { toast('No valid resource rows found — check file format', 'error'); setImporting(false); return }
 
-    let added = 0, skipped = 0
+    let added = 0, skipped = 0, failed = 0
+    let firstError: string | null = null
     for (const p of parsed) {
       if (resources.some(r => r.name.toLowerCase() === p.name.toLowerCase())) { skipped++; continue }
       const payload = {
         project_id: activeProject!.id,
-        name: p.name, role: p.role, category: 'trades' as const,
-        company: p.company, email: p.email, phone: p.phone,
-        mob_in: p.mobIn || null, mob_out: p.mobOut || null,
-        shift: 'day', status: 'active',
+        name: p.name,
+        role: p.role,
+        category: 'trades' as const,
+        company: p.company,
+        email: p.email,
+        phone: p.phone,
+        mob_in: p.mobIn || null,
+        mob_out: p.mobOut || null,
+        shift: 'day',
       }
       let personId: string | null = null
       try {
@@ -298,9 +340,18 @@ export function ResourcesPanel() {
         personId = person.id
       } catch { /* non-critical */ }
       const { error } = await supabase.from('resources').insert({ ...payload, person_id: personId })
-      if (!error) added++
+      if (!error) {
+        added++
+      } else {
+        failed++
+        if (!firstError) firstError = error.message
+      }
     }
-    toast(`Imported ${added} people${skipped ? ` (${skipped} already exist)` : ''}`, 'success')
+    if (failed) {
+      toast(`Imported ${added}, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}${firstError ? ` — ${firstError}` : ''}`, 'error')
+    } else {
+      toast(`Imported ${added} people${skipped ? ` (${skipped} already exist)` : ''}`, 'success')
+    }
     setImporting(false); setShowImport(false); setImportText(''); load()
   }
 
