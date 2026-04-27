@@ -127,7 +127,7 @@ export function calcApprovedSubconCost(
 export interface TvCosting {
   charge_start: string | null
   charge_end: string | null
-  sell_override?: number | null
+  sell_override_eur?: number | null
 }
 
 export interface ToolingDept {
@@ -158,8 +158,8 @@ export function calcRentalCost(
   const gm = dept.gm_pct || 0
   let sell = gm > 0 ? cost / (1 - gm / 100) : cost
 
-  if (costing.sell_override) {
-    const r = costing.sell_override
+  if (costing.sell_override_eur) {
+    const r = costing.sell_override_eur
     if (dept.rate_unit === 'weekly') sell = (days / 7) * r
     else if (dept.rate_unit === 'daily') sell = days * r
     else if (dept.rate_unit === 'monthly') sell = (days / 30.44) * r

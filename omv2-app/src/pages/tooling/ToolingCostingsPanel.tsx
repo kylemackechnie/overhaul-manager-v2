@@ -149,8 +149,25 @@ export function ToolingCostingsPanel() {
 
   if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
 
-  const totalCostEur = costings.reduce((s, c) => s + (c.cost_eur || 0), 0)
-  const totalSellEur = costings.reduce((s, c) => s + (c.sell_eur || 0), 0)
+  // Live totals from the same calc the per-row strip uses, so override flows through.
+  // Falls back to the persisted cost_eur/sell_eur for any row that isn't fully configured yet.
+  const totals = costings.reduce((acc, c) => {
+    const dept = c.tv?.department_id ? depts.find(d => d.id === c.tv!.department_id) : null
+    const replVal = c.tv?.replacement_value_eur || 0
+    const deptCalc = deptToCalc(dept)
+    const calc = deptCalc && c.charge_start && c.charge_end && replVal > 0
+      ? calcRentalCost(replVal, {
+          charge_start: c.charge_start,
+          charge_end: c.charge_end,
+          sell_override_eur: (c as unknown as { sell_override_eur?: number | null }).sell_override_eur ?? null,
+        }, deptCalc)
+      : null
+    acc.cost += calc ? calc.cost : (c.cost_eur || 0)
+    acc.sell += calc ? calc.sell : (c.sell_eur || 0)
+    return acc
+  }, { cost: 0, sell: 0 })
+  const totalCostEur = totals.cost
+  const totalSellEur = totals.sell
 
   return (
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
@@ -186,7 +203,11 @@ export function ToolingCostingsPanel() {
           const replVal = c.tv?.replacement_value_eur || 0
           const deptCalc = deptToCalc(dept)
           const calc = deptCalc && c.charge_start && c.charge_end && replVal > 0
-            ? calcRentalCost(replVal, { charge_start: c.charge_start, charge_end: c.charge_end }, deptCalc)
+            ? calcRentalCost(replVal, {
+                charge_start: c.charge_start,
+                charge_end: c.charge_end,
+                sell_override_eur: (c as unknown as { sell_override_eur?: number | null }).sell_override_eur ?? null,
+              }, deptCalc)
             : null
           const days = c.charge_start && c.charge_end ? daysBetween(c.charge_start, c.charge_end) : null
           const fx = c.fx_rate || 1.65
