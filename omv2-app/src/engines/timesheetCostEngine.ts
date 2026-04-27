@@ -15,7 +15,8 @@
 
 import { supabase } from '../lib/supabase'
 import { splitHours, calcHoursCost } from './costEngine'
-import type { RateCard, WeeklyTimesheet } from '../types'
+import { fxRate } from '../lib/currency'
+import type { RateCard, WeeklyTimesheet, Project } from '../types'
 
 interface CostLineInsert {
   project_id: string
@@ -64,6 +65,12 @@ interface ResourceLite {
  *            home WBS when neither the crew member nor the timesheet has
  *            one set. Lets the aggregator read this table directly without
  *            ever going back to the timesheet JSONB.
+ * project:   optional project, needed for EUR→base conversion when an SE AG
+ *            rate card is in EUR. Without it, EUR labour amounts land in
+ *            cost_lines as raw EUR and get summed with AUD downstream — wrong.
+ *            The timesheet UI shows EUR natively for display, but the cost
+ *            lines table stores base currency so MIKA / Cost Summary / NRG
+ *            actuals can sum across categories.
  */
 export async function writeTimesheetCostLines(
   timesheet: WeeklyTimesheet,
@@ -71,6 +78,7 @@ export async function writeTimesheetCostLines(
   rateCards: RateCard[],
   tceLines: TceLineLite[] = [],
   resources: ResourceLite[] = [],
+  project: Project | null = null,
 ): Promise<{ error: string | null }> {
   // Build a one-to-many WO → item_ids map. Single match → safe to auto-resolve.
   // Multi match → ambiguous, leave alloc unresolved so the user picks the line.
@@ -113,6 +121,13 @@ export async function writeTimesheetCostLines(
     const rcRegime = rcAny.regime as Parameters<typeof splitHours>[4]
     const memberAny = member as unknown as { mealBreakAdj?: boolean; wbs?: string }
     const pf = (v: unknown) => { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
+
+    // FX: rate-card hourly rates are in rc.currency (EUR for SE AG, AUD for the
+    // rest). Convert labour to project base currency at write time so the cost
+    // lines table is single-currency for downstream summing.
+    // Allowances stay AUD (LAHA/FSA/meal/camp are Australian award allowances).
+    const rcCurrency = (rcAny.currency as string) || 'AUD'
+    const labourFx = rcCurrency !== 'AUD' && project ? fxRate(project, rcCurrency) : 1
 
     // WBS resolution — same priority the HTML uses:
     //   1. crew[i].wbs (per-member override on this week)
@@ -158,8 +173,8 @@ export async function writeTimesheetCostLines(
       const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
       const effH = dayHours + adjH
       const split = splitHours(effH, dayType, shiftType, regime, rcRegime)
-      const dayLabourCost = calcHoursCost(split, rc, 'cost')
-      const dayLabourSell = calcHoursCost(split, rc, 'sell')
+      const dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
+      const dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
 
       // ── Day-level allowances ──
       let dayCostAllow = 0, daySellAllow = 0

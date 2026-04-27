@@ -66,7 +66,7 @@ export function NrgInvoicingPanel() {
       const rcs = (rcRes.data || []) as RateCard[]
       const resources = (resRes.data || []) as { id: string; wbs?: string | null }[]
       for (const ts of (tsRes.data || []) as WeeklyTimesheet[]) {
-        await writeTimesheetCostLines(ts, pid, rcs, fetchedTceLines, resources)
+        await writeTimesheetCostLines(ts, pid, rcs, fetchedTceLines, resources, activeProject)
       }
     }
 

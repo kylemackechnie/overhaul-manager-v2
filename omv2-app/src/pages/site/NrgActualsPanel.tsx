@@ -54,7 +54,7 @@ export function NrgActualsPanel() {
       const rcs = (rcRes.data || []) as RateCard[]
       const resources = (resRes.data || []) as { id: string; wbs?: string | null }[]
       for (const ts of (tsRes.data || []) as WeeklyTimesheet[]) {
-        await writeTimesheetCostLines(ts, pid, rcs, tceLines, resources)
+        await writeTimesheetCostLines(ts, pid, rcs, tceLines, resources, activeProject)
       }
     }
 
