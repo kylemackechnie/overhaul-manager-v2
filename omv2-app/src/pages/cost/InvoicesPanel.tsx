@@ -137,9 +137,9 @@ export function InvoicesPanel() {
     setSaving(true)
     const payload = {
       project_id: activeProject!.id,
-      invoice_number: form.invoice_number || null,
-      vendor_ref: form.vendor_ref || null,
-      vendor_details: form.vendor_details || null,
+      invoice_number: form.invoice_number,
+      vendor_ref: form.vendor_ref,
+      vendor_details: form.vendor_details,
       po_id: form.po_id || null,
       tce_item_id: form.tce_item_id || null,
       status: form.status,
@@ -150,7 +150,7 @@ export function InvoicesPanel() {
       due_date: form.due_date || null,
       period_from: form.period_from || null,
       period_to: form.period_to || null,
-      notes: form.notes || null,
+      notes: form.notes,
     }
     const isNew = modal === 'new'
     const { error } = isNew

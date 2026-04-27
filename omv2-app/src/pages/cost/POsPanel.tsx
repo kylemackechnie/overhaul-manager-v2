@@ -181,10 +181,10 @@ export function POsPanel() {
     setSaving(true)
     const payload = {
       project_id: activeProject!.id,
-      po_number: form.po_number || null,
-      internal_ref: form.internal_ref || null,
+      po_number: form.po_number,
+      internal_ref: form.internal_ref,
       vendor: form.vendor.trim(),
-      description: form.description || null,
+      description: form.description,
       status: form.status,
       currency: form.currency,
       po_type: form.po_type,
@@ -192,7 +192,7 @@ export function POsPanel() {
       effective_start: form.effective_start || null,
       effective_end: form.effective_end || null,
       raised_date: form.raised_date || null,
-      notes: form.notes || null,
+      notes: form.notes,
       line_items: form.lines,
     }
     const isNew = modal === 'new'
