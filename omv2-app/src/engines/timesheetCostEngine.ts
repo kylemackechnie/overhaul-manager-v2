@@ -302,3 +302,73 @@ export async function writeTimesheetCostLines(
 
   return { error: insErr?.message || null }
 }
+
+// ─── UI-side per-person totals ────────────────────────────────────────────
+// calcPersonTotals matches the writer's day logic: same splitHours, same
+// allowance rules, same mealBreakAdj. Used by TimesheetsPanel to display
+// running totals as the user edits, and by HRDashboardPanel for header
+// figures. Returns native rate-card currency for sell/cost (EUR for SE AG,
+// AUD elsewhere) — no FX conversion. Allowances are always in AUD.
+
+interface CrewMemberLite {
+  days?: Record<string, unknown>
+  mealBreakAdj?: boolean
+}
+
+type RegimeCfg = { wdNT?: number; wdT15?: number; satT15?: number; nightNT?: number; restNT?: number } | null | undefined
+
+export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
+  let hours = 0, labourSell = 0, labourCost = 0, allowances = 0, allowCost = 0
+  const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
+  const cr = rates?.cost || {}; const sr = rates?.sell || {}
+  const rcX = (rc || {}) as unknown as Record<string, unknown>
+  const isMgmt = !!rc && (rcX.category === 'management' || rcX.category === 'seag')
+  const rcRegime = rcX.regime as RegimeCfg
+
+  // Parse allowance values — DB returns NUMERIC columns as strings from Supabase
+  const pf = (v: unknown, fallback: number) => { const n = parseFloat(String(v || 0)); return isNaN(n) ? fallback : n }
+  const lahaSell  = pf(rcX.laha_sell,  212)
+  const lahaCost  = pf(rcX.laha_cost,  212)
+  const mealSell  = pf(rcX.meal_sell,   94)
+  const mealCost  = pf(rcX.meal_cost,   94)
+  const fsaSell   = pf(rcX.fsa_sell,   183)
+  const fsaCost   = pf(rcX.fsa_cost,   130)
+  const campSell  = pf(rcX.camp,        199)
+  const campCost  = pf(rcX.camp_cost || rcX.camp, 165.20)
+
+  Object.entries(member.days || {}).forEach(([, d]) => {
+    const day = d as { dayType?: string; shiftType?: string; hours?: number; laha?: boolean; meal?: boolean; fsa?: boolean; camp?: boolean }
+
+    // Allowances apply on every day entry (rest days included), matching the
+    // writer's behaviour from the dedicated-allowance-row commit.
+    if (isMgmt) {
+      if (day.fsa)       { allowances += fsaSell;  allowCost += fsaCost }
+      else if (day.camp) { allowances += campSell; allowCost += campCost }
+      else if (day.laha) { allowances += fsaSell;  allowCost += fsaCost }
+    } else {
+      if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
+      if (day.meal) { allowances += mealSell; allowCost += mealCost }
+    }
+
+    const h = day.hours || 0
+    if (h <= 0) return
+
+    // mealBreakAdj: +0.5h to cost/sell calc (not payroll). Matches writer.
+    const adjH = (member.mealBreakAdj && h > 0) ? 0.5 : 0
+    const effH = h + adjH
+    hours += effH
+
+    const split = splitHours(effH, day.dayType || 'weekday', (day.shiftType === 'night' ? 'night' : 'day'), rcRegime)
+    Object.entries(split).forEach(([b, bh]) => {
+      if (bh > 0) {
+        labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)
+        labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0)
+      }
+    })
+  })
+
+  // sell/cost = labour + allowances (combined total, matching HTML)
+  const sell = labourSell + allowances
+  const cost = labourCost + allowCost
+  return { hours, sell, cost, allowances, labourSell }
+}

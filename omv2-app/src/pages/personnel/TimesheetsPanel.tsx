@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
-import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
+import { writeTimesheetCostLines, calcPersonTotals } from '../../engines/timesheetCostEngine'
 import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
@@ -118,62 +118,7 @@ function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfi
   const ddt  = Math.max(0, hrs - WD_NT - WD_T15)
   return { ...zero, dnt, dt15, ddt }
 }
-// Exact port of HTML calcCrewMemberTotal() — handles all allowances, mealBreakAdj, rc.regime
-function calcPersonTotals(member: WeeklyTimesheet['crew'][0], rc: RateCard | null) {
-  let hours = 0, labourSell = 0, labourCost = 0, allowances = 0, allowCost = 0
-  const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
-  const cr = rates?.cost || {}; const sr = rates?.sell || {}
-  const rcX = (rc || {}) as unknown as Record<string,unknown>
-  const isMgmt = rc && (rcX.category === 'management' || rcX.category === 'seag')
-  const rcRegime = rcX.regime as RegimeConfig
-
-  // Parse allowance values — DB returns NUMERIC columns as strings from Supabase
-  const pf = (v: unknown, fallback: number) => { const n = parseFloat(String(v || 0)); return isNaN(n) ? fallback : n }
-  const lahaSell  = pf(rcX.laha_sell,  212)
-  const lahaCost  = pf(rcX.laha_cost,  212)
-  const mealSell  = pf(rcX.meal_sell,   94)
-  const mealCost  = pf(rcX.meal_cost,   94)
-  const fsaSell   = pf(rcX.fsa_sell,   183)
-  const fsaCost   = pf(rcX.fsa_cost,   130)
-  const campSell  = pf(rcX.camp,        199)
-  const campCost  = pf(rcX.camp_cost || rcX.camp, 165.20)
-
-  Object.entries(member.days || {}).forEach(([, d]) => {
-    const day = d as { dayType?:string; shiftType?:string; hours?:number; laha?:boolean; meal?:boolean; fsa?:boolean; camp?:boolean }
-
-    // Allowances apply on every day entry — guys get paid LAHA/Meal every day
-    // on the project, not just days they work hours
-    if (isMgmt) {
-      if (day.fsa)       { allowances += fsaSell;  allowCost += fsaCost }
-      else if (day.camp) { allowances += campSell; allowCost += campCost }
-      else if (day.laha) { allowances += fsaSell;  allowCost += fsaCost }
-    } else {
-      if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
-      if (day.meal) { allowances += mealSell; allowCost += mealCost }
-    }
-
-    const h = day.hours || 0
-    if (h <= 0) return // skip hour calcs for zero-hour days
-
-    // mealBreakAdj: +0.5h to cost/sell calc (not payroll) per HTML
-    const adjH = (member.mealBreakAdj && h > 0) ? 0.5 : 0
-    const effH = h + adjH
-    hours += effH
-
-    const split = splitHours(effH, day.dayType || 'weekday', day.shiftType || 'day', rcRegime)
-    Object.entries(split).forEach(([b, bh]) => {
-      if (bh > 0) {
-        labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)
-        labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0)
-      }
-    })
-  })
-
-  // sell/cost = labour + allowances (combined total, matching HTML)
-  const sell = labourSell + allowances
-  const cost = labourCost + allowCost
-  return { hours, sell, cost, allowances, labourSell }
-}
+// printTimesheet remains local — it renders the print-ready HTML, not pure totals.
 
 
 function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: RateCard[], _holidays: Set<string>) {
