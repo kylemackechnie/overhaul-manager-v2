@@ -278,6 +278,21 @@ interface NrgWoAlloc {
   label?: string
 }
 
+// One row in the multi-match resolver modal. Identifies a single TasTK-imported
+// alloc that needs splitting, and tracks the user's hour-per-candidate input.
+interface ResolveSplit {
+  personId: string
+  personName: string
+  date: string
+  wo: string
+  totalHours: number
+  /** All candidate items that share this WO. The split[] array is parallel — the
+   *  hours the user wants to attribute to each candidate. Defaults to first
+   *  candidate gets all hours. */
+  candidates: { itemId: string; description: string }[]
+  split: number[]
+}
+
 export function TimesheetsPanel({ type }: { type: TsType }) {
   const { activeProject } = useAppStore()
   const { canWrite } = usePermissions()
@@ -323,6 +338,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number}[]>([])
   const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string}[]>([])
+  // Multi-match resolver — opens a modal listing every TasTK-imported alloc whose
+  // WO maps to >1 TCE candidate item. User splits the hours, then save replaces
+  // each ambiguous alloc with explicit {wo, tceItemId, hours} rows.
+  const [resolveModal, setResolveModal] = useState<{open:boolean; splits: ResolveSplit[]}>({open:false, splits:[]})
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, type])
   useEffect(() => {
@@ -619,6 +638,90 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     return opts
   }
 
+  // ── Multi-match resolver helpers ────────────────────────────────────────
+  // Map of WO → candidate TCE items. When a TasTK-imported alloc references a
+  // WO with >1 candidate, the writer can't auto-resolve and the time becomes
+  // unallocated. The resolver lets the user split it explicitly.
+  function buildCandidatesByWo(): Record<string, { itemId: string; description: string }[]> {
+    const isHdr = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
+    const byWo: Record<string, { itemId: string; description: string }[]> = {}
+    tceLines.filter(l => l.source === 'skilled' && l.work_order && !isHdr(l.item_id)).forEach(l => {
+      const wo = l.work_order!
+      if (!byWo[wo]) byWo[wo] = []
+      byWo[wo].push({ itemId: l.item_id, description: l.description || '' })
+    })
+    return byWo
+  }
+
+  // Collect every TasTK-imported alloc in the active week whose WO has multiple
+  // candidates. TasTK rows are identified by !_tceMode && !tceItemId per spec.
+  function findUnresolvedAllocs(): ResolveSplit[] {
+    if (!activeWeek) return []
+    const byWo = buildCandidatesByWo()
+    const out: ResolveSplit[] = []
+    for (const member of activeWeek.crew) {
+      for (const [date, d] of Object.entries(member.days || {})) {
+        const allocs = ((d as Record<string, unknown>).nrgWoAllocations as NrgWoAlloc[]) || []
+        for (const a of allocs) {
+          if (a._tceMode || a.tceItemId) continue  // only TasTK rows
+          if (!a.wo) continue
+          const candidates = byWo[a.wo] || []
+          if (candidates.length < 2) continue  // 0 = no match, 1 = auto-resolves
+          const split = candidates.map((_, i) => i === 0 ? a.hours : 0)
+          out.push({
+            personId: member.personId,
+            personName: member.name,
+            date, wo: a.wo,
+            totalHours: a.hours,
+            candidates, split,
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  function openResolveModal() {
+    setResolveModal({ open: true, splits: findUnresolvedAllocs() })
+  }
+
+  function saveResolveModal() {
+    if (!activeWeek) return
+    // Validate every row sums to its totalHours
+    for (const s of resolveModal.splits) {
+      const sum = s.split.reduce((a, b) => a + (b || 0), 0)
+      if (Math.abs(sum - s.totalHours) > 0.01) {
+        toast(`${s.personName} ${s.date} WO ${s.wo}: split (${sum.toFixed(1)}h) ≠ total (${s.totalHours.toFixed(1)}h)`, 'error')
+        return
+      }
+    }
+    // Apply: for each split, replace the matching TasTK alloc on (person, date, wo)
+    // with N explicit {wo, tceItemId, hours} rows. Other allocs on that day pass through.
+    const newCrew = activeWeek.crew.map(m => {
+      const splitsForPerson = resolveModal.splits.filter(s => s.personId === m.personId)
+      if (splitsForPerson.length === 0) return m
+      const newDays = { ...m.days }
+      for (const s of splitsForPerson) {
+        const dayEntry = (newDays[s.date] || {}) as Record<string, unknown>
+        const allocs = (dayEntry.nrgWoAllocations as NrgWoAlloc[]) || []
+        // Drop the ambiguous TasTK alloc; preserve everything else.
+        const kept = allocs.filter(a => !(a.wo === s.wo && !a._tceMode && !a.tceItemId))
+        // Build the resolved replacements. tce_item_id wins resolution in the writer.
+        const replacements: NrgWoAlloc[] = s.candidates
+          .map((c, i) => ({ wo: s.wo, tceItemId: c.itemId, _tceMode: true as const, hours: s.split[i] || 0, label: c.description }))
+          .filter(r => r.hours > 0)
+        newDays[s.date] = { ...dayEntry, nrgWoAllocations: [...kept, ...replacements] } as unknown as DayEntry
+      }
+      return { ...m, days: newDays }
+    })
+    setActiveWeek({ ...activeWeek, crew: newCrew })
+    setResolveModal({ open: false, splits: [] })
+    toast(`Resolved ${resolveModal.splits.length} ambiguous allocation${resolveModal.splits.length === 1 ? '' : 's'}`, 'success')
+  }
+
+  // Live count for the banner — re-derived on every render (cheap; O(crew × days × allocs))
+  const unresolvedCount = activeWeek ? findUnresolvedAllocs().length : 0
+
   function buildPreDays(r: Resource, weekStart: string): Record<string, DayEntry> {
     // Pre-fill standard hours from project settings and apply resource allowances
     const std = (activeProject as typeof activeProject & {std_hours?: {day:Record<string,number>;night:Record<string,number>}})?.std_hours
@@ -870,6 +973,26 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               </div>
             </div>
           </div>
+
+          {/* Multi-match resolver banner — shown when TasTK imports map to
+              ambiguous WOs (>1 candidate TCE item). The writer can't auto-pick,
+              so without resolution the hours land as unallocated in NRG Actuals. */}
+          {scopeMode === 'nrg_tce' && unresolvedCount > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.4)',
+              borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: '8px',
+              fontSize: '12px', color: 'var(--orange)', fontWeight: 500, minWidth: '960px',
+            }}>
+              <span>
+                ⚠ <b>{unresolvedCount} TasTK allocation{unresolvedCount === 1 ? '' : 's'}</b> reference
+                a Work Order that maps to multiple TCE items. Hours will land as unallocated
+                in NRG Actuals until resolved.
+              </span>
+              <button className="btn btn-sm" style={{ background: 'var(--orange)', color: '#fff' }}
+                onClick={openResolveModal}>Resolve allocations →</button>
+            </div>
+          )}
 
           {/* Day header row */}
           <div style={{ display: 'grid', gridTemplateColumns: '180px repeat(7, minmax(100px,1fr)) 120px', gap: '1px', background: 'var(--border)', borderRadius: '6px 6px 0 0', overflow: 'hidden', marginBottom: '1px', minWidth: '960px' }}>
@@ -1505,6 +1628,101 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           onUpdate={(updated) => setActiveWeek(updated)}
           onClose={() => setShowPayrollImport(false)}
         />
+      )}
+      {/* Multi-match resolver modal — split each ambiguous TasTK alloc across
+          its candidate TCE items. Sum-of-splits must equal the alloc's total
+          hours; otherwise save is blocked with a per-row error toast. */}
+      {resolveModal.open && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: '760px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>⚠ Resolve Ambiguous WO Allocations</h3>
+              <button className="btn btn-sm" onClick={() => setResolveModal({ open: false, splits: [] })}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                Each row below is a TasTK-imported allocation whose Work Order matches multiple
+                TCE items. Split the hours across the candidates so each row sums to its total.
+                Default puts all hours on the first candidate — adjust as needed.
+              </p>
+              {resolveModal.splits.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)' }}>
+                  No ambiguous allocations remaining.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {resolveModal.splits.map((s, idx) => {
+                    const sum = s.split.reduce((a, b) => a + (b || 0), 0)
+                    const balanced = Math.abs(sum - s.totalHours) < 0.01
+                    return (
+                      <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <div style={{ fontSize: '12px' }}>
+                            <strong>{s.personName}</strong>
+                            <span style={{ color: 'var(--text3)', marginLeft: '8px' }}>{s.date}</span>
+                            <span style={{ marginLeft: '8px', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>WO {s.wo}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: balanced ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+                            {sum.toFixed(1)}h / {s.totalHours.toFixed(1)}h
+                          </div>
+                        </div>
+                        {s.candidates.map((c, ci) => (
+                          <div key={c.itemId} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{c.itemId}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.description}>{c.description}</span>
+                            <input
+                              type="number" min="0" step="0.5"
+                              className="input"
+                              style={{ fontSize: '12px', fontFamily: 'var(--mono)', textAlign: 'right' }}
+                              value={s.split[ci] || ''}
+                              onChange={e => {
+                                const v = parseFloat(e.target.value) || 0
+                                setResolveModal(prev => ({
+                                  ...prev,
+                                  splits: prev.splits.map((ps, pi) => pi === idx
+                                    ? { ...ps, split: ps.split.map((h, hi) => hi === ci ? v : h) }
+                                    : ps),
+                                }))
+                              }}
+                            />
+                          </div>
+                        ))}
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                          <button className="btn btn-sm" style={{ fontSize: '10px' }}
+                            title="Distribute hours equally across all candidates"
+                            onClick={() => {
+                              const each = s.totalHours / s.candidates.length
+                              setResolveModal(prev => ({
+                                ...prev,
+                                splits: prev.splits.map((ps, pi) => pi === idx
+                                  ? { ...ps, split: ps.candidates.map(() => each) }
+                                  : ps),
+                              }))
+                            }}>Even split</button>
+                          <button className="btn btn-sm" style={{ fontSize: '10px' }}
+                            title="Put all hours on the first candidate"
+                            onClick={() => {
+                              setResolveModal(prev => ({
+                                ...prev,
+                                splits: prev.splits.map((ps, pi) => pi === idx
+                                  ? { ...ps, split: ps.candidates.map((_, i) => i === 0 ? ps.totalHours : 0) }
+                                  : ps),
+                              }))
+                            }}>All to first</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setResolveModal({ open: false, splits: [] })}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveResolveModal}
+                disabled={resolveModal.splits.length === 0}>Apply splits</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
