@@ -303,6 +303,7 @@ export interface Car {
   person_id: string | null
   start_date: string | null
   end_date: string | null
+  daily_rate: number
   total_cost: number
   customer_total: number
   gm_pct: number
@@ -311,6 +312,18 @@ export interface Car {
   created_at: string
   updated_at: string
   wbs: string
+  // Pricing extras (HTML parity)
+  location_fee_pct: number
+  one_way_fee: number
+  // Booking metadata
+  reservation: string
+  pickup_loc: string
+  return_loc: string
+  collected: boolean
+  dropped_off: boolean
+  // CO2 tracking
+  fuel_type: string
+  total_km: number
 }
 
 export interface Accommodation {
