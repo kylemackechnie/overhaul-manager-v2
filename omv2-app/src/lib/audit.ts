@@ -11,6 +11,7 @@ export type AuditAction =
   | 'user_created'
   | 'user_deactivated'
   | 'user_reactivated'
+  | 'user_deleted'
   | 'permission_changed'
   | 'project_access_granted'
   | 'project_access_revoked'

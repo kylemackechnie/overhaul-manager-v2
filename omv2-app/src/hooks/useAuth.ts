@@ -85,30 +85,22 @@ export function useAuth() {
       console.log(`[useAuth] ${ms()} loadAppUser query resolved | data:`, !!data, '| error:', error?.message ?? 'none')
 
       if (error || !data) {
-        // First login — try to match an existing invited record by email first
+        // First login — try to match an existing invited record by email first.
+        // The link UPDATE runs through a SECURITY DEFINER RPC because the
+        // user can't update a row whose auth_id is still NULL (RLS denies it).
+        const { data: linked, error: linkErr } = await supabase
+          .rpc('link_invited_app_user')
+          .single()
+
+        if (linked && !linkErr) {
+          setCurrentUser(linked as AppUser)
+          return
+        }
+
+        // No invite found — create a new viewer record
         const { data: authUser } = await supabase.auth.getUser()
         if (authUser?.user) {
           const email = authUser.user.email || ''
-          // Check if admin pre-created an app_users record via invite (auth_id will be null)
-          const { data: invited } = await supabase
-            .from('app_users')
-            .select('*')
-            .ilike('email', email)
-            .is('auth_id', null)
-            .single()
-
-          if (invited) {
-            // Link the auth_id to the existing invited record
-            const { data: linked } = await supabase
-              .from('app_users')
-              .update({ auth_id: authUser.user.id, last_login: new Date().toISOString() })
-              .eq('id', invited.id)
-              .select()
-              .single()
-            if (linked) { setCurrentUser(linked as AppUser); return }
-          }
-
-          // No invite found — create a new viewer record
           const newUser: Partial<AppUser> = {
             auth_id: authUser.user.id,
             email,

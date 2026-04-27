@@ -130,6 +130,23 @@ export function UserManagementPanel() {
     toast('User will be prompted to reset password on next login', 'info')
   }
 
+  async function deleteUser() {
+    if (!selected) return
+    if (selected.id === currentUser?.id) { toast('You cannot delete yourself', 'error'); return }
+    const confirmed = confirm(
+      `Delete ${selected.name || selected.email}?\n\n` +
+      `This removes their access to the app, all project memberships, and the\n` +
+      `login record. The same email can be re-invited later. This cannot be undone.`
+    )
+    if (!confirmed) return
+    const { error } = await supabase.rpc('delete_app_user', { p_user_id: selected.id })
+    if (error) { toast(error.message, 'error'); return }
+    writeAuditLog({ action: 'user_deleted', performedBy: currentUser, targetUserId: selected.id, detail: { email: selected.email, name: selected.name } })
+    toast(`Deleted ${selected.name || selected.email}`, 'success')
+    setSelected(null)
+    load()
+  }
+
   async function toggleProjectAccess(projectId: string) {
     if (!selected) return
     if (memberProjects[projectId]) {
@@ -366,6 +383,11 @@ export function UserManagementPanel() {
                   </button>
                   <button className="btn btn-sm" style={{ color: 'var(--amber)' }} onClick={forcePasswordReset}>
                     🔑 Force Password Reset
+                  </button>
+                  <button className="btn btn-sm" style={{ background: 'var(--red)', color: '#fff', marginLeft: 'auto' }}
+                    onClick={deleteUser} disabled={selected.id === currentUser?.id}
+                    title={selected.id === currentUser?.id ? 'You cannot delete yourself' : 'Permanently delete this user'}>
+                    🗑 Delete User
                   </button>
                 </div>
 
