@@ -407,7 +407,7 @@ export function ProjectSettingsPanel() {
 
       {/* Pattern modal */}
       {patternModal && (
-        <div className="modal-overlay" onClick={() => setPatternModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'620px'}} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>🗓 {patternModal.idx !== null ? 'Edit' : 'New'} Shift Pattern</h3>

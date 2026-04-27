@@ -202,7 +202,7 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>📥 Import Payroll Hours</h3>

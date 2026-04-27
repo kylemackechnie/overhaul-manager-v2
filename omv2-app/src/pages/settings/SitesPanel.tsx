@@ -105,7 +105,7 @@ export function SitesPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add Site' : `Edit: ${(modal as Site).name}`}</h3>

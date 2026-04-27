@@ -293,7 +293,7 @@ export function POsPanel() {
 
       {/* Modal */}
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'680px',maxHeight:'92vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new' ? '+ New Purchase Order' : `Edit PO — ${(modal as PurchaseOrder).po_number || (modal as PurchaseOrder).vendor}`}</h3>

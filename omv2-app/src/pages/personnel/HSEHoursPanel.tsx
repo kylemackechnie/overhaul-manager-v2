@@ -155,7 +155,7 @@ export function HSEHoursPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add HSE Entry' : 'Edit HSE Entry'}</h3>

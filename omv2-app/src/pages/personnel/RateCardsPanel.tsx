@@ -247,7 +247,7 @@ export function RateCardsPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'720px'}} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'New Rate Card' : `Edit: ${(modal as RateCard).role}`}</h3>

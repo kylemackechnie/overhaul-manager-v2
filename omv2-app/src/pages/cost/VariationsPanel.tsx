@@ -562,7 +562,7 @@ export function VariationsPanel() {
 
       {/* Modal */}
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'780px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'New Variation':`Edit ${(modal as Variation).number}`}</h3>

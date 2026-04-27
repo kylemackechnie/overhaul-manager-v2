@@ -191,7 +191,7 @@ export function SubconRFQPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'New Contract':'Edit Contract'}</h3>
@@ -244,7 +244,7 @@ export function SubconRFQPanel() {
 
       {/* Equipment Import Wizard Modal */}
       {equipModal && (
-        <div className="modal-overlay" onClick={() => setEquipModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'760px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>🚜 Import Equipment to Dry Hire</h3>

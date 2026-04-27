@@ -157,7 +157,7 @@ export function HardwareContractPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'700px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'Add Hardware Contract':'Edit Contract'}</h3>

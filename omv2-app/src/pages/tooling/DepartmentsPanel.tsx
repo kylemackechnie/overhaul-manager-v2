@@ -99,7 +99,7 @@ export function DepartmentsPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'Add Department':'Edit Department'}</h3>

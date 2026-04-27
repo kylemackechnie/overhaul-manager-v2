@@ -101,7 +101,7 @@ export function GlobalToolingPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'480px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'Add TV to Global Register':'Edit TV'}</h3>

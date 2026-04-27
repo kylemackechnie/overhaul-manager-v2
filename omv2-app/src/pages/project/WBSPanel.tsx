@@ -295,7 +295,7 @@ export function WBSPanel() {
         )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add WBS Code' : 'Edit WBS Code'}</h3>

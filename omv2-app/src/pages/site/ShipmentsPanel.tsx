@@ -526,7 +526,7 @@ export function ShipmentsPanel({ direction }: { direction: Direction }) {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:'520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new' ? `New ${label} Shipment` : `Edit Shipment`}</h3>

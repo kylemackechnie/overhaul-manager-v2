@@ -417,7 +417,7 @@ export function SubconRFQRegisterPanel() {
 
       {/* Resource Import Wizard — opens after awarding to a vendor with labour roles */}
       {importWizard && (
-        <div className="modal-overlay" onClick={() => setImportWizard(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>👥 Import Resources from Award</h3>

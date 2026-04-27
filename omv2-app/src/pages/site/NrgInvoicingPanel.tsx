@@ -384,7 +384,7 @@ export function NrgInvoicingPanel() {
 
       {/* Invoice Modal */}
       {invModal&&(
-        <div className="modal-overlay" onClick={()=>setInvModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'480px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{invModal==='new'?'Add Invoice':`Edit: ${(invModal as NrgCustomerInvoice).label}`}</h3>
@@ -412,7 +412,7 @@ export function NrgInvoicingPanel() {
 
       {/* Grouping Rules Modal */}
       {rulesModal&&(
-        <div className="modal-overlay" onClick={()=>setRulesModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>⚙ Grouping Rules</h3><button className="btn btn-sm" onClick={()=>setRulesModal(false)}>✕</button></div>
             <div className="modal-body">

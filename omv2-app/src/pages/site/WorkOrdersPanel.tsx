@@ -166,7 +166,7 @@ export function WorkOrdersPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:'480px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new' ? 'New Work Order' : `Edit WO ${(modal as WorkOrder).wo_number}`}</h3>

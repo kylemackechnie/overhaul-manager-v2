@@ -99,7 +99,7 @@ export function HardwareCartsPanel() {
       )}
 
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'420px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>New Hardware Cart</h3>

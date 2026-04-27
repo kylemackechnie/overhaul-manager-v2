@@ -516,7 +516,7 @@ export function UserManagementPanel() {
 
       {/* ── Invite modal ─────────────────────────────────────────────────── */}
       {inviteOpen && (
-        <div className="modal-overlay" onClick={() => setInviteOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>✉ Invite New User</h3><button className="btn btn-sm" onClick={() => setInviteOpen(false)}>✕</button></div>
             <div className="modal-body">
@@ -546,7 +546,7 @@ export function UserManagementPanel() {
 
       {/* ── Save template modal ──────────────────────────────────────────── */}
       {templateModalOpen && (
-        <div className="modal-overlay" onClick={() => setTemplateModalOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>💾 Save Permission Template</h3><button className="btn btn-sm" onClick={() => setTemplateModalOpen(false)}>✕</button></div>
             <div className="modal-body">

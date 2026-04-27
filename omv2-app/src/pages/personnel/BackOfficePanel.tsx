@@ -248,7 +248,7 @@ export function BackOfficePanel() {
 
       {/* ── BO MODAL ── */}
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'500px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>{modal==='new'?'Add Back Office Hours':'Edit Entry'}</h3><button className="btn btn-sm" onClick={()=>setModal(null)}>✕</button></div>
             <div className="modal-body">
@@ -283,7 +283,7 @@ export function BackOfficePanel() {
 
       {/* ── SE MODAL ── */}
       {seModal && (
-        <div className="modal-overlay" onClick={()=>setSeModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'520px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>{seModal==='new'?'Add SE Support Cost':'Edit SE Support Cost'}</h3><button className="btn btn-sm" onClick={()=>setSeModal(null)}>✕</button></div>
             <div className="modal-body">

@@ -141,7 +141,7 @@ export function TVRegisterPanel() {
 
       {/* Add TV modal */}
       {addModal && (
-        <div className="modal-overlay" onClick={() => setAddModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth:'400px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Add TV to Project</h3>

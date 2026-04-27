@@ -701,7 +701,7 @@ export function ResourcesPanel() {
 
       {/* Modal */}
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'700px'}} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new' ? 'Add Person' : `Edit: ${(modal as Resource).name}`}</h3>
@@ -827,7 +827,7 @@ export function ResourcesPanel() {
       )}
 
       {bulkModal && (
-        <div className="modal-overlay" onClick={()=>setBulkModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'400px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>✏ Bulk Edit — {selected.size} Resources</h3><button className="btn btn-sm" onClick={()=>setBulkModal(false)}>✕</button></div>
             <div className="modal-body">

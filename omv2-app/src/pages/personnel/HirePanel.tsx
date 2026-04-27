@@ -370,7 +370,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
         )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? `Add ${TYPE_LABELS[hireType]}` : `Edit: ${(modal as HireItem).name}`}</h3>
@@ -619,7 +619,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       )}
 
       {bulkPoModal && (
-        <div className="modal-overlay" onClick={()=>setBulkPoModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'460px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>🔗 Link {hireSelected.size} Item{hireSelected.size>1?'s':''} to PO</h3><button className="btn btn-sm" onClick={()=>setBulkPoModal(false)}>✕</button></div>
             <div className="modal-body">
@@ -654,7 +654,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
         const customerTotal = calcCustomerPrice(total, calendarItem.gm_pct)
         const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
         return (
-          <div className="modal-overlay" onClick={() => setCalendarItem(null)}>
+          <div className="modal-overlay">
             <div className="modal" style={{ maxWidth: '760px', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>📅 Shift Calendar — {item.name}</h3>

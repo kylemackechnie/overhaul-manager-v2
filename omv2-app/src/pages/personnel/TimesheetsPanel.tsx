@@ -1178,7 +1178,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         const newStart = ws.toISOString().slice(0, 10)
         const hasStd = !!(activeProject?.std_hours as {day?:Record<string,number>})?.day
         return (
-          <div className="modal-overlay" onClick={() => setDupModal(null)}>
+          <div className="modal-overlay">
             <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header"><h3>⧉ Duplicate Week</h3><button className="btn btn-sm" onClick={() => setDupModal(null)}>✕</button></div>
               <div className="modal-body">
@@ -1213,7 +1213,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
       {/* New week modal */}
       {showNewModal && (
-        <div className="modal-overlay" onClick={() => setShowNewModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>📅 New {TYPE_LABELS[type]} Week</h3>
@@ -1262,7 +1262,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       )}
 
       {woAllocModal && (
-        <div className="modal-overlay" onClick={() => setWoAllocModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>📋 WO Allocations — {woAllocModal.name} ({woAllocModal.date})</h3>
@@ -1316,7 +1316,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
       {/* Bulk Add People Modal */}
       {bulkAddModal && activeWeek && (
-        <div className="modal-overlay" onClick={() => setBulkAddModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>👥 Add {TYPE_LABELS[type]} to Week</h3>
@@ -1375,7 +1375,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
       {/* TCE Scope Allocation Modal */}
       {tceAllocModal && (
-        <div className="modal-overlay" onClick={() => setTceAllocModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>🎯 TCE Scopes — {tceAllocModal.name}</h3>

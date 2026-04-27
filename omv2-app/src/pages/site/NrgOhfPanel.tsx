@@ -465,7 +465,7 @@ export function NrgOhfPanel() {
 
       {/* ── Picker modal ─────────────────────────────────────────────────── */}
       {pickerOpen && (
-        <div className="modal-overlay open" onClick={() => setPickerOpen(false)}>
+        <div className="modal-overlay open">
           <div className="modal modal-lg" style={{ maxWidth: '700px', maxHeight: '92vh', overflowY: 'auto' }}
                onClick={e => e.stopPropagation()}>
             <div className="modal-title">＋ Add Forecast Lines</div>
@@ -542,7 +542,7 @@ export function NrgOhfPanel() {
 
       {/* ── Bulk: Set Dates ───────────────────────────────────────────────── */}
       {datesOpen && (
-        <div className="modal-overlay open" onClick={() => setDatesOpen(false)}>
+        <div className="modal-overlay open">
           <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">📅 Set Dates</div>
             <p className="text-muted mb-14">
@@ -566,7 +566,7 @@ export function NrgOhfPanel() {
 
       {/* ── Bulk: Set Type ────────────────────────────────────────────────── */}
       {typeOpen && (
-        <div className="modal-overlay open" onClick={() => setTypeOpen(false)}>
+        <div className="modal-overlay open">
           <div className="modal" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">🏷 Set Type</div>
             <p className="text-muted mb-14">
@@ -598,7 +598,7 @@ export function NrgOhfPanel() {
 
       {/* ── Assign People modal ───────────────────────────────────────────── */}
       {assignOpen && (
-        <div className="modal-overlay open" onClick={() => setAssignOpen(false)}>
+        <div className="modal-overlay open">
           <div className="modal" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">👥 Assign People</div>
             <p className="text-muted mb-14">{assignDesc}</p>

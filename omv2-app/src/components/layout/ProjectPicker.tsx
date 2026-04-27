@@ -398,7 +398,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
       {/* New project modal */}
       {showNewProject && (
-        <div className="modal-overlay" onClick={() => setShowNewProject(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>New Project</h3>

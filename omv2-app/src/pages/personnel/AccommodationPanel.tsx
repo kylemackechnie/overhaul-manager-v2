@@ -348,7 +348,7 @@ export function AccommodationPanel() {
         )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add Accommodation' : 'Edit Accommodation'}</h3>
@@ -454,7 +454,7 @@ export function AccommodationPanel() {
       )}
 
       {bulkModal && (
-        <div className="modal-overlay" onClick={()=>setBulkModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'560px',maxHeight:'90vh'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>⊞ Bulk Add Rooms</h3>
@@ -533,7 +533,7 @@ export function AccommodationPanel() {
       )}
 
       {bulkEditModal && (
-        <div className="modal-overlay" onClick={()=>setBulkEditModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>✏ Edit {selAccom.size} Bookings</h3><button className="btn btn-sm" onClick={()=>setBulkEditModal(false)}>✕</button></div>
             <div className="modal-body">
@@ -553,7 +553,7 @@ export function AccommodationPanel() {
         </div>
       )}
       {bulkAddModal && (
-        <div className="modal-overlay" onClick={()=>setBulkAddModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'380px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>⊞ Bulk Add Rooms</h3><button className="btn btn-sm" onClick={()=>setBulkAddModal(false)}>✕</button></div>
             <div className="modal-body">

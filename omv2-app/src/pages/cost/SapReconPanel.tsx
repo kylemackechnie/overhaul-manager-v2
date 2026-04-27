@@ -494,7 +494,7 @@ export function SapReconPanel() {
 
       {/* BO Import Modal */}
       {boModal && (
-        <div className="modal-overlay open" onClick={() => setBoModal(false)}>
+        <div className="modal-overlay open">
           <div className="modal" style={{ maxWidth: '620px', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">📥 Import Back Office Hours from SAP</div>
             <p className="text-muted mb-14">

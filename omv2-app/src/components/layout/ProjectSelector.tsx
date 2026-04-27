@@ -180,7 +180,7 @@ export function ProjectSelector({ onProjectSelected }: { onProjectSelected?: () 
 
       {/* New project modal */}
       {showNew && (
-        <div className="modal-overlay" onClick={() => setShowNew(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
             <div className="modal-header">
               <h3>New Project</h3>

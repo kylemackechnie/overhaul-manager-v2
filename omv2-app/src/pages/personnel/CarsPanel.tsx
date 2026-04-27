@@ -270,7 +270,7 @@ export function CarsPanel() {
         )}
 
       {modal && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '720px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>🚗 {modal === 'new' ? 'Add Vehicle' : 'Edit Vehicle'}</h3>
@@ -465,7 +465,7 @@ export function CarsPanel() {
       )}
 
       {carBulkModal && (
-        <div className="modal-overlay" onClick={()=>setCarBulkModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'380px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>✏ Bulk Edit {carSelected.size} Vehicle{carSelected.size>1?'s':''}</h3><button className="btn btn-sm" onClick={()=>setCarBulkModal(false)}>✕</button></div>
             <div className="modal-body">
@@ -485,7 +485,7 @@ export function CarsPanel() {
         </div>
       )}
       {bulkCarModal && (
-        <div className="modal-overlay" onClick={()=>setBulkCarModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'340px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>✏ Edit {selCars.size} Car Bookings</h3><button className="btn btn-sm" onClick={()=>setBulkCarModal(false)}>✕</button></div>
             <div className="modal-body">

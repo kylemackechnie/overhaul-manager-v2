@@ -421,7 +421,7 @@ export function InvoicesPanel() {
 
       {/* Add/Edit Invoice Modal */}
       {modal && (
-        <div className="modal-overlay" onClick={()=>setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'560px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal==='new'?'+ New Invoice':`Edit Invoice — ${(modal as Invoice).invoice_number||'—'}`}</h3>
@@ -512,7 +512,7 @@ export function InvoicesPanel() {
 
       {/* History Modal */}
       {historyModal && (
-        <div className="modal-overlay" onClick={()=>setHistoryModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'500px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header">
               <h3>🕒 Invoice History — {historyModal.invoice_number||'—'}</h3>
@@ -541,7 +541,7 @@ export function InvoicesPanel() {
 
       {/* Dispute Note Modal */}
       {disputeModal && (
-        <div className="modal-overlay" onClick={()=>setDisputeModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'420px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>⚠ Flag as Disputed</h3><button className="btn btn-sm" onClick={()=>setDisputeModal(null)}>✕</button></div>
             <div className="modal-body">
@@ -557,7 +557,7 @@ export function InvoicesPanel() {
 
       {/* Pay Date Modal */}
       {payDateModal && (
-        <div className="modal-overlay" onClick={()=>setPayDateModal(null)}>
+        <div className="modal-overlay">
           <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>✓ Mark as Paid</h3><button className="btn btn-sm" onClick={()=>setPayDateModal(null)}>✕</button></div>
             <div className="modal-body">
