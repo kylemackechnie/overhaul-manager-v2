@@ -97,8 +97,10 @@ export async function writeTimesheetCostLines(
     if (r.wbs) wbsByResourceId[r.id] = r.wbs
   }
 
-  // Only write for TCE-scoped timesheets
-  const scopeTracking = (timesheet as WeeklyTimesheet & {scope_tracking?:string}).scope_tracking
+  // Only write for TCE-scoped timesheets. Accept the legacy 'tce' value as
+  // well as the current 'nrg_tce' for backwards compat with old timesheets
+  // saved before the scope_tracking rename.
+  const scopeTracking = (timesheet as unknown as { scope_tracking?: string }).scope_tracking
   if (scopeTracking !== 'tce' && scopeTracking !== 'nrg_tce') {
     return { error: null }
   }
@@ -107,6 +109,10 @@ export async function writeTimesheetCostLines(
   const weekEndDate = new Date(weekStart + 'T00:00:00')
   weekEndDate.setDate(weekEndDate.getDate() + 6)
   const weekEnding = weekEndDate.toISOString().slice(0, 10)
+  // Timesheet-level default allowance TCE item — used unless a crew member
+  // sets an override. Empty string = no default; allowance rows for members
+  // without an override will write tce_item_id=null.
+  const tsAllowancesDefault = ((timesheet as unknown as { allowances_tce_default?: string }).allowances_tce_default || '').trim()
 
   const getRc = (role: string): RateCard | null =>
     rateCards.find(r => r.role.toLowerCase() === role.toLowerCase()) || null
@@ -158,12 +164,10 @@ export async function writeTimesheetCostLines(
       }
 
       const dayHours = day.hours || 0
-      if (dayHours <= 0) continue
-
       const allocs = day.nrgWoAllocations || []
-      // Only write rows for days with a TCE/WO allocation
+      // Allocations carry hours-based labour. Filter to TCE/WO-tagged only.
       const tceAllocs = allocs.filter(a => a.tceItemId || a.wo)
-      if (tceAllocs.length === 0) continue
+      const hasLabour = dayHours > 0 && tceAllocs.length > 0
 
       const dayType = day.dayType || 'weekday'
       const shiftType = (day.shiftType === 'night' ? 'night' : 'day') as 'day' | 'night'
@@ -172,13 +176,16 @@ export async function writeTimesheetCostLines(
       // Apply meal-break adjustment to effective hours, then split ONCE for the
       // whole day so the NT/T1.5/DT bands honour the day's total — splitting
       // alloc-by-alloc is wrong (e.g. 6h+4h ≠ 10h split when bands kick in).
-      const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
-      const effH = dayHours + adjH
-      const split = splitHours(effH, dayType, shiftType, rcRegime)
-      const dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
-      const dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
+      let dayLabourCost = 0, dayLabourSell = 0
+      if (hasLabour) {
+        const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
+        const effH = dayHours + adjH
+        const split = splitHours(effH, dayType, shiftType, rcRegime)
+        dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
+        dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
+      }
 
-      // ── Day-level allowances ──
+      // ── Day-level allowances — apply on rest days too (LAHA pays regardless of hours) ──
       let dayCostAllow = 0, daySellAllow = 0
       if (isMgmt) {
         // Management/SE AG: FSA, Camp, or LAHA-treated-as-FSA (mutually exclusive)
@@ -195,27 +202,65 @@ export async function writeTimesheetCostLines(
         if (day.meal) { dayCostAllow += pf(rcAny.meal_cost); daySellAllow += pf(rcAny.meal_sell) }
       }
 
-      // ── Split across allocations proportionally by hours ──
-      // First alloc carries the day's allowances; remaining allocs get 0.
-      let allowancesAttributed = false
-      for (const alloc of tceAllocs) {
-        const allocHours = Number(alloc.hours) || 0
-        if (!allocHours) continue
+      // Nothing to write — skip the day
+      if (!hasLabour && dayCostAllow === 0 && daySellAllow === 0) continue
 
-        const ratio = allocHours / dayHours  // proportion of the day's labour
-        const costLabour = dayLabourCost * ratio
-        const sellLabour = dayLabourSell * ratio
+      // ── Labour rows: split across allocations proportionally by hours ──
+      // Labour rows always carry allowances=0 — allowances now go to a dedicated
+      // row tagged to the allowance TCE item (per-person override or timesheet
+      // default), not whichever scope item happened to be first in the day.
+      if (hasLabour) {
+        for (const alloc of tceAllocs) {
+          const allocHours = Number(alloc.hours) || 0
+          if (!allocHours) continue
 
-        // Resolve tce_item_id:
-        //   1. Prefer the alloc's explicit tceItemId
-        //   2. Fall back to WO → item_id when exactly one TCE line owns this WO
-        //   3. Otherwise null (ambiguous; user must pick the TCE line)
-        let resolvedItemId: string | null = alloc.tceItemId || null
-        if (!resolvedItemId && alloc.wo) {
-          const candidates = itemIdsByWO[alloc.wo] || []
-          if (candidates.length === 1) resolvedItemId = candidates[0]
+          const ratio = allocHours / dayHours  // proportion of the day's labour
+          const costLabour = dayLabourCost * ratio
+          const sellLabour = dayLabourSell * ratio
+
+          // Resolve tce_item_id:
+          //   1. Prefer the alloc's explicit tceItemId
+          //   2. Fall back to WO → item_id when exactly one TCE line owns this WO
+          //   3. Otherwise null (ambiguous; user must pick the TCE line)
+          let resolvedItemId: string | null = alloc.tceItemId || null
+          if (!resolvedItemId && alloc.wo) {
+            const candidates = itemIdsByWO[alloc.wo] || []
+            if (candidates.length === 1) resolvedItemId = candidates[0]
+          }
+
+          rows.push({
+            project_id: projectId,
+            timesheet_id: timesheet.id,
+            week_start: weekStart,
+            week_ending: weekEnding,
+            work_date: workDate,
+            person_id: member.personId,
+            person_name: member.name,
+            role: member.role,
+            category,
+            wbs: memberWbs,
+            tce_item_id: resolvedItemId,
+            work_order: alloc.wo || null,
+            day_type: dayType,
+            shift_type: shiftType,
+            allocated_hours: allocHours,
+            cost_labour: costLabour,
+            sell_labour: sellLabour,
+            cost_allowances: 0,
+            sell_allowances: 0,
+            timesheet_status: timesheet.status,
+          })
         }
+      }
 
+      // ── Dedicated allowance row ──
+      // Tagged to (member.allowancesTceItemId → timesheet default → null).
+      // null means the user hasn't picked one yet — surfaces in NRG Actuals as
+      // unallocated so they can correct it without it bleeding into a labour
+      // scope item. Skip the row entirely if the day has no allowances.
+      if (dayCostAllow > 0 || daySellAllow > 0) {
+        const memberAllowanceItem = (member as unknown as { allowancesTceItemId?: string | null }).allowancesTceItemId
+        const allowanceItemId: string | null = memberAllowanceItem || tsAllowancesDefault || null
         rows.push({
           project_id: projectId,
           timesheet_id: timesheet.id,
@@ -227,18 +272,17 @@ export async function writeTimesheetCostLines(
           role: member.role,
           category,
           wbs: memberWbs,
-          tce_item_id: resolvedItemId,
-          work_order: alloc.wo || null,
+          tce_item_id: allowanceItemId,
+          work_order: null,
           day_type: dayType,
           shift_type: shiftType,
-          allocated_hours: allocHours,
-          cost_labour: costLabour,
-          sell_labour: sellLabour,
-          cost_allowances: allowancesAttributed ? 0 : dayCostAllow,
-          sell_allowances: allowancesAttributed ? 0 : daySellAllow,
+          allocated_hours: 0,
+          cost_labour: 0,
+          sell_labour: 0,
+          cost_allowances: dayCostAllow,
+          sell_allowances: daySellAllow,
           timesheet_status: timesheet.status,
         })
-        allowancesAttributed = true
       }
     }
   }

@@ -8,6 +8,11 @@ import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
 import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry } from '../../types'
 
+// Group-header rows in NRG TCE have item_ids like "2.02.4" (3 segments).
+// Real bookable lines have 4+ segments. Used by allocation pickers to filter
+// out the headers that aren't valid scope/allowance targets.
+const isGroupHeader = (id: string | null | undefined): boolean => !!id && /^\d+\.\d+\.\d+$/.test(id)
+
 type TsType = 'trades' | 'mgmt' | 'seag' | 'subcon'
 const TYPE_LABELS: Record<TsType, string> = { trades: 'Trades', mgmt: 'Management', seag: 'SE AG', subcon: 'Subcontractor' }
 const TYPE_COLOR: Record<TsType, string> = { trades: 'var(--mod-hr)', mgmt: '#6366f1', seag: '#0891b2', subcon: '#7c3aed' }
@@ -465,6 +470,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     const { error } = await supabase.from('weekly_timesheets').update({
       crew: week.crew, regime: week.regime, status: week.status, wbs: week.wbs, notes: week.notes,
       scope_tracking: (week as WeeklyTimesheet & { scope_tracking?: string }).scope_tracking || 'none',
+      allowances_tce_default: (week as WeeklyTimesheet & { allowances_tce_default?: string }).allowances_tce_default || '',
     }).eq('id', week.id)
     if (error) { toast(error.message, 'error'); return }
     // Write wo_actuals rows for reporting
@@ -845,6 +851,22 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   <option value="work_orders">Work Orders</option>
                   {tceLines.length > 0 && <option value="nrg_tce">NRG TCE</option>}
                 </select>
+                {/* Allowance TCE default — only shown when scope is nrg_tce. Per-person
+                    overrides set on each crew row take precedence over this default. */}
+                {scopeMode === 'nrg_tce' && tceLines.length > 0 && (
+                  <>
+                    <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Allowance TCE:</span>
+                    <select className="input" style={{ width: '180px', fontSize: '12px', padding: '3px 6px' }}
+                      value={(activeWeek as WeeklyTimesheet & { allowances_tce_default?: string }).allowances_tce_default || ''}
+                      onChange={e => setActiveWeek({ ...activeWeek, allowances_tce_default: e.target.value } as WeeklyTimesheet)}
+                      title="Default TCE item for all crew allowances on this timesheet. Override per person below.">
+                      <option value="">— Unallocated —</option>
+                      {tceLines
+                        .filter(l => l.item_id && !isGroupHeader(l.item_id))
+                        .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                    </select>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -955,6 +977,41 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               }}
                             >✕ Clear scope</button>
                           )}
+                        </div>
+                      )
+                    })()}
+                    {/* Per-person allowance TCE override — only when scope is nrg_tce.
+                        Default option ("Use timesheet default") falls back to the
+                        timesheet-level allowances_tce_default; explicit pick wins.
+                        The writer reads (member.allowancesTceItemId || ts default || null). */}
+                    {scopeMode === 'nrg_tce' && tceLines.length > 0 && (() => {
+                      const memberAny = member as unknown as { allowancesTceItemId?: string | null }
+                      const personOverride = memberAny.allowancesTceItemId || ''
+                      const tsDefault = (activeWeek as WeeklyTimesheet & { allowances_tce_default?: string }).allowances_tce_default || ''
+                      const effective = personOverride || tsDefault
+                      const isDefault = !personOverride
+                      return (
+                        <div style={{ marginTop: '2px' }}>
+                          <div style={{ fontSize: '9px', color: '#0891b2', fontWeight: 600, marginBottom: '2px' }}>💰 Allowance TCE</div>
+                          <select
+                            value={personOverride}
+                            style={{ width: '100%', fontSize: '9px', padding: '2px 3px', border: `1px solid ${effective ? '#0891b2' : 'var(--border2)'}`, borderRadius: '3px', background: effective ? 'rgba(8,145,178,0.06)' : 'var(--bg3)', color: effective ? '#0891b2' : 'var(--text3)', cursor: 'pointer' }}
+                            title={isDefault ? (tsDefault ? `Using timesheet default: ${tsDefault}` : 'No timesheet default — allowances will land as unallocated') : `Override: ${personOverride}`}
+                            onChange={e => {
+                              const val = e.target.value
+                              setActiveWeek(w => w ? ({
+                                ...w,
+                                crew: w.crew.map(m => m.personId === member.personId
+                                  ? ({ ...m, allowancesTceItemId: val || null } as typeof m)
+                                  : m)
+                              }) : w)
+                            }}
+                          >
+                            <option value="">{tsDefault ? `↳ Use default (${tsDefault})` : '↳ Use default (unallocated)'}</option>
+                            {tceLines
+                              .filter(l => l.item_id && !isGroupHeader(l.item_id))
+                              .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                          </select>
                         </div>
                       )
                     })()}

@@ -170,6 +170,11 @@ export interface WeeklyTimesheet {
   vendor: string | null
   po_id: string | null
   crew: CrewMember[]
+  /** Default TCE item_id (text, not UUID) for crew allowances. Per-person
+   *  override on CrewMember.allowancesTceItemId takes precedence. Empty string
+   *  means "no default" — allowances will land as unallocated in NRG Actuals. */
+  allowances_tce_default?: string
+  scope_tracking?: 'none' | 'work_orders' | 'nrg_tce'
   created_at: string
   updated_at: string
 }
@@ -181,6 +186,9 @@ export interface CrewMember {
   wbs: string
   days: Record<string, DayEntry>
   mealBreakAdj?: boolean
+  /** Per-person override for the allowance TCE item_id. Falls back to the
+   *  timesheet-level allowances_tce_default when null/missing. */
+  allowancesTceItemId?: string | null
 }
 
 export interface DayEntry {
