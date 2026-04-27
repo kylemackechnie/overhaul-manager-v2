@@ -38,6 +38,11 @@ export function NrgActualsPanel() {
     setLoading(true)
     const pid = activeProject!.id
 
+    // Load TCE lines up front — both for the backfill writer (so WO-only allocs
+    // get resolved to item_ids on legacy timesheets) and for the main render below.
+    const { data: tceLinesData } = await supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id')
+    const tceLines = (tceLinesData || []) as NrgTceLine[]
+
     // Backfill: if no cost lines exist for this project, write them from approved timesheets
     const { count } = await supabase.from('timesheet_cost_lines').select('id', { count: 'exact', head: true }).eq('project_id', pid)
     if ((count || 0) === 0) {
@@ -47,12 +52,11 @@ export function NrgActualsPanel() {
       ])
       const rcs = (rcRes.data || []) as RateCard[]
       for (const ts of (tsRes.data || []) as WeeklyTimesheet[]) {
-        await writeTimesheetCostLines(ts, pid, rcs)
+        await writeTimesheetCostLines(ts, pid, rcs, tceLines)
       }
     }
 
-    const [linesRes, clRes, invRes, expRes, varRes] = await Promise.all([
-      supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
+    const [clRes, invRes, expRes, varRes] = await Promise.all([
       // Read from the pre-calculated cost lines table (approved only)
       supabase.from('timesheet_cost_lines')
         .select('tce_item_id,work_order,cost_labour,sell_labour,cost_allowances,sell_allowances')
@@ -62,7 +66,7 @@ export function NrgActualsPanel() {
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
     ])
-    setLines((linesRes.data || []) as NrgTceLine[])
+    setLines(tceLines)
 
     // Aggregate labour cost by tce_item_id from the cost lines table
     const agg: Record<string, { cost: number; sell: number }> = {}

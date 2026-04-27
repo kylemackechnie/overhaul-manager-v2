@@ -49,6 +49,12 @@ export function NrgInvoicingPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
+
+    // Load TCE lines up front — both for the backfill writer (so WO-only allocs
+    // get resolved to item_ids on legacy timesheets) and for the main render below.
+    const { data: tceLinesData } = await supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id')
+    const fetchedTceLines = (tceLinesData || []) as NrgTceLine[]
+
     // Backfill: if no cost lines exist for this project, write them from approved timesheets
     const { count } = await supabase.from('timesheet_cost_lines').select('id', { count: 'exact', head: true }).eq('project_id', pid)
     if ((count || 0) === 0) {
@@ -58,12 +64,11 @@ export function NrgInvoicingPanel() {
       ])
       const rcs = (rcRes.data || []) as RateCard[]
       for (const ts of (tsRes.data || []) as WeeklyTimesheet[]) {
-        await writeTimesheetCostLines(ts, pid, rcs)
+        await writeTimesheetCostLines(ts, pid, rcs, fetchedTceLines)
       }
     }
 
-    const [linesRes, invRes, rulesRes, clRes, supInvRes, expRes] = await Promise.all([
-      supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
+    const [invRes, rulesRes, clRes, supInvRes, expRes] = await Promise.all([
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
       supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('timesheet_cost_lines')
@@ -72,7 +77,7 @@ export function NrgInvoicingPanel() {
       supabase.from('invoices').select('tce_item_id,invoice_date,amount,status').eq('project_id', pid).neq('status','rejected'),
       supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount').eq('project_id', pid),
     ])
-    setTceLines((linesRes.data||[]) as NrgTceLine[])
+    setTceLines(fetchedTceLines)
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
     // Aggregate cost lines: { tce_item_id -> { week_ending -> { cost, sell } } }
     const byItemWeek: Record<string,Record<string,{cost:number;sell:number}>> = {}

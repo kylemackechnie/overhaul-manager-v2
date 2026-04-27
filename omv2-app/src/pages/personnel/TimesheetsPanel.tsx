@@ -512,7 +512,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     } catch { /* non-critical */ }
     // Write timesheet_cost_lines — single source of truth for TCE actuals + invoicing
     try {
-      await writeTimesheetCostLines(week, activeProject!.id, rateCards)
+      await writeTimesheetCostLines(week, activeProject!.id, rateCards, tceLines)
     } catch { /* non-critical */ }
     toast('Saved', 'success')
     setSheets(prev => prev.map(s => s.id === week.id ? week : s))
@@ -833,7 +833,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       {s.status !== 'approved' && <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Quick approve" onClick={async()=>{
                         await supabase.from('weekly_timesheets').update({status:'approved'}).eq('id',s.id)
                         // Re-write cost lines with updated status
-                        try { await writeTimesheetCostLines({...s, status:'approved'}, activeProject!.id, rateCards) } catch { /* non-critical */ }
+                        try { await writeTimesheetCostLines({...s, status:'approved'}, activeProject!.id, rateCards, tceLines) } catch { /* non-critical */ }
                         load()
                       }}>✓ Approve</button>}
                       <button className="btn btn-sm" title="Duplicate week" onClick={() => duplicateWeek(s)}>⧉</button>

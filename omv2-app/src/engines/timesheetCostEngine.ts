@@ -40,17 +40,41 @@ interface CostLineInsert {
   timesheet_status: string
 }
 
+/** Minimum TCE line shape needed for WO → item_id resolution at write time. */
+interface TceLineLite {
+  item_id: string | null
+  work_order: string | null
+}
+
 /**
  * Explode a timesheet into cost line rows and upsert to timesheet_cost_lines.
  * Deletes existing rows for this timesheet first (clean replace on every save).
  *
  * rateCards: all rate cards for the project (passed in — no DB fetch here)
+ * tceLines:  optional list of project TCE lines, used to resolve a
+ *            work_order-only allocation back to the owning TCE item_id.
+ *            Without this, allocs created via the WO picker (no item_id)
+ *            land with tce_item_id=null and the Actuals/Invoicing panels —
+ *            which both group on tce_item_id — drop them silently.
+ *            If multiple TCE lines share the same WO, no resolution
+ *            happens (ambiguous) and tce_item_id stays null.
  */
 export async function writeTimesheetCostLines(
   timesheet: WeeklyTimesheet,
   projectId: string,
-  rateCards: RateCard[]
+  rateCards: RateCard[],
+  tceLines: TceLineLite[] = [],
 ): Promise<{ error: string | null }> {
+  // Build a one-to-many WO → item_ids map. Single match → safe to auto-resolve.
+  // Multi match → ambiguous, leave alloc unresolved so the user picks the line.
+  const itemIdsByWO: Record<string, string[]> = {}
+  for (const l of tceLines) {
+    const wo = l.work_order
+    if (!wo || !l.item_id) continue
+    if (!itemIdsByWO[wo]) itemIdsByWO[wo] = []
+    itemIdsByWO[wo].push(l.item_id)
+  }
+
   // Only write for TCE-scoped timesheets
   const scopeTracking = (timesheet as WeeklyTimesheet & {scope_tracking?:string}).scope_tracking
   if (scopeTracking !== 'tce' && scopeTracking !== 'nrg_tce') {
@@ -127,6 +151,16 @@ export async function writeTimesheetCostLines(
         const costLabour = calcHoursCost(split, rc, 'cost')
         const sellLabour = calcHoursCost(split, rc, 'sell')
 
+        // Resolve tce_item_id:
+        //   1. Prefer the alloc's explicit tceItemId
+        //   2. Fall back to WO → item_id when exactly one TCE line owns this WO
+        //   3. Otherwise null (ambiguous; user must pick the TCE line)
+        let resolvedItemId: string | null = alloc.tceItemId || null
+        if (!resolvedItemId && alloc.wo) {
+          const candidates = itemIdsByWO[alloc.wo] || []
+          if (candidates.length === 1) resolvedItemId = candidates[0]
+        }
+
         rows.push({
           project_id: projectId,
           timesheet_id: timesheet.id,
@@ -137,7 +171,7 @@ export async function writeTimesheetCostLines(
           person_name: member.name,
           role: member.role,
           category,
-          tce_item_id: alloc.tceItemId || null,
+          tce_item_id: resolvedItemId,
           work_order: alloc.wo || null,
           day_type: dayType,
           shift_type: shiftType,
