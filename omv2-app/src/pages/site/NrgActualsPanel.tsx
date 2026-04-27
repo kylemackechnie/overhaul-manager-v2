@@ -46,13 +46,15 @@ export function NrgActualsPanel() {
     // Backfill: if no cost lines exist for this project, write them from approved timesheets
     const { count } = await supabase.from('timesheet_cost_lines').select('id', { count: 'exact', head: true }).eq('project_id', pid)
     if ((count || 0) === 0) {
-      const [tsRes, rcRes] = await Promise.all([
+      const [tsRes, rcRes, resRes] = await Promise.all([
         supabase.from('weekly_timesheets').select('*').eq('project_id', pid).eq('status', 'approved'),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
+        supabase.from('resources').select('id,wbs').eq('project_id', pid),
       ])
       const rcs = (rcRes.data || []) as RateCard[]
+      const resources = (resRes.data || []) as { id: string; wbs?: string | null }[]
       for (const ts of (tsRes.data || []) as WeeklyTimesheet[]) {
-        await writeTimesheetCostLines(ts, pid, rcs, tceLines)
+        await writeTimesheetCostLines(ts, pid, rcs, tceLines, resources)
       }
     }
 

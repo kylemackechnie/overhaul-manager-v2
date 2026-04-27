@@ -27,6 +27,7 @@ interface CostLineInsert {
   person_name: string
   role: string
   category: string
+  wbs: string
   tce_item_id: string | null
   work_order: string | null
   day_type: string
@@ -46,6 +47,12 @@ interface TceLineLite {
   work_order: string | null
 }
 
+/** Minimum Resource shape — only person_id → home WBS lookup is needed. */
+interface ResourceLite {
+  id: string
+  wbs?: string | null
+}
+
 /**
  * Explode a timesheet into cost line rows and upsert to timesheet_cost_lines.
  * Deletes existing rows for this timesheet first (clean replace on every save).
@@ -53,17 +60,17 @@ interface TceLineLite {
  * rateCards: all rate cards for the project (passed in — no DB fetch here)
  * tceLines:  optional list of project TCE lines, used to resolve a
  *            work_order-only allocation back to the owning TCE item_id.
- *            Without this, allocs created via the WO picker (no item_id)
- *            land with tce_item_id=null and the Actuals/Invoicing panels —
- *            which both group on tce_item_id — drop them silently.
- *            If multiple TCE lines share the same WO, no resolution
- *            happens (ambiguous) and tce_item_id stays null.
+ * resources: optional list of project resources, used to resolve a person's
+ *            home WBS when neither the crew member nor the timesheet has
+ *            one set. Lets the aggregator read this table directly without
+ *            ever going back to the timesheet JSONB.
  */
 export async function writeTimesheetCostLines(
   timesheet: WeeklyTimesheet,
   projectId: string,
   rateCards: RateCard[],
   tceLines: TceLineLite[] = [],
+  resources: ResourceLite[] = [],
 ): Promise<{ error: string | null }> {
   // Build a one-to-many WO → item_ids map. Single match → safe to auto-resolve.
   // Multi match → ambiguous, leave alloc unresolved so the user picks the line.
@@ -73,6 +80,10 @@ export async function writeTimesheetCostLines(
     if (!wo || !l.item_id) continue
     if (!itemIdsByWO[wo]) itemIdsByWO[wo] = []
     itemIdsByWO[wo].push(l.item_id)
+  }
+  const wbsByResourceId: Record<string, string> = {}
+  for (const r of resources) {
+    if (r.wbs) wbsByResourceId[r.id] = r.wbs
   }
 
   // Only write for TCE-scoped timesheets
@@ -99,6 +110,18 @@ export async function writeTimesheetCostLines(
     const rcAny = rc as unknown as Record<string, unknown>
     const category = (rcAny.category as string) || 'trades'
     const isMgmt = category === 'management' || category === 'seag'
+    const rcRegime = rcAny.regime as Parameters<typeof splitHours>[4]
+    const memberAny = member as unknown as { mealBreakAdj?: boolean; wbs?: string }
+    const pf = (v: unknown) => { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
+
+    // WBS resolution — same priority the HTML uses:
+    //   1. crew[i].wbs (per-member override on this week)
+    //   2. timesheet.wbs (week-level default)
+    //   3. resource.wbs (person's home WBS)
+    const memberWbs = memberAny.wbs
+      || (timesheet as WeeklyTimesheet & { wbs?: string }).wbs
+      || (member.personId ? wbsByResourceId[member.personId] : '')
+      || ''
 
     for (const [workDate, dayRaw] of Object.entries(member.days || {})) {
       const day = dayRaw as {
@@ -117,7 +140,8 @@ export async function writeTimesheetCostLines(
         }>
       }
 
-      if (!day.hours || day.hours <= 0) continue
+      const dayHours = day.hours || 0
+      if (dayHours <= 0) continue
 
       const allocs = day.nrgWoAllocations || []
       // Only write rows for days with a TCE/WO allocation
@@ -127,29 +151,43 @@ export async function writeTimesheetCostLines(
       const dayType = day.dayType || 'weekday'
       const shiftType = (day.shiftType === 'night' ? 'night' : 'day') as 'day' | 'night'
 
-      // Allowances for this day (same value regardless of how hours split across scopes)
-      let costAllow = 0, sellAllow = 0
-      const pf = (v: unknown) => { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
+      // ── Day-level labour calc (matches UI's calcPersonTotals exactly) ──
+      // Apply meal-break adjustment to effective hours, then split ONCE for the
+      // whole day so the NT/T1.5/DT bands honour the day's total — splitting
+      // alloc-by-alloc is wrong (e.g. 6h+4h ≠ 10h split when bands kick in).
+      const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
+      const effH = dayHours + adjH
+      const split = splitHours(effH, dayType, shiftType, regime, rcRegime)
+      const dayLabourCost = calcHoursCost(split, rc, 'cost')
+      const dayLabourSell = calcHoursCost(split, rc, 'sell')
+
+      // ── Day-level allowances ──
+      let dayCostAllow = 0, daySellAllow = 0
       if (isMgmt) {
-        if (day.fsa || day.camp || day.laha) {
-          costAllow = pf(rcAny.fsa_cost)
-          sellAllow = pf(rcAny.fsa_sell)
+        // Management/SE AG: FSA, Camp, or LAHA-treated-as-FSA (mutually exclusive)
+        if (day.fsa) {
+          dayCostAllow = pf(rcAny.fsa_cost); daySellAllow = pf(rcAny.fsa_sell)
+        } else if (day.camp) {
+          dayCostAllow = pf(rcAny.camp_cost ?? rcAny.camp); daySellAllow = pf(rcAny.camp)
+        } else if (day.laha) {
+          // Legacy: management with LAHA toggle gets FSA rate
+          dayCostAllow = pf(rcAny.fsa_cost); daySellAllow = pf(rcAny.fsa_sell)
         }
       } else {
-        if (day.laha) { costAllow += pf(rcAny.laha_cost); sellAllow += pf(rcAny.laha_sell) }
-        if (day.meal) { costAllow += pf(rcAny.meal_cost); sellAllow += pf(rcAny.meal_sell) }
+        if (day.laha) { dayCostAllow += pf(rcAny.laha_cost); daySellAllow += pf(rcAny.laha_sell) }
+        if (day.meal) { dayCostAllow += pf(rcAny.meal_cost); daySellAllow += pf(rcAny.meal_sell) }
       }
 
-      // One row per TCE allocation on this day
-      // Allowances attributed to the FIRST allocation only (avoids double-counting)
+      // ── Split across allocations proportionally by hours ──
+      // First alloc carries the day's allowances; remaining allocs get 0.
       let allowancesAttributed = false
       for (const alloc of tceAllocs) {
         const allocHours = Number(alloc.hours) || 0
         if (!allocHours) continue
 
-        const split = splitHours(allocHours, dayType, shiftType, regime, rcAny.regime as Parameters<typeof splitHours>[4])
-        const costLabour = calcHoursCost(split, rc, 'cost')
-        const sellLabour = calcHoursCost(split, rc, 'sell')
+        const ratio = allocHours / dayHours  // proportion of the day's labour
+        const costLabour = dayLabourCost * ratio
+        const sellLabour = dayLabourSell * ratio
 
         // Resolve tce_item_id:
         //   1. Prefer the alloc's explicit tceItemId
@@ -171,6 +209,7 @@ export async function writeTimesheetCostLines(
           person_name: member.name,
           role: member.role,
           category,
+          wbs: memberWbs,
           tce_item_id: resolvedItemId,
           work_order: alloc.wo || null,
           day_type: dayType,
@@ -179,8 +218,8 @@ export async function writeTimesheetCostLines(
           allocated_hours: allocHours,
           cost_labour: costLabour,
           sell_labour: sellLabour,
-          cost_allowances: allowancesAttributed ? 0 : costAllow,
-          sell_allowances: allowancesAttributed ? 0 : sellAllow,
+          cost_allowances: allowancesAttributed ? 0 : dayCostAllow,
+          sell_allowances: allowancesAttributed ? 0 : daySellAllow,
           timesheet_status: timesheet.status,
         })
         allowancesAttributed = true

@@ -111,8 +111,13 @@ export interface RateBuckets {
 }
 
 export interface RegimeConfig {
-  lt12?: Record<string, number>
-  ge12?: Record<string, number>
+  // Flat schema matching the rate-card form and HTML splitHours.
+  // Hour thresholds for NT / T1.5 splits — defaults are 7.2 / 3.3 / 3 / 7.2 / 7.2.
+  wdNT?: number    // Weekday day NT cap
+  wdT15?: number   // Weekday day T1.5 band
+  satT15?: number  // Saturday T1.5 band (lt12 only)
+  nightNT?: number // Night NT cap
+  restNT?: number  // Rest day flat NT
   [key: string]: unknown
 }
 

@@ -19,7 +19,6 @@
  */
 
 import { calcRentalCost } from '../lib/calculations'
-import { calcCrewMemberTotal } from './costEngine'
 import { fxRate } from '../lib/currency'
 import type {
   Project, RateCard, Resource, WeeklyTimesheet,
@@ -87,6 +86,13 @@ export interface WbsAggregatorInput {
   resources: Resource[]
   rateCards: RateCard[]
   timesheets: WeeklyTimesheet[]
+  /**
+   * Pre-calculated labour cost lines — written by writeTimesheetCostLines()
+   * whenever a timesheet is saved. The aggregator reads these directly
+   * instead of recalculating labour from the timesheet JSONB, so that
+   * labour totals always match what the timesheet UI shows.
+   */
+  timesheetCostLines?: TimesheetCostLineLite[]
   toolingCostings: ToolingCosting[]
   globalTVs: GlobalTV[]
   globalDepartments: GlobalDepartment[]
@@ -100,6 +106,18 @@ export interface WbsAggregatorInput {
   publicHolidays?: string[]
   /** Required to scope tooling splits — tooling on other projects flows in via splits.projectId === activeProjectId */
   activeProjectId: string
+}
+
+/** Minimum cost-line shape needed for WBS rollup. */
+export interface TimesheetCostLineLite {
+  category: string
+  wbs: string
+  cost_labour: number
+  sell_labour: number
+  cost_allowances: number
+  sell_allowances: number
+  person_name?: string
+  work_date?: string
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -123,11 +141,11 @@ const LABOUR_KEYS = new Set<keyof WbsAggregateRow>(['labourTrades','labourMgmt',
 
 export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate {
   const {
-    project, resources, rateCards, timesheets,
+    project,
     toolingCostings, globalTVs, globalDepartments,
     hireItems, cars, accommodation, expenses,
     backOfficeHours, variations, variationLines,
-    publicHolidays = [], activeProjectId,
+    activeProjectId,
   } = input
 
   const result: WbsAggregate = {}
@@ -247,46 +265,23 @@ export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate 
     add(wbs, cost, sell, 'hire', `${h.hire_type || 'hire'}: ${h.name || h.vendor || '—'}`)
   }
 
-  // ── Labour: all weekly timesheets, regime-aware via calcCrewMemberTotal ───
-  // WBS resolution is 3-level: member.wbs → timesheet.wbs → resource.wbs
-  // SE AG rate cards are in EUR — calcCrewMemberTotal returns native-currency
-  // numbers; we convert at the end.
-  const resourceById = Object.fromEntries(resources.map(r => [r.id, r]))
-  for (const ts of timesheets) {
-    const wType = ts.type || 'trades'
+  // ── Labour: read from pre-calculated timesheet_cost_lines ─────────────────
+  // Single source of truth — written by writeTimesheetCostLines() on every
+  // timesheet save. We never recalculate from the timesheet JSONB here,
+  // so the aggregator is guaranteed to agree with what the timesheet UI shows.
+  for (const cl of (input.timesheetCostLines || [])) {
+    if (!cl.wbs) continue
+    const cost = (Number(cl.cost_labour) || 0) + (Number(cl.cost_allowances) || 0)
+    const sell = (Number(cl.sell_labour) || 0) + (Number(cl.sell_allowances) || 0)
+    if (!cost && !sell) continue
+    const cat = (cl.category || 'trades').toLowerCase()
     const catKey: WbsAggregateItem['category'] =
-      wType === 'mgmt'   ? 'labourMgmt'
-    : wType === 'seag'   ? 'labourSeag'
-    : wType === 'subcon' ? 'labourSubcon'
-    :                      'labourTrades'
-    const regime = (ts.regime || 'lt12') as 'lt12' | 'ge12'
-
-    for (const m of ts.crew || []) {
-      const tot = calcCrewMemberTotal(m, regime, rateCards, publicHolidays)
-      // Allowances are AUD already (HTML convention); labour hours are in rate-card currency.
-      // SE AG rate cards are EUR — convert hour cost/sell, leave allowances.
-      const rc = rateCards.find(c => c.role.toLowerCase() === m.role.toLowerCase())
-      const isSeagWeek = wType === 'seag' || rc?.category === 'seag'
-      const hourCost = isSeagWeek ? convertEurToBase(tot.cost - tot.allowances, project) : (tot.cost - tot.allowances)
-      const hourSell = isSeagWeek ? convertEurToBase(tot.sell - tot.allowances, project) : (tot.sell - tot.allowances)
-      // calcCrewMemberTotal lumps allowance into both cost and sell — separate them out so EUR conversion
-      // doesn't accidentally convert AUD allowances. (Allowances tracked under sell in calcCrewMemberTotal;
-      // we mirror to cost via the same value — the HTML pre-fix used .allowances for both.)
-      const allowCost = tot.allowances
-      const allowSell = tot.allowances
-      const cost = hourCost + allowCost
-      const sell = hourSell + allowSell
-      if (!cost && !sell) continue
-
-      let wbs = m.wbs || ts.wbs || ''
-      if (!wbs && m.personId) {
-        const res = resourceById[m.personId]
-        if (res?.wbs) wbs = res.wbs
-      }
-      if (!wbs) continue
-      const label = `${m.name} (${m.role || ''}) wk ${ts.week_start}${isSeagWeek ? ' (EUR→base)' : ''}`
-      add(wbs, cost, sell, catKey, label)
-    }
+      cat === 'management' ? 'labourMgmt'
+    : cat === 'seag'       ? 'labourSeag'
+    : cat === 'subcontractor' || cat === 'subcon' ? 'labourSubcon'
+    :                        'labourTrades'
+    const label = `${cl.person_name || ''}${cl.work_date ? ' ' + cl.work_date : ''}`.trim()
+    add(cl.wbs, cost, sell, catKey, label || 'Labour')
   }
 
   // ── Back Office Hours ─────────────────────────────────────────────────────
@@ -381,11 +376,6 @@ export function rollupWbsSell(agg: WbsAggregate, wbsCode: string): number {
 }
 
 // ─── Local FX helpers ────────────────────────────────────────────────────────
-
-function convertEurToBase(amount: number, project: Project | null): number {
-  if (!amount) return 0
-  return amount * fxRate(project, 'EUR')
-}
 
 function convertEurOrCurrencyToBase(amount: number, currency: string, project: Project | null): number {
   if (!amount) return 0

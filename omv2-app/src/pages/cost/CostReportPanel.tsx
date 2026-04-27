@@ -44,7 +44,7 @@ export function CostReportPanel() {
       wbsR, resourcesR, rateCardsR, timesheetsR,
       tcOwnedR, tcCrossR, tvsR, deptsR,
       hireR, carsR, accomR, expensesR, boR,
-      varsR, varLinesR, holsR,
+      varsR, varLinesR, holsR, costLinesR,
     ] = await Promise.all([
       supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('resources').select('*').eq('project_id', pid),
@@ -63,6 +63,9 @@ export function CostReportPanel() {
       supabase.from('variations').select('*').eq('project_id', pid),
       supabase.from('variation_lines').select('*').eq('project_id', pid),
       supabase.from('public_holidays').select('date').eq('project_id', pid),
+      supabase.from('timesheet_cost_lines')
+        .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
+        .eq('project_id', pid),
     ])
 
     const wbsList = (wbsR.data || []) as { code: string; name: string }[]
@@ -77,6 +80,7 @@ export function CostReportPanel() {
     const agg = aggregateAllCostsByWbs({
       project: activeProject,
       resources, rateCards, timesheets,
+      timesheetCostLines: (costLinesR.data || []) as Parameters<typeof aggregateAllCostsByWbs>[0]['timesheetCostLines'],
       toolingCostings: [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
       globalTVs: (tvsR.data || []) as GlobalTV[],
       globalDepartments: (deptsR.data || []) as GlobalDepartment[],

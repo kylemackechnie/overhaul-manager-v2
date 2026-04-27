@@ -87,7 +87,7 @@ export function MikaPanel() {
         resourcesR, rateCardsR, timesheetsR,
         tcOwnedR, tcCrossR, tvsR, deptsR,
         hireR, carsR, accomR, expensesR, boR,
-        varsR, varLinesR, holsR,
+        varsR, varLinesR, holsR, costLinesR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -105,6 +105,10 @@ export function MikaPanel() {
         supabase.from('variations').select('*').eq('project_id', pid),
         supabase.from('variation_lines').select('*').eq('project_id', pid),
         supabase.from('public_holidays').select('date').eq('project_id', pid),
+        // Pre-calculated labour cost lines — single source of truth for labour
+        supabase.from('timesheet_cost_lines')
+          .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
+          .eq('project_id', pid),
       ])
 
       const agg = aggregateAllCostsByWbs({
@@ -112,6 +116,7 @@ export function MikaPanel() {
         resources: (resourcesR.data || []) as Resource[],
         rateCards: (rateCardsR.data || []) as RateCard[],
         timesheets: (timesheetsR.data || []) as WeeklyTimesheet[],
+        timesheetCostLines: (costLinesR.data || []) as Parameters<typeof aggregateAllCostsByWbs>[0]['timesheetCostLines'],
         toolingCostings: [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
         globalTVs: (tvsR.data || []) as GlobalTV[],
         globalDepartments: (deptsR.data || []) as GlobalDepartment[],

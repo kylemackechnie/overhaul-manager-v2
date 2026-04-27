@@ -61,66 +61,96 @@ export function fcDayType(dateStr: string, publicHolidays: string[] = []): DayTy
 }
 
 // ─── Split hours ─────────────────────────────────────────────────────────────
-// Mirrors splitHours() from the HTML app exactly
+// Canonical implementation. Mirrors the HTML splitHours() exactly, including
+// the hardcoded 7.2/3.3/3/7.2/7.2 defaults that apply when a rate card has no
+// regime config. This is the single source of truth — every cost calc in the
+// app should use it.
+//
+// Schema for regimeConfig: flat { wdNT, wdT15, satT15, nightNT, restNT } —
+// matches what the rate card form saves and what the HTML reads.
 
 export interface HourSplit {
   dnt: number; dt15: number; ddt: number; ddt15: number
   nnt: number; ndt: number; ndt15: number
 }
 
+export interface RegimeConfig {
+  wdNT?: number; wdT15?: number; satT15?: number
+  nightNT?: number; restNT?: number
+}
+
 export function splitHours(
   totalHrs: number,
-  dayType: DayType | string,
-  shiftType: 'day' | 'night',
-  regime: 'lt12' | 'ge12',
-  rcRegime?: unknown
+  dayType: string,
+  shiftType: string,
+  regime: string,
+  regimeConfig?: RegimeConfig | unknown
 ): HourSplit {
-  const split: HourSplit = { dnt: 0, dt15: 0, ddt: 0, ddt15: 0, nnt: 0, ndt: 0, ndt15: 0 }
+  const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
+  if (totalHrs <= 0) return zero
+
+  const night = shiftType === 'night'
+  const rc = (regimeConfig || {}) as RegimeConfig
+  const WD_NT    = rc.wdNT    ?? 7.2
+  const WD_T15   = rc.wdT15   ?? 3.3
+  const SAT_T15  = rc.satT15  ?? 3
+  const NIGHT_NT = rc.nightNT ?? 7.2
+  const REST_NT  = rc.restNT  ?? 7.2
 
   // Normalise dayType — accept both snake_case ('public_holiday') and camelCase ('publicHoliday')
-  // HTML stores 'public_holiday', engine type uses 'publicHoliday'
-  const normDay: DayType = dayType === 'public_holiday' ? 'publicHoliday' : dayType as DayType
+  const d = dayType === 'publicHoliday' ? 'public_holiday' : dayType
 
-  // Use regime-aware config if provided
-  const cfg = rcRegime as Record<string, Record<string, number>> | null | undefined
-  const regimeCfg = cfg?.[regime]
-
-  if (shiftType === 'night') {
-    if (normDay === 'weekday') {
-      if (regimeCfg) {
-        split.nnt = regimeCfg.nnt ?? totalHrs
-        split.ndt = regimeCfg.ndt ?? 0
-        split.ndt15 = regimeCfg.ndt15 ?? 0
-      } else {
-        split.nnt = regime === 'ge12' ? Math.min(totalHrs, 8) : totalHrs
-        if (regime === 'ge12') split.ndt = Math.max(0, totalHrs - 8)
-      }
-    } else if (normDay === 'saturday' || normDay === 'publicHoliday') {
-      split.ndt = totalHrs
-    } else if (normDay === 'sunday') {
-      split.ndt15 = totalHrs
-    }
-  } else {
-    // day shift
-    if (normDay === 'weekday') {
-      if (regimeCfg) {
-        split.dnt = regimeCfg.dnt ?? totalHrs
-        split.dt15 = regimeCfg.dt15 ?? 0
-        split.ddt = regimeCfg.ddt ?? 0
-        split.ddt15 = regimeCfg.ddt15 ?? 0
-      } else {
-        split.dnt = regime === 'ge12' ? Math.min(totalHrs, 8) : totalHrs
-        if (regime === 'ge12') split.dt15 = Math.max(0, totalHrs - 8)
-      }
-    } else if (normDay === 'saturday') {
-      split.ddt = regime === 'ge12' ? Math.min(totalHrs, 8) : totalHrs
-      if (regime === 'ge12') split.ddt15 = Math.max(0, totalHrs - 8)
-    } else if (normDay === 'sunday' || normDay === 'publicHoliday') {
-      split.ddt15 = totalHrs
-    }
+  // Public holiday — all hours at DT1.5
+  if (d === 'public_holiday') {
+    return night ? { ...zero, ndt15: totalHrs } : { ...zero, ddt15: totalHrs }
   }
 
-  return split
+  // Rest/fatigue — flat NT
+  if (d === 'rest') {
+    return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
+  }
+
+  // Travel / mob — flat day NT
+  if (d === 'travel' || d === 'mob') {
+    return { ...zero, dnt: totalHrs }
+  }
+
+  // Night work
+  if (night) {
+    if (d === 'saturday' || d === 'sunday') {
+      return { ...zero, ndt: totalHrs }
+    }
+    // Weekday night: NT up to NIGHT_NT, remainder DT
+    const nnt = Math.min(totalHrs, NIGHT_NT)
+    const ndt = Math.max(0, totalHrs - NIGHT_NT)
+    return { ...zero, nnt, ndt }
+  }
+
+  // Day — Saturday
+  if (d === 'saturday') {
+    if (regime === 'ge12') return { ...zero, ddt: totalHrs }
+    const t15 = Math.min(totalHrs, SAT_T15)
+    const ddt = Math.max(0, totalHrs - SAT_T15)
+    return { ...zero, dt15: t15, ddt }
+  }
+
+  // Day — Sunday (all DT, not DT1.5)
+  if (d === 'sunday') {
+    return { ...zero, ddt: totalHrs }
+  }
+
+  // Weekday day — lt12: NT → T1.5 → DT
+  if (regime === 'lt12') {
+    const dnt  = Math.min(totalHrs, WD_NT)
+    const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
+    const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
+    return { ...zero, dnt, dt15, ddt }
+  }
+
+  // Weekday day — ge12: NT → DT (no T1.5)
+  const dnt = Math.min(totalHrs, WD_NT)
+  const ddt = Math.max(0, totalHrs - WD_NT)
+  return { ...zero, dnt, ddt }
 }
 
 // ─── Calc hours cost ─────────────────────────────────────────────────────────
