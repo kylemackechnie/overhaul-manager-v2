@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import { aggregateByWbs } from '../../engines/forecastEngine'
-import type { WbsCostRow } from '../../engines/forecastEngine'
-import type { WbsItem } from '../../types'
+import { aggregateAllCostsByWbs } from '../../engines/wbsAggregator'
+import type { WbsItem, Resource, RateCard, WeeklyTimesheet, ToolingCosting,
+  GlobalTV, GlobalDepartment, HireItem, Car, Accommodation, Expense,
+  BackOfficeHour, Variation, VariationLine } from '../../types'
 
 export function WBSPanel() {
   const { activeProject } = useAppStore()
@@ -25,23 +26,68 @@ export function WBSPanel() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('wbs_list').select('*')
-      .eq('project_id', activeProject!.id).order('sort_order').order('code')
-    setItems((data || []) as WbsItem[])
-    // Load actuals per WBS
     const pid = activeProject!.id
-    const [hireData, carData, acData, tsData, rcData, boData] = await Promise.all([
-      supabase.from('hire_items').select('wbs,hire_cost').eq('project_id',pid),
-      supabase.from('cars').select('wbs,total_cost').eq('project_id',pid),
-      supabase.from('accommodation').select('wbs,total_cost').eq('project_id',pid),
-      supabase.from('weekly_timesheets').select('*').eq('project_id',pid),
-      supabase.from('rate_cards').select('*').eq('project_id',pid),
-      supabase.from('back_office_hours').select('*').eq('project_id',pid),
+    const { data } = await supabase.from('wbs_list').select('*')
+      .eq('project_id', pid).order('sort_order').order('code')
+    setItems((data || []) as WbsItem[])
+
+    // Run the canonical aggregator and apply parent-prefix rollup so a WBS row
+    // shows the sum of itself plus any descendants tagged underneath it.
+    const [
+      resourcesR, rateCardsR, timesheetsR,
+      tcOwnedR, tcCrossR, tvsR, deptsR,
+      hireR, carsR, accomR, expensesR, boR,
+      varsR, varLinesR, holsR,
+    ] = await Promise.all([
+      supabase.from('resources').select('*').eq('project_id', pid),
+      supabase.from('rate_cards').select('*').eq('project_id', pid),
+      supabase.from('weekly_timesheets').select('*').eq('project_id', pid),
+      supabase.from('tooling_costings').select('*').eq('project_id', pid),
+      supabase.from('tooling_costings').select('*').neq('project_id', pid)
+        .filter('splits', 'cs', `[{"projectId":"${pid}"}]`),
+      supabase.from('global_tvs').select('*'),
+      supabase.from('global_departments').select('*'),
+      supabase.from('hire_items').select('*').eq('project_id', pid),
+      supabase.from('cars').select('*').eq('project_id', pid),
+      supabase.from('accommodation').select('*').eq('project_id', pid),
+      supabase.from('expenses').select('*').eq('project_id', pid),
+      supabase.from('back_office_hours').select('*').eq('project_id', pid),
+      supabase.from('variations').select('*').eq('project_id', pid),
+      supabase.from('variation_lines').select('*').eq('project_id', pid),
+      supabase.from('public_holidays').select('date').eq('project_id', pid),
     ])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = aggregateByWbs(data||[], (hireData.data||[]) as never[], (carData.data||[]) as never[], (acData.data||[]) as never[], (tsData.data||[]) as never[], (rcData.data||[]) as never[], (boData.data||[]) as never[], [], [], pid)
+
+    const agg = aggregateAllCostsByWbs({
+      project: activeProject,
+      resources: (resourcesR.data || []) as Resource[],
+      rateCards: (rateCardsR.data || []) as RateCard[],
+      timesheets: (timesheetsR.data || []) as WeeklyTimesheet[],
+      toolingCostings: [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
+      globalTVs: (tvsR.data || []) as GlobalTV[],
+      globalDepartments: (deptsR.data || []) as GlobalDepartment[],
+      hireItems: (hireR.data || []) as HireItem[],
+      cars: (carsR.data || []) as Car[],
+      accommodation: (accomR.data || []) as Accommodation[],
+      expenses: (expensesR.data || []) as Expense[],
+      backOfficeHours: (boR.data || []) as BackOfficeHour[],
+      variations: (varsR.data || []) as Variation[],
+      variationLines: (varLinesR.data || []) as VariationLine[],
+      publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),
+      activeProjectId: pid,
+    })
+
+    // Parent-prefix rollup — match HTML getLiveActuals.
     const actualMap: Record<string,number> = {}
-    for (const row of rows as WbsCostRow[]) { if (row.code && row.total) actualMap[row.code] = row.total }
+    for (const [code, row] of Object.entries(agg)) {
+      if (!row.total) continue
+      const parts = code.split('.')
+      let prefix = parts[0]
+      actualMap[prefix] = (actualMap[prefix] || 0) + row.total
+      for (let i = 1; i < parts.length; i++) {
+        prefix += '.' + parts[i]
+        actualMap[prefix] = (actualMap[prefix] || 0) + row.total
+      }
+    }
     setActuals(actualMap)
     setWbsActuals(actualMap)
     setLoading(false)

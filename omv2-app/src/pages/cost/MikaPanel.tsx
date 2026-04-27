@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { aggregateAllCostsByWbs } from '../../engines/wbsAggregator'
+import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
+  HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine } from '../../types'
 
 interface MikaLine {
   wbs: string; desc: string; level: number
@@ -73,41 +76,79 @@ export function MikaPanel() {
 
   async function loadMikaLines() {
     if (!activeProject) return
+    const pid = activeProject.id
     const { data } = await supabase.from('mika_wbs_lines')
-      .select('*').eq('project_id', activeProject.id).order('sort_order')
+      .select('*').eq('project_id', pid).order('sort_order')
     if (data && data.length > 0) {
       const rows = data as {wbs:string;description:string;level:number|null;pm80:number|null;pm100:number|null;forecast_tc:number|null}[]
 
-      // Fetch live actuals: single query on hire_items, then roll up by WBS prefix
-      const { data: hireData } = await supabase
-        .from('hire_items')
-        .select('wbs, hire_cost')
-        .eq('project_id', activeProject.id)
+      // Pull every cost-bearing collection in parallel and run the canonical aggregator.
+      const [
+        resourcesR, rateCardsR, timesheetsR,
+        tcOwnedR, tcCrossR, tvsR, deptsR,
+        hireR, carsR, accomR, expensesR, boR,
+        varsR, varLinesR, holsR,
+      ] = await Promise.all([
+        supabase.from('resources').select('*').eq('project_id', pid),
+        supabase.from('rate_cards').select('*').eq('project_id', pid),
+        supabase.from('weekly_timesheets').select('*').eq('project_id', pid),
+        supabase.from('tooling_costings').select('*').eq('project_id', pid),
+        supabase.from('tooling_costings').select('*').neq('project_id', pid)
+          .filter('splits', 'cs', `[{"projectId":"${pid}"}]`),
+        supabase.from('global_tvs').select('*'),
+        supabase.from('global_departments').select('*'),
+        supabase.from('hire_items').select('*').eq('project_id', pid),
+        supabase.from('cars').select('*').eq('project_id', pid),
+        supabase.from('accommodation').select('*').eq('project_id', pid),
+        supabase.from('expenses').select('*').eq('project_id', pid),
+        supabase.from('back_office_hours').select('*').eq('project_id', pid),
+        supabase.from('variations').select('*').eq('project_id', pid),
+        supabase.from('variation_lines').select('*').eq('project_id', pid),
+        supabase.from('public_holidays').select('date').eq('project_id', pid),
+      ])
 
-      // Build a lookup: for each hire item, add cost to all matching WBS prefixes
+      const agg = aggregateAllCostsByWbs({
+        project: activeProject,
+        resources: (resourcesR.data || []) as Resource[],
+        rateCards: (rateCardsR.data || []) as RateCard[],
+        timesheets: (timesheetsR.data || []) as WeeklyTimesheet[],
+        toolingCostings: [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
+        globalTVs: (tvsR.data || []) as GlobalTV[],
+        globalDepartments: (deptsR.data || []) as GlobalDepartment[],
+        hireItems: (hireR.data || []) as HireItem[],
+        cars: (carsR.data || []) as Car[],
+        accommodation: (accomR.data || []) as Accommodation[],
+        expenses: (expensesR.data || []) as Expense[],
+        backOfficeHours: (boR.data || []) as BackOfficeHour[],
+        variations: (varsR.data || []) as Variation[],
+        variationLines: (varLinesR.data || []) as VariationLine[],
+        publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),
+        activeProjectId: pid,
+      })
+
+      // Build actualsByWbs with parent-prefix rollup so a timesheet tagged
+      // .P.02.02.01 surfaces against .P.02.02 and .P.02 too — same as HTML getLiveActuals.
       const actualsByWbs: Record<string, number> = {}
-      for (const item of (hireData || [])) {
-        const wbs = item.wbs || ''
-        const cost = Number(item.hire_cost) || 0
-        if (!wbs || !cost) continue
-        // Add to this WBS and all parent prefixes (e.g. 50OP-P.02.01 → 50OP-P.02 → 50OP-P)
-        const parts = wbs.split('.')
+      for (const [code, row] of Object.entries(agg)) {
+        if (!row.total) continue
+        const parts = code.split('.')
         let prefix = parts[0]
-        for (let pi = 0; pi < parts.length; pi++) {
-          if (pi > 0) prefix += '.' + parts[pi]
-          actualsByWbs[prefix] = (actualsByWbs[prefix] || 0) + cost
+        actualsByWbs[prefix] = (actualsByWbs[prefix] || 0) + row.total
+        for (let i = 1; i < parts.length; i++) {
+          prefix += '.' + parts[i]
+          actualsByWbs[prefix] = (actualsByWbs[prefix] || 0) + row.total
         }
       }
 
-      const dbLines: MikaLine[] = rows.map(r => {
-        const actuals = actualsByWbs[r.wbs] || 0
-        return {
-          wbs: r.wbs, desc: r.description, level: r.level ?? 1,
-          pm80tot: r.pm80||0, pm100: r.pm100||0,
-          actuals,
-          forecast: r.forecast_tc||0,
-        }
-      })
+      const dbLines: MikaLine[] = rows.map(r => ({
+        wbs: r.wbs,
+        desc: r.description,
+        level: r.level ?? 1,
+        pm80tot: r.pm80 || 0,
+        pm100: r.pm100 || 0,
+        actuals: actualsByWbs[r.wbs] || 0,
+        forecast: r.forecast_tc || 0,
+      }))
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
     }
   }

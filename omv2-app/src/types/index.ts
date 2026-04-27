@@ -305,6 +305,7 @@ export interface Car {
   notes: string
   created_at: string
   updated_at: string
+  wbs: string
 }
 
 export interface Accommodation {
@@ -325,6 +326,7 @@ export interface Accommodation {
   notes: string
   created_at: string
   updated_at: string
+  wbs: string
 }
 
 // ─── Hire Items ───────────────────────────────────────────────────────────────
@@ -354,6 +356,7 @@ export interface HireItem {
   notes: string
   created_at: string
   updated_at: string
+  wbs: string
 }
 
 export interface WetHireRates { ds?: number; ns?: number; wds?: number; wns?: number; sd?: number }
@@ -378,6 +381,7 @@ export interface GlobalTV {
   imported_by_project_id: string | null
   created_at: string
   updated_at: string
+  replacement_value_eur: number | null
   department?: GlobalDepartment
 }
 

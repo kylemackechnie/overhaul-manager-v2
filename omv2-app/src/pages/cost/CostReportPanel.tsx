@@ -1,66 +1,126 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import { aggregateByWbs } from '../../engines/forecastEngine'
-import type { WbsCostRow } from '../../engines/forecastEngine'
+import { aggregateAllCostsByWbs, type WbsAggregateRow } from '../../engines/wbsAggregator'
+import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
+  HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine } from '../../types'
+
+interface ReportRow extends WbsAggregateRow {
+  code: string
+  name: string
+}
 
 const fmt = (n: number) => n ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits:0, maximumFractionDigits:0 }) : '—'
 const fmtPct = (n: number|null) => n != null ? n.toFixed(1) + '%' : '—'
 const mgCol = (m: number|null) => m == null ? 'var(--text3)' : m >= 20 ? 'var(--green)' : m >= 10 ? 'var(--amber)' : 'var(--red)'
 
+// Column definitions — single source of truth used by the table, CSV, and print.
+const COLUMNS: { key: keyof WbsAggregateRow; label: string; short: string }[] = [
+  { key: 'labourTrades', label: 'Trades Labour',     short: 'Trades' },
+  { key: 'labourMgmt',   label: 'Management Labour', short: 'Mgmt' },
+  { key: 'labourSeag',   label: 'SE AG Labour',      short: 'SE AG' },
+  { key: 'labourSubcon', label: 'Subcon Labour',     short: 'Subcon' },
+  { key: 'backoffice',   label: 'Back Office Hours', short: 'Back Office' },
+  { key: 'hire',         label: 'Equipment Hire',    short: 'Hire' },
+  { key: 'cars',         label: 'Car Hire',          short: 'Cars' },
+  { key: 'accom',        label: 'Accommodation',     short: 'Accom' },
+  { key: 'tooling',      label: 'Rental Tooling',    short: 'Tooling' },
+  { key: 'expenses',     label: 'Expenses',          short: 'Expenses' },
+  { key: 'variations',   label: 'Variations',        short: 'Variations' },
+]
+
 export function CostReportPanel() {
   const { activeProject } = useAppStore()
-  const [rows, setRows] = useState<WbsCostRow[]>([])
+  const [rows, setRows] = useState<ReportRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [missingRateCards, setMissingRateCards] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [wbsData, hireData, carData, acData, tsData, rcData, boData, tcData, crossTcData] = await Promise.all([
-      supabase.from('wbs_list').select('*').eq('project_id',pid).order('sort_order'),
-      supabase.from('hire_items').select('*').eq('project_id',pid),
-      supabase.from('cars').select('*').eq('project_id',pid),
-      supabase.from('accommodation').select('*').eq('project_id',pid),
-      supabase.from('weekly_timesheets').select('*').eq('project_id',pid),
-      supabase.from('rate_cards').select('*').eq('project_id',pid),
-      supabase.from('back_office_hours').select('*').eq('project_id',pid),
-      // Own costings + cross-project costings where this project appears in a split
-      supabase.from('tooling_costings').select('*').eq('project_id',pid),
-      supabase.from('tooling_costings').select('*').neq('project_id',pid).filter('splits','cs',`[{"projectId":"${pid}"}]`),
+    const [
+      wbsR, resourcesR, rateCardsR, timesheetsR,
+      tcOwnedR, tcCrossR, tvsR, deptsR,
+      hireR, carsR, accomR, expensesR, boR,
+      varsR, varLinesR, holsR,
+    ] = await Promise.all([
+      supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
+      supabase.from('resources').select('*').eq('project_id', pid),
+      supabase.from('rate_cards').select('*').eq('project_id', pid),
+      supabase.from('weekly_timesheets').select('*').eq('project_id', pid),
+      supabase.from('tooling_costings').select('*').eq('project_id', pid),
+      supabase.from('tooling_costings').select('*').neq('project_id', pid)
+        .filter('splits', 'cs', `[{"projectId":"${pid}"}]`),
+      supabase.from('global_tvs').select('*'),
+      supabase.from('global_departments').select('*'),
+      supabase.from('hire_items').select('*').eq('project_id', pid),
+      supabase.from('cars').select('*').eq('project_id', pid),
+      supabase.from('accommodation').select('*').eq('project_id', pid),
+      supabase.from('expenses').select('*').eq('project_id', pid),
+      supabase.from('back_office_hours').select('*').eq('project_id', pid),
+      supabase.from('variations').select('*').eq('project_id', pid),
+      supabase.from('variation_lines').select('*').eq('project_id', pid),
+      supabase.from('public_holidays').select('date').eq('project_id', pid),
     ])
-    const allTc = [...(tcData.data||[]), ...(crossTcData.data||[])]
-    const agg = aggregateByWbs(
-      wbsData.data||[], hireData.data||[], carData.data||[], acData.data||[],
-      tsData.data||[], rcData.data||[], boData.data||[], allTc, [], pid
-    )
-    setRows(agg)
+
+    const wbsList = (wbsR.data || []) as { code: string; name: string }[]
+    const resources = (resourcesR.data || []) as Resource[]
+    const rateCards = (rateCardsR.data || []) as RateCard[]
+    const timesheets = (timesheetsR.data || []) as WeeklyTimesheet[]
+
+    // Surface a warning if there are timesheets but no rate cards — otherwise labour silently
+    // shows $0 because every crew member's role lookup fails.
+    setMissingRateCards(timesheets.length > 0 && rateCards.length === 0)
+
+    const agg = aggregateAllCostsByWbs({
+      project: activeProject,
+      resources, rateCards, timesheets,
+      toolingCostings: [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
+      globalTVs: (tvsR.data || []) as GlobalTV[],
+      globalDepartments: (deptsR.data || []) as GlobalDepartment[],
+      hireItems: (hireR.data || []) as HireItem[],
+      cars: (carsR.data || []) as Car[],
+      accommodation: (accomR.data || []) as Accommodation[],
+      expenses: (expensesR.data || []) as Expense[],
+      backOfficeHours: (boR.data || []) as BackOfficeHour[],
+      variations: (varsR.data || []) as Variation[],
+      variationLines: (varLinesR.data || []) as VariationLine[],
+      publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),
+      activeProjectId: pid,
+    })
+
+    // Build rows: every WBS in the project list that has activity, plus any
+    // unknown codes with cost data so they don't disappear.
+    const knownCodes = new Set(wbsList.map(w => w.code))
+    const unknownCodes = Object.keys(agg).filter(code => !knownCodes.has(code))
+    const allRows: ReportRow[] = []
+    for (const w of wbsList) {
+      const row = agg[w.code]
+      if (!row) continue
+      allRows.push({ ...row, code: w.code, name: w.name })
+    }
+    for (const code of unknownCodes) {
+      allRows.push({ ...agg[code], code, name: '⚠ Unknown WBS' })
+    }
+    setRows(allRows.sort((a, b) => a.code.localeCompare(b.code)))
     setLoading(false)
   }
 
-  const grandTotal = rows.reduce((s,r)=>s+r.total,0)
-  const grandSell = rows.reduce((s,r)=>s+r.totalSell,0)
-  const grandMargin = grandSell > 0 ? (grandSell-grandTotal)/grandSell*100 : null
+  const grandTotal = rows.reduce((s,r) => s + r.total, 0)
+  const grandSell = rows.reduce((s,r) => s + r.totalSell, 0)
+  const grandMargin = grandSell > 0 ? (grandSell - grandTotal) / grandSell * 100 : null
 
   function printByModule() {
-    const MODULES = [
-      { key: 'trades',    label: '👷 Trades Labour',    col: (r: typeof rows[0]) => r.labourTrades },
-      { key: 'mgmt',      label: '🎯 Management Labour', col: (r: typeof rows[0]) => r.labourMgmt },
-      { key: 'seag',      label: '🔧 SE AG Labour',     col: (r: typeof rows[0]) => r.labourSeag },
-      { key: 'hire',      label: '🚜 Equipment Hire',   col: (r: typeof rows[0]) => r.hire },
-      { key: 'cars',      label: '🚗 Cars',             col: (r: typeof rows[0]) => r.cars },
-      { key: 'accom',     label: '🏨 Accommodation',    col: (r: typeof rows[0]) => r.accom },
-      { key: 'tooling',   label: '🔩 Tooling',         col: (r: typeof rows[0]) => r.tooling },
-    ]
     const projectName = activeProject?.name || 'Project'
-    const sections = MODULES.map(m => {
-      const moduleRows = rows.filter(r => m.col(r) > 0)
-      if (!moduleRows.length) return ''
-      const total = moduleRows.reduce((s, r) => s + m.col(r), 0)
-      return `<div class="section"><div class="section-title">${m.label}</div>
+    const sections = COLUMNS.map(c => {
+      const rs = rows.filter(r => (r[c.key] as number) > 0)
+      if (!rs.length) return ''
+      const total = rs.reduce((s, r) => s + (r[c.key] as number), 0)
+      return `<div class="section"><div class="section-title">${c.label}</div>
         <table><thead><tr><th>WBS</th><th>Description</th><th style="text-align:right">Cost</th></tr></thead>
-        <tbody>${moduleRows.map(r => `<tr><td class="mono">${r.code}</td><td>${r.name}</td><td class="num">${fmt(m.col(r))}</td></tr>`).join('')}
+        <tbody>${rs.map(r => `<tr><td class="mono">${r.code}</td><td>${r.name}</td><td class="num">${fmt(r[c.key] as number)}</td></tr>`).join('')}
         <tr class="total"><td colspan="2">Total</td><td class="num">${fmt(total)}</td></tr>
         </tbody></table></div>`
     }).filter(Boolean).join('')
@@ -81,20 +141,33 @@ export function CostReportPanel() {
     if (w) { w.document.write(html); w.document.close() }
   }
 
-
   function exportCSV() {
-    const lines = ['WBS Code,Description,Labour Trades,Labour Mgmt,Labour SE AG,Hire,Cars,Accommodation,Tooling,Total Cost,Total Sell,Margin %']
+    const header = ['WBS Code', 'Description', ...COLUMNS.map(c => c.short), 'Total Cost', 'Total Sell', 'Margin %']
+    const lines = [header.join(',')]
     rows.forEach(r => {
-      lines.push([r.code,r.name,r.labourTrades,r.labourMgmt,r.labourSeag,(r as typeof r & {labourSubcon?:number}).labourSubcon||0,(r as typeof r & {backoffice?:number}).backoffice||0,r.hire,r.cars,r.accom,r.tooling,r.total,r.totalSell,r.margin?.toFixed(1)||''].join(','))
+      const cells = [
+        r.code, r.name,
+        ...COLUMNS.map(c => Math.round(r[c.key] as number)),
+        Math.round(r.total), Math.round(r.totalSell),
+        r.margin != null ? r.margin.toFixed(1) : '',
+      ]
+      lines.push(cells.join(','))
     })
-    lines.push(['','TOTAL','','','','','','','',grandTotal,grandSell,grandMargin?.toFixed(1)||''].join(','))
+    lines.push([
+      '', 'TOTAL',
+      ...COLUMNS.map(c => Math.round(rows.reduce((s, r) => s + (r[c.key] as number), 0))),
+      Math.round(grandTotal), Math.round(grandSell),
+      grandMargin != null ? grandMargin.toFixed(1) : '',
+    ].join(','))
     const blob = new Blob([lines.join('\n')], { type:'text/csv' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-    a.download = `cost-report-${activeProject!.name.replace(/\s+/g,'-')}.csv`; a.click()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `cost-report-${activeProject!.name.replace(/\s+/g,'-')}.csv`
+    a.click()
   }
 
   return (
-    <div style={{ padding:'24px', maxWidth:'1200px' }}>
+    <div style={{ padding:'24px', maxWidth:'1400px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
         <div>
           <h1 style={{ fontSize:'18px', fontWeight:700 }}>Cost Summary Report</h1>
@@ -110,7 +183,12 @@ export function CostReportPanel() {
         </div>
       </div>
 
-      {/* Grand totals KPIs */}
+      {missingRateCards && (
+        <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.3)', borderRadius:'var(--radius)', padding:'10px 14px', marginBottom:'14px', fontSize:'12px', color:'var(--orange)', fontWeight:500 }}>
+          ⚠ Timesheets exist but no rate cards are configured for this project. Labour costs will show as $0 until rate cards are set up under Personnel → Rate Cards.
+        </div>
+      )}
+
       {!loading && rows.length > 0 && (
         <div className="kpi-grid" style={{ marginBottom:'20px' }}>
           <div className="kpi-card" style={{ borderTopColor:'#f472b6' }}>
@@ -142,20 +220,14 @@ export function CostReportPanel() {
       ) : (
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
-            <table style={{ fontSize:'12px', minWidth:'900px' }}>
+            <table style={{ fontSize:'12px', minWidth:'1200px' }}>
               <thead>
                 <tr>
                   <th>WBS Code</th>
                   <th>Description</th>
-                  <th style={{ textAlign:'right' }}>Trades</th>
-                  <th style={{ textAlign:'right' }}>Mgmt</th>
-                  <th style={{ textAlign:'right' }}>SE AG</th>
-                  <th style={{ textAlign:'right' }}>Subcon</th>
-                  <th style={{ textAlign:'right' }}>Back Office</th>
-                  <th style={{ textAlign:'right' }}>Hire</th>
-                  <th style={{ textAlign:'right' }}>Cars</th>
-                  <th style={{ textAlign:'right' }}>Accom</th>
-                  <th style={{ textAlign:'right' }}>Tooling</th>
+                  {COLUMNS.map(c => (
+                    <th key={c.key} style={{ textAlign:'right' }}>{c.short}</th>
+                  ))}
                   <th style={{ textAlign:'right' }}>Total Cost</th>
                   <th style={{ textAlign:'right' }}>Total Sell</th>
                   <th style={{ textAlign:'right' }}>Margin</th>
@@ -165,10 +237,13 @@ export function CostReportPanel() {
                 {rows.map(r => (
                   <tr key={r.code}>
                     <td style={{ fontFamily:'var(--mono)', fontSize:'11px', fontWeight:500, whiteSpace:'nowrap' }}>{r.code}</td>
-                    <td style={{ color:'var(--text2)', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</td>
-                    {[r.labourTrades, r.labourMgmt, r.labourSeag, (r as typeof r & {labourSubcon?:number}).labourSubcon||0, (r as typeof r & {backoffice?:number}).backoffice||0, r.hire, r.cars, r.accom, r.tooling].map((v, i) => (
-                      <td key={i} style={{ textAlign:'right', fontFamily:'var(--mono)', color: v > 0 ? undefined : 'var(--text3)' }}>{v > 0 ? fmt(v) : '—'}</td>
-                    ))}
+                    <td style={{ color:'var(--text2)', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</td>
+                    {COLUMNS.map(c => {
+                      const v = r[c.key] as number
+                      return (
+                        <td key={c.key} style={{ textAlign:'right', fontFamily:'var(--mono)', color: v > 0 ? undefined : 'var(--text3)' }}>{v > 0 ? fmt(v) : '—'}</td>
+                      )
+                    })}
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:600 }}>{fmt(r.total)}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'var(--green)' }}>{fmt(r.totalSell)}</td>
                     <td style={{ textAlign:'right', fontFamily:'var(--mono)', color:mgCol(r.margin) }}>{fmtPct(r.margin)}</td>
@@ -176,18 +251,10 @@ export function CostReportPanel() {
                 ))}
                 <tr style={{ borderTop:'2px solid var(--border)', background:'var(--bg3)' }}>
                   <td colSpan={2} style={{ fontWeight:700, padding:'8px 10px' }}>Grand Total</td>
-                  {[
-                    rows.reduce((s,r)=>s+r.labourTrades,0),
-                    rows.reduce((s,r)=>s+r.labourMgmt,0),
-                    rows.reduce((s,r)=>s+r.labourSeag,0),
-                    rows.reduce((s,r)=>s+((r as typeof r & {labourSubcon?:number}).labourSubcon??0),0),
-                    rows.reduce((s,r)=>s+((r as typeof r & {backoffice?:number}).backoffice??0),0),
-                    rows.reduce((s,r)=>s+r.hire,0),
-                    rows.reduce((s,r)=>s+r.cars,0),
-                    rows.reduce((s,r)=>s+r.accom,0),
-                    rows.reduce((s,r)=>s+r.tooling,0),
-                  ].map((v, i) => (
-                    <td key={i} style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, padding:'8px 10px' }}>{fmt(v)}</td>
+                  {COLUMNS.map(c => (
+                    <td key={c.key} style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, padding:'8px 10px' }}>
+                      {fmt(rows.reduce((s, r) => s + (r[c.key] as number), 0))}
+                    </td>
                   ))}
                   <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:700, padding:'8px 10px' }}>{fmt(grandTotal)}</td>
                   <td style={{ textAlign:'right', fontFamily:'var(--mono)', fontWeight:700, color:'var(--green)', padding:'8px 10px' }}>{fmt(grandSell)}</td>

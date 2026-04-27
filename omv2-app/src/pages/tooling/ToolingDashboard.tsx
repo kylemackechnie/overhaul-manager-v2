@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { calcRentalCost } from '../../lib/calculations'
 
 const COLOR = '#0891b2'
 const fmtEUR = (n: number) => n > 0 ? '€' + Math.round(n).toLocaleString('en-AU') : '—'
 
 interface TV { tv_no: string; header_name: string | null; department_id: string | null; replacement_value_eur: number | null }
-interface Costing { tv_no: string; charge_start: string | null; charge_end: string | null; cost_eur: number | null; sell_eur: number | null; notes: string | null }
-interface Dept { id: string; name: string }
+interface Costing {
+  tv_no: string
+  charge_start: string | null; charge_end: string | null
+  cost_eur: number | null; sell_eur: number | null   // legacy snapshot — only used as fallback
+  sell_override_eur: number | null
+  notes: string | null
+}
+interface Dept { id: string; name: string; rates: Record<string, unknown> }
 
 function tourStatus(c: Costing | undefined) {
   if (!c) return { label: 'No costing', icon: '⚪', tag: 'gray' }
@@ -33,8 +40,8 @@ export function ToolingDashboard() {
       supabase.from('global_tvs').select('tv_no,header_name,department_id,replacement_value_eur')
         .in('tv_no', (await supabase.from('project_tvs').select('tv_no').eq('project_id', pid).eq('tv_type','tooling')).data?.map(r => r.tv_no) || [])
         .order('tv_no'),
-      supabase.from('tooling_costings').select('tv_no,charge_start,charge_end,cost_eur,sell_eur,notes').eq('project_id', pid),
-      supabase.from('global_departments').select('id,name'),
+      supabase.from('tooling_costings').select('tv_no,charge_start,charge_end,cost_eur,sell_eur,sell_override_eur,notes').eq('project_id', pid),
+      supabase.from('global_departments').select('id,name,rates'),
       supabase.from('project_kollos').select('id', { count: 'exact', head: true }).eq('project_id', pid),
     ])
     setTvs((tvRes.data || []) as TV[])
@@ -44,8 +51,37 @@ export function ToolingDashboard() {
     setLoading(false)
   }
 
-  const totalCost = costings.reduce((s, c) => s + (c.cost_eur || 0), 0)
-  const totalSell = costings.reduce((s, c) => s + (c.sell_eur || 0), 0)
+  // Live recompute — costings.cost_eur / sell_eur are no longer the source of truth.
+  // Fall back to the snapshot only when the costing isn't fully configured (no dates, no replVal).
+  const liveByTv = (() => {
+    const map: Record<string, { cost: number; sell: number }> = {}
+    for (const c of costings) {
+      const tv = tvs.find(t => t.tv_no === c.tv_no)
+      const dept = tv?.department_id ? depts.find(d => d.id === tv.department_id) : null
+      const replVal = Number(tv?.replacement_value_eur || 0)
+      if (dept && c.charge_start && c.charge_end && replVal > 0) {
+        const rates = dept.rates || {}
+        const calc = calcRentalCost(replVal, {
+          charge_start: c.charge_start,
+          charge_end: c.charge_end,
+          sell_override_eur: c.sell_override_eur ?? null,
+        }, {
+          rental_pct: Number(rates.rentalPct || 0),
+          rate_unit: ((rates.rateUnit as string) || 'weekly') as 'weekly'|'daily'|'monthly',
+          gm_pct: Number(rates.gmPct || 0),
+        })
+        if (calc) {
+          map[c.tv_no] = { cost: calc.cost, sell: calc.sell }
+          continue
+        }
+      }
+      map[c.tv_no] = { cost: c.cost_eur || 0, sell: c.sell_eur || 0 }
+    }
+    return map
+  })()
+
+  const totalCost = Object.values(liveByTv).reduce((s, v) => s + v.cost, 0)
+  const totalSell = Object.values(liveByTv).reduce((s, v) => s + v.sell, 0)
   const tvDays = costings.reduce((s, c) => {
     if (!c.charge_start || !c.charge_end) return s
     return s + Math.max(0, Math.ceil((new Date(c.charge_end).getTime() - new Date(c.charge_start).getTime()) / 86400000) + 1)
@@ -136,8 +172,8 @@ export function ToolingDashboard() {
                           {ts.icon} {ts.label}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{c?.cost_eur ? fmtEUR(c.cost_eur) : '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)', fontWeight: 600 }}>{c?.sell_eur ? fmtEUR(c.sell_eur) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{liveByTv[c?.tv_no || '']?.cost ? fmtEUR(liveByTv[c!.tv_no].cost) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)', fontWeight: 600 }}>{liveByTv[c?.tv_no || '']?.sell ? fmtEUR(liveByTv[c!.tv_no].sell) : '—'}</td>
                     </tr>
                   )
                 })}
