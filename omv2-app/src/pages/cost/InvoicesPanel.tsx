@@ -495,7 +495,10 @@ export function InvoicesPanel() {
                     {form.tce_item_id && !tceLines.some(l => l.item_id === form.tce_item_id) && (
                       <option value={form.tce_item_id}>{form.tce_item_id} (not in TCE)</option>
                     )}
-                    {tceLines.map(l => <option key={l.id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                    {/* Strip group-header rows (3-segment item_ids are headers, not selectable lines) */}
+                    {tceLines
+                      .filter(l => l.item_id && !/^\d+\.\d+\.\d+$/.test(l.item_id))
+                      .map(l => <option key={l.id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
                   </select>
                 )}
               </div>

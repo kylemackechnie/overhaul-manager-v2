@@ -50,18 +50,22 @@ export function ExpensesPanel() {
       supabase.from('expenses').select('*').eq('project_id', pid).order('date', { ascending: false }),
       supabase.from('resources').select('id,name,role').eq('project_id', pid).order('name'),
       supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
-      // Only overhead leaf lines — skilled labour is timesheet-driven, not expense-driven
+      // All TCE leaf lines — receipts can tag to either overhead OR skilled scope
+      // (e.g. a fuel receipt for a skilled-labour scope item is legitimate).
+      // Filtering by source='overhead' was hiding tags the user had set, which
+      // caused saved tce_item_id values to silently fall off on re-edit when
+      // the dropdown option list didn't include the previously-saved value.
       supabase.from('nrg_tce_lines').select('id,item_id,description,source')
-        .eq('project_id', pid).eq('source', 'overhead')
+        .eq('project_id', pid)
         .not('item_id', 'is', null).order('item_id'),
     ])
     setExpenses((expData.data || []) as Expense[])
     setResources((resData.data || []) as Resource[])
     setWbsList((wbsData.data || []) as WbsItem[])
-    // Filter to overhead leaf lines only (3-segment IDs are group headers, exclude them)
-    const overheadLeaves = ((tceData.data || []) as {id:string;item_id:string|null;description:string;source:string}[])
+    // Strip group-header rows (item_ids with exactly 3 numeric segments are headers).
+    const leafLines = ((tceData.data || []) as {id:string;item_id:string|null;description:string;source:string}[])
       .filter(l => l.item_id && !/^\d+\.\d+\.\d+$/.test(l.item_id))
-    setTceLines(overheadLeaves)
+    setTceLines(leafLines)
     setLoading(false)
   }
 
@@ -336,6 +340,14 @@ export function ExpensesPanel() {
                 {tceLines.length > 0 ? (
                   <select className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))}>
                     <option value="">— No TCE Link —</option>
+                    {/* If the saved value isn't in the option list (e.g. line was
+                        deleted, or originally tagged to a now-filtered source),
+                        keep it visible at the top so re-saving doesn't silently
+                        wipe it. The user can then pick a current line if they
+                        want to retag, or save and keep the existing tag. */}
+                    {form.tce_item_id && !tceLines.some(l => l.item_id === form.tce_item_id) && (
+                      <option value={form.tce_item_id}>{form.tce_item_id} (not in current TCE)</option>
+                    )}
                     {/* CRITICAL: value is item_id (stable text), never the UUID id */}
                     {tceLines.map(l => <option key={l.id} value={l.item_id || ''}>{l.item_id} — {l.description}</option>)}
                   </select>
