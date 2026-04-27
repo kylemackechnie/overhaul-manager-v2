@@ -81,6 +81,7 @@ import { ToolingCostingsPanel } from './pages/tooling/ToolingCostingsPanel'
 import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
+import { GlobalRateDefaultsPanel } from './pages/settings/GlobalRateDefaultsPanel'
 import { ProfilePage } from './pages/settings/ProfilePage'
 import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
@@ -434,6 +435,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-tooling':        return <GlobalToolingPanel />
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
+    case 'rate-defaults':         return <GlobalRateDefaultsPanel />
     case 'profile':               return <ProfilePage />
     case 'sites':                 return <SitesPanel />
     case 'audit-trail':           return <AuditTrailPanel />

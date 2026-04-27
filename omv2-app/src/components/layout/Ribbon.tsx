@@ -270,6 +270,7 @@ export function Ribbon() {
               }}>
                 {[
                   { icon: '👥', label: 'User Management', panel: 'user-management' },
+                  { icon: '🌐', label: 'Global Rate Defaults', panel: 'rate-defaults' },
                   { icon: '📋', label: 'Audit Trail', panel: 'audit-trail' },
                   { icon: '📑', label: 'Reports Database', panel: 'reports-db' },
                   { icon: '🔄', label: 'Data Migration', panel: 'migration' },
