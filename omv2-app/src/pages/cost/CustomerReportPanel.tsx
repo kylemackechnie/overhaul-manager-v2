@@ -35,13 +35,42 @@ export function CustomerReportPanel() {
   const [loading, setLoading] = useState(true)
   const [html, setHtml] = useState('')
   const [mode, setMode] = useState<CurrencyMode>(() => getCurrencyMode())
+  /** Selected week (Monday). Empty = "Project to date". */
+  const [weekFilter, setWeekFilter] = useState<string>('')
+  const [availableWeeks, setAvailableWeeks] = useState<string[]>([])
 
-  // Re-generate report when mode toggles
-  useEffect(() => { if (activeProject) load() }, [activeProject?.id, mode])
+  // Re-generate report when mode or week toggles
+  useEffect(() => { if (activeProject) load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeProject?.id, mode, weekFilter])
 
   function toggleMode(m: CurrencyMode) {
     setCurrencyMode(m)
     setMode(m)
+  }
+
+  // Window helpers — Monday-anchored
+  const monday = (d: string): string => {
+    const dt = new Date(d + 'T00:00:00')
+    const dow = dt.getUTCDay()
+    const offset = dow === 0 ? 6 : dow - 1
+    dt.setUTCDate(dt.getUTCDate() - offset)
+    return dt.toISOString().slice(0, 10)
+  }
+  const weekEndOf = (mon: string): string => {
+    const dt = new Date(mon + 'T00:00:00')
+    dt.setUTCDate(dt.getUTCDate() + 6)
+    return dt.toISOString().slice(0, 10)
+  }
+  const overlapRatio = (start: string | null, end: string | null, wkStart: string, wkEnd: string): number => {
+    if (!start) return 0
+    const e = end || start
+    const from = start > wkStart ? start : wkStart
+    const to   = e < wkEnd ? e : wkEnd
+    if (from > to) return 0
+    const totalMs = new Date(e + 'T00:00:00').getTime() - new Date(start + 'T00:00:00').getTime()
+    const totalDays = Math.max(1, Math.round(totalMs / 86400000) + 1)
+    const winMs = new Date(to + 'T00:00:00').getTime() - new Date(from + 'T00:00:00').getTime()
+    const winDays = Math.max(0, Math.round(winMs / 86400000) + 1)
+    return winDays / totalDays
   }
 
   async function load() {
@@ -58,13 +87,18 @@ export function CustomerReportPanel() {
     const eurLbl = buildEurLabel(mode, proj)
     const toAUD = (n: number, currency: string) => convertToBase(n, currency, proj)
 
+    const wkStart = weekFilter
+    const wkEnd = weekFilter ? weekEndOf(weekFilter) : ''
+    const inWindow = (d: string | null | undefined): boolean =>
+      !weekFilter || (!!d && d >= wkStart && d <= wkEnd)
+
     const [tsRes, rcRes, hireRes, boRes, tcRes, varRes, expRes, accomRes, carRes, vlRes] = await Promise.all([
       supabase.from('weekly_timesheets').select('type,crew').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('hire_items').select('hire_type,name,customer_total,start_date,end_date,vendor,currency').eq('project_id', pid),
-      supabase.from('back_office_hours').select('name,role,hours,sell').eq('project_id', pid),
+      supabase.from('back_office_hours').select('name,role,hours,sell,date').eq('project_id', pid),
       supabase.from('tooling_costings').select('tv_no,sell_eur,charge_start,charge_end').eq('project_id', pid),
-      supabase.from('variations').select('id,number,title,status').eq('project_id', pid).eq('status', 'approved'),
+      supabase.from('variations').select('id,number,title,status,approved_date').eq('project_id', pid).eq('status', 'approved'),
       supabase.from('expenses').select('description,category,sell_price,date,vendor,currency').eq('project_id', pid),
       supabase.from('accommodation').select('property,room,check_in,check_out,nightly_rate,customer_total,nights').eq('project_id', pid),
       supabase.from('cars').select('vendor,vehicle_type,start_date,end_date,daily_rate,customer_total,days').eq('project_id', pid),
@@ -73,6 +107,25 @@ export function CustomerReportPanel() {
 
     const rcs = (rcRes.data || []) as RateCard[]
     const getRC = (role: string) => rcs.find(r => r.role.toLowerCase() === role.toLowerCase()) || null
+
+    // ── Build the list of weeks we have any data in (Monday-anchored).
+    // Used to populate the week dropdown. Done once per fetch — the week
+    // dropdown then drives subsequent re-renders without re-fetching.
+    {
+      const set = new Set<string>()
+      for (const sheet of (tsRes.data || [])) {
+        for (const member of (sheet.crew || [])) {
+          for (const [dateKey, d] of Object.entries(member.days || {})) {
+            const day = d as { hours?: number }
+            if (day.hours && /^\d{4}-\d{2}-\d{2}$/.test(dateKey)) set.add(monday(dateKey))
+          }
+        }
+      }
+      ;(boRes.data || []).forEach((b: { date?: string }) => { if (b.date) set.add(monday(b.date)) })
+      ;(expRes.data || []).forEach((e: { date?: string }) => { if (e.date) set.add(monday(e.date)) })
+      ;(varRes.data || []).forEach((v: { approved_date?: string }) => { if (v.approved_date) set.add(monday(v.approved_date)) })
+      setAvailableWeeks([...set].sort().reverse())
+    }
 
     // ── Labour — SE AG hours are natively EUR ────────────────────────────────
     const sheets = tsRes.data || []
@@ -85,7 +138,10 @@ export function CustomerReportPanel() {
         const rc = getRC(member.role)
         const key = member.name + '|' + typeLabel
         if (!byPerson[key]) byPerson[key] = { name: member.name, role: member.role || '', type: typeLabel, isSeag, hours: 0, sell: 0, allowances: 0 }
-        for (const [, d] of Object.entries(member.days || {})) {
+        for (const [dateKey, d] of Object.entries(member.days || {})) {
+          // Skip days outside the selected week. dateKey is the calendar date (YYYY-MM-DD)
+          // that the timesheet writer stores; if there's no week filter, inWindow returns true.
+          if (!inWindow(dateKey)) continue
           const day = d as { hours?: number; dayType?: string; shiftType?: string; laha?: boolean; meal?: boolean; fsa?: boolean }
           if (!day.hours) continue
           const rawDayType = day.dayType || 'weekday'
@@ -117,12 +173,22 @@ export function CustomerReportPanel() {
     const labourSellAUD = tradesTotal + seagSellAUD + seagAllowAUD
 
     // ── Equipment Hire ───────────────────────────────────────────────────────
-    const hire = ((hireRes.data || []) as HireItem[]).filter(h => h.customer_total > 0)
+    // When week-filtered, pro-rate customer_total by the days-in-window ratio.
+    const hireRaw = ((hireRes.data || []) as HireItem[]).filter(h => h.customer_total > 0)
+    const hire = weekFilter
+      ? hireRaw.flatMap(h => {
+          const r = overlapRatio(h.start_date || null, h.end_date || null, wkStart, wkEnd)
+          if (r <= 0) return []
+          return [{ ...h, customer_total: (h.customer_total || 0) * r }]
+        })
+      : hireRaw
     const hireSell = hire.reduce((s, h) => s + toAUD(h.customer_total, h.currency || proj.currency || 'AUD'), 0)
 
     // ── Back Office ──────────────────────────────────────────────────────────
     const boByPerson: Record<string, { name: string; role: string; hours: number; sell: number }> = {}
-    for (const e of (boRes.data || []) as BackOfficeEntry[]) {
+    for (const e of (boRes.data || []) as (BackOfficeEntry & { date?: string })[]) {
+      // Date-stamped — exclude rows outside the week when filtering.
+      if (!inWindow(e.date)) continue
       const k = e.name + '|' + e.role
       if (!boByPerson[k]) boByPerson[k] = { name: e.name, role: e.role, hours: 0, sell: 0 }
       boByPerson[k].hours += e.hours || 0
@@ -132,28 +198,58 @@ export function CustomerReportPanel() {
     const boSell = boPeople.reduce((s, p) => s + p.sell, 0)
 
     // ── Tooling (always EUR) ──────────────────────────────────────────────────
-    const tooling = ((tcRes.data || []) as ToolingCosting[]).filter(t => t.sell_eur > 0)
+    // sell_eur is the full-window sell. Pro-rate by clamped charge_start/charge_end.
+    const toolingRaw = ((tcRes.data || []) as ToolingCosting[]).filter(t => t.sell_eur > 0)
+    const tooling = weekFilter
+      ? toolingRaw.flatMap(t => {
+          if (!t.charge_start || !t.charge_end) return []
+          const r = overlapRatio(t.charge_start, t.charge_end, wkStart, wkEnd)
+          if (r <= 0) return []
+          return [{ ...t, sell_eur: (t.sell_eur || 0) * r }]
+        })
+      : toolingRaw
     const toolingSellEUR = tooling.reduce((s, t) => s + t.sell_eur, 0)
     const toolingSellAUD = toolingSellEUR * eurToAud
 
     // ── Variations ───────────────────────────────────────────────────────────
+    // Variation lines have no date — they ride on the parent variation's
+    // approved_date. Filter the approved id set down to those approved in window.
     const varLines = vlRes.data || []
-    const varIds = new Set((varRes.data || []).map((v: { id: string }) => v.id))
-    const varMap = (varRes.data || []).reduce((m: Record<string, string>, v: { id: string; number: string; title: string }) => {
+    const approvedInWindow = (varRes.data || []).filter(
+      (v: { approved_date?: string }) => inWindow(v.approved_date)
+    )
+    const varIds = new Set(approvedInWindow.map((v: { id: string }) => v.id))
+    const varMap = approvedInWindow.reduce((m: Record<string, string>, v: { id: string; number: string; title: string }) => {
       m[v.id] = `${v.number} — ${v.title}`; return m
     }, {})
     const approvedLines = varLines.filter(l => varIds.has(l.variation_id))
     const variationsSell = approvedLines.reduce((s: number, l: { sell_total: number }) => s + (l.sell_total || 0), 0)
 
     // ── Accommodation & Cars ──────────────────────────────────────────────────
-    const accom = ((accomRes.data || []) as Accommodation[]).filter(a => a.customer_total > 0)
+    const accomRaw = ((accomRes.data || []) as Accommodation[]).filter(a => a.customer_total > 0)
+    const accom = weekFilter
+      ? accomRaw.flatMap(a => {
+          const r = overlapRatio(a.check_in || null, a.check_out || null, wkStart, wkEnd)
+          if (r <= 0) return []
+          return [{ ...a, customer_total: (a.customer_total || 0) * r }]
+        })
+      : accomRaw
     const accomSell = accom.reduce((s, a) => s + a.customer_total, 0)
 
-    const cars = ((carRes.data || []) as Car[]).filter(c => c.customer_total > 0)
+    const carsRaw = ((carRes.data || []) as Car[]).filter(c => c.customer_total > 0)
+    const cars = weekFilter
+      ? carsRaw.flatMap(c => {
+          const r = overlapRatio(c.start_date || null, c.end_date || null, wkStart, wkEnd)
+          if (r <= 0) return []
+          return [{ ...c, customer_total: (c.customer_total || 0) * r }]
+        })
+      : carsRaw
     const carSell = cars.reduce((s, c) => s + c.customer_total, 0)
 
     // ── Expenses ──────────────────────────────────────────────────────────────
-    const expenses = ((expRes.data || []) as Expense[]).filter(e => e.sell_price > 0)
+    const expenses = ((expRes.data || []) as Expense[])
+      .filter(e => e.sell_price > 0)
+      .filter(e => inWindow(e.date))
     const expSell = expenses.reduce((s, e) => s + toAUD(e.sell_price, e.currency || proj.currency || 'AUD'), 0)
 
     // Grand total always in AUD equivalent
@@ -361,6 +457,7 @@ body { font-family:Arial,sans-serif; font-size:10px; color:#1e293b; padding:28px
     <div style="font-size:9px;color:#64748b;line-height:1.8">
       ${proj.client ? `<b>Client:</b> ${proj.client}<br>` : ''}
       ${proj.start_date ? `<b>Period:</b> ${proj.start_date} to ${proj.end_date || 'ongoing'}<br>` : ''}
+      ${weekFilter ? `<b style="color:#0284c7">Week of ${wkStart} → ${wkEnd}</b><br>` : ''}
       <b>Report Date:</b> ${reportDate}<br>
       ${proj.pm ? `<b>Prepared By:</b> ${proj.pm}` : ''}
     </div>
@@ -424,44 +521,66 @@ ${sections.join('\n')}
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Customer Report</h1>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {activeProject?.name} · Full sell-side cost report
+            {weekFilter && (
+              <span style={{ marginLeft: '8px', padding: '2px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                Week of {weekFilter} → {weekEndOf(weekFilter)}
+              </span>
+            )}
           </p>
         </div>
 
-        {/* AUD+EUR / All AUD toggle */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-          <div style={{ fontSize: '10px', color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Currency Display
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+          {/* Week filter — same semantics as Cost Report. Empty = project to date. */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <span style={{ fontSize: '10px', color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>View:</span>
+            <select className="input" style={{ fontSize: '12px', padding: '3px 6px', height: '28px' }}
+              value={weekFilter} onChange={e => setWeekFilter(e.target.value)}>
+              <option value="">Project to date</option>
+              {availableWeeks.map(w => {
+                const dt = new Date(w + 'T00:00:00')
+                const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate() + 6)
+                const lbl = `${dt.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })} – ${sun.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                return <option key={w} value={w}>{lbl}</option>
+              })}
+            </select>
           </div>
-          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg3)', padding: '3px', borderRadius: '7px', border: '1px solid var(--border)' }}>
-            <button
-              onClick={() => toggleMode('split')}
-              style={{
-                padding: '4px 12px', borderRadius: '5px', border: 'none', fontSize: '12px',
-                fontWeight: 600, cursor: 'pointer',
-                background: mode === 'split' ? '#0891b2' : 'transparent',
-                color: mode === 'split' ? '#fff' : 'var(--text2)',
-                transition: 'all 0.15s',
-              }}
-            >AUD + EUR</button>
-            <button
-              onClick={() => toggleMode('allAUD')}
-              style={{
-                padding: '4px 12px', borderRadius: '5px', border: 'none', fontSize: '12px',
-                fontWeight: 600, cursor: 'pointer',
-                background: mode === 'allAUD' ? '#0891b2' : 'transparent',
-                color: mode === 'allAUD' ? '#fff' : 'var(--text2)',
-                transition: 'all 0.15s',
-              }}
-            >All AUD</button>
-          </div>
-          {mode === 'allAUD' && (
-            <div style={{ fontSize: '10px', color: 'var(--text3)' }}>
-              EUR conv. @ {eurToAud.toFixed(4)} AUD/EUR
-              {eurToAud === 1 && (
-                <span style={{ color: 'var(--orange)', marginLeft: '4px' }}>⚠ Set EUR rate in Project Settings</span>
-              )}
+
+          {/* AUD+EUR / All AUD toggle */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+            <div style={{ fontSize: '10px', color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Currency Display
             </div>
-          )}
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg3)', padding: '3px', borderRadius: '7px', border: '1px solid var(--border)' }}>
+              <button
+                onClick={() => toggleMode('split')}
+                style={{
+                  padding: '4px 12px', borderRadius: '5px', border: 'none', fontSize: '12px',
+                  fontWeight: 600, cursor: 'pointer',
+                  background: mode === 'split' ? '#0891b2' : 'transparent',
+                  color: mode === 'split' ? '#fff' : 'var(--text2)',
+                  transition: 'all 0.15s',
+                }}
+              >AUD + EUR</button>
+              <button
+                onClick={() => toggleMode('allAUD')}
+                style={{
+                  padding: '4px 12px', borderRadius: '5px', border: 'none', fontSize: '12px',
+                  fontWeight: 600, cursor: 'pointer',
+                  background: mode === 'allAUD' ? '#0891b2' : 'transparent',
+                  color: mode === 'allAUD' ? '#fff' : 'var(--text2)',
+                  transition: 'all 0.15s',
+                }}
+              >All AUD</button>
+            </div>
+            {mode === 'allAUD' && (
+              <div style={{ fontSize: '10px', color: 'var(--text3)' }}>
+                EUR conv. @ {eurToAud.toFixed(4)} AUD/EUR
+                {eurToAud === 1 && (
+                  <span style={{ color: 'var(--orange)', marginLeft: '4px' }}>⚠ Set EUR rate in Project Settings</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

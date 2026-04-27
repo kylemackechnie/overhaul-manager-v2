@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type WbsAggregateRow } from '../../engines/wbsAggregator'
@@ -8,6 +8,33 @@ import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, Glo
 interface ReportRow extends WbsAggregateRow {
   code: string
   name: string
+}
+
+interface CostLineLite {
+  category: string; wbs: string
+  cost_labour: number; sell_labour: number
+  cost_allowances: number; sell_allowances: number
+  person_name?: string; work_date?: string
+}
+
+interface ReportInputs {
+  wbsList: { code: string; name: string }[]
+  resources: Resource[]
+  rateCards: RateCard[]
+  timesheets: WeeklyTimesheet[]
+  costLines: CostLineLite[]
+  toolingOwn: ToolingCosting[]
+  toolingCross: ToolingCosting[]
+  tvs: GlobalTV[]
+  depts: GlobalDepartment[]
+  hire: HireItem[]
+  cars: Car[]
+  accom: Accommodation[]
+  expenses: Expense[]
+  bo: BackOfficeHour[]
+  variations: Variation[]
+  variationLines: VariationLine[]
+  publicHolidays: string[]
 }
 
 const fmt = (n: number) => n ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits:0, maximumFractionDigits:0 }) : '—'
@@ -29,11 +56,91 @@ const COLUMNS: { key: keyof WbsAggregateRow; label: string; short: string }[] = 
   { key: 'variations',   label: 'Variations',        short: 'Variations' },
 ]
 
+// ── Date-window helpers ───────────────────────────────────────────────────
+function daysBetween(a: string, b: string): number {
+  if (!a || !b) return 0
+  const d1 = new Date(a + 'T00:00:00').getTime()
+  const d2 = new Date(b + 'T00:00:00').getTime()
+  return Math.max(0, Math.round((d2 - d1) / 86400000) + 1)
+}
+
+function clampWindow(itemStart: string | null, itemEnd: string | null, weekStart: string, weekEnd: string): { from: string; to: string; ratio: number } | null {
+  if (!itemStart) return null
+  const end = itemEnd || itemStart
+  const from = itemStart > weekStart ? itemStart : weekStart
+  const to   = end < weekEnd ? end : weekEnd
+  if (from > to) return null
+  const totalDays = daysBetween(itemStart, end)
+  const windowDays = daysBetween(from, to)
+  if (totalDays <= 0) return null
+  return { from, to, ratio: windowDays / totalDays }
+}
+
+/** Pro-rate a project-wide aggregator input set to a given Mon-Sun window.
+ *  Date-stamped records (cost lines, expenses, BO, variations) are filtered
+ *  to the window. Date-range records (hire, cars, accom, tooling) are
+ *  scaled by days-in-window. Metadata (wbs_list, rate_cards, resources,
+ *  timesheets) is passed through untouched. */
+function applyWeekWindow(input: ReportInputs, weekStart: string, weekEnd: string): ReportInputs {
+  const inWindow = (d: string | null | undefined): boolean =>
+    !!d && d >= weekStart && d <= weekEnd
+
+  // Hire / cars / accom: pro-rate cost & sell by overlap ratio
+  const scaledHire = input.hire.flatMap(h => {
+    const w = clampWindow(h.start_date || null, h.end_date || null, weekStart, weekEnd)
+    if (!w) return []
+    return [{ ...h,
+      hire_cost: (h.hire_cost || 0) * w.ratio,
+      customer_total: (h.customer_total || 0) * w.ratio,
+    }]
+  })
+  const scaledCars = input.cars.flatMap(c => {
+    const w = clampWindow(c.start_date || null, c.end_date || null, weekStart, weekEnd)
+    if (!w) return []
+    return [{ ...c,
+      total_cost: (c.total_cost || 0) * w.ratio,
+      customer_total: (c.customer_total || 0) * w.ratio,
+    }]
+  })
+  const scaledAccom = input.accom.flatMap(a => {
+    const w = clampWindow(a.check_in || null, a.check_out || null, weekStart, weekEnd)
+    if (!w) return []
+    return [{ ...a,
+      total_cost: (a.total_cost || 0) * w.ratio,
+      customer_total: (a.customer_total || 0) * w.ratio,
+    }]
+  })
+  // Tooling: clamp charge_start / charge_end so calcRentalCost gives the slice
+  const scaledTooling = (tcs: ToolingCosting[]): ToolingCosting[] =>
+    tcs.flatMap(tc => {
+      if (!tc.charge_start || !tc.charge_end) return []
+      const w = clampWindow(tc.charge_start, tc.charge_end, weekStart, weekEnd)
+      if (!w) return []
+      return [{ ...tc, charge_start: w.from, charge_end: w.to }]
+    })
+
+  return {
+    ...input,
+    costLines: input.costLines.filter(cl => inWindow(cl.work_date)),
+    expenses: input.expenses.filter(e => inWindow(e.date)),
+    bo: input.bo.filter(b => inWindow(b.date)),
+    // Variations are point-in-time; only include those approved within the window.
+    variations: input.variations.filter(v => v.status === 'approved' && inWindow(v.approved_date)),
+    hire: scaledHire,
+    cars: scaledCars,
+    accom: scaledAccom,
+    toolingOwn: scaledTooling(input.toolingOwn),
+    toolingCross: scaledTooling(input.toolingCross),
+  }
+}
+
 export function CostReportPanel() {
   const { activeProject } = useAppStore()
-  const [rows, setRows] = useState<ReportRow[]>([])
+  const [inputs, setInputs] = useState<ReportInputs | null>(null)
   const [loading, setLoading] = useState(true)
   const [missingRateCards, setMissingRateCards] = useState(false)
+  /** Selected week (Monday). Empty = "Project to date". */
+  const [weekFilter, setWeekFilter] = useState<string>('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -68,39 +175,86 @@ export function CostReportPanel() {
         .eq('project_id', pid),
     ])
 
-    const wbsList = (wbsR.data || []) as { code: string; name: string }[]
-    const resources = (resourcesR.data || []) as Resource[]
-    const rateCards = (rateCardsR.data || []) as RateCard[]
     const timesheets = (timesheetsR.data || []) as WeeklyTimesheet[]
-
-    // Surface a warning if there are timesheets but no rate cards — otherwise labour silently
-    // shows $0 because every crew member's role lookup fails.
+    const rateCards = (rateCardsR.data || []) as RateCard[]
     setMissingRateCards(timesheets.length > 0 && rateCards.length === 0)
 
-    const agg = aggregateAllCostsByWbs({
-      project: activeProject,
-      resources, rateCards, timesheets,
-      timesheetCostLines: (costLinesR.data || []) as Parameters<typeof aggregateAllCostsByWbs>[0]['timesheetCostLines'],
-      toolingCostings: [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
-      globalTVs: (tvsR.data || []) as GlobalTV[],
-      globalDepartments: (deptsR.data || []) as GlobalDepartment[],
-      hireItems: (hireR.data || []) as HireItem[],
+    setInputs({
+      wbsList: (wbsR.data || []) as { code: string; name: string }[],
+      resources: (resourcesR.data || []) as Resource[],
+      rateCards, timesheets,
+      costLines: (costLinesR.data || []) as CostLineLite[],
+      toolingOwn: (tcOwnedR.data || []) as ToolingCosting[],
+      toolingCross: (tcCrossR.data || []) as ToolingCosting[],
+      tvs: (tvsR.data || []) as GlobalTV[],
+      depts: (deptsR.data || []) as GlobalDepartment[],
+      hire: (hireR.data || []) as HireItem[],
       cars: (carsR.data || []) as Car[],
-      accommodation: (accomR.data || []) as Accommodation[],
+      accom: (accomR.data || []) as Accommodation[],
       expenses: (expensesR.data || []) as Expense[],
-      backOfficeHours: (boR.data || []) as BackOfficeHour[],
+      bo: (boR.data || []) as BackOfficeHour[],
       variations: (varsR.data || []) as Variation[],
       variationLines: (varLinesR.data || []) as VariationLine[],
-      publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),
-      activeProjectId: pid,
+      publicHolidays: ((holsR.data || []) as { date: string }[]).map(h => h.date),
     })
+    setLoading(false)
+  }
 
-    // Build rows: every WBS in the project list that has activity, plus any
-    // unknown codes with cost data so they don't disappear.
-    const knownCodes = new Set(wbsList.map(w => w.code))
+  // Available weeks — derived from any cost-line activity, expense dates, BO dates,
+  // and date-range items overlapping the project.
+  const availableWeeks = useMemo(() => {
+    if (!inputs) return [] as string[]
+    const monday = (d: string): string => {
+      const dt = new Date(d + 'T00:00:00')
+      const dow = dt.getUTCDay()
+      const offset = dow === 0 ? 6 : dow - 1
+      dt.setUTCDate(dt.getUTCDate() - offset)
+      return dt.toISOString().slice(0, 10)
+    }
+    const set = new Set<string>()
+    inputs.costLines.forEach(cl => { if (cl.work_date) set.add(monday(cl.work_date)) })
+    inputs.expenses.forEach(e => { if (e.date) set.add(monday(e.date)) })
+    inputs.bo.forEach(b => { if (b.date) set.add(monday(b.date)) })
+    inputs.variations.forEach(v => { if (v.approved_date) set.add(monday(v.approved_date)) })
+    return [...set].sort().reverse()
+  }, [inputs])
+
+  // Weekly window = selected Monday to following Sunday
+  const weekEnd = useMemo(() => {
+    if (!weekFilter) return ''
+    const dt = new Date(weekFilter + 'T00:00:00')
+    dt.setUTCDate(dt.getUTCDate() + 6)
+    return dt.toISOString().slice(0, 10)
+  }, [weekFilter])
+
+  // Rows derived from inputs + week filter. Pro-rates date-range items and
+  // filters date-stamped sources to the window when weekFilter is set.
+  const rows = useMemo<ReportRow[]>(() => {
+    if (!inputs || !activeProject) return []
+    const sliced = weekFilter ? applyWeekWindow(inputs, weekFilter, weekEnd) : inputs
+    const agg = aggregateAllCostsByWbs({
+      project: activeProject,
+      resources: sliced.resources,
+      rateCards: sliced.rateCards,
+      timesheets: sliced.timesheets,
+      timesheetCostLines: sliced.costLines as Parameters<typeof aggregateAllCostsByWbs>[0]['timesheetCostLines'],
+      toolingCostings: [...sliced.toolingOwn, ...sliced.toolingCross],
+      globalTVs: sliced.tvs,
+      globalDepartments: sliced.depts,
+      hireItems: sliced.hire,
+      cars: sliced.cars,
+      accommodation: sliced.accom,
+      expenses: sliced.expenses,
+      backOfficeHours: sliced.bo,
+      variations: sliced.variations,
+      variationLines: sliced.variationLines,
+      publicHolidays: sliced.publicHolidays,
+      activeProjectId: activeProject.id,
+    })
+    const knownCodes = new Set(sliced.wbsList.map(w => w.code))
     const unknownCodes = Object.keys(agg).filter(code => !knownCodes.has(code))
     const allRows: ReportRow[] = []
-    for (const w of wbsList) {
+    for (const w of sliced.wbsList) {
       const row = agg[w.code]
       if (!row) continue
       allRows.push({ ...row, code: w.code, name: w.name })
@@ -108,9 +262,8 @@ export function CostReportPanel() {
     for (const code of unknownCodes) {
       allRows.push({ ...agg[code], code, name: '⚠ Unknown WBS' })
     }
-    setRows(allRows.sort((a, b) => a.code.localeCompare(b.code)))
-    setLoading(false)
-  }
+    return allRows.sort((a, b) => a.code.localeCompare(b.code))
+  }, [inputs, weekFilter, weekEnd, activeProject])
 
   const grandTotal = rows.reduce((s,r) => s + r.total, 0)
   const grandSell = rows.reduce((s,r) => s + r.totalSell, 0)
@@ -177,9 +330,28 @@ export function CostReportPanel() {
           <h1 style={{ fontSize:'18px', fontWeight:700 }}>Cost Summary Report</h1>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>
             Cost vs Sell by WBS code
+            {weekFilter && (
+              <span style={{ marginLeft:'8px', padding:'2px 8px', background:'#dbeafe', color:'#1e40af', borderRadius:'10px', fontSize:'11px', fontWeight:600 }}>
+                Week of {weekFilter} → {weekEnd}
+              </span>
+            )}
           </p>
         </div>
-        <div style={{ display:'flex', gap:'8px' }}>
+        <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+          {/* Week filter — selects a single Mon-Sun snapshot. Pro-rates date-range
+              items (hire/cars/accom/tooling) by days in window; date-stamped
+              sources (timesheets, expenses, BO, variations) are filtered. */}
+          <span style={{ fontSize:'11px', color:'var(--text3)' }}>View:</span>
+          <select className="input" style={{ fontSize:'12px', padding:'3px 6px', height:'30px' }}
+            value={weekFilter} onChange={e => setWeekFilter(e.target.value)}>
+            <option value="">Project to date</option>
+            {availableWeeks.map(w => {
+              const dt = new Date(w + 'T00:00:00')
+              const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate() + 6)
+              const lbl = `${dt.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })} – ${sun.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })}`
+              return <option key={w} value={w}>{lbl}</option>
+            })}
+          </select>
           <button className="btn" onClick={load}>↻ Refresh</button>
           <button className="btn btn-sm" onClick={printByModule} disabled={rows.length===0}>🖨 Print by Module</button>
           <button className="btn btn-sm" onClick={() => window.print()}>🖨 Print by WBS</button>
