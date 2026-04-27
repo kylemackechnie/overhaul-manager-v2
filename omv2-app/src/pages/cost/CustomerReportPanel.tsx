@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import { splitHours, calcHoursCost } from '../../engines/costEngine'
 import {
   getCurrencyMode, setCurrencyMode, getEurToBase,
   fmt as fmtBase, fmtEUR, fmtEURForMode, eurLabel as buildEurLabel,
   convertToBase,
   type CurrencyMode,
 } from '../../lib/currency'
-import type { RateCard } from '../../types'
 
 // Siemens Energy logo SVG
 const SE_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 343" style="width:140px;display:block">
@@ -92,9 +90,7 @@ export function CustomerReportPanel() {
     const inWindow = (d: string | null | undefined): boolean =>
       !weekFilter || (!!d && d >= wkStart && d <= wkEnd)
 
-    const [tsRes, rcRes, hireRes, boRes, tcRes, varRes, expRes, accomRes, carRes, vlRes] = await Promise.all([
-      supabase.from('weekly_timesheets').select('type,crew').eq('project_id', pid),
-      supabase.from('rate_cards').select('*').eq('project_id', pid),
+    const [hireRes, boRes, tcRes, varRes, expRes, accomRes, carRes, vlRes, clRes] = await Promise.all([
       supabase.from('hire_items').select('hire_type,name,customer_total,start_date,end_date,vendor,currency').eq('project_id', pid),
       supabase.from('back_office_hours').select('name,role,hours,sell,date').eq('project_id', pid),
       supabase.from('tooling_costings').select('tv_no,sell_eur,charge_start,charge_end').eq('project_id', pid),
@@ -103,67 +99,67 @@ export function CustomerReportPanel() {
       supabase.from('accommodation').select('property,room,check_in,check_out,nightly_rate,customer_total,nights').eq('project_id', pid),
       supabase.from('cars').select('vendor,vehicle_type,start_date,end_date,daily_rate,customer_total,days').eq('project_id', pid),
       supabase.from('variation_lines').select('variation_id,sell_total,description').eq('project_id', pid),
+      // Labour single source of truth — approved-only so drafts don't leak into the customer report.
+      // SE AG labour is stored here in project base currency (writer multiplied by eurToAud at write time);
+      // for split-mode display we recover the EUR figure by dividing back. Allowances are always AUD.
+      supabase.from('timesheet_cost_lines')
+        .select('person_name,role,category,work_date,allocated_hours,sell_labour,sell_allowances')
+        .eq('project_id', pid)
+        .eq('timesheet_status', 'approved'),
     ])
-
-    const rcs = (rcRes.data || []) as RateCard[]
-    const getRC = (role: string) => rcs.find(r => r.role.toLowerCase() === role.toLowerCase()) || null
 
     // ── Build the list of weeks we have any data in (Monday-anchored).
     // Used to populate the week dropdown. Done once per fetch — the week
     // dropdown then drives subsequent re-renders without re-fetching.
     {
       const set = new Set<string>()
-      for (const sheet of (tsRes.data || [])) {
-        for (const member of (sheet.crew || [])) {
-          for (const [dateKey, d] of Object.entries(member.days || {})) {
-            const day = d as { hours?: number }
-            if (day.hours && /^\d{4}-\d{2}-\d{2}$/.test(dateKey)) set.add(monday(dateKey))
-          }
-        }
-      }
+      ;((clRes.data || []) as { work_date?: string }[]).forEach(cl => { if (cl.work_date) set.add(monday(cl.work_date)) })
       ;(boRes.data || []).forEach((b: { date?: string }) => { if (b.date) set.add(monday(b.date)) })
       ;(expRes.data || []).forEach((e: { date?: string }) => { if (e.date) set.add(monday(e.date)) })
       ;(varRes.data || []).forEach((v: { approved_date?: string }) => { if (v.approved_date) set.add(monday(v.approved_date)) })
       setAvailableWeeks([...set].sort().reverse())
     }
 
-    // ── Labour — SE AG hours are natively EUR ────────────────────────────────
-    const sheets = tsRes.data || []
+    // ── Labour — read from timesheet_cost_lines (single source of truth) ──
+    // The writer aggregates per-day labour and allowances and stores them
+    // in project base currency. SE AG labour is therefore already AUD; we
+    // divide by eurToAud to recover the original EUR figure for split-mode
+    // display. Allowances are always stored in AUD regardless of role type.
+    interface CostLineRow {
+      person_name?: string; role?: string; category?: string
+      work_date?: string
+      sell_labour?: number; sell_allowances?: number
+      allocated_hours?: number
+    }
+    const costLines = (clRes.data || []) as CostLineRow[]
     const byPerson: Record<string, LabourPerson> = {}
 
-    for (const sheet of sheets) {
-      const isSeag = sheet.type === 'seag'
-      const typeLabel = sheet.type === 'mgmt' ? 'Management' : isSeag ? 'SE AG' : sheet.type === 'subcon' ? 'Subcontractor' : 'Trades'
-      for (const member of (sheet.crew || [])) {
-        const rc = getRC(member.role)
-        const key = member.name + '|' + typeLabel
-        if (!byPerson[key]) byPerson[key] = { name: member.name, role: member.role || '', type: typeLabel, isSeag, hours: 0, sell: 0, allowances: 0 }
-        for (const [dateKey, d] of Object.entries(member.days || {})) {
-          // Skip days outside the selected week. dateKey is the calendar date (YYYY-MM-DD)
-          // that the timesheet writer stores; if there's no week filter, inWindow returns true.
-          if (!inWindow(dateKey)) continue
-          const day = d as { hours?: number; dayType?: string; shiftType?: string; laha?: boolean; meal?: boolean; fsa?: boolean }
-          if (!day.hours) continue
-          const rawDayType = day.dayType || 'weekday'
-          const normDayType = rawDayType === 'public_holiday' ? 'publicHoliday' : rawDayType as 'weekday'|'saturday'|'sunday'|'publicHoliday'
-          const split = splitHours(day.hours, normDayType, (day.shiftType || 'day') as 'day'|'night', rc?.regime)
-          // sell is in the rate card's native currency (EUR for seag, AUD for others)
-          const sell = rc ? calcHoursCost(split, rc, 'sell') : 0
-          const isMgmt = rc?.category === 'management' || rc?.category === 'seag'
-          let allow = 0 // Allowances are always AUD
-          if (isMgmt) { if (day.fsa || day.laha) allow = Number(rc?.fsa_sell) || 0 }
-          else { allow = (day.laha ? Number(rc?.laha_sell) || 0 : 0) + (day.meal ? Number(rc?.meal_sell) || 0 : 0) }
-          byPerson[key].hours += day.hours
-          byPerson[key].sell += sell
-          byPerson[key].allowances += allow
-        }
-      }
+    for (const cl of costLines) {
+      if (!inWindow(cl.work_date)) continue
+      const cat = cl.category || 'trades'
+      const isSeag = cat === 'seag'
+      const typeLabel = cat === 'management' ? 'Management'
+        : isSeag ? 'SE AG'
+        : cat === 'subcontractor' || cat === 'subcon' ? 'Subcontractor'
+        : 'Trades'
+      const name = cl.person_name || ''
+      if (!name) continue
+      const key = name + '|' + typeLabel
+      if (!byPerson[key]) byPerson[key] = { name, role: cl.role || '', type: typeLabel, isSeag, hours: 0, sell: 0, allowances: 0 }
+      const p = byPerson[key]
+      p.hours += Number(cl.allocated_hours || 0)
+      // sell column for SE AG holds the AUD-equivalent (writer applied FX).
+      // For split-mode we want EUR, so reverse the conversion. Other categories
+      // are already in their native currency (AUD).
+      const sellAud = Number(cl.sell_labour || 0)
+      p.sell += isSeag && eurToAud > 0 ? sellAud / eurToAud : sellAud
+      p.allowances += Number(cl.sell_allowances || 0)
     }
 
     const labourPeople = Object.values(byPerson).filter(p => p.sell + p.allowances > 0)
 
     // Calculate totals with proper EUR→AUD conversion
-    // seag.sell is in EUR, everything else in AUD
+    // seag.sell is in EUR (recovered above), everything else in AUD
     const tradesTotal = labourPeople.filter(p => !p.isSeag).reduce((s, p) => s + p.sell + p.allowances, 0)
     const seagSellEUR  = labourPeople.filter(p => p.isSeag).reduce((s, p) => s + p.sell, 0)
     const seagAllowAUD = labourPeople.filter(p => p.isSeag).reduce((s, p) => s + p.allowances, 0)
