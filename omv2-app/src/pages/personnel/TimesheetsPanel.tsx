@@ -66,11 +66,12 @@ function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>): WeeklyT
     })
   }
 }
-// Exact port of HTML splitHours() — all 8 day types, all 7 buckets, regimeConfig from rate card
+// Hour split driven by rate-card thresholds. 12hr cards set wdT15=0/satT15=0
+// to collapse to NT→DT. Same logic as the canonical engine.
 type HourSplit = { dnt:number; dt15:number; ddt:number; ddt15:number; nnt:number; ndt:number; ndt15:number }
 type RegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
 
-function splitHours(hrs: number, dayType: string, shiftType: string, regime: string, regimeConfig?: RegimeConfig): HourSplit {
+function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfig?: RegimeConfig): HourSplit {
   const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
   if (hrs <= 0) return zero
 
@@ -82,64 +83,38 @@ function splitHours(hrs: number, dayType: string, shiftType: string, regime: str
   const NIGHT_NT = (rc as {nightNT?:number}).nightNT ?? 7.2
   const REST_NT  = (rc as {restNT?:number}).restNT  ?? 7.2
 
-  // Public holiday — all hours at DT1.5 (day→ddt15, night→ndt15)
   if (dayType === 'public_holiday') {
-    return night
-      ? { ...zero, ndt15: hrs }
-      : { ...zero, ddt15: hrs }
+    return night ? { ...zero, ndt15: hrs } : { ...zero, ddt15: hrs }
   }
-
-  // Rest/fatigue — flat NT
   if (dayType === 'rest') {
-    return night
-      ? { ...zero, nnt: REST_NT }
-      : { ...zero, dnt: REST_NT }
+    return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
   }
-
-  // Travel and mob/demob — flat day NT
   if (dayType === 'travel' || dayType === 'mob') {
     return { ...zero, dnt: hrs }
   }
-
-  // Night work
   if (night) {
-    if (dayType === 'saturday' || dayType === 'sunday') {
-      return { ...zero, ndt: hrs }
-    }
-    // Weekday night: NT up to NIGHT_NT, then DT
+    if (dayType === 'saturday' || dayType === 'sunday') return { ...zero, ndt: hrs }
     const nnt = Math.min(hrs, NIGHT_NT)
     const ndt = Math.max(0, hrs - NIGHT_NT)
     return { ...zero, nnt, ndt }
   }
-
-  // Day — Saturday
+  // Day — Saturday: T1.5 → DT (SAT_T15=0 collapses to pure DT)
   if (dayType === 'saturday') {
-    if (regime === 'ge12') return { ...zero, ddt: hrs }
     const t15 = Math.min(hrs, SAT_T15)
     const ddt = Math.max(0, hrs - SAT_T15)
     return { ...zero, dt15: t15, ddt }
   }
-
-  // Day — Sunday (all DT, not DT1.5 — Sunday is ddt not ddt15)
   if (dayType === 'sunday') {
     return { ...zero, ddt: hrs }
   }
-
-  // Weekday day — LT12: NT → T1.5 → DT
-  if (regime === 'lt12') {
-    const dnt  = Math.min(hrs, WD_NT)
-    const dt15 = Math.min(Math.max(0, hrs - WD_NT), WD_T15)
-    const ddt  = Math.max(0, hrs - WD_NT - WD_T15)
-    return { ...zero, dnt, dt15, ddt }
-  }
-
-  // Weekday day — GE12: NT → DT (no T1.5)
-  const dnt = Math.min(hrs, WD_NT)
-  const ddt = Math.max(0, hrs - WD_NT)
-  return { ...zero, dnt, ddt }
+  // Weekday day — NT → T1.5 → DT (WD_T15=0 collapses to NT → DT)
+  const dnt  = Math.min(hrs, WD_NT)
+  const dt15 = Math.min(Math.max(0, hrs - WD_NT), WD_T15)
+  const ddt  = Math.max(0, hrs - WD_NT - WD_T15)
+  return { ...zero, dnt, dt15, ddt }
 }
 // Exact port of HTML calcCrewMemberTotal() — handles all allowances, mealBreakAdj, rc.regime
-function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc: RateCard | null) {
+function calcPersonTotals(member: WeeklyTimesheet['crew'][0], rc: RateCard | null) {
   let hours = 0, labourSell = 0, labourCost = 0, allowances = 0, allowCost = 0
   const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
   const cr = rates?.cost || {}; const sr = rates?.sell || {}
@@ -180,7 +155,7 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
     const effH = h + adjH
     hours += effH
 
-    const split = splitHours(effH, day.dayType || 'weekday', day.shiftType || 'day', regime, rcRegime)
+    const split = splitHours(effH, day.dayType || 'weekday', day.shiftType || 'day', rcRegime)
     Object.entries(split).forEach(([b, bh]) => {
       if (bh > 0) {
         labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)
@@ -197,7 +172,6 @@ function calcPersonTotals(member: WeeklyTimesheet['crew'][0], regime: string, rc
 
 
 function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: RateCard[], _holidays: Set<string>) {
-  const regime = week.regime || 'lt12'
   const monday = new Date(week.week_start + 'T12:00:00')
   const days = Array.from({length:7}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate()+i); return d })
   const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
@@ -264,7 +238,7 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
   @media print{@page{size:A3 landscape}button{display:none}}
 </style></head><body>
 <h1>${typeLabel} Timesheet — Week of ${fmtDate(monday)} to ${fmtDate(endDate)}</h1>
-<div class="meta">${projectName} · Regime: ${regime === 'ge12' ? 'GE12 (12hr+)' : 'LT12 (under 12hr)'} · ${week.wbs||''}</div>
+<div class="meta">${projectName} · ${week.wbs||''}</div>
 <table>
   <thead><tr>
     <th class="name-col" style="text-align:left">Name</th>
@@ -701,7 +675,6 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     setActiveWeek({ ...activeWeek, crew: activeWeek.crew.filter(m => m.personId !== personId) })
   }
 
-  const regime = activeWeek?.regime || 'lt12'
   const days = activeWeek ? weekDays(activeWeek.week_start) : []
   const inCrew = new Set(activeWeek?.crew.map(m => m.personId) || [])
   // For SE AG weeks, rates are natively EUR — display with € symbol
@@ -717,7 +690,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
   function weekTotals(s: WeeklyTimesheet) {
     let hours = 0, sell = 0, cost = 0
-    s.crew.forEach(m => { const t = calcPersonTotals(m, s.regime || 'lt12', getRC(m.role)); hours += t.hours; sell += t.sell; cost += t.cost })
+    s.crew.forEach(m => { const t = calcPersonTotals(m, getRC(m.role)); hours += t.hours; sell += t.sell; cost += t.cost })
     return { hours, sell, cost }
   }
 
@@ -728,7 +701,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       ['Name', 'Role', 'WBS', ...days.map(d => d), 'Total Hours', 'Total Sell']
     ]
     activeWeek.crew.forEach(m => {
-      const t = calcPersonTotals(m, regime, getRC(m.role))
+      const t = calcPersonTotals(m, getRC(m.role))
       rows.push([
         m.name, m.role, m.wbs,
         ...days.map(d => {
@@ -863,11 +836,6 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 <select className="input" style={{ width: '120px', fontSize: '12px', padding: '3px 6px' }} value={activeWeek.status} onChange={e => setActiveWeek({ ...activeWeek, status: e.target.value as 'draft' | 'submitted' | 'approved' })}>
                   {STATUS_FLOW.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                 </select>
-                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Regime:</span>
-                <select className="input" style={{ width: '130px', fontSize: '12px', padding: '3px 6px' }} value={activeWeek.regime || 'lt12'} onChange={e => setActiveWeek({ ...activeWeek, regime: e.target.value as 'lt12' | 'ge12' })}>
-                  <option value="lt12">{'< 12hr shifts'}</option>
-                  <option value="ge12">{'≥ 12hr shifts'}</option>
-                </select>
                 {/* Scope tracking: per-week mode for WO or NRG TCE allocation */}
                 <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Scope:</span>
                 <select className="input" style={{ width: '140px', fontSize: '12px', padding: '3px 6px' }}
@@ -901,7 +869,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', border: '1px solid var(--border)', minWidth: '960px' }}>No people on sheet yet — use the dropdown below to add crew.</div>
           ) : activeWeek.crew.map(member => {
             const rc = getRC(member.role)
-            const { hours, sell, cost, allowances } = calcPersonTotals(member, regime, rc)
+            const { hours, sell, cost, allowances } = calcPersonTotals(member, rc)
             return (
               <div key={member.personId} style={{ border: '1px solid var(--border)', borderTop: 'none', minWidth: '960px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '180px repeat(7, minmax(100px,1fr)) 120px', gap: '1px', background: 'var(--border)' }}>
@@ -1017,7 +985,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     // EBA adj for display and split
                     const adjH = (member.mealBreakAdj && cellHrs > 0) ? 0.5 : 0
                     const dispHrs = cellHrs + adjH
-                    const split = dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, regime, (rc?.regime as RegimeConfig)) : null
+                    const split = dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, (rc?.regime as RegimeConfig)) : null
                     // Split summary labels/colors matching HTML
                     const SPLIT_LABELS: Record<string,string> = { dnt:'NT', dt15:'T1.5', ddt:'DT', ddt15:'DT1.5', nnt:'NNT', ndt:'NDT', ndt15:'NDT1.5' }
                     const SPLIT_COLORS: Record<string,string> = { dnt:'var(--accent)', dt15:'var(--orange)', ddt:'var(--red)', ddt15:'var(--red)', nnt:'var(--mod-tooling,#8b5cf6)', ndt:'var(--mod-tooling,#8b5cf6)', ndt15:'var(--mod-tooling,#8b5cf6)' }
@@ -1138,7 +1106,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           {/* Footer totals */}
           {activeWeek.crew.length > 0 && (() => {
             let tHrs = 0, tSell = 0, tCost = 0
-            activeWeek.crew.forEach(m => { const t = calcPersonTotals(m, regime, getRC(m.role)); tHrs += t.hours; tSell += t.sell; tCost += t.cost })
+            activeWeek.crew.forEach(m => { const t = calcPersonTotals(m, getRC(m.role)); tHrs += t.hours; tSell += t.sell; tCost += t.cost })
             const margin = tSell > 0 ? ((tSell - tCost) / tSell * 100).toFixed(1) : null
             return (
               <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px', background: 'var(--bg3)', border: '1px solid var(--border)', borderTop: '2px solid var(--border2)', borderRadius: '0 0 6px 6px', padding: '8px 10px', minWidth: '960px' }}>

@@ -33,7 +33,10 @@ interface CostLineInsert {
   work_order: string | null
   day_type: string
   shift_type: string
-  regime: string
+  /** Legacy field — column has default '' since hours are now driven by
+   *  rate-card thresholds, not a per-timesheet lt12/ge12 toggle. Writer
+   *  no longer populates this; left in the type for old call sites. */
+  regime?: string
   allocated_hours: number
   cost_labour: number
   sell_labour: number
@@ -104,7 +107,6 @@ export async function writeTimesheetCostLines(
   const weekEndDate = new Date(weekStart + 'T00:00:00')
   weekEndDate.setDate(weekEndDate.getDate() + 6)
   const weekEnding = weekEndDate.toISOString().slice(0, 10)
-  const regime = (timesheet.regime || 'lt12') as 'lt12' | 'ge12'
 
   const getRc = (role: string): RateCard | null =>
     rateCards.find(r => r.role.toLowerCase() === role.toLowerCase()) || null
@@ -118,7 +120,7 @@ export async function writeTimesheetCostLines(
     const rcAny = rc as unknown as Record<string, unknown>
     const category = (rcAny.category as string) || 'trades'
     const isMgmt = category === 'management' || category === 'seag'
-    const rcRegime = rcAny.regime as Parameters<typeof splitHours>[4]
+    const rcRegime = rcAny.regime as Parameters<typeof splitHours>[3]
     const memberAny = member as unknown as { mealBreakAdj?: boolean; wbs?: string }
     const pf = (v: unknown) => { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
 
@@ -172,7 +174,7 @@ export async function writeTimesheetCostLines(
       // alloc-by-alloc is wrong (e.g. 6h+4h ≠ 10h split when bands kick in).
       const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
       const effH = dayHours + adjH
-      const split = splitHours(effH, dayType, shiftType, regime, rcRegime)
+      const split = splitHours(effH, dayType, shiftType, rcRegime)
       const dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
       const dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
 
@@ -229,7 +231,6 @@ export async function writeTimesheetCostLines(
           work_order: alloc.wo || null,
           day_type: dayType,
           shift_type: shiftType,
-          regime,
           allocated_hours: allocHours,
           cost_labour: costLabour,
           sell_labour: sellLabour,

@@ -7,16 +7,17 @@ const COLOR = 'var(--mod-hr)'
 const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
 const fmtH = (n: number) => n.toFixed(1) + 'h'
 
-interface WeekData { week_start: string; type: string; regime: string; crew: { role?: string; days?: Record<string, { hours?: number; dayType?: string; shiftType?: string }> }[] }
+interface WeekData { week_start: string; type: string; crew: { role?: string; days?: Record<string, { hours?: number; dayType?: string; shiftType?: string }> }[] }
 
-function splitHours(h: number, dayType: string, shift: string, regime: string) {
+// Simplified local copy — matches the CostDashboard variant. Card-specific
+// thresholds are honoured by the canonical engine; this is just an approximate
+// rollup for KPI display.
+function splitHours(h: number, dayType: string, shift: string) {
   if (h <= 0) return { dnt: 0, dt15: 0, ddt: 0, nnt: 0, ndt: 0 }
   if (dayType === 'sunday' || dayType === 'public_holiday') return { dnt: 0, dt15: 0, ddt: h, nnt: 0, ndt: 0 }
-  if (dayType === 'saturday') return regime === 'ge12' ? { dnt: 0, dt15: 0, ddt: h, nnt: 0, ndt: 0 } : { dnt: 0, dt15: Math.min(h, 2), ddt: Math.max(0, h - 2), nnt: 0, ndt: 0 }
+  if (dayType === 'saturday') return { dnt: 0, dt15: Math.min(h, 2), ddt: Math.max(0, h - 2), nnt: 0, ndt: 0 }
   if (shift === 'night') return { dnt: 0, dt15: 0, ddt: 0, nnt: Math.min(h, 8), ndt: Math.max(0, h - 8) }
-  return regime === 'ge12'
-    ? { dnt: Math.min(h, 8), dt15: Math.min(Math.max(0, h - 8), 2), ddt: Math.max(0, h - 10), nnt: 0, ndt: 0 }
-    : { dnt: Math.min(h, 7.6), dt15: Math.min(Math.max(0, h - 7.6), 2.4), ddt: Math.max(0, h - 10), nnt: 0, ndt: 0 }
+  return { dnt: Math.min(h, 7.6), dt15: Math.min(Math.max(0, h - 7.6), 2.4), ddt: Math.max(0, h - 10), nnt: 0, ndt: 0 }
 }
 
 export function HRDashboardPanel() {
@@ -46,7 +47,7 @@ export function HRDashboardPanel() {
     const pid = activeProject!.id
     const [resData, tsData, rcData, carData, acData] = await Promise.all([
       supabase.from('resources').select('id,category,mob_in,mob_out').eq('project_id', pid),
-      supabase.from('weekly_timesheets').select('week_start,type,regime,crew').eq('project_id', pid).order('week_start'),
+      supabase.from('weekly_timesheets').select('week_start,type,crew').eq('project_id', pid).order('week_start'),
       supabase.from('rate_cards').select('role,rates,laha_cost,laha_sell,fsa_cost,fsa_sell,meal_cost,meal_sell').eq('project_id', pid),
       supabase.from('cars').select('id').eq('project_id', pid),
       supabase.from('accommodation').select('id').eq('project_id', pid),
@@ -69,7 +70,6 @@ export function HRDashboardPanel() {
     const tsWeeks = { trades: 0, mgmt: 0, seag: 0, subcon: 0 }
 
     for (const sheet of sheets) {
-      const regime = sheet.regime || 'lt12'
       const isTrades = sheet.type === 'trades' || sheet.type === 'subcon'
       const isMgmt = sheet.type === 'mgmt' || sheet.type === 'seag'
       if (isTrades) tsWeeks.trades++; else if (sheet.type === 'mgmt') tsWeeks.mgmt++; else if (sheet.type === 'seag') tsWeeks.seag++; else if (sheet.type === 'subcon') tsWeeks.subcon++
@@ -83,7 +83,7 @@ export function HRDashboardPanel() {
         const sr = (rc?.rates as { sell: Record<string, number> } | null)?.sell || {}
         for (const [, d] of Object.entries(member.days || {})) {
           const h = d.hours || 0; if (!h) continue
-          const split = splitHours(h, d.dayType || 'weekday', d.shiftType || 'day', regime)
+          const split = splitHours(h, d.dayType || 'weekday', d.shiftType || 'day')
           const sell = Object.entries(split).reduce((s, [b, bh]) => s + bh * (sr[b] || 0), 0)
           if (isTrades) { wk.tradesHrs += h; wk.tradeSell += sell; totalTradesHrs += h; totalTradesSell += sell }
           else { wk.mgmtHrs += h; wk.mgmtSell += sell; totalMgmtHrs += h; totalMgmtSell += sell }

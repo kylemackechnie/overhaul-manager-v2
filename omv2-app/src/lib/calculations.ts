@@ -295,12 +295,12 @@ export function fcDayType(
   return 'weekday'
 }
 
-/** Exact port of HTML splitHours. */
+/** Hour split driven by rate-card thresholds. 12hr-pattern cards set
+ *  wdT15=0/satT15=0 to collapse weekday/Saturday flow to NT→DT. */
 export function splitHours(
   totalHrs: number,
   dayType: string,
   shiftType: 'day' | 'night',
-  regime: 'lt12' | 'ge12',
   regimeConfig?: RegimeCfg | null
 ): HoursSplit {
   const h = totalHrs
@@ -333,28 +333,19 @@ export function splitHours(
     return { ...zero, nnt: nt, ndt: ddt }
   }
 
-  // Day work
+  // Day — Saturday: T1.5 up to SAT_T15, then DT. SAT_T15=0 collapses to pure DT.
   if (dayType === 'saturday') {
-    if (regime === 'lt12') {
-      const t15 = Math.min(h, SAT_T15)
-      const ddt = Math.max(0, h - SAT_T15)
-      return { ...zero, dt15: t15, ddt }
-    }
-    return { ...zero, ddt: h }
+    const t15 = Math.min(h, SAT_T15)
+    const ddt = Math.max(0, h - SAT_T15)
+    return { ...zero, dt15: t15, ddt }
   }
   if (dayType === 'sunday') return { ...zero, ddt: h }
 
-  // Weekday day
-  if (regime === 'lt12') {
-    const nt  = Math.min(h, WD_NT)
-    const t15 = Math.min(Math.max(0, h - WD_NT), WD_T15)
-    const ddt = Math.max(0, h - WD_NT - WD_T15)
-    return { ...zero, dnt: nt, dt15: t15, ddt }
-  }
-  // ge12
+  // Weekday day — NT → T1.5 → DT. WD_T15=0 collapses to NT → DT.
   const nt  = Math.min(h, WD_NT)
-  const ddt = Math.max(0, h - WD_NT)
-  return { ...zero, dnt: nt, ddt }
+  const t15 = Math.min(Math.max(0, h - WD_NT), WD_T15)
+  const ddt = Math.max(0, h - WD_NT - WD_T15)
+  return { ...zero, dnt: nt, dt15: t15, ddt }
 }
 
 /** Exact port of HTML calcHoursCost. */
@@ -448,8 +439,7 @@ export function calcOhfLineForecast(opts: {
       const travelDays = typeof r.travel_days === 'number' ? r.travel_days : 1
       const shift = (r.shift === 'night' ? 'night' : 'day') as 'day' | 'night'
       const stdH  = shift === 'night' ? (std.night?.mon ?? 10.5) : (std.day?.mon ?? 10.5)
-      const regime: 'lt12' | 'ge12' = stdH >= 12 ? 'ge12' : 'lt12'
-      const split = splitHours(stdH, 'travel', shift, regime, rc.regime)
+      const split = splitHours(stdH, 'travel', shift, rc.regime)
       const shiftSell = calcHoursCost(split, rc.rates, 'sell')
       total += travelDays * 2 * shiftSell   // return trip
     }
@@ -479,10 +469,9 @@ export function calcOhfLineForecast(opts: {
       for (const shiftType of shifts as ('day' | 'night')[]) {
         const hrs = std[shiftType]?.[dow] ?? 0
         if (hrs <= 0) continue
-        const regime: 'lt12' | 'ge12' = hrs >= 12 ? 'ge12' : 'lt12'
 
         if (opts.forecastType === 'labour') {
-          const split = splitHours(hrs, dayType, shiftType, regime, rc.regime)
+          const split = splitHours(hrs, dayType, shiftType, rc.regime)
           total += calcHoursCost(split, rc.rates, 'sell')
         } else if (opts.forecastType === 'allowances') {
           const sub = opts.forecastSubtype || 'laha'

@@ -59,7 +59,7 @@ export function CustomerReportPanel() {
     const toAUD = (n: number, currency: string) => convertToBase(n, currency, proj)
 
     const [tsRes, rcRes, hireRes, boRes, tcRes, varRes, expRes, accomRes, carRes, vlRes] = await Promise.all([
-      supabase.from('weekly_timesheets').select('type,regime,crew').eq('project_id', pid),
+      supabase.from('weekly_timesheets').select('type,crew').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('hire_items').select('hire_type,name,customer_total,start_date,end_date,vendor,currency').eq('project_id', pid),
       supabase.from('back_office_hours').select('name,role,hours,sell').eq('project_id', pid),
@@ -90,7 +90,7 @@ export function CustomerReportPanel() {
           if (!day.hours) continue
           const rawDayType = day.dayType || 'weekday'
           const normDayType = rawDayType === 'public_holiday' ? 'publicHoliday' : rawDayType as 'weekday'|'saturday'|'sunday'|'publicHoliday'
-          const split = splitHours(day.hours, normDayType, (day.shiftType || 'day') as 'day'|'night', (sheet.regime || 'lt12') as 'lt12'|'ge12', rc?.regime)
+          const split = splitHours(day.hours, normDayType, (day.shiftType || 'day') as 'day'|'night', rc?.regime)
           // sell is in the rate card's native currency (EUR for seag, AUD for others)
           const sell = rc ? calcHoursCost(split, rc, 'sell') : 0
           const isMgmt = rc?.category === 'management' || rc?.category === 'seag'

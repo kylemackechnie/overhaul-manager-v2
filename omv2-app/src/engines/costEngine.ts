@@ -61,10 +61,13 @@ export function fcDayType(dateStr: string, publicHolidays: string[] = []): DayTy
 }
 
 // ─── Split hours ─────────────────────────────────────────────────────────────
-// Canonical implementation. Mirrors the HTML splitHours() exactly, including
-// the hardcoded 7.2/3.3/3/7.2/7.2 defaults that apply when a rate card has no
-// regime config. This is the single source of truth — every cost calc in the
-// app should use it.
+// Canonical implementation. Hour split is driven purely by the rate card's
+// thresholds — wdNT, wdT15, satT15, nightNT, restNT.
+//
+// A 12-hour-pattern card simply sets wdT15=0 (and satT15=0) so weekday hours
+// flow NT→DT with no T1.5 band. A standard 10/12-hour card with T1.5 keeps
+// its non-zero wdT15 and gets NT→T1.5→DT. There's no separate lt12/ge12
+// toggle — the threshold values themselves encode the shift pattern.
 //
 // Schema for regimeConfig: flat { wdNT, wdT15, satT15, nightNT, restNT } —
 // matches what the rate card form saves and what the HTML reads.
@@ -83,7 +86,6 @@ export function splitHours(
   totalHrs: number,
   dayType: string,
   shiftType: string,
-  regime: string,
   regimeConfig?: RegimeConfig | unknown
 ): HourSplit {
   const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
@@ -126,9 +128,10 @@ export function splitHours(
     return { ...zero, nnt, ndt }
   }
 
-  // Day — Saturday
+  // Day — Saturday: T1.5 up to SAT_T15, remainder DT.
+  // For 12hr-pattern cards (SAT_T15=0), the result is pure DT — same as the
+  // old ge12 special case, just driven by the threshold value instead of a flag.
   if (d === 'saturday') {
-    if (regime === 'ge12') return { ...zero, ddt: totalHrs }
     const t15 = Math.min(totalHrs, SAT_T15)
     const ddt = Math.max(0, totalHrs - SAT_T15)
     return { ...zero, dt15: t15, ddt }
@@ -139,18 +142,12 @@ export function splitHours(
     return { ...zero, ddt: totalHrs }
   }
 
-  // Weekday day — lt12: NT → T1.5 → DT
-  if (regime === 'lt12') {
-    const dnt  = Math.min(totalHrs, WD_NT)
-    const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
-    const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
-    return { ...zero, dnt, dt15, ddt }
-  }
-
-  // Weekday day — ge12: NT → DT (no T1.5)
-  const dnt = Math.min(totalHrs, WD_NT)
-  const ddt = Math.max(0, totalHrs - WD_NT)
-  return { ...zero, dnt, ddt }
+  // Weekday day: NT → T1.5 → DT.
+  // For 12hr-pattern cards (WD_T15=0), the formula collapses naturally to NT → DT.
+  const dnt  = Math.min(totalHrs, WD_NT)
+  const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
+  const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
+  return { ...zero, dnt, dt15, ddt }
 }
 
 // ─── Calc hours cost ─────────────────────────────────────────────────────────
@@ -182,7 +179,6 @@ export interface CrewMemberTotal {
 
 export function calcCrewMemberTotal(
   member: CrewMember,
-  regime: 'lt12' | 'ge12',
   rateCards: RateCard[],
   publicHolidays: string[] = []
 ): CrewMemberTotal {
@@ -192,7 +188,7 @@ export function calcCrewMemberTotal(
   for (const [date, day] of Object.entries(member.days as Record<string, DayEntry>)) {
     if (!day || !day.hours) continue
     const dayType = fcDayType(date, publicHolidays)
-    const split = splitHours(day.hours, dayType, day.shiftType, regime, rc?.regime)
+    const split = splitHours(day.hours, dayType, day.shiftType, rc?.regime)
     hours += day.hours
     if (rc) {
       cost += calcHoursCost(split, rc, 'cost')
@@ -338,8 +334,7 @@ export function fcAggregate(input: FcAggregateInput): FcAggregateResult {
           const dayHrs = (stdHours.day as Record<string, number>)[dow] ?? 0
           totalHrs += dayHrs
           if (dayHrs > 0) {
-            const regime = dayHrs >= 12 ? 'ge12' : 'lt12'
-            const split = splitHours(dayHrs, dayType, 'day', regime, rc.regime)
+            const split = splitHours(dayHrs, dayType, 'day', rc.regime)
             labCost += calcHoursCost(split, rc, 'cost')
             labSell += calcHoursCost(split, rc, 'sell')
           }
@@ -348,8 +343,7 @@ export function fcAggregate(input: FcAggregateInput): FcAggregateResult {
           const nightHrs = (stdHours.night as Record<string, number>)[dow] ?? 0
           totalHrs += nightHrs
           if (nightHrs > 0) {
-            const regime = nightHrs >= 12 ? 'ge12' : 'lt12'
-            const split = splitHours(nightHrs, dayType, 'night', regime, rc.regime)
+            const split = splitHours(nightHrs, dayType, 'night', rc.regime)
             labCost += calcHoursCost(split, rc, 'cost')
             labSell += calcHoursCost(split, rc, 'sell')
           }
@@ -739,7 +733,7 @@ export function nrgLineActual(
           : storedDayType === 'saturday' ? 'saturday'
           : storedDayType === 'sunday'   ? 'sunday'
           : 'weekday'
-        const split = splitHours(effH, dayType, day.shiftType as 'day' | 'night', ts.regime as 'lt12' | 'ge12', rc.regime)
+        const split = splitHours(effH, dayType, day.shiftType as 'day' | 'night', rc.regime)
         total += calcHoursCost(split, rc, 'sell')
 
         // Allowances (sell) — must match invoicing panel logic exactly

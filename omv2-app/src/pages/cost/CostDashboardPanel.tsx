@@ -18,13 +18,16 @@ interface CostStats {
   wbsCount: number
 }
 
-function splitHours(hrs: number, dayType: string, shift: string, regime: string) {
+// Simplified local copy. The canonical engine reads card thresholds; this
+// dashboard variant is approximate and uses a single weekday split (NT→T1.5→DT)
+// driven by typical AU shift defaults. Card-specific overrides happen at the
+// timesheet level — this is just a rollup KPI so the approximation is fine.
+function splitHours(hrs: number, dayType: string, shift: string) {
   if (hrs <= 0) return { dnt:0, dt15:0, ddt:0, nnt:0, ndt:0 }
   if (dayType==='sunday'||dayType==='public_holiday') return { dnt:0, dt15:0, ddt:hrs, nnt:0, ndt:0 }
-  if (dayType==='saturday') return regime==='ge12' ? { dnt:0, dt15:0, ddt:hrs, nnt:0, ndt:0 } : { dnt:0, dt15:Math.min(hrs,2), ddt:Math.max(0,hrs-2), nnt:0, ndt:0 }
+  if (dayType==='saturday') return { dnt:0, dt15:Math.min(hrs,2), ddt:Math.max(0,hrs-2), nnt:0, ndt:0 }
   if (shift==='night') return { dnt:0, dt15:0, ddt:0, nnt:Math.min(hrs,8), ndt:Math.max(0,hrs-8) }
-  return regime==='ge12' ? { dnt:Math.min(hrs,8), dt15:Math.min(Math.max(0,hrs-8),2), ddt:Math.max(0,hrs-10), nnt:0, ndt:0 }
-    : { dnt:Math.min(hrs,7.6), dt15:Math.min(Math.max(0,hrs-7.6),2.4), ddt:Math.max(0,hrs-10), nnt:0, ndt:0 }
+  return { dnt:Math.min(hrs,7.6), dt15:Math.min(Math.max(0,hrs-7.6),2.4), ddt:Math.max(0,hrs-10), nnt:0, ndt:0 }
 }
 
 export function CostDashboardPanel() {
@@ -58,7 +61,6 @@ export function CostDashboardPanel() {
     // Calculate timesheet labour costs
     let tradesHours=0, tradesSell=0, tradesCost=0, mgmtHours=0, mgmtSell=0, mgmtCost=0
     for (const sheet of (tsData.data||[])) {
-      const regime = sheet.regime||'lt12'
       const isTrades = sheet.type==='trades'||sheet.type==='subcon'
       for (const member of (sheet.crew||[])) {
         const rc = rcs.find(r=>r.role.toLowerCase()===(member.role||'').toLowerCase())
@@ -66,7 +68,7 @@ export function CostDashboardPanel() {
         for (const [,d] of Object.entries(member.days||{})) {
           const day = d as {hours?:number;dayType?:string;shiftType?:string;laha?:boolean;meal?:boolean}
           const h = day.hours||0; if (!h) continue
-          const split = splitHours(h, day.dayType||'weekday', day.shiftType||'day', regime)
+          const split = splitHours(h, day.dayType||'weekday', day.shiftType||'day')
           let cost=0, sell=0
           for (const [b,bh] of Object.entries(split)) { cost+=bh*(cr[b]||0); sell+=bh*(sr[b]||0) }
           if (day.laha) { cost+=rc?.laha_cost||0; sell+=rc?.laha_sell||0 }

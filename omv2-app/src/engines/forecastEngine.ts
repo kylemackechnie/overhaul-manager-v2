@@ -72,11 +72,13 @@ function emptyDay(): DayBucket {
   }
 }
 
-// Full 7-bucket split with regimeConfig — mirrors HTML splitHours() exactly
+// Full 7-bucket split with regimeConfig — driven by rate-card thresholds only.
+// 12hr-pattern cards just set wdT15=0 / satT15=0 so the formula collapses to
+// NT→DT naturally.
 type FcHourSplit = Record<string, number>
 type FcRegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
 
-function splitHours(totalHrs: number, dayType: string, shiftType: 'day'|'night', regime: 'lt12'|'ge12', regimeConfig?: FcRegimeConfig): FcHourSplit {
+function splitHours(totalHrs: number, dayType: string, shiftType: 'day'|'night', regimeConfig?: FcRegimeConfig): FcHourSplit {
   const zero: FcHourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
   if (totalHrs <= 0) return { ...zero }
   const night = shiftType === 'night'
@@ -95,17 +97,14 @@ function splitHours(totalHrs: number, dayType: string, shiftType: 'day'|'night',
     return { ...zero, nnt: Math.min(totalHrs, NIGHT_NT), ndt: Math.max(0, totalHrs - NIGHT_NT) }
   }
   if (dayType === 'saturday') {
-    if (regime === 'ge12') return { ...zero, ddt: totalHrs }
     return { ...zero, dt15: Math.min(totalHrs, SAT_T15), ddt: Math.max(0, totalHrs - SAT_T15) }
   }
   if (dayType === 'sunday') return { ...zero, ddt: totalHrs }
-  if (regime === 'lt12') {
-    const dnt  = Math.min(totalHrs, WD_NT)
-    const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
-    const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
-    return { ...zero, dnt, dt15, ddt }
-  }
-  return { ...zero, dnt: Math.min(totalHrs, WD_NT), ddt: Math.max(0, totalHrs - WD_NT) }
+  // Weekday day — NT → T1.5 → DT. 12hr-pattern cards (WD_T15=0) collapse to NT → DT.
+  const dnt  = Math.min(totalHrs, WD_NT)
+  const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
+  const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
+  return { ...zero, dnt, dt15, ddt }
 }
 
 function getDayType(d: string, holidays: Set<string>): string {
@@ -185,9 +184,8 @@ export function buildForecast(
       if (shift === 'day' || shift === 'both') {
         const h = stdHours.day?.[dow] ?? 0
         if (h > 0) {
-          const regime: 'lt12'|'ge12' = h >= 12 ? 'ge12' : 'lt12'
           const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
-          const split = splitHours(h, dayType, 'day', regime, rcRegime)
+          const split = splitHours(h, dayType, 'day', rcRegime)
           labCost += costForSplit(split, rcCost)
           labSell += costForSplit(split, rcSell)
           hours += h
@@ -196,9 +194,8 @@ export function buildForecast(
       if (shift === 'night' || shift === 'both') {
         const h = stdHours.night?.[dow] ?? 0
         if (h > 0) {
-          const regime: 'lt12'|'ge12' = h >= 12 ? 'ge12' : 'lt12'
           const rcRegime2 = (rc as RateCard & { regime?: FcRegimeConfig }).regime
-          const split = splitHours(h, dayType, 'night', regime, rcRegime2)
+          const split = splitHours(h, dayType, 'night', rcRegime2)
           labCost += costForSplit(split, rcCost)
           labSell += costForSplit(split, rcSell)
           hours += h
