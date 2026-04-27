@@ -92,10 +92,16 @@ export function NrgActualsPanel() {
   const withActuals = lines
     .filter(l => !isGroupHeader(l.item_id))
     .map(l => {
+      const tce = l.tce_total || 0
+      // Fixed Price scopes: TCE only tracks sell, planned figure flows
+      // straight through as the actuals figure. Skip labour/invoice/expense
+      // aggregation — these lines aren't rate-driven.
+      if (l.line_type === 'Fixed Price') {
+        return { line: l, actuals: tce, tce, pct: tce > 0 ? 100 : null }
+      }
       const labour = (l.item_id ? labourByItem[l.item_id]?.sell || 0 : 0)
       const nonLabour = nrgInvoiceActual(l.item_id, invoices, expenses, variations)
       const actuals = labour + nonLabour
-      const tce = l.tce_total || 0
       const pct = tce > 0 ? (actuals / tce) * 100 : null
       return { line: l, actuals, tce, pct }
     })
@@ -226,12 +232,21 @@ export function NrgActualsPanel() {
                     <tr key={line.id}>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
                       <td>
-                        <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
-                          background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
-                          color: line.source === 'skilled' ? '#1e40af' : '#64748b',
-                          fontWeight: 600, textTransform: 'uppercase' as const }}>
-                          {line.source}
-                        </span>
+                        {line.line_type === 'Fixed Price' ? (
+                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                            background: '#ede9fe', color: '#6b21a8',
+                            fontWeight: 600, textTransform: 'uppercase' as const }}
+                            title="Fixed Price — TCE planned cost is the actuals">
+                            FIXED
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                            background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
+                            color: line.source === 'skilled' ? '#1e40af' : '#64748b',
+                            fontWeight: 600, textTransform: 'uppercase' as const }}>
+                            {line.source}
+                          </span>
+                        )}
                       </td>
                       <td style={{ fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>
                         {line.description || '—'}

@@ -136,6 +136,13 @@ export function NrgInvoicingPanel() {
   // Non-labour: supplier invoices + expenses dated in period.
   function lineActualInPeriod(line: NrgTceLine, fromWE: string, toWE: string): number {
     if (!toWE) return 0
+    // Fixed Price scopes: the Actuals panel shows them at planned value once
+    // active (TCE only cares about sell). For period-bounded customer invoicing
+    // there's no rate-driven calc to do — these scopes typically bill on a
+    // milestone schedule the user enters manually. Returning 0 here keeps the
+    // automation honest; the user adds the line to the customer invoice with
+    // the contracted milestone amount when appropriate.
+    if (line.line_type === 'Fixed Price') return 0
     const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
 
     if (isLabour) {

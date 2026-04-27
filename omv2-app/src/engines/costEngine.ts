@@ -541,6 +541,8 @@ export interface NrgTceLineMin {
   source: string
   work_order: string
   line_type: string
+  /** TCE planned total — used as the actuals figure for Fixed Price lines. */
+  tce_total?: number
 }
 
 export interface NrgTimesheetCrewDay {
@@ -694,6 +696,12 @@ export function nrgLineActual(
   variations: NrgVariationMin[],
   getRateCardForRole: (role: string) => RateCard | null
 ): number {
+  // Fixed Price scopes — TCE only cares about sell, and the planned figure
+  // *is* the actual once the line is in play. Cost is not tracked against
+  // these because there's no rate-driven calculation; the customer-facing
+  // value is the contract amount, full stop.
+  if (line.line_type === 'Fixed Price') return line.tce_total || 0
+
   const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
 
   if (!isLabour) {
