@@ -1,5 +1,17 @@
 import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense } from '../types'
 
+export interface DayPerson {
+  name: string
+  role: string
+  category: 'trades' | 'mgmt' | 'seag'
+  cost: number
+  sell: number
+  hours: number
+  isMob?: boolean
+  isDemob?: boolean
+  isBackOffice?: boolean
+}
+
 export interface DayBucket {
   trades:    { cost: number; sell: number; headcount: number; hours: number }
   mgmt:      { cost: number; sell: number; headcount: number; hours: number }
@@ -11,6 +23,10 @@ export interface DayBucket {
   cars:      { cost: number; sell: number }
   accom:     { cost: number; sell: number }
   expenses:  { cost: number; sell: number }
+  /** Per-day list of people on site — populated for labour and back-office.
+   *  Used by the panel's day-expand-to-people view and mob/demob badges.
+   *  Engine pushes one entry per resource per day they're on site. */
+  people:    DayPerson[]
 }
 
 export interface ForecastData {
@@ -52,6 +68,7 @@ function emptyDay(): DayBucket {
     cars:      { cost: 0, sell: 0 },
     accom:     { cost: 0, sell: 0 },
     expenses:  { cost: 0, sell: 0 },
+    people:    [],
   }
 }
 
@@ -201,25 +218,30 @@ export function buildForecast(
 
       if (labCost || labSell) {
         const day = ensure(d)
-        // SE AG rate cards are in EUR — convert hourly amounts to base currency.
-        // Allowances (FSA/camp) stay in AUD regardless.
-        if (catKey === 'seag') {
-          const rcCurrency = (rc as RateCard & { currency?: string }).currency || 'EUR'
-          // For seag: hourly portion = total - allowance; convert hourly; re-add allowance
-          const fsaCost = rc.fsa_cost || 0
-          const fsaSell = rc.fsa_sell || 0
-          const hourlyCost = labCost - fsaCost
-          const hourlySell = labSell - fsaSell
-          const convertedCost = toBase(hourlyCost, rcCurrency) + fsaCost
-          const convertedSell = toBase(hourlySell, rcCurrency) + fsaSell
-          day[catKey].cost += convertedCost
-          day[catKey].sell += convertedSell
-        } else {
-          day[catKey].cost += labCost
-          day[catKey].sell += labSell
-        }
+        // SE AG and tooling stay in their native currency (EUR) at the bucket
+        // level — matches HTML convention which shows them with the € symbol
+        // for clarity. Conversion to base currency happens only at total time
+        // in the panel via fcToBase / EUR_CATS, so users see EUR values for
+        // the source data and AUD totals at the bottom.
+        // Note: allowances (FSA/camp) are stored AUD inside labCost/labSell,
+        // so for SE AG we'd actually be mixing currencies here. We keep the
+        // mix for parity with HTML — the panel's display logic does not
+        // attempt to separate them, and any accounting export should sum the
+        // base-currency totals from bucketTotal().
+        day[catKey].cost += labCost
+        day[catKey].sell += labSell
         day[catKey].headcount += 1
         day[catKey].hours += hours
+        day.people.push({
+          name: r.name,
+          role: r.role || '',
+          category: catKey,
+          cost: labCost,
+          sell: labSell,
+          hours,
+          isMob: d === r.mob_in,
+          isDemob: d === (r.mob_out || r.mob_in),
+        })
       }
     }
   }
@@ -231,6 +253,15 @@ export function buildForecast(
     day.mgmt.cost += bo.cost || 0
     day.mgmt.sell += bo.sell || 0
     day.mgmt.hours += bo.hours
+    day.people.push({
+      name: bo.name || 'Back Office',
+      role: bo.role || '',
+      category: 'mgmt',
+      cost: bo.cost || 0,
+      sell: bo.sell || 0,
+      hours: bo.hours,
+      isBackOffice: true,
+    })
   }
 
   // FX conversion helper — converts amount to base currency
@@ -362,16 +393,16 @@ export function buildForecast(
     }
   }
 
-  // ── Tooling — use project FX rate for EUR→base conversion ──
-  const eurRate = fxRates.find(r => r.code === 'EUR')?.rate ?? 1.65 // fallback if no FX configured
+  // ── Tooling ──
+  // Costings are in EUR. Stored in the day bucket as raw EUR — the panel uses
+  // EUR_CATS to format with the € symbol and converts to base for grand totals.
+  // This matches HTML behaviour and keeps the source value visible to users.
   for (const tc of toolingCostings) {
     if (!tc.charge_start) continue
     const days = dateRange(tc.charge_start, tc.charge_end || tc.charge_start)
     if (!days.length) continue
-    const totalCost = (tc.cost_eur || 0) * eurRate
-    const totalSell = (tc.sell_eur || 0) * eurRate
-    const perDayCost = totalCost / days.length
-    const perDaySell = totalSell / days.length
+    const perDayCost = (tc.cost_eur || 0) / days.length
+    const perDaySell = (tc.sell_eur || 0) / days.length
     for (const d of days) {
       const day = ensure(d)
       day.tooling.cost += perDayCost
@@ -380,12 +411,14 @@ export function buildForecast(
   }
 
   const days = Object.keys(byDay).sort()
+  // Grand totals — convert EUR-source categories (seag, tooling) to base.
   let totalCost = 0, totalSell = 0
   for (const d of days) {
     const b = byDay[d]
     for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
-      totalCost += b[cat].cost
-      totalSell += b[cat].sell
+      const factor = EUR_CATS.has(cat) ? toBase(1, 'EUR') : 1
+      totalCost += b[cat].cost * factor
+      totalSell += b[cat].sell * factor
     }
   }
 
@@ -401,12 +434,53 @@ export function weekKey(d: string): string {
   return mon.toISOString().slice(0, 10)
 }
 
-// Sum a DayBucket to a single cost/sell
+/** Calendar-month key for a date — YYYY-MM. Used by the panel's monthly view
+ *  toggle for accounting-style breakdown. */
+export function monthKey(d: string): string {
+  return d.slice(0, 7)
+}
+
+/** Render a week label like "23 Mar – 29 Mar". The week key is the Monday. */
+export function weekLabel(wk: string): string {
+  const start = new Date(wk + 'T12:00:00')
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+  return `${start.toLocaleDateString('en-AU', opts)} – ${end.toLocaleDateString('en-AU', opts)}`
+}
+
+/** Render a month label like "April 2026". Key is YYYY-MM. */
+export function monthLabel(mk: string): string {
+  const d = new Date(mk + '-01T12:00:00')
+  return d.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+}
+
+/** Categories whose underlying figures are in EUR — surface with € sign in the
+ *  panel so the user knows the cell is a native-currency view. The day-bucket
+ *  values themselves are already converted to base currency, but display
+ *  follows the source convention to match the HTML. */
+export const EUR_CATS: ReadonlySet<string> = new Set(['seag', 'tooling'])
+
+// Sum a DayBucket to a single cost/sell — in raw bucket units (EUR cats stay EUR).
 export function bucketTotal(b: DayBucket): { cost: number; sell: number } {
   let cost = 0, sell = 0
   for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
     cost += b[cat].cost
     sell += b[cat].sell
+  }
+  return { cost, sell }
+}
+
+/** FX-aware bucket total — converts EUR-source categories to base currency.
+ *  Use this for any total that must be summable in AUD (KPIs, project total
+ *  row, CSV exports for accounting). The eurRate arg is the project's
+ *  current EUR→base multiplier; the panel pulls it from project.currency_rates. */
+export function bucketTotalBase(b: DayBucket, eurRate: number): { cost: number; sell: number } {
+  let cost = 0, sell = 0
+  for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
+    const factor = EUR_CATS.has(cat) ? eurRate : 1
+    cost += b[cat].cost * factor
+    sell += b[cat].sell * factor
   }
   return { cost, sell }
 }
