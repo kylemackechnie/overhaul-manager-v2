@@ -147,6 +147,7 @@ export function ExpensesPanel() {
       date: form.date || null, amount: form.amount,
       cost_ex_gst: form.cost_ex_gst, sell_price: form.sell_price,
       gm_pct: form.gm_pct, currency: form.currency, wbs: form.wbs, notes: form.notes,
+      tce_item_id: form.tce_item_id || null,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('expenses').insert(payload)

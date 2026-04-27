@@ -242,7 +242,7 @@ export function VariationsPanel() {
       supabase.from('variation_lines').select('*').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('nrg_tce_lines').select('id,item_id,description,source').eq('project_id', pid)
-        .not('item_id','like','%.%%.%%').order('item_id'),
+        .order('item_id'),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     const vars = (varRes.data||[]) as Variation[]

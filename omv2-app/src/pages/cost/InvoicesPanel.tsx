@@ -80,6 +80,7 @@ export function InvoicesPanel() {
   const { canWrite } = usePermissions()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PO[]>([])
+  const [tceLines, setTceLines] = useState<{ id: string; item_id: string; description: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Invoice>(null)
   const [form, setForm] = useState<InvForm>(EMPTY_FORM)
@@ -98,12 +99,14 @@ export function InvoicesPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [invRes, poRes] = await Promise.all([
+    const [invRes, poRes, tceRes] = await Promise.all([
       supabase.from('invoices').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,po_number,internal_ref,vendor,currency').eq('project_id', pid),
+      supabase.from('nrg_tce_lines').select('id,item_id,description').eq('project_id', pid).order('item_id'),
     ])
     setInvoices((invRes.data||[]) as Invoice[])
     setPos((poRes.data||[]) as PO[])
+    setTceLines((tceRes.data||[]) as { id: string; item_id: string; description: string }[])
     setLoading(false)
   }
 
@@ -480,7 +483,22 @@ export function InvoicesPanel() {
                 <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} /></div>
                 <div className="fg"><label>Period To</label><input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} /></div>
               </div>
-              <div className="fg"><label>TCE Item ID</label><input className="input" value={form.tce_item_id} onChange={e=>setForm(f=>({...f,tce_item_id:e.target.value}))} placeholder="e.g. 2.02.4.1 — links to TCE scope" /></div>
+              <div className="fg">
+                <label>TCE Item ID <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— links invoice to a TCE line for actuals</span></label>
+                {tceLines.length === 0 ? (
+                  <input className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))} placeholder="No TCE imported — type item_id or import TCE to enable dropdown" />
+                ) : (
+                  <select className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))}>
+                    <option value="">— No TCE Link —</option>
+                    {/* Preserve legacy values not in the current TCE list so the
+                        save doesn't silently drop them when reopening. */}
+                    {form.tce_item_id && !tceLines.some(l => l.item_id === form.tce_item_id) && (
+                      <option value={form.tce_item_id}>{form.tce_item_id} (not in TCE)</option>
+                    )}
+                    {tceLines.map(l => <option key={l.id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                  </select>
+                )}
+              </div>
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
             </div>
             <div className="modal-footer">
