@@ -71,58 +71,32 @@ export function useAuth() {
     const t0 = performance.now()
     const ms = () => `+${Math.round(performance.now() - t0)}ms`
     console.log(`[useAuth] ${ms()} loadAppUser(${authId.slice(0, 8)}...) called`)
-    // No retry needed — we only call this AFTER INITIAL_SESSION fires, which
-    // means the auth refresh has completed and the JWT is valid.
+    // bootstrap_app_user() runs server-side (SECURITY DEFINER) and handles
+    // all three cases in one shot:
+    //   1. existing row → return it
+    //   2. invited row with auth_id NULL → link and return
+    //   3. brand-new auth user → create a viewer row and return
+    // Doing this server-side bypasses the RLS edge cases that previously caused
+    // silent failures (e.g. user logs in, has an auth row but no app_users row,
+    // and the UI renders blank with no error surfaced).
     const queryTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('loadAppUser query hung for 8s')), 8000)
+      setTimeout(() => reject(new Error('bootstrap_app_user query hung for 8s')), 8000)
     )
     try {
       const result = await Promise.race([
-        supabase.from('app_users').select('*').eq('auth_id', authId).single(),
+        supabase.rpc('bootstrap_app_user').single(),
         queryTimeout,
       ])
       const { data, error } = result
-      console.log(`[useAuth] ${ms()} loadAppUser query resolved | data:`, !!data, '| error:', error?.message ?? 'none')
+      console.log(`[useAuth] ${ms()} bootstrap resolved | data:`, !!data, '| error:', error?.message ?? 'none')
 
       if (error || !data) {
-        // First login — try to match an existing invited record by email first.
-        // The link UPDATE runs through a SECURITY DEFINER RPC because the
-        // user can't update a row whose auth_id is still NULL (RLS denies it).
-        const { data: linked, error: linkErr } = await supabase
-          .rpc('link_invited_app_user')
-          .single()
-
-        if (linked && !linkErr) {
-          setCurrentUser(linked as AppUser)
-          return
-        }
-
-        // No invite found — create a new viewer record
-        const { data: authUser } = await supabase.auth.getUser()
-        if (authUser?.user) {
-          const email = authUser.user.email || ''
-          const newUser: Partial<AppUser> = {
-            auth_id: authUser.user.id,
-            email,
-            name: authUser.user.user_metadata?.name || email,
-            role: 'viewer',
-            permissions: {},
-            active: true,
-          }
-          const { data: created } = await supabase
-            .from('app_users')
-            .insert(newUser)
-            .select()
-            .single()
-          if (created) setCurrentUser(created as AppUser)
-        }
+        console.error(`[useAuth] ${ms()} bootstrap failed:`, error?.message ?? 'no data')
         return
       }
 
-      // Found by auth_id — check force_password_reset flag
       const user = data as AppUser & { force_password_reset?: boolean }
       if (user.force_password_reset) {
-        // Store flag in session — App.tsx will redirect to profile
         sessionStorage.setItem('force_password_reset', '1')
       }
       setCurrentUser(user as AppUser)
