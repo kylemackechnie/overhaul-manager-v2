@@ -41,7 +41,7 @@ const STATUS_STYLE: Record<string,{bg:string,color:string,label:string}> = {
 type SortCol = 'status'|'name'|'role'|'shift'|'company'|'mob_in'|'mob_out'|'allow_laha'|'allow_meal'|'allow_fsa'
 
 export function ResourcesPanel() {
-  const { activeProject } = useAppStore()
+  const { activeProject, setActivePanel } = useAppStore()
   const { canWrite } = usePermissions()
   const [resources, setResources] = useState<Resource[]>([])
   const [rcs, setRcs] = useState<RateCard[]>([])
@@ -522,9 +522,22 @@ export function ResourcesPanel() {
               <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelected(new Set())}>✕ Clear</button>
             </div>
           )}
-          {/* Resource table */}
-          <div className="card" style={{padding:0,overflow:'auto',marginBottom:'16px'}}>
-            <table style={{minWidth:'900px'}}>
+          {/* Resource table — scrollbar mirrored to top */}
+          <div className="card" style={{padding:0,marginBottom:'16px'}}>
+            <div style={{overflowX:'auto'}} onScroll={e => {
+              const el = e.currentTarget
+              const mirror = el.parentElement?.querySelector('.scroll-mirror') as HTMLElement | null
+              if (mirror) mirror.scrollLeft = el.scrollLeft
+            }}>
+              <div className="scroll-mirror" style={{overflowX:'auto',height:'12px',marginBottom:'-12px'}}
+                onScroll={e => {
+                  const mirror = e.currentTarget
+                  const table = mirror.parentElement?.querySelector('div:not(.scroll-mirror)') as HTMLElement | null
+                  if (table) table.scrollLeft = mirror.scrollLeft
+                }}>
+                <div style={{width:'1800px',height:'1px'}} />
+              </div>
+              <table style={{minWidth:'1800px'}}>
               <thead>
                 <tr>
                   <th style={{width:'32px',textAlign:'center',padding:'8px 6px'}}>
@@ -644,9 +657,9 @@ export function ResourcesPanel() {
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>
-                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
+                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hire-dry'):undefined} title={car?'View in Dry Hire':undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
                       <td style={{fontSize:'11px',color:'var(--text2)',whiteSpace:'nowrap',maxWidth:'140px',overflow:'hidden',textOverflow:'ellipsis'}} title={r.flights||undefined}>{r.flights||'—'}</td>
-                      <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
+                      <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined} title={room?'View in Accommodation':undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',maxWidth:'130px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
                       <td>
                         {r.category==='subcontractor' ? (
@@ -664,6 +677,7 @@ export function ResourcesPanel() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* On-site heatmap calendar */}

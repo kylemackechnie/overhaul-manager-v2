@@ -66,6 +66,9 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   const [saving, setSaving] = useState(false)
   const [hireSelected, setHireSelected] = useState<Set<string>>(new Set())
   const [bulkPoModal, setBulkPoModal] = useState(false)
+  const [bulkEditModal, setBulkEditModal] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({ start_date:'', end_date:'' })
+  const [resources, setResources] = useState<{id:string;name:string;mob_in:string|null;mob_out:string|null}[]>([])
   // Wet hire shift calendar
   const [calendarItem, setCalendarItem] = useState<HireItem | null>(null)
   const [calendarData, setCalendarData] = useState<Record<string, Record<string, boolean>>>({}) // date → {ds,ns,...}
@@ -75,12 +78,14 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [hireData, poData] = await Promise.all([
+    const [hireData, poData, resData] = await Promise.all([
       supabase.from('hire_items').select('*').eq('project_id', pid).eq('hire_type', hireType).order('created_at'),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).neq('status', 'cancelled').order('po_number'),
+      supabase.from('resources').select('id,name,mob_in,mob_out').eq('project_id', pid).order('name'),
     ])
     setItems((hireData.data || []) as HireItem[])
     setPos((poData.data || []) as PurchaseOrder[])
+    setResources((resData.data || []) as {id:string;name:string;mob_in:string|null;mob_out:string|null}[])
     setLoading(false)
   }
 
@@ -285,6 +290,18 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
     setBulkPoModal(false); setHireSelected(new Set()); load()
   }
 
+  async function applyBulkDates() {
+    if (!hireSelected.size) return
+    const updates: Record<string,unknown> = {}
+    if (bulkEditForm.start_date) updates.start_date = bulkEditForm.start_date
+    if (bulkEditForm.end_date)   updates.end_date   = bulkEditForm.end_date
+    if (!Object.keys(updates).length) { toast('Enter at least one date', 'info'); return }
+    const { error } = await supabase.from('hire_items').update(updates).in('id', [...hireSelected])
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Updated ${hireSelected.size} item${hireSelected.size>1?'s':''}`, 'success')
+    setHireSelected(new Set()); setBulkEditModal(false); setBulkEditForm({start_date:'',end_date:''}); load()
+  }
+
   async function duplicateItem(h: HireItem) {
     if (!activeProject) return
     const copy = { ...h, id: undefined, name: h.name + ' (copy)', created_at: undefined, updated_at: undefined }
@@ -317,10 +334,23 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
             <p>Add equipment hire records for this project.</p>
           </div>
         ) : (
+{hireSelected.size>0 && (
+            <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',borderRadius:'6px',marginBottom:'10px',flexWrap:'wrap'}}>
+              <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{hireSelected.size} selected</span>
+              <button className="btn btn-sm" onClick={()=>{setBulkEditForm({start_date:'',end_date:''});setBulkEditModal(true)}}>✏ Edit Dates</button>
+              <button className="btn btn-sm" style={{background:'#1e40af',color:'#fff'}} onClick={()=>setBulkPoModal(true)}>🔗 Link to PO</button>
+              <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setHireSelected(new Set())}>✕ Clear</button>
+            </div>
+          )}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <table>
               <thead>
-                <tr><th style={{width:'32px'}}><input type="checkbox" onChange={e=>setHireSelected(e.target.checked?new Set(items.map(h=>h.id)):new Set())} /></th>
+                <tr><th style={{width:'32px',textAlign:'center'}}>
+                  <input type="checkbox"
+                    checked={items.length > 0 && items.every(h => hireSelected.has(h.id))}
+                    ref={el => { if (el) el.indeterminate = hireSelected.size > 0 && !items.every(h => hireSelected.has(h.id)) }}
+                    onChange={e => setHireSelected(e.target.checked ? new Set(items.map(h=>h.id)) : new Set())} />
+                </th>
                   <th>Name</th><th>Vendor</th><th>Start</th><th>End</th><th>Days</th>
                   <th style={{ textAlign: 'right' }}>Rate</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
@@ -613,6 +643,37 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               <button className="btn btn-primary" onClick={save} disabled={saving}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkEditModal && (
+        <div className="modal-overlay">
+          <div className="modal" style={{maxWidth:'420px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>✏ Edit Dates — {hireSelected.size} Item{hireSelected.size>1?'s':''}</h3><button className="btn btn-sm" onClick={()=>setBulkEditModal(false)}>✕</button></div>
+            <div className="modal-body">
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>Leave a date blank to keep existing. Or pick a resource to copy their mob dates.</p>
+              <div className="fg"><label>Start Date</label><input type="date" className="input" value={bulkEditForm.start_date} onChange={e=>setBulkEditForm(f=>({...f,start_date:e.target.value}))} /></div>
+              <div className="fg"><label>End Date</label><input type="date" className="input" value={bulkEditForm.end_date} onChange={e=>setBulkEditForm(f=>({...f,end_date:e.target.value}))} /></div>
+              {resources.filter(r=>r.mob_in||r.mob_out).length > 0 && (
+                <div style={{marginTop:'10px'}}>
+                  <div style={{fontSize:'11px',fontWeight:600,color:'var(--text2)',marginBottom:'6px'}}>Use resource mob dates:</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:'4px',maxHeight:'180px',overflowY:'auto'}}>
+                    {resources.filter(r=>r.mob_in||r.mob_out).map(r => (
+                      <button key={r.id} style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:'5px',background:'var(--bg3)',cursor:'pointer',textAlign:'left',fontSize:'12px'}}
+                        onClick={()=>setBulkEditForm({start_date:r.mob_in||'',end_date:r.mob_out||''})}>
+                        <span style={{fontWeight:600}}>{r.name}</span>
+                        <span style={{color:'var(--text3)',marginLeft:'8px'}}>{r.mob_in||'?'} → {r.mob_out||'?'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setBulkEditModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={applyBulkDates}>Apply to Selected</button>
             </div>
           </div>
         </div>

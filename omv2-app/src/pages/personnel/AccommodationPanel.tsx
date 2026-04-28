@@ -41,6 +41,7 @@ export function AccommodationPanel() {
   const [selAccom, setSelAccom] = useState<Set<string>>(new Set())
   const [bulkEditModal, setBulkEditModal] = useState(false)
   const [bulkEditForm, setBulkEditForm] = useState({ check_in:'', check_out:'', nightly_rate:0, applyRate:false })
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkForm, setBulkForm] = useState({ property:'', vendor:'', check_in:'', check_out:'', gm_pct:15, n:1, wbs:'' })
   const [form, setForm] = useState<AccomForm>(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -116,6 +117,14 @@ export function AccommodationPanel() {
     }
     toast(`Updated ${ids.length} bookings`, 'success')
     setSelAccom(new Set()); setBulkEditModal(false); load()
+  }
+
+  async function bulkDeleteAccom() {
+    if (!selAccom.size || !confirm(`Delete ${selAccom.size} booking${selAccom.size>1?'s':''}? This cannot be undone.`)) return
+    const { error } = await supabase.from('accommodation').delete().in('id', [...selAccom])
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Deleted ${selAccom.size} booking${selAccom.size>1?'s':''}`, 'info')
+    setSelAccom(new Set()); load()
   }
 
   function openNew() { setForm({ ...EMPTY, gm_pct: activeProject?.default_gm || 15 }); setModal('new') }
@@ -310,9 +319,23 @@ export function AccommodationPanel() {
           </div>
         ) : (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {selAccom.size > 0 && (
+              <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',flexWrap:'wrap'}}>
+                <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{selAccom.size} selected</span>
+                <button className="btn btn-sm" onClick={()=>{setBulkEditForm({check_in:'',check_out:'',nightly_rate:0,applyRate:false});setBulkEditModal(true)}}>✏ Edit Dates</button>
+                <button className="btn btn-sm" style={{color:'var(--red)',borderColor:'var(--red)'}} onClick={bulkDeleteAccom}>🗑 Delete Selected</button>
+                <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelAccom(new Set())}>✕ Clear</button>
+              </div>
+            )}
             <table>
               <thead>
                 <tr>
+                  <th style={{width:'32px',textAlign:'center',padding:'8px 6px'}}>
+                    <input type="checkbox"
+                      checked={accomList.length > 0 && accomList.every(a => selAccom.has(a.id))}
+                      ref={el => { if (el) el.indeterminate = selAccom.size > 0 && !accomList.every(a => selAccom.has(a.id)) }}
+                      onChange={e => setSelAccom(e.target.checked ? new Set(accomList.map(a=>a.id)) : new Set())} />
+                  </th>
                   <th>Property</th><th>Room</th><th>Occupants</th>
                   <th>Check In</th><th>Check Out</th><th>Nights</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
@@ -324,7 +347,11 @@ export function AccommodationPanel() {
                 {accomList.map(a => {
                   const occ = (a.occupants as string[]) || []
                   return (
-                    <tr key={a.id}>
+                    <tr key={a.id} style={{background:selAccom.has(a.id)?'rgba(15,118,110,.04)':undefined}}>
+                      <td style={{textAlign:'center',padding:'5px 6px'}}>
+                        <input type="checkbox" checked={selAccom.has(a.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
+                          onChange={e=>setSelAccom(s=>{const n=new Set(s);e.target.checked?n.add(a.id):n.delete(a.id);return n})} />
+                      </td>
                       <td style={{ fontWeight: 500 }}>{a.property}</td>
                       <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{a.room || '—'}</td>
                       <td style={{ fontSize: '12px', color: 'var(--text3)' }}>
@@ -537,13 +564,30 @@ export function AccommodationPanel() {
           <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
             <div className="modal-header"><h3>✏ Edit {selAccom.size} Bookings</h3><button className="btn btn-sm" onClick={()=>setBulkEditModal(false)}>✕</button></div>
             <div className="modal-body">
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}}>Leave blank to keep existing. Or pick a resource to copy their mob dates.</p>
               <div className="fg"><label>Check In</label><input type="date" className="input" value={bulkEditForm.check_in} onChange={e=>setBulkEditForm(f=>({...f,check_in:e.target.value}))} /></div>
               <div className="fg"><label>Check Out</label><input type="date" className="input" value={bulkEditForm.check_out} onChange={e=>setBulkEditForm(f=>({...f,check_out:e.target.value}))} /></div>
-              <label style={{display:'flex',gap:'8px',alignItems:'center',fontSize:'12px',marginBottom:'6px'}}>
-                <input type="checkbox" checked={bulkEditForm.applyRate} onChange={e=>setBulkEditForm(f=>({...f,applyRate:e.target.checked}))} />
-                Update nightly rate
-              </label>
-              {bulkEditForm.applyRate && <div className="fg"><label>Nightly Rate ($)</label><input type="number" className="input" min={0} step={0.5} value={bulkEditForm.nightly_rate||''} onChange={e=>setBulkEditForm(f=>({...f,nightly_rate:parseFloat(e.target.value)||0}))} /></div>}
+              {resources.filter(r=>r.mob_in||r.mob_out).length > 0 && (
+                <div style={{marginTop:'8px'}}>
+                  <div style={{fontSize:'11px',fontWeight:600,color:'var(--text2)',marginBottom:'6px'}}>Use resource mob dates:</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:'4px',maxHeight:'160px',overflowY:'auto'}}>
+                    {resources.filter(r=>r.mob_in||r.mob_out).map(r => (
+                      <button key={r.id} style={{padding:'5px 10px',border:'1px solid var(--border)',borderRadius:'5px',background:'var(--bg3)',cursor:'pointer',textAlign:'left',fontSize:'12px'}}
+                        onClick={()=>setBulkEditForm(f=>({...f,check_in:r.mob_in||'',check_out:r.mob_out||''}))}>
+                        <span style={{fontWeight:600}}>{r.name}</span>
+                        <span style={{color:'var(--text3)',marginLeft:'8px'}}>{r.mob_in||'?'} → {r.mob_out||'?'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--border)'}}>
+                <label style={{display:'flex',gap:'8px',alignItems:'center',fontSize:'12px',marginBottom:'6px'}}>
+                  <input type="checkbox" checked={bulkEditForm.applyRate} onChange={e=>setBulkEditForm(f=>({...f,applyRate:e.target.checked}))} />
+                  Update nightly rate
+                </label>
+                {bulkEditForm.applyRate && <div className="fg"><label>Nightly Rate ($)</label><input type="number" className="input" min={0} step={0.5} value={bulkEditForm.nightly_rate||''} onChange={e=>setBulkEditForm(f=>({...f,nightly_rate:parseFloat(e.target.value)||0}))} /></div>}
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={()=>setBulkEditModal(false)}>Cancel</button>
