@@ -12,7 +12,8 @@ const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDig
 const fmtD = (s: string | null) => s ? s.split('-').reverse().join('/') : '—'
 const fmtPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%'
 
-const notesKey = (docId: string) => `rfq_cost_notes_${docId}`
+const notesKey   = (docId: string) => `rfq_cost_notes_${docId}`
+const patternKey = (docId: string) => `rfq_cost_pattern_${docId}`
 
 const TH_STYLE: React.CSSProperties = {
   padding: '5px 8px', border: '1px solid var(--border2)', background: 'var(--bg3)',
@@ -68,6 +69,26 @@ export function SubconCostModelPanel() {
     ;(doc.labour_rows || []).forEach((lr, i) => { hc[i] = lr.qty || 1 })
     setHeadcounts(hc)
     try { setNotes(localStorage.getItem(notesKey(doc.id)) || '') } catch { /* ignore */ }
+    // Restore saved pattern for this doc
+    try {
+      const saved = localStorage.getItem(patternKey(doc.id))
+      if (saved) {
+        if (saved === 'weekday' || saved === 'sevenDay') {
+          setPattern(saved as CostModelShiftPattern)
+        } else {
+          // Named pattern — find it in current project patterns
+          const labourPatterns = (activeProject?.labour_patterns as import('../../types').ShiftPattern[] || [])
+          const found = labourPatterns.find(p => p.name === saved)
+          if (found) setPattern(shiftPatternToNamed(found))
+          else setPattern('weekday') // fallback if pattern was deleted
+        }
+      } else {
+        // Default to first named pattern if available, else weekday
+        const labourPatterns = (activeProject?.labour_patterns as import('../../types').ShiftPattern[] || [])
+        if (labourPatterns.length > 0) setPattern(shiftPatternToNamed(labourPatterns[0]))
+        else setPattern('weekday')
+      }
+    } catch { setPattern('weekday') }
   }, [selectedDocId, docs])
 
   function saveNotes(value: string) {
@@ -184,12 +205,17 @@ export function SubconCostModelPanel() {
                     typeof pattern === 'object' ? `named:${(pattern as NamedShiftPattern).name}` : pattern as string
                   } onChange={e => {
                     const v = e.target.value
+                    const docId = selectedDocId
                     if (v === 'weekday' || v === 'sevenDay') {
                       setPattern(v as CostModelShiftPattern)
+                      try { if (docId) localStorage.setItem(patternKey(docId), v) } catch { /* ignore */ }
                     } else if (v.startsWith('named:')) {
                       const name = v.slice(6)
                       const found = (activeProject?.labour_patterns as ShiftPattern[] || []).find(p => p.name === name)
-                      if (found) setPattern(shiftPatternToNamed(found))
+                      if (found) {
+                        setPattern(shiftPatternToNamed(found))
+                        try { if (docId) localStorage.setItem(patternKey(docId), name) } catch { /* ignore */ }
+                      }
                     }
                   }}>
                   {/* Project named patterns first */}
