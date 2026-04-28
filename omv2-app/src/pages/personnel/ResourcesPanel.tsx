@@ -644,16 +644,7 @@ export function ResourcesPanel() {
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>
-                      <td style={{fontSize:'11px',whiteSpace:'nowrap'}}>
-                        {r.category==='subcontractor' && (
-                          r.linked_po_id
-                            ? <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#d1fae5',color:'#065f46',fontWeight:700}}>{pos.find(p=>p.id===r.linked_po_id)?.po_number||'PO linked'}</span>
-                            : <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b',fontWeight:700}}>⚠ No PO</span>
-                        )}
-                        {r.category!=='subcontractor' && <span style={{color:'var(--text3)'}}>—</span>}
-                      </td>
                       <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
-                      <td style={{fontSize:'11px',color:accommodationByPerson[r.id]?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{accommodationByPerson[r.id]?`🏨 ${accommodationByPerson[r.id].room||accommodationByPerson[r.id].property}`:'—'}</td>
                       <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',maxWidth:'130px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
                       <td>
@@ -661,7 +652,7 @@ export function ResourcesPanel() {
                           po
                             ? <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#d1fae5',color:'#065f46',fontWeight:700}}>{po.po_number||'PO'}</span>
                             : <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b',fontWeight:700}}>⚠ No PO</span>
-                        ) : null}
+                        ) : <span style={{color:'var(--text3)'}}>—</span>}
                       </td>
                       <td style={{whiteSpace:'nowrap'}}>
                         <button className="btn btn-sm" onClick={()=>openEdit(r)}>More</button>
