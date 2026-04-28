@@ -49,7 +49,6 @@ export function ResourcesPanel() {
   const [cars, setCars] = useState<{id:string,person_id:string,vehicle_type:string}[]>([])
   const [accom, setAccom] = useState<{id:string,occupants:string[],property:string,room:string}[]>([])
   const [wbsList, setWbsList] = useState<{id:string,code:string,name:string}[]>([])
-  const [accommodationByPerson, setAccomByPerson] = useState<Record<string,{property:string;room:string}>>({})
   const [_rateCards, setRateCards] = useState<{id:string,role:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null|'new'|Resource>(null)
@@ -93,7 +92,6 @@ export function ResourcesPanel() {
         byPerson[oId] = { property: a.property, room: a.room }
       }
     }
-    setAccomByPerson(byPerson)
     setCars((carData.data||[]) as {id:string,person_id:string,vehicle_type:string}[])
     setAccom((accomData.data||[]) as {id:string,occupants:string[],property:string,room:string}[])
     setWbsList((wbsData.data||[]) as {id:string,code:string,name:string}[])
