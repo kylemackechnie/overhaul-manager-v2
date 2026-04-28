@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import { aggregateAllCostsByWbs, type WbsAggregateRow } from '../../engines/wbsAggregator'
+import { aggregateAllCostsByWbs, type WbsAggregateRow, type SeSupportEntry } from '../../engines/wbsAggregator'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
   HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine } from '../../types'
 
@@ -32,6 +32,7 @@ interface ReportInputs {
   accom: Accommodation[]
   expenses: Expense[]
   bo: BackOfficeHour[]
+  seSupport: SeSupportEntry[]
   variations: Variation[]
   variationLines: VariationLine[]
   publicHolidays: string[]
@@ -124,6 +125,7 @@ function applyWeekWindow(input: ReportInputs, weekStart: string, weekEnd: string
     costLines: input.costLines.filter(cl => inWindow(cl.work_date)),
     expenses: input.expenses.filter(e => inWindow(e.date)),
     bo: input.bo.filter(b => inWindow(b.date)),
+    seSupport: input.seSupport.filter(s => inWindow(s.date)),
     // Variations are point-in-time; only include those approved within the window.
     variations: input.variations.filter(v => v.status === 'approved' && inWindow(v.approved_date)),
     hire: scaledHire,
@@ -151,7 +153,7 @@ export function CostReportPanel() {
       wbsR, resourcesR, rateCardsR, timesheetsR,
       tcOwnedR, tcCrossR, tvsR, deptsR,
       hireR, carsR, accomR, expensesR, boR,
-      varsR, varLinesR, holsR, costLinesR,
+      varsR, varLinesR, holsR, costLinesR, seR,
     ] = await Promise.all([
       supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('resources').select('*').eq('project_id', pid),
@@ -173,6 +175,10 @@ export function CostReportPanel() {
       supabase.from('timesheet_cost_lines')
         .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
         .eq('project_id', pid),
+      // SE AG support / mob costs
+      supabase.from('se_support_costs')
+        .select('wbs,amount,sell_price,currency,person,description,date')
+        .eq('project_id', pid),
     ])
 
     const timesheets = (timesheetsR.data || []) as WeeklyTimesheet[]
@@ -193,6 +199,7 @@ export function CostReportPanel() {
       accom: (accomR.data || []) as Accommodation[],
       expenses: (expensesR.data || []) as Expense[],
       bo: (boR.data || []) as BackOfficeHour[],
+      seSupport: (seR.data || []) as SeSupportEntry[],
       variations: (varsR.data || []) as Variation[],
       variationLines: (varLinesR.data || []) as VariationLine[],
       publicHolidays: ((holsR.data || []) as { date: string }[]).map(h => h.date),
@@ -246,6 +253,7 @@ export function CostReportPanel() {
       accommodation: sliced.accom,
       expenses: sliced.expenses,
       backOfficeHours: sliced.bo,
+      seSupport: sliced.seSupport,
       variations: sliced.variations,
       variationLines: sliced.variationLines,
       publicHolidays: sliced.publicHolidays,

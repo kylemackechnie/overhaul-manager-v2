@@ -1,4 +1,5 @@
-import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense } from '../types'
+import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment } from '../types'
+import { calcRentalCost } from '../lib/calculations'
 
 export interface DayPerson {
   name: string
@@ -72,9 +73,19 @@ function emptyDay(): DayBucket {
   }
 }
 
-// Full 7-bucket split with regimeConfig — driven by rate-card thresholds only.
-// 12hr-pattern cards just set wdT15=0 / satT15=0 so the formula collapses to
-// NT→DT naturally.
+// Full 7-bucket split with regime detection — mirrors HTML splitHours exactly.
+//
+// HTML passes a computed regime flag ('lt12' | 'ge12') derived from whether
+// the shift hours >= 12. This drives two distinct Saturday and weekday paths:
+//   • ge12 Saturday → all DT (no T1.5 band)
+//   • lt12 Saturday → T1.5 up to satT15 threshold, then DT
+//   • ge12 Weekday  → NT up to wdNT, then DT (T1.5 skipped)
+//   • lt12 Weekday  → NT → T1.5 → DT
+//
+// V2 previously dropped the regime param and always applied the T1.5 band,
+// causing ~5% underestimate on 12hr Saturday shifts (~$45/person/day).
+// Fixed by deriving regime from totalHrs >= 12, matching the HTML exactly.
+
 type FcHourSplit = Record<string, number>
 type FcRegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
 
@@ -89,6 +100,9 @@ function splitHours(totalHrs: number, dayType: string, shiftType: 'day'|'night',
   const NIGHT_NT = (rc as {nightNT?:number}).nightNT ?? 7.2
   const REST_NT  = (rc as {restNT?:number}).restNT  ?? 7.2
 
+  // Derive regime from hours — matches HTML: const regime = hours >= 12 ? 'ge12' : 'lt12'
+  const ge12 = totalHrs >= 12
+
   if (dayType === 'public_holiday') return night ? { ...zero, ndt15: totalHrs } : { ...zero, ddt15: totalHrs }
   if (dayType === 'rest')  return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
   if (dayType === 'travel' || dayType === 'mob') return { ...zero, dnt: totalHrs }
@@ -97,10 +111,20 @@ function splitHours(totalHrs: number, dayType: string, shiftType: 'day'|'night',
     return { ...zero, nnt: Math.min(totalHrs, NIGHT_NT), ndt: Math.max(0, totalHrs - NIGHT_NT) }
   }
   if (dayType === 'saturday') {
+    // ge12: all DT — no T1.5 band (HTML ge12 branch: return { ddt: h })
+    if (ge12) return { ...zero, ddt: totalHrs }
+    // lt12: T1.5 up to satT15, then DT
     return { ...zero, dt15: Math.min(totalHrs, SAT_T15), ddt: Math.max(0, totalHrs - SAT_T15) }
   }
   if (dayType === 'sunday') return { ...zero, ddt: totalHrs }
-  // Weekday day — NT → T1.5 → DT. 12hr-pattern cards (WD_T15=0) collapse to NT → DT.
+  // Weekday day
+  if (ge12) {
+    // ge12: NT up to wdNT, then DT — T1.5 band skipped (HTML ge12 branch)
+    const dnt = Math.min(totalHrs, WD_NT)
+    const ddt = Math.max(0, totalHrs - WD_NT)
+    return { ...zero, dnt, ddt }
+  }
+  // lt12: NT → T1.5 → DT
   const dnt  = Math.min(totalHrs, WD_NT)
   const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
   const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
@@ -137,6 +161,8 @@ export function buildForecast(
   fxRates: { code: string; rate: number }[] = [],
   expenses: Expense[] = [],
   dailyExpenseEstimate: number = 0,
+  globalTVs: GlobalTV[] = [],
+  globalDepartments: GlobalDepartment[] = [],
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
@@ -391,19 +417,65 @@ export function buildForecast(
   }
 
   // ── Tooling ──
-  // Costings are in EUR. Stored in the day bucket as raw EUR — the panel uses
-  // EUR_CATS to format with the € symbol and converts to base for grand totals.
-  // This matches HTML behaviour and keeps the source value visible to users.
+  // Live-calculate using calcRentalCost (same as wbsAggregator) so the
+  // Forecast panel and MIKA actuals panel show consistent tooling costs.
+  // Previously used stored cost_eur / sell_eur snapshots which go stale.
+  // Result is in EUR — stored in the day bucket as raw EUR, panel converts
+  // to base currency for grand totals (same as before).
+  const tvByNo = Object.fromEntries(globalTVs.map(tv => [tv.tv_no, tv]))
+  const deptById = Object.fromEntries(globalDepartments.map(d => [d.id, d]))
+
   for (const tc of toolingCostings) {
-    if (!tc.charge_start) continue
-    const days = dateRange(tc.charge_start, tc.charge_end || tc.charge_start)
-    if (!days.length) continue
-    const perDayCost = (tc.cost_eur || 0) / days.length
-    const perDaySell = (tc.sell_eur || 0) / days.length
-    for (const d of days) {
-      const day = ensure(d)
-      day.tooling.cost += perDayCost
-      day.tooling.sell += perDaySell
+    const tv = tvByNo[tc.tv_no]
+    const dept = tv?.department_id ? deptById[tv.department_id] : null
+    const replVal = Number(tv?.replacement_value_eur || 0)
+
+    if (tv && dept && replVal > 0) {
+      // Live calc — same method as wbsAggregator
+      const rates = dept.rates as Record<string, unknown>
+      const deptCalc = {
+        rental_pct: Number(rates.rentalPct || 0),
+        rate_unit: ((rates.rateUnit as string) || 'weekly') as 'weekly' | 'daily' | 'monthly',
+        gm_pct: Number(rates.gmPct || 0),
+      }
+      const splits = tc.splits || []
+      if (splits.length > 0) {
+        for (const sp of splits) {
+          if (sp.type !== 'project' || !sp.startDate || !sp.endDate) continue
+          const calc = calcRentalCost(replVal, {
+            charge_start: sp.startDate, charge_end: sp.endDate,
+            sell_override_eur: tc.sell_override_eur ?? null,
+          }, deptCalc)
+          if (!calc) continue
+          const factor = sp.discountPct ? 1 - (sp.discountPct / 100) : 1
+          const days = dateRange(sp.startDate, sp.endDate)
+          if (!days.length) continue
+          const perDayCost = (calc.cost * factor) / days.length
+          const perDaySell = (calc.sell * factor) / days.length
+          for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
+        }
+      } else if (tc.charge_start && tc.charge_end) {
+        const calc = calcRentalCost(replVal, {
+          charge_start: tc.charge_start, charge_end: tc.charge_end,
+          sell_override_eur: tc.sell_override_eur ?? null,
+        }, deptCalc)
+        if (calc) {
+          const days = dateRange(tc.charge_start, tc.charge_end)
+          if (days.length) {
+            const perDayCost = calc.cost / days.length
+            const perDaySell = calc.sell / days.length
+            for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
+          }
+        }
+      }
+    } else {
+      // Fallback to stored snapshot if TV/dept data not available
+      if (!tc.charge_start) continue
+      const days = dateRange(tc.charge_start, tc.charge_end || tc.charge_start)
+      if (!days.length) continue
+      const perDayCost = (tc.cost_eur || 0) / days.length
+      const perDaySell = (tc.sell_eur || 0) / days.length
+      for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
     }
   }
 

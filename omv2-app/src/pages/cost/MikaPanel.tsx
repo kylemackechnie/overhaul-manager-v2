@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import { aggregateAllCostsByWbs } from '../../engines/wbsAggregator'
+import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
   HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine } from '../../types'
 
@@ -87,7 +87,7 @@ export function MikaPanel() {
         resourcesR, rateCardsR, timesheetsR,
         tcOwnedR, tcCrossR, tvsR, deptsR,
         hireR, carsR, accomR, expensesR, boR,
-        varsR, varLinesR, holsR, costLinesR,
+        varsR, varLinesR, holsR, costLinesR, seR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -109,6 +109,10 @@ export function MikaPanel() {
         supabase.from('timesheet_cost_lines')
           .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
           .eq('project_id', pid),
+        // SE AG support / mob costs
+        supabase.from('se_support_costs')
+          .select('wbs,amount,sell_price,currency,person,description,date')
+          .eq('project_id', pid),
       ])
 
       const agg = aggregateAllCostsByWbs({
@@ -125,6 +129,7 @@ export function MikaPanel() {
         accommodation: (accomR.data || []) as Accommodation[],
         expenses: (expensesR.data || []) as Expense[],
         backOfficeHours: (boR.data || []) as BackOfficeHour[],
+        seSupport: (seR.data || []) as SeSupportEntry[],
         variations: (varsR.data || []) as Variation[],
         variationLines: (varLinesR.data || []) as VariationLine[],
         publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),

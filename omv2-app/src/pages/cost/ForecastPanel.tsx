@@ -102,7 +102,7 @@ export function ForecastPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [resData, rcData, boData, hireData, carData, acData, tcData, expData] = await Promise.all([
+    const [resData, rcData, boData, hireData, carData, acData, tcData, expData, tvsData, deptsData] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('back_office_hours').select('*').eq('project_id', pid),
@@ -111,6 +111,8 @@ export function ForecastPanel() {
       supabase.from('accommodation').select('*').eq('project_id', pid),
       supabase.from('tooling_costings').select('*').eq('project_id', pid),
       supabase.from('expenses').select('*').eq('project_id', pid),
+      supabase.from('global_tvs').select('*'),
+      supabase.from('global_departments').select('*'),
     ])
     const stdHours = (activeProject!.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day:{}, night:{} }
     const publicHolidays = (activeProject!.public_holidays as { date: string }[]) || []
@@ -123,6 +125,9 @@ export function ForecastPanel() {
       activeProject!.start_date, activeProject!.end_date,
       fxRates,
       (expData.data || []) as Parameters<typeof buildForecast>[12],
+      0,
+      tvsData.data || [],
+      deptsData.data || [],
     )
     setData(forecast)
     setLoading(false)

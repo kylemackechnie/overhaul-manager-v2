@@ -27,6 +27,17 @@ import type {
   ToolingCosting, GlobalTV, GlobalDepartment,
 } from '../types'
 
+/** Minimum shape of se_support_costs rows needed for WBS rollup. */
+export interface SeSupportEntry {
+  wbs?: string | null
+  amount?: number | null
+  sell_price?: number | null
+  currency?: string | null
+  person?: string | null
+  description?: string | null
+  date?: string | null
+}
+
 // ─── Output shape ────────────────────────────────────────────────────────────
 
 export interface WbsAggregateRow {
@@ -101,6 +112,8 @@ export interface WbsAggregatorInput {
   accommodation: Accommodation[]
   expenses: Expense[]
   backOfficeHours: BackOfficeHour[]
+  /** SE AG support / mob costs from se_support_costs table */
+  seSupport?: SeSupportEntry[]
   variations: Variation[]
   variationLines: VariationLine[]
   publicHolidays?: string[]
@@ -293,8 +306,23 @@ export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate 
   }
 
   // ── SE Support / Mob ──────────────────────────────────────────────────────
-  // Bucket present for parity; V2 table exists but has no consumers yet.
-  // (Skipping data load here — caller can wire when the panel ships.)
+  // se_support_costs table — SE AG mobilisation / support costs.
+  // Mirrors the HTML seSupport loop in aggregateAllCostsByWbs.
+  for (const e of (input.seSupport || [])) {
+    const wbs = e.wbs
+    if (!wbs) continue
+    const rawCost = Number(e.amount || 0)
+    const rawSell = Number(e.sell_price || rawCost)
+    const cost = rawCost && e.currency && e.currency !== 'AUD'
+      ? rawCost * fxRate(project, e.currency)
+      : rawCost
+    const sell = rawSell && e.currency && e.currency !== 'AUD'
+      ? rawSell * fxRate(project, e.currency)
+      : rawSell
+    if (!cost && !sell) continue
+    add(wbs, cost, sell, 'se_support',
+      `SE Support: ${e.person || ''} — ${e.description || ''} (${e.currency || 'AUD'})`.trim())
+  }
 
   // ── Cars ──────────────────────────────────────────────────────────────────
   for (const c of cars) {
