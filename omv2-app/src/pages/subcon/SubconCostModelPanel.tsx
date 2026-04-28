@@ -2,10 +2,10 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import { computeCostModel, type CostModelShiftPattern, type CostModelResult, type PerVendorResult } from '../../engines/costModelEngine'
-import type { RfqDocument, RfqResponse, PublicHoliday } from '../../types'
+import { computeCostModel, type CostModelShiftPattern, type NamedShiftPattern, type CostModelResult, type PerVendorResult, shiftPatternToNamed } from '../../engines/costModelEngine'
+import type { RfqDocument, RfqResponse, PublicHoliday, ShiftPattern } from '../../types'
 
-type Pattern = CostModelShiftPattern
+type Pattern = CostModelShiftPattern | NamedShiftPattern
 
 const fmt  = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
 const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -180,9 +180,25 @@ export function SubconCostModelPanel() {
               <div className="fg" style={{ margin: 0 }}><label>End Date *</label><input className="input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
               <div className="fg" style={{ margin: 0 }}>
                 <label>Shift Pattern</label>
-                <select className="input" value={pattern} onChange={e => setPattern(e.target.value as Pattern)}>
-                  <option value="weekday">Mon–Fri</option>
-                  <option value="sevenDay">7-Day</option>
+                <select className="input" value={
+                    typeof pattern === 'object' ? `named:${(pattern as NamedShiftPattern).name}` : pattern as string
+                  } onChange={e => {
+                    const v = e.target.value
+                    if (v === 'weekday' || v === 'sevenDay') {
+                      setPattern(v as CostModelShiftPattern)
+                    } else if (v.startsWith('named:')) {
+                      const name = v.slice(6)
+                      const found = (activeProject?.labour_patterns as ShiftPattern[] || []).find(p => p.name === name)
+                      if (found) setPattern(shiftPatternToNamed(found))
+                    }
+                  }}>
+                  {/* Project named patterns first */}
+                  {(activeProject?.labour_patterns as ShiftPattern[] || []).map(p => (
+                    <option key={p.name} value={`named:${p.name}`}>{p.name}</option>
+                  ))}
+                  {/* Generic fallbacks */}
+                  <option value="weekday">Mon–Fri (generic)</option>
+                  <option value="sevenDay">7-Day (generic)</option>
                 </select>
               </div>
             </div>
@@ -910,7 +926,7 @@ td.num{text-align:right;font-family:monospace}thead{display:table-header-group}t
 </style></head><body>
 <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
 <div class="cover"><h1>${esc(doc.title)}</h1><div class="meta">${esc(projectName)} · Cost Comparison · Generated ${new Date().toLocaleString('en-AU')}</div></div>
-<div class="params"><span>Period:</span><b>${fmtD(startDate)} → ${fmtD(endDate)}</b><span>Pattern:</span><b>${pattern === 'weekday' ? 'Mon–Fri' : '7-Day'}</b><span>Working days:</span><b>${result.totalDays}</b><span>Vendors:</span><b>${result.vendors.length}</b></div>
+<div class="params"><span>Period:</span><b>${fmtD(startDate)} → ${fmtD(endDate)}</b><span>Pattern:</span><b>${typeof pattern === 'object' ? pattern.name : pattern === 'weekday' ? 'Mon–Fri' : '7-Day'}</b><span>Working days:</span><b>${result.totalDays}</b><span>Vendors:</span><b>${result.vendors.length}</b></div>
 <div class="section-title">Vendor Ranking</div>
 ${vendorCards}
 <section>

@@ -47,6 +47,8 @@ export interface Project {
   ph_state: string | null
   std_hours: { day: Record<string, number>; night: Record<string, number> }
   shift_patterns: ShiftPattern[]
+  /** Named labour shift patterns for RFQ cost modelling — hours per DOW */
+  labour_patterns: ShiftPattern[]
   site_info: Record<string, string>
   forecast_config: ForecastConfig
   forecast_baseline: ForecastBaseline | null

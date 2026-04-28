@@ -2,17 +2,35 @@ import { fcDateRange, fcDayType, fcWeekKey, calcHoursCost } from './costEngine'
 import type {
   RfqDocument, RfqResponse,
   RfqLabourRow, RfqResponseLabourRates,
-  PublicHoliday,
+  PublicHoliday, ShiftPattern,
 } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CostModelShiftPattern = 'weekday' | 'sevenDay'
 
+/** A named project pattern passed directly to the engine */
+export interface NamedShiftPattern {
+  name: string
+  /** Hours per DOW key ('mon'|'tue'|...) for day shift */
+  day: Record<string, number>
+  /** Hours per DOW key for night shift (0 or missing = no night) */
+  night: Record<string, number>
+}
+
+/** Map DOW index (0=Sun…6=Sat) to the DOW key used in ShiftPattern */
+const DOW_KEYS = ['sun','mon','tue','wed','thu','fri','sat']
+
+/** Convert a ShiftPattern (from project.labour_patterns) to NamedShiftPattern */
+export function shiftPatternToNamed(p: ShiftPattern): NamedShiftPattern {
+  return { name: p.name, day: p.day, night: p.night }
+}
+
 export interface CostModelParams {
   startDate: string
   endDate: string
-  pattern: CostModelShiftPattern
+  /** Either a generic key or a full named pattern object */
+  pattern: CostModelShiftPattern | NamedShiftPattern
   headcountOverrides?: Record<number, number>
 }
 
@@ -97,11 +115,23 @@ interface DayInfo {
   dayType: 'weekday' | 'saturday' | 'sunday' | 'publicHoliday'
 }
 
-function enumerateWorkingDays(start: string, end: string, pattern: CostModelShiftPattern, phs: string[]): DayInfo[] {
+function isNamedPattern(p: CostModelShiftPattern | NamedShiftPattern): p is NamedShiftPattern {
+  return typeof p === 'object' && p !== null
+}
+
+/** For a named pattern, a day is worked if day or night hours > 0 for that DOW */
+function namedPatternWorksDay(p: NamedShiftPattern, dowIndex: number): boolean {
+  const key = DOW_KEYS[dowIndex]
+  return (p.day[key] || 0) > 0 || (p.night[key] || 0) > 0
+}
+
+function enumerateWorkingDays(start: string, end: string, pattern: CostModelShiftPattern | NamedShiftPattern, phs: string[]): DayInfo[] {
   return fcDateRange(start, end)
     .map(d => ({ date: d, dayType: fcDayType(d, phs) }))
     .filter(d => {
       if (d.dayType === 'publicHoliday') return true
+      const dow = new Date(d.date + 'T00:00:00').getDay()
+      if (isNamedPattern(pattern)) return namedPatternWorksDay(pattern, dow)
       if (pattern === 'sevenDay') return true
       return d.dayType === 'weekday'
     })
@@ -166,7 +196,7 @@ function lahaMul(shiftType: RfqLabourRow['shiftType'], dow: number): number {
 
 // ─── Shift counts within a date range ────────────────────────────────────────
 
-function countShifts(fromStr: string, toStr: string, shiftType: RfqLabourRow['shiftType'], phSet: Set<string>, pattern: CostModelShiftPattern) {
+function countShifts(fromStr: string, toStr: string, shiftType: RfqLabourRow['shiftType'], phSet: Set<string>, pattern: CostModelShiftPattern | NamedShiftPattern) {
   let wd = 0, sat = 0, sun = 0
   const isDual = shiftType === 'dual', isNS = shiftType === 'single-night'
   const hasDay = !isNS, hasNight = isDual || isNS
@@ -174,11 +204,25 @@ function countShifts(fromStr: string, toStr: string, shiftType: RfqLabourRow['sh
     if (phSet.has(d)) continue
     const dow = new Date(d + 'T00:00:00').getDay()
     const isSat = dow === 6, isSun = dow === 0
-    if (pattern === 'weekday' && (isSat || isSun)) continue
-    const n = (hasDay ? 1 : 0) + (hasNight ? 1 : 0)
-    if (!isSat && !isSun) wd += n
-    else if (isSat) sat += n
-    else sun += n
+
+    if (isNamedPattern(pattern)) {
+      if (!namedPatternWorksDay(pattern, dow)) continue
+      // For named patterns, determine if day/night applies this DOW
+      const key = DOW_KEYS[dow]
+      const dayHrs = pattern.day[key] || 0
+      const nightHrs = pattern.night[key] || 0
+      const n = (hasDay && dayHrs > 0 ? 1 : 0) + (hasNight && nightHrs > 0 ? 1 : 0)
+      if (n === 0) continue
+      if (!isSat && !isSun) wd += n
+      else if (isSat) sat += n
+      else sun += n
+    } else {
+      if (pattern === 'weekday' && (isSat || isSun)) continue
+      const n = (hasDay ? 1 : 0) + (hasNight ? 1 : 0)
+      if (!isSat && !isSun) wd += n
+      else if (isSat) sat += n
+      else sun += n
+    }
   }
   return { wdShifts: wd, satShifts: sat, sunShifts: sun }
 }

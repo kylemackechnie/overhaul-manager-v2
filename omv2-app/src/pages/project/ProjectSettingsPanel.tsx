@@ -30,6 +30,11 @@ export function ProjectSettingsPanel() {
   // Shift patterns for wet hire calendars (keyed by DOW 0-6)
   type WetHirePattern = { name: string; days: Record<number, Record<string,boolean>> }
   const [patterns, setPatterns] = useState<WetHirePattern[]>([])
+
+  // Labour shift patterns for RFQ cost modelling — hours per DOW
+  type LabourPattern = { name: string; day: Record<string,number>; night: Record<string,number> }
+  const [labourPatterns, setLabourPatterns] = useState<LabourPattern[]>([])
+  const [lpModal, setLpModal] = useState<null | { idx: number | null; name: string; day: Record<string,number>; night: Record<string,number> }>(null)
   const [patternModal, setPatternModal] = useState<null | { idx: number | null; name: string; days: Record<number,Record<string,boolean>> }>(null)
 
   const SHIFT_KEYS = ['ds','ns','wds','wns','sdd','sdn'] as const
@@ -74,6 +79,31 @@ export function ProjectSettingsPanel() {
       if (checked) days[dow][key] = true; else delete days[dow][key]
       return { ...m, days }
     })
+  }
+
+  async function saveLabourPattern() {
+    if (!lpModal || !activeProject) return
+    if (!lpModal.name.trim()) { toast('Pattern name required','error'); return }
+    const newPatterns = [...labourPatterns]
+    const p: LabourPattern = { name: lpModal.name.trim(), day: lpModal.day, night: lpModal.night }
+    if (lpModal.idx !== null) newPatterns[lpModal.idx] = p
+    else newPatterns.push(p)
+    const { error } = await supabase.from('projects').update({ labour_patterns: newPatterns }).eq('id', activeProject.id)
+    if (error) { toast(error.message,'error'); return }
+    setLabourPatterns(newPatterns)
+    setActiveProject({ ...activeProject, labour_patterns: newPatterns as unknown as typeof activeProject.labour_patterns })
+    setLpModal(null)
+    toast(`Pattern "${p.name}" saved`,'success')
+  }
+
+  async function deleteLabourPattern(idx: number) {
+    if (!activeProject || !confirm(`Delete "${labourPatterns[idx].name}"?`)) return
+    const newPatterns = labourPatterns.filter((_,i) => i !== idx)
+    const { error } = await supabase.from('projects').update({ labour_patterns: newPatterns }).eq('id', activeProject.id)
+    if (error) { toast(error.message,'error'); return }
+    setLabourPatterns(newPatterns)
+    setActiveProject({ ...activeProject, labour_patterns: newPatterns as unknown as typeof activeProject.labour_patterns })
+    toast('Pattern deleted','info')
   }
 
   async function savePattern() {
@@ -125,6 +155,7 @@ export function ProjectSettingsPanel() {
       std_hours_night: { ...(activeProject.std_hours?.night as Record<string,number> || {}) },
     })
     setPatterns((activeProject.shift_patterns as unknown as WetHirePattern[] || []))
+    setLabourPatterns((activeProject.labour_patterns as unknown as LabourPattern[] || []))
   }, [activeProject?.id])
 
   async function save() {
@@ -366,6 +397,122 @@ export function ProjectSettingsPanel() {
           </table>
         </div>
       </div>
+
+      {/* ── Labour Shift Patterns (for RFQ cost modelling) ── */}
+      <div className="card" style={{marginBottom:'16px'}}>
+        {section('Shift Patterns — RFQ Cost Model')}
+        <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'14px'}}>
+          Define named working patterns (e.g. "SPS Scaffold 6-Day Dual") — these appear in the RFQ Cost Model dropdown so you can model different roster structures per tender.
+          Each pattern sets hours worked per day/night shift for each day of the week. Set 0 for rest days.
+        </p>
+        {labourPatterns.length === 0 ? (
+          <div style={{fontSize:'12px',color:'var(--text3)',marginBottom:'10px'}}>No patterns yet. Add one below — until then the generic Mon–Fri and 7-Day options are available in the cost model.</div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:'6px',marginBottom:'12px'}}>
+            {labourPatterns.map((p, idx) => {
+              const dayCount = DAYS.filter(d => (p.day[d] || 0) > 0 || (p.night[d] || 0) > 0).length
+              const hasNight = DAYS.some(d => (p.night[d] || 0) > 0)
+              return (
+                <div key={idx} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 12px',border:'1px solid var(--border)',borderRadius:'6px',background:'var(--bg3)'}}>
+                  <div style={{fontWeight:600,fontSize:'13px',minWidth:'220px'}}>{p.name}</div>
+                  <div style={{display:'flex',gap:'6px',flex:1,flexWrap:'wrap',fontSize:'10px',color:'var(--text2)'}}>
+                    <span style={{padding:'2px 6px',borderRadius:'3px',border:'1px solid #3b82f6',color:'#3b82f6',fontWeight:700}}>
+                      ☀️ {dayCount}d/wk
+                    </span>
+                    {hasNight && (
+                      <span style={{padding:'2px 6px',borderRadius:'3px',border:'1px solid #8b5cf6',color:'#8b5cf6',fontWeight:700}}>
+                        🌙 night
+                      </span>
+                    )}
+                    {DAYS.filter(d => (p.day[d]||0)>0).map(d => (
+                      <span key={d} style={{padding:'2px 5px',borderRadius:'3px',background:'var(--bg2)',fontFamily:'var(--mono)'}}>
+                        {DAY_LABELS[d]} {p.day[d]}h{(p.night[d]||0)>0?`/${p.night[d]}h`:''}
+                      </span>
+                    ))}
+                  </div>
+                  <button className="btn btn-sm" style={{fontSize:'11px'}} onClick={() => setLpModal({ idx, name: p.name, day: {...p.day}, night: {...p.night} })}>Edit</button>
+                  <button className="btn btn-sm" style={{fontSize:'11px',color:'var(--red)'}} onClick={() => deleteLabourPattern(idx)}>✕</button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <button className="btn btn-sm" style={{background:'#7c3aed',color:'#fff',border:'none'}} onClick={() => setLpModal({ idx: null, name: '', day: {}, night: {} })}>+ Add Pattern</button>
+      </div>
+
+      {/* Labour Pattern Modal */}
+      {lpModal && (
+        <div className="modal-overlay">
+          <div className="modal" style={{maxWidth:'700px',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{lpModal.idx !== null ? 'Edit' : 'New'} Shift Pattern</h3>
+              <button className="btn btn-sm" onClick={()=>setLpModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="fg" style={{marginBottom:'14px'}}>
+                <label>Pattern Name *</label>
+                <input className="input" placeholder="e.g. SPS Scaffold 6-Day Dual" value={lpModal.name}
+                  onChange={e=>setLpModal(m=>m?{...m,name:e.target.value}:m)} autoFocus />
+              </div>
+              <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:'10px'}}>
+                Enter hours per shift for each day. Set 0 for rest days. Night shift hours are only used for dual-shift or night-only roles in the cost model.
+              </div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                  <thead>
+                    <tr style={{background:'var(--bg3)'}}>
+                      <th style={{padding:'7px 10px',textAlign:'left',fontSize:'10px',fontFamily:'var(--mono)',color:'var(--text3)',textTransform:'uppercase',width:'80px'}}>Shift</th>
+                      {DAYS.map(d => (
+                        <th key={d} style={{padding:'7px 10px',textAlign:'center',fontSize:'10px',fontFamily:'var(--mono)',
+                          color:['sat','sun'].includes(d)?'var(--amber)':'var(--text3)',textTransform:'uppercase'}}>
+                          {DAY_LABELS[d]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(['day','night'] as const).map(shift => (
+                      <tr key={shift}>
+                        <td style={{padding:'6px 10px',fontWeight:500,color:'var(--text2)'}}>
+                          {shift === 'day' ? '☀️ Day' : '🌙 Night'}
+                        </td>
+                        {DAYS.map(d => (
+                          <td key={d} style={{padding:'4px'}}>
+                            <input type="number" step="0.5" min="0" max="24"
+                              className="input" style={{textAlign:'center',padding:'4px',width:'100%'}}
+                              value={(shift === 'day' ? lpModal.day : lpModal.night)[d] ?? 0}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0
+                                setLpModal(m => {
+                                  if (!m) return m
+                                  const field = shift === 'day' ? 'day' : 'night'
+                                  return { ...m, [field]: { ...m[field], [d]: val } }
+                                })
+                              }} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Quick presets */}
+              <div style={{marginTop:'12px',display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                <span style={{fontSize:'11px',color:'var(--text3)',alignSelf:'center'}}>Presets:</span>
+                <button className="btn btn-sm" onClick={()=>setLpModal(m=>m?{...m,day:Object.fromEntries(['mon','tue','wed','thu','fri'].map(d=>[d,10])),night:{}}:m)}>10h Mon–Fri</button>
+                <button className="btn btn-sm" onClick={()=>setLpModal(m=>m?{...m,day:Object.fromEntries(['mon','tue','wed','thu','fri','sat'].map(d=>[d,10])),night:{}}:m)}>10h Mon–Sat</button>
+                <button className="btn btn-sm" onClick={()=>setLpModal(m=>m?{...m,day:Object.fromEntries(DAYS.map(d=>[d,10])),night:{}}:m)}>10h 7-Day</button>
+                <button className="btn btn-sm" onClick={()=>setLpModal(m=>m?{...m,day:Object.fromEntries(['mon','tue','wed','thu','fri','sat'].map(d=>[d,10])),night:Object.fromEntries(['mon','tue','wed','thu','fri','sat'].map(d=>[d,10]))}:m)}>10h Mon–Sat Dual</button>
+                <button className="btn btn-sm" onClick={()=>setLpModal(m=>m?{...m,day:Object.fromEntries(DAYS.map(d=>[d,12])),night:Object.fromEntries(DAYS.map(d=>[d,12]))}:m)}>12h 7-Day Dual</button>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setLpModal(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{background:'#7c3aed'}} onClick={saveLabourPattern}>Save Pattern</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Wet Hire Shift Patterns ── */}
       <div className="card" style={{marginBottom:'20px'}}>
