@@ -33,7 +33,6 @@ import { InvoicesPanel } from './pages/cost/InvoicesPanel'
 import { VariationsPanel } from './pages/cost/VariationsPanel'
 import { ExpensesPanel } from './pages/cost/ExpensesPanel'
 import { SapReconPanel } from './pages/cost/SapReconPanel'
-import { SubconRFQPanel } from './pages/cost/SubconRFQPanel'
 // Personnel
 import { RateCardsPanel } from './pages/personnel/RateCardsPanel'
 import { ResourcesPanel } from './pages/personnel/ResourcesPanel'

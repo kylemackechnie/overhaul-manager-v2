@@ -5,7 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { RfqResponseModal } from '../../components/subcon/RfqResponseModal'
 import { VendorsSentModal } from '../../components/subcon/VendorsSentModal'
 import { getQuotePdfSignedUrl, deleteQuotePdf, formatFileSize } from '../../lib/quotePdfStorage'
-import type { RfqDocument, RfqResponse, RfqResponseLabour, RfqEquipRow, RateCard, WbsItem } from '../../types'
+import type { RfqDocument, RfqResponse, RfqResponseLabour, RfqEquipRow, RateCard } from '../../types'
 
 const STAGES = ['draft', 'issued', 'responses_in', 'awarded', 'contracted', 'cancelled'] as const
 const STAGE_LABEL: Record<string, string> = {
@@ -18,7 +18,6 @@ const STAGE_COLOR: Record<string, string> = {
 }
 
 const fmtDate = (s: string | null) => s ? s.split('-').reverse().join('/') : '—'
-const fmtMoney = (n: number | null) => n ? '$' + Number(n).toLocaleString('en-AU', { maximumFractionDigits: 2 }) : '—'
 const todayStr = new Date().toISOString().slice(0, 10)
 
 // ─── Wizard row types ─────────────────────────────────────────────────────────
@@ -44,7 +43,6 @@ export function SubconRFQRegisterPanel() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   // Aux data for wizards
-  const [wbsList, setWbsList] = useState<WbsItem[]>([])
   const [rateCards, setRateCards] = useState<RateCard[]>([])
 
   // Modal state
@@ -75,15 +73,13 @@ export function SubconRFQRegisterPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [docsRes, respRes, wbsRes, rcRes] = await Promise.all([
+    const [docsRes, respRes, rcRes] = await Promise.all([
       supabase.from('rfq_documents').select('*').eq('project_id', pid).order('created_at', { ascending: false }),
       supabase.from('rfq_responses').select('*').eq('project_id', pid),
-      supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
     ])
     setDocs((docsRes.data || []) as RfqDocument[])
     setResponses((respRes.data || []) as RfqResponse[])
-    setWbsList((wbsRes.data || []) as WbsItem[])
     setRateCards((rcRes.data || []) as RateCard[])
     setLoading(false)
   }
@@ -826,8 +822,7 @@ function ResponsesInline({ doc, responses, awardedResp, onAddResponse, onEditRes
   }
 
   const hasEquip = (doc.equip_rows || []).length > 0
-  const fmtMoney = (n: number | null) => n ? '$' + Number(n).toLocaleString('en-AU', { maximumFractionDigits: 2 }) : '—'
-  const fmtDate  = (s: string | null) => s ? s.split('-').reverse().join('/') : '—'
+    const fmtDate  = (s: string | null) => s ? s.split('-').reverse().join('/') : '—'
 
   return (
     <div style={{ padding: '14px 20px' }}>

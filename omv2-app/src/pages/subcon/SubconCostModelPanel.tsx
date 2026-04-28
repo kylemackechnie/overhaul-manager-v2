@@ -851,7 +851,7 @@ function SectionTable({ children, title }: { children: React.ReactNode; title?: 
 
 // ─── Print HTML builder ───────────────────────────────────────────────────────
 
-function buildPrintHTML(result: CostModelResult, doc: RfqDocument, startDate: string, endDate: string, pattern: string, notes: string, projectName: string): string {
+function buildPrintHTML(result: CostModelResult, doc: RfqDocument, startDate: string, endDate: string, pattern: CostModelShiftPattern | NamedShiftPattern, notes: string, projectName: string): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const labourRoles = doc.labour_rows || []
 
