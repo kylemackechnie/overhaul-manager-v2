@@ -65,7 +65,7 @@ export function ResourcesPanel() {
   const [sortCol, setSortCol] = useState<SortCol>('status')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState(false)
-  const [bulkForm, setBulkForm] = useState({ mob_in:'', mob_out:'', shift:'', wbs:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
+  const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
   const [sortAsc, setSortAsc] = useState(true)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -105,10 +105,13 @@ export function ResourcesPanel() {
   async function applyBulkEdit() {
     if (!selected.size) return
     const updates: Partial<Resource> & Record<string,unknown> = {}
-    if (bulkForm.mob_in)    updates.mob_in  = bulkForm.mob_in
-    if (bulkForm.mob_out)   updates.mob_out = bulkForm.mob_out
-    if (bulkForm.shift)     updates.shift   = bulkForm.shift as Resource['shift']
-    if (bulkForm.wbs)       updates.wbs     = bulkForm.wbs
+    if (bulkForm.role)     updates.role     = bulkForm.role
+    if (bulkForm.company)  updates.company  = bulkForm.company
+    if (bulkForm.category) updates.category = bulkForm.category as Resource['category']
+    if (bulkForm.mob_in)   updates.mob_in   = bulkForm.mob_in
+    if (bulkForm.mob_out)  updates.mob_out  = bulkForm.mob_out
+    if (bulkForm.shift)    updates.shift    = bulkForm.shift as Resource['shift']
+    if (bulkForm.wbs)      updates.wbs      = bulkForm.wbs
     if (bulkForm.applyLaha) updates.allow_laha = bulkForm.allow_laha
     if (bulkForm.applyMeal) updates.allow_meal = bulkForm.allow_meal
     if (bulkForm.applyFsa)  updates.allow_fsa  = bulkForm.allow_fsa
@@ -118,6 +121,16 @@ export function ResourcesPanel() {
     if (error) { toast(error.message, 'error'); return }
     toast(`Updated ${ids.length} resources`, 'success')
     setSelected(new Set()); setBulkModal(false); load()
+  }
+
+  async function bulkDelete() {
+    if (!selected.size) return
+    if (!confirm(`Delete ${selected.size} resource${selected.size > 1 ? 's' : ''}? This cannot be undone.`)) return
+    const ids = [...selected]
+    const { error } = await supabase.from('resources').delete().in('id', ids)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Deleted ${ids.length} resources`, 'info')
+    setSelected(new Set()); load()
   }
 
   const { cardPerson, openCard, closeCard } = usePersonCard()
@@ -501,11 +514,31 @@ export function ResourcesPanel() {
         </div>
       ) : (
         <>
+          {/* Bulk action bar */}
+          {selected.size > 0 && (
+            <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',borderRadius:'6px',marginBottom:'10px',flexWrap:'wrap'}}>
+              <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{selected.size} selected</span>
+              <button className="btn btn-sm" onClick={()=>{setBulkForm({role:'',company:'',category:'',mob_in:'',mob_out:'',shift:'',wbs:'',allow_laha:false,allow_meal:false,allow_fsa:false,applyLaha:false,applyMeal:false,applyFsa:false});setBulkModal(true)}}>✏ Edit Role/Shift</button>
+              <button className="btn btn-sm" style={{color:'var(--red)',borderColor:'var(--red)'}} onClick={bulkDelete}>🗑 Delete Selected</button>
+              <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelected(new Set())}>✕ Clear</button>
+            </div>
+          )}
           {/* Resource table */}
           <div className="card" style={{padding:0,overflow:'auto',marginBottom:'16px'}}>
             <table style={{minWidth:'900px'}}>
               <thead>
                 <tr>
+                  <th style={{width:'32px',textAlign:'center',padding:'8px 6px'}}>
+                    <input type="checkbox"
+                      style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
+                      checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
+                      ref={el => { if (el) el.indeterminate = selected.size > 0 && !filtered.every(r => selected.has(r.id)) }}
+                      onChange={e => {
+                        if (e.target.checked) setSelected(new Set(filtered.map(r => r.id)))
+                        else setSelected(new Set())
+                      }}
+                    />
+                  </th>
                   <Th col="status" label="Status" />
                   <Th col="name" label="Name" />
                   <Th col="role" label="Role / Trade" />
@@ -533,7 +566,11 @@ export function ResourcesPanel() {
                   const room = accom.find(a => (a.occupants||[]).includes(r.id))
                   const po = r.linked_po_id ? pos.find(p => p.id === r.linked_po_id) : null
                   return (
-                    <tr key={r.id} style={{verticalAlign:'middle'}}>
+                    <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
+                      <td style={{textAlign:'center',padding:'5px 6px'}}>
+                        <input type="checkbox" checked={selected.has(r.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
+                          onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(r.id) : next.delete(r.id); return next })} />
+                      </td>
                       <td><span className="badge" style={ss}>{ss.label}</span></td>
                       <td style={{fontWeight:600,minWidth:'130px'}}>
                         <div style={{display:'flex',alignItems:'center',gap:4}}>
@@ -828,20 +865,56 @@ export function ResourcesPanel() {
 
       {bulkModal && (
         <div className="modal-overlay">
-          <div className="modal" style={{maxWidth:'400px'}} onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><h3>✏ Bulk Edit — {selected.size} Resources</h3><button className="btn btn-sm" onClick={()=>setBulkModal(false)}>✕</button></div>
+          <div className="modal" style={{maxWidth:'460px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>✏ Bulk Edit Resources</h3><button className="btn btn-sm" onClick={()=>setBulkModal(false)}>✕</button></div>
             <div className="modal-body">
-              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>Leave fields blank to skip them. Only filled fields will be updated.</p>
-              <div className="fg"><label>Mob In</label><input type="date" className="input" value={bulkForm.mob_in} onChange={e=>setBulkForm(f=>({...f,mob_in:e.target.value}))} /></div>
-              <div className="fg"><label>Mob Out</label><input type="date" className="input" value={bulkForm.mob_out} onChange={e=>setBulkForm(f=>({...f,mob_out:e.target.value}))} /></div>
-              <div className="fg"><label>Shift</label>
-                <select className="input" value={bulkForm.shift} onChange={e=>setBulkForm(f=>({...f,shift:e.target.value}))}>
-                  <option value="">— No change —</option>
-                  <option value="day">Day</option><option value="night">Night</option><option value="both">Both</option>
+              <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>Editing {selected.size} resource{selected.size > 1 ? 's' : ''}. Leave a field blank / at "Keep existing" to leave it unchanged.</p>
+              <div className="fg">
+                <label>Role (set for all selected)</label>
+                <select className="input" value={bulkForm.role} onChange={e=>setBulkForm(f=>({...f,role:e.target.value}))}>
+                  <option value="">— Keep existing —</option>
+                  {rcs.map(rc=><option key={rc.id} value={rc.role}>{rc.role}</option>)}
                 </select>
               </div>
-              <div className="fg"><label>WBS Code</label><input className="input" value={bulkForm.wbs} onChange={e=>setBulkForm(f=>({...f,wbs:e.target.value}))} placeholder="Leave blank to skip" /></div>
-              <div style={{marginTop:'8px',fontSize:'12px',fontWeight:600,color:'var(--text2)'}}>Allowances</div>
+              <div className="fg">
+                <label>Shift Pattern (set for all selected)</label>
+                <select className="input" value={bulkForm.shift} onChange={e=>setBulkForm(f=>({...f,shift:e.target.value}))}>
+                  <option value="">— Keep existing —</option>
+                  <option value="day">☀️ Day Shift</option>
+                  <option value="night">🌙 Night Shift</option>
+                  <option value="both">☀️🌙 Both</option>
+                </select>
+              </div>
+              <div className="fg">
+                <label>Company (set for all selected)</label>
+                <input className="input" value={bulkForm.company} onChange={e=>setBulkForm(f=>({...f,company:e.target.value}))} placeholder="— Keep existing —" />
+              </div>
+              <div className="fg">
+                <label>Employee Type (set for all selected)</label>
+                <select className="input" value={bulkForm.category} onChange={e=>setBulkForm(f=>({...f,category:e.target.value}))}>
+                  <option value="">— Keep existing —</option>
+                  <option value="trades">Trades</option>
+                  <option value="management">Management</option>
+                  <option value="seag">SE AG</option>
+                  <option value="subcontractor">Subcontractor</option>
+                </select>
+              </div>
+              <div className="fg">
+                <label>Mob In Date (set for all selected)</label>
+                <input type="date" className="input" value={bulkForm.mob_in} onChange={e=>setBulkForm(f=>({...f,mob_in:e.target.value}))} />
+              </div>
+              <div className="fg">
+                <label>Mob Out Date (set for all selected)</label>
+                <input type="date" className="input" value={bulkForm.mob_out} onChange={e=>setBulkForm(f=>({...f,mob_out:e.target.value}))} />
+              </div>
+              <div className="fg">
+                <label>WBS Code (set for all selected)</label>
+                <select className="input" value={bulkForm.wbs} onChange={e=>setBulkForm(f=>({...f,wbs:e.target.value}))}>
+                  <option value="">— Select WBS —</option>
+                  {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}
+                </select>
+              </div>
+              <div style={{marginTop:'8px',fontSize:'12px',fontWeight:600,color:'var(--text2)',marginBottom:'6px'}}>Allowances</div>
               {(['allow_laha','allow_meal','allow_fsa'] as const).map(k => {
                 const applyKey = ('apply'+k.replace('allow_','').charAt(0).toUpperCase()+k.replace('allow_','').slice(1)) as 'applyLaha'|'applyMeal'|'applyFsa'
                 const label = k === 'allow_laha' ? 'LAHA' : k === 'allow_meal' ? 'Meal' : 'FSA'
@@ -859,7 +932,7 @@ export function ResourcesPanel() {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={()=>setBulkModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={applyBulkEdit}>Apply to {selected.size} Resources</button>
+              <button className="btn btn-primary" style={{background:'var(--mod-hr)',border:'none'}} onClick={applyBulkEdit}>Apply to Selected</button>
             </div>
           </div>
         </div>
