@@ -197,7 +197,7 @@ export function ExpensesPanel() {
         const sell = exp.cost_ex_gst > 0 && gm > 0 ? calcSell(exp.cost_ex_gst, gm) : 0
         payload = { gm_pct: gm, sell_price: sell }
       }
-      updates.push(supabase.from('expenses').update(payload).eq('id', id).then(() => {}))
+      updates.push(Promise.resolve(supabase.from('expenses').update(payload).eq('id', id)))
     }
     await Promise.all(updates)
     toast(`${ids.length} items updated`, 'success')
@@ -206,7 +206,7 @@ export function ExpensesPanel() {
 
   async function bulkDelete() {
     if (!selected.size || !confirm(`Delete ${selected.size} expense${selected.size !== 1 ? 's' : ''}?`)) return
-    await Promise.all([...selected].map(id => supabase.from('expenses').delete().eq('id', id).then(() => {})))
+    await Promise.all([...selected].map(id => Promise.resolve(supabase.from('expenses').delete().eq('id', id))))
     toast(`${selected.size} deleted`, 'info')
     setSelected(new Set()); load()
   }
@@ -217,7 +217,7 @@ export function ExpensesPanel() {
       const exp = expenses.find(e => e.id === id)
       if (!exp) return Promise.resolve()
       const sell = val && exp.cost_ex_gst > 0 && exp.gm_pct > 0 ? calcSell(exp.cost_ex_gst, exp.gm_pct) : 0
-      return supabase.from('expenses').update({ sell_price: sell }).eq('id', id).then(() => {})
+      return Promise.resolve(supabase.from('expenses').update({ sell_price: sell }).eq('id', id))
     })
     await Promise.all(updates)
     toast(`${selected.size} items set to ${val ? 'chargeable' : 'non-chargeable'}`, 'success')
