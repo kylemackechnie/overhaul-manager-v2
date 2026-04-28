@@ -65,18 +65,22 @@ function parseCourseVal(val: unknown, today: string): CourseStatus {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function InductionsPanel() {
-  const { activeProject } = useAppStore()
-  const [resources, setResources]         = useState<Resource[]>([])
-  const [inductionData, setInductionData] = useState<InductionPerson[]>([])
-  const [fileName, setFileName]           = useState('')
-  const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))
-  const today = new Date().toISOString().slice(0,10)
-
-  useEffect(() => {
+  const { activeProject, setActiveProject } = useAppStore()
+  const [resources, setResources]         = useState<Resource[]>([])\n  const [inductionData, setInductionData] = useState<InductionPerson[]>([])\n  const [fileName, setFileName]           = useState('')\n  const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))\n  const today = new Date().toISOString().slice(0,10)\n\n  useEffect(() => {
     if (!activeProject) return
     supabase.from('resources').select('id,name,role,mob_in,mob_out,company')
       .eq('project_id', activeProject.id)
       .then(({ data }) => setResources(data || []))
+    // Restore persisted induction data
+    if (activeProject.induction_data?.length) {
+      setInductionData(activeProject.induction_data as InductionPerson[])
+      if (activeProject.induction_upload_time) {
+        setFileName(`Last uploaded: ${new Date(activeProject.induction_upload_time).toLocaleString('en-AU')}`)
+      }
+    } else {
+      setInductionData([])
+      setFileName('')
+    }
   }, [activeProject?.id])
 
   // ── File parse ───────────────────────────────────────────────────────────
@@ -107,6 +111,14 @@ export function InductionsPanel() {
         people.push({ name, courses, company: String(r[colFor('COMPANY')]||''), role: String(r[colFor('ROLE')]||'') })
       }
       setInductionData(people)
+      // Persist to project so it survives panel navigation
+      const uploadTime = new Date().toISOString()
+      supabase.from('projects')
+        .update({ induction_data: people, induction_upload_time: uploadTime })
+        .eq('id', activeProject!.id)
+        .then(() => {
+          setActiveProject({ ...activeProject!, induction_data: people as unknown as typeof activeProject.induction_data, induction_upload_time: uploadTime })
+        })
       toast(`Loaded ${people.length} people from ${file.name}`, 'success')
     } catch {
       toast('Failed to parse file', 'error')
