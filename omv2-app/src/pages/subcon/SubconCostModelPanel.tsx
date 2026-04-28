@@ -664,9 +664,16 @@ function VendorRateSnapshot({ vendor: v, doc, startDate }: { vendor: PerVendorRe
                     const dow = d.getDay()
                     const isSat = dow === 6, isSun = dow === 0
                     const dayType: 'weekday' | 'saturday' | 'sunday' = isSun ? 'sunday' : isSat ? 'saturday' : 'weekday'
+                    const DOW_KEYS_SNAP = ['sun','mon','tue','wed','thu','fri','sat']
+                    const patternObj = typeof pattern === 'object' ? pattern : null
+                    const dowKey = DOW_KEYS_SNAP[dow]
+                    const patternDayHrs   = patternObj ? (patternObj.day[dowKey]   || 0) : null
+                    const patternNightHrs = patternObj ? (patternObj.night[dowKey] || 0) : null
                     const worksToday = isNight
-                      ? (isDual || isNS) // night crew works every day in dual/NS
-                      : !isNS           // day crew works every day (mon-sun in 7day, mon-fri in weekday)
+                      ? (isDual || isNS) && (patternObj ? (patternNightHrs! > 0) : true)
+                      : !isNS && (patternObj
+                          ? (patternDayHrs! > 0)
+                          : (pattern === 'sevenDay' ? true : !isSat && !isSun))
                     const lahaDay = rb.lahaPerDay || 0
 
                     if (!worksToday) {
