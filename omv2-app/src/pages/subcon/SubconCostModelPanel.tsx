@@ -259,7 +259,7 @@ export function SubconCostModelPanel() {
           {!result ? (
             <div className="card" style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)' }}>Enter start and end dates above to compute the cost model.</div>
           ) : (
-            <CostModelOutput result={result} doc={selectedDoc} startDate={startDate} endDate={endDate} />
+            <CostModelOutput result={result} doc={selectedDoc} startDate={startDate} endDate={endDate} pattern={pattern} />
           )}
 
           {/* Notes */}
@@ -280,7 +280,7 @@ export function SubconCostModelPanel() {
 
 // ─── Output component ─────────────────────────────────────────────────────────
 
-function CostModelOutput({ result, doc, startDate, endDate }: { result: CostModelResult; doc: RfqDocument; startDate: string; endDate: string }) {
+function CostModelOutput({ result, doc, startDate, endDate, pattern }: { result: CostModelResult; doc: RfqDocument; startDate: string; endDate: string; pattern: Pattern }) {
   const labourRoles = doc.labour_rows || []
   const equipRows   = doc.equip_rows  || []
 
