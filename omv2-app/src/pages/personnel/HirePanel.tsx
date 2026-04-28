@@ -334,7 +334,8 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
             <p>Add equipment hire records for this project.</p>
           </div>
         ) : (
-{hireSelected.size>0 && (
+          <>
+          {hireSelected.size>0 && (
             <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',borderRadius:'6px',marginBottom:'10px',flexWrap:'wrap'}}>
               <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{hireSelected.size} selected</span>
               <button className="btn btn-sm" onClick={()=>{setBulkEditForm({start_date:'',end_date:''});setBulkEditModal(true)}}>✏ Edit Dates</button>
@@ -397,6 +398,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               </tfoot>
             </table>
           </div>
+          </>
         )}
 
       {modal && (
