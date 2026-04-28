@@ -139,14 +139,25 @@ function enumerateWorkingDays(start: string, end: string, pattern: CostModelShif
 
 // ─── Shift cost (no LAHA) for one position on one day ────────────────────────
 
-function shiftCostForDay(rates: RfqResponseLabourRates, shiftType: RfqLabourRow['shiftType'], dayType: DayInfo['dayType']): number {
+/**
+ * patternDayHrs / patternNightHrs: hours from the named pattern for this specific DOW.
+ * If null (generic pattern), falls back to the rate-card shiftHrs / nshiftHrs.
+ * Importantly used to gate whether day or night shift applies this DOW.
+ */
+function shiftCostForDay(
+  rates: RfqResponseLabourRates,
+  shiftType: RfqLabourRow['shiftType'],
+  dayType: DayInfo['dayType'],
+  patternDayHrs: number | null = null,
+  patternNightHrs: number | null = null,
+): number {
   if (rates.rateMode === 'flat') {
     const ds = rates.flatDs || 0, ns = rates.flatNs || 0
     const isDual = shiftType === 'dual', isNS = shiftType === 'single-night'
-    let d = 0, n = 0
-    if (!isNS) d = ds
-    if (isDual || isNS) n = ns
-    if (isNS) d = 0
+    const patBlocksDay   = patternDayHrs   !== null && patternDayHrs   === 0
+    const patBlocksNight = patternNightHrs !== null && patternNightHrs === 0
+    const d = (!isNS && !patBlocksDay)           ? ds : 0
+    const n = ((isDual || isNS) && !patBlocksNight) ? ns : 0
     return d + n
   }
 
@@ -179,12 +190,21 @@ function shiftCostForDay(rates: RfqResponseLabourRates, shiftType: RfqLabourRow[
   }
 
   const isDual = shiftType === 'dual', isNS = shiftType === 'single-night'
+
+  // Pattern hours gate WHICH shifts run; rate card hours govern HOW MANY hours are costed
+  const patternBlocksDay   = patternDayHrs   !== null && patternDayHrs   === 0
+  const patternBlocksNight = patternNightHrs !== null && patternNightHrs === 0
+
+  const applyDay   = !isNS   && !patternBlocksDay
+  const applyNight = (isDual || isNS) && !patternBlocksNight
+
+  // Always use rate card shift hours for the cost calculation
   let dayHrs = shiftHrs
   if (dayType === 'saturday') dayHrs = satShiftHrs
   else if (dayType === 'sunday' || dayType === 'publicHoliday') dayHrs = sunShiftHrs
 
-  const dayCost = isNS ? 0 : calcDay(dayHrs)
-  const nightCost = (isDual || isNS) ? calcNight(nshiftHrs) : 0
+  const dayCost   = applyDay   ? calcDay(dayHrs)    : 0
+  const nightCost = applyNight ? calcNight(nshiftHrs) : 0
   return dayCost + nightCost
 }
 
@@ -301,18 +321,32 @@ export function computeCostModel(doc: RfqDocument, responses: RfqResponse[], par
 
       const rates = respLabour.rates
       const lahaPerDay = rates.laha || 0
-      const wdCost  = shiftCostForDay(rates, lr.shiftType, 'weekday')
-      const satCost = shiftCostForDay(rates, lr.shiftType, 'saturday')
-      const sunCost = shiftCostForDay(rates, lr.shiftType, 'sunday')
-      const phCost  = shiftCostForDay(rates, lr.shiftType, 'publicHoliday')
 
-      // Shift cost by week
+      // Helper: get pattern hours for a specific DOW (null = generic pattern)
+      const patHrs = (dowIndex: number) => {
+        if (!isNamedPattern(params.pattern)) return { d: null, n: null }
+        const key = DOW_KEYS[dowIndex]
+        return {
+          d: (params.pattern.day[key] || 0),
+          n: (params.pattern.night[key] || 0),
+        }
+      }
+
+      // Summary costs (used for display/rate card table) — use representative weekday/sat/sun
+      const wdCost  = shiftCostForDay(rates, lr.shiftType, 'weekday',  isNamedPattern(params.pattern) ? (params.pattern.day['mon'] || 0)   : null, isNamedPattern(params.pattern) ? (params.pattern.night['mon'] || 0)   : null)
+      const satCost = shiftCostForDay(rates, lr.shiftType, 'saturday', isNamedPattern(params.pattern) ? (params.pattern.day['sat'] || 0)   : null, isNamedPattern(params.pattern) ? (params.pattern.night['sat'] || 0)   : null)
+      const sunCost = shiftCostForDay(rates, lr.shiftType, 'sunday',   isNamedPattern(params.pattern) ? (params.pattern.day['sun'] || 0)   : null, isNamedPattern(params.pattern) ? (params.pattern.night['sun'] || 0)   : null)
+      const phCost  = shiftCostForDay(rates, lr.shiftType, 'publicHoliday', null, null)
+
+      // Shift cost by week — pass pattern hours for each specific day
       const byWeekShift: Record<string, number> = {}
       const byWeekDays: Record<string, number> = {}
       const byWeekPH: Record<string, number> = {}
       let shiftTotal = 0
       for (const d of workDays) {
-        const cost = shiftCostForDay(rates, lr.shiftType, d.dayType) * headcount
+        const dow = new Date(d.date + 'T00:00:00').getDay()
+        const { d: pDay, n: pNight } = patHrs(dow)
+        const cost = shiftCostForDay(rates, lr.shiftType, d.dayType, pDay, pNight) * headcount
         shiftTotal += cost
         const wk = fcWeekKey(d.date)
         byWeekShift[wk] = (byWeekShift[wk] || 0) + cost
