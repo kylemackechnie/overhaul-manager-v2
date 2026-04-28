@@ -586,7 +586,7 @@ function CostModelOutput({ result, doc, startDate, endDate }: { result: CostMode
 
       {/* ── Per-vendor rate card + weekly person snapshot ───────────────── */}
       {labourRoles.length > 0 && result.vendors.map(v => (
-        <VendorRateSnapshot key={v.responseId} vendor={v} doc={doc} startDate={startDate} />
+        <VendorRateSnapshot key={v.responseId} vendor={v} doc={doc} startDate={startDate} pattern={pattern} />
       ))}
     </>
   )
@@ -594,7 +594,7 @@ function CostModelOutput({ result, doc, startDate, endDate }: { result: CostMode
 
 // ─── Vendor Rate Card + Weekly Person Snapshot ────────────────────────────────
 
-function VendorRateSnapshot({ vendor: v, doc, startDate }: { vendor: PerVendorResult; doc: RfqDocument; startDate: string }) {
+function VendorRateSnapshot({ vendor: v, doc, startDate, pattern }: { vendor: PerVendorResult; doc: RfqDocument; startDate: string; pattern: Pattern }) {
   const labourRoles = doc.labour_rows || []
   const fmtS = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
