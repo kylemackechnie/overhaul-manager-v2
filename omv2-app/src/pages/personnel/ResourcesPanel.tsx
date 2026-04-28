@@ -14,7 +14,7 @@ const EMPTY: Partial<Resource> = {
   name:'', role:'', category:'trades', shift:'day',
   mob_in:null, mob_out:null, travel_days:0, wbs:'',
   allow_laha:false, allow_fsa:false, allow_meal:false,
-  company:'', phone:'', email:'', notes:'',
+  company:'', phone:'', email:'', notes:'', flights:'',
   linked_po_id:null, rate_card_id:null,
 }
 
@@ -176,6 +176,7 @@ export function ResourcesPanel() {
       allow_laha: form.allow_laha||false, allow_fsa: form.allow_fsa||false, allow_meal: form.allow_meal||false,
       company: form.company||'', phone: form.phone||'', email: form.email||'',
       linked_po_id: form.linked_po_id||null, rate_card_id: form.rate_card_id||null, notes: form.notes||'',
+      flights: (form as Partial<Resource> & {flights?:string}).flights||'',
       person_id: personId,
     }
     const isNew = modal === 'new'
@@ -550,6 +551,7 @@ export function ResourcesPanel() {
                   <Th col="allow_meal" label="Meal" title="Meal Allowance" />
                   <Th col="allow_fsa" label="FSA" title="Field Service Allowance" />
                   <th>Car</th>
+                  <th>Flights</th>
                   <th>Room</th>
                   <th>WBS</th>
                   <th>PO</th>
@@ -643,6 +645,7 @@ export function ResourcesPanel() {
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>
                       <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
+                      <td style={{fontSize:'11px',color:'var(--text2)',whiteSpace:'nowrap',maxWidth:'140px',overflow:'hidden',textOverflow:'ellipsis'}} title={r.flights||undefined}>{r.flights||'—'}</td>
                       <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap'}}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',maxWidth:'130px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
                       <td>
@@ -818,6 +821,10 @@ export function ResourcesPanel() {
                 <div className="fg">
                   <label>Notes</label>
                   <input className="input" value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Optional" />
+                </div>
+                <div className="fg">
+                  <label>✈️ Flights</label>
+                  <input className="input" value={(form as Partial<Resource> & {flights?:string}).flights||''} onChange={e=>setForm(f=>({...f,flights:e.target.value}))} placeholder="e.g. QF510 BNE→SYD 18/05 09:30" />
                 </div>
               </div>
               {form.category==='subcontractor' && (

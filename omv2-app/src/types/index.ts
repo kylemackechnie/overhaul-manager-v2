@@ -148,6 +148,7 @@ export interface Resource {
   transport_mode: string
   drive_km: number
   meal_break_adj: boolean
+  flights: string
   flags: Record<string, unknown>
   notes: string
   created_at: string
