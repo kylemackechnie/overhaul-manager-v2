@@ -657,7 +657,7 @@ export function ResourcesPanel() {
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>
-                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hire-dry'):undefined} title={car?'View in Dry Hire':undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
+                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hr-cars'):undefined} title={car?'View in Car Hire':undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
                       <td style={{fontSize:'11px',color:'var(--text2)',whiteSpace:'nowrap',maxWidth:'140px',overflow:'hidden',textOverflow:'ellipsis'}} title={r.flights||undefined}>{r.flights||'—'}</td>
                       <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined} title={room?'View in Accommodation':undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
                       <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',maxWidth:'130px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
