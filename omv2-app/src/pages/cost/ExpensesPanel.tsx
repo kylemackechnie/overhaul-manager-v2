@@ -40,6 +40,9 @@ export function ExpensesPanel() {
   const [importText, setImportText] = useState('')
   const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkModal, setBulkModal] = useState<null|'wbs'|'gm'|'vendor'|'person'>(null)
+  const [bulkVal, setBulkVal] = useState('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -171,6 +174,56 @@ export function ExpensesPanel() {
     toast('Deleted', 'info'); load()
   }
 
+  function toggleSelect(id: string) {
+    setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+  function toggleAll(check: boolean) {
+    setSelected(check ? new Set(filtered.map(e => e.id)) : new Set())
+  }
+
+  async function applyBulk() {
+    if (!selected.size || !bulkModal) return
+    const ids = [...selected]
+    const updates: Promise<unknown>[] = []
+    for (const id of ids) {
+      const exp = expenses.find(e => e.id === id)
+      if (!exp) continue
+      let payload: Record<string, unknown> = {}
+      if (bulkModal === 'wbs')    payload = { wbs: bulkVal }
+      if (bulkModal === 'vendor') payload = { vendor: bulkVal }
+      if (bulkModal === 'person') payload = { name: bulkVal }
+      if (bulkModal === 'gm') {
+        const gm = parseFloat(bulkVal) || 0
+        const sell = exp.cost_ex_gst > 0 && gm > 0 ? calcSell(exp.cost_ex_gst, gm) : 0
+        payload = { gm_pct: gm, sell_price: sell }
+      }
+      updates.push(supabase.from('expenses').update(payload).eq('id', id))
+    }
+    await Promise.all(updates)
+    toast(`${ids.length} items updated`, 'success')
+    setBulkModal(null); setBulkVal(''); setSelected(new Set()); load()
+  }
+
+  async function bulkDelete() {
+    if (!selected.size || !confirm(`Delete ${selected.size} expense${selected.size !== 1 ? 's' : ''}?`)) return
+    await Promise.all([...selected].map(id => supabase.from('expenses').delete().eq('id', id)))
+    toast(`${selected.size} deleted`, 'info')
+    setSelected(new Set()); load()
+  }
+
+  async function bulkChargeable(val: boolean) {
+    if (!selected.size) return
+    const updates = [...selected].map(id => {
+      const exp = expenses.find(e => e.id === id)
+      if (!exp) return Promise.resolve()
+      const sell = val && exp.cost_ex_gst > 0 && exp.gm_pct > 0 ? calcSell(exp.cost_ex_gst, exp.gm_pct) : 0
+      return supabase.from('expenses').update({ sell_price: sell }).eq('id', id)
+    })
+    await Promise.all(updates)
+    toast(`${selected.size} items set to ${val ? 'chargeable' : 'non-chargeable'}`, 'success')
+    setSelected(new Set()); load()
+  }
+
 
   function exportCSV() {
     downloadCSV(
@@ -197,9 +250,26 @@ export function ExpensesPanel() {
             {expenses.length} items · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ Add Expense</button>
+        <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ Add Expense</button>
+        </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="card" style={{marginBottom:'12px',padding:'10px 14px',borderLeft:'3px solid #f472b6',display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
+          <span style={{fontSize:'12px',fontWeight:600,color:'#f472b6',marginRight:'4px'}}>{selected.size} selected</span>
+          <button className="btn btn-sm" onClick={()=>{setBulkVal('');setBulkModal('wbs')}}>📂 Set WBS</button>
+          <button className="btn btn-sm" onClick={()=>{setBulkVal('');setBulkModal('vendor')}}>🏪 Set Vendor</button>
+          <button className="btn btn-sm" onClick={()=>{setBulkVal('');setBulkModal('person')}}>👤 Set Person</button>
+          <button className="btn btn-sm" onClick={()=>{setBulkVal(String(activeProject?.default_gm||15));setBulkModal('gm')}}>📊 Set GM%</button>
+          <button className="btn btn-sm" onClick={()=>bulkChargeable(true)}>✓ Chargeable</button>
+          <button className="btn btn-sm" onClick={()=>bulkChargeable(false)}>✗ Non-chargeable</button>
+          <button className="btn btn-sm" style={{color:'var(--red)'}} onClick={bulkDelete}>🗑 Delete</button>
+          <button className="btn btn-sm" style={{marginLeft:'auto'}} onClick={()=>setSelected(new Set())}>Clear</button>
+        </div>
+      )}
 
       {showImport && (
         <div className="card" style={{marginBottom:'16px'}}>
@@ -232,6 +302,10 @@ export function ExpensesPanel() {
             <table>
               <thead>
                 <tr>
+                  <th style={{width:'28px',textAlign:'center',padding:'8px 6px'}}>
+                    <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
+                      onChange={e=>toggleAll(e.target.checked)} style={{accentColor:'#f472b6'}} />
+                  </th>
                   <th>Date</th><th>Description</th><th>Category</th>
                   <th style={{ textAlign: 'right' }}>Cost (ex GST)</th>
                   <th style={{ textAlign: 'right' }}>Sell</th>
@@ -241,6 +315,9 @@ export function ExpensesPanel() {
               <tbody>
                 {filtered.map(e => (
                   <tr key={e.id}>
+                    <td style={{textAlign:'center',padding:'5px 6px'}}>
+                      <input type="checkbox" checked={selected.has(e.id)} onChange={()=>toggleSelect(e.id)} style={{accentColor:'#f472b6'}} />
+                    </td>
                     <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{e.date || '—'}</td>
                     <td style={{ fontWeight: 500 }}>{e.description}</td>
                     <td style={{ fontSize: '12px', color: 'var(--text3)' }}>{e.category || '—'}</td>
@@ -340,15 +417,9 @@ export function ExpensesPanel() {
                 {tceLines.length > 0 ? (
                   <select className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))}>
                     <option value="">— No TCE Link —</option>
-                    {/* If the saved value isn't in the option list (e.g. line was
-                        deleted, or originally tagged to a now-filtered source),
-                        keep it visible at the top so re-saving doesn't silently
-                        wipe it. The user can then pick a current line if they
-                        want to retag, or save and keep the existing tag. */}
                     {form.tce_item_id && !tceLines.some(l => l.item_id === form.tce_item_id) && (
                       <option value={form.tce_item_id}>{form.tce_item_id} (not in current TCE)</option>
                     )}
-                    {/* CRITICAL: value is item_id (stable text), never the UUID id */}
                     {tceLines.map(l => <option key={l.id} value={l.item_id || ''}>{l.item_id} — {l.description}</option>)}
                   </select>
                 ) : (
@@ -365,6 +436,51 @@ export function ExpensesPanel() {
               <button className="btn btn-primary" onClick={save} disabled={saving || !canWrite('cost_tracking')}>
                 {saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {bulkModal && (
+        <div className="modal-overlay" onClick={()=>setBulkModal(null)}>
+          <div className="modal" style={{maxWidth:'380px'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Bulk Set {bulkModal === 'wbs' ? 'WBS Code' : bulkModal === 'gm' ? 'GM%' : bulkModal === 'vendor' ? 'Vendor' : 'Person'} ({selected.size} items)</h3>
+              <button className="btn btn-sm" onClick={()=>setBulkModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {bulkModal === 'wbs' ? (
+                <div className="fg">
+                  <label>WBS Code</label>
+                  <select className="input" value={bulkVal} onChange={e=>setBulkVal(e.target.value)}>
+                    <option value="">— No WBS —</option>
+                    {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}
+                  </select>
+                </div>
+              ) : bulkModal === 'gm' ? (
+                <div className="fg">
+                  <label>GM %</label>
+                  <input type="number" className="input" value={bulkVal} onChange={e=>setBulkVal(e.target.value)} step="0.5" min="0" max="99" autoFocus />
+                </div>
+              ) : bulkModal === 'vendor' ? (
+                <div className="fg">
+                  <label>Vendor</label>
+                  <input className="input" value={bulkVal} onChange={e=>setBulkVal(e.target.value)} placeholder="Enter vendor name" autoFocus />
+                </div>
+              ) : (
+                <div className="fg">
+                  <label>Person</label>
+                  <select className="input" value={bulkVal} onChange={e=>setBulkVal(e.target.value)}>
+                    <option value="">— Select —</option>
+                    {resources.map(r=><option key={r.id} value={r.name}>{r.name}{r.role?` — ${r.role}`:''}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={()=>setBulkModal(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{background:'#f472b6',border:'none'}} onClick={applyBulk}>Apply to {selected.size} items</button>
             </div>
           </div>
         </div>

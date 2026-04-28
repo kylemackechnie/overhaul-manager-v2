@@ -75,6 +75,23 @@ const EMPTY_FORM: InvForm = {
   invoice_date:'', due_date:'', period_from:'', period_to:'', notes:'',
 }
 
+// ── SAP Invoice Import ────────────────────────────────────────────────────────
+interface SapInvRow {
+  invoiceNumber: string; vendorDetails: string; vendorNumber: string
+  poNumber: string; matchedPOId: string|null
+  invoiceDate: string; dueDate: string; currency: string; amount: number
+  isDup: boolean; include: boolean
+}
+
+/** Excel serial date → ISO string (mirrors HTML _excelSerialToISO) */
+function excelSerialToISO(serial: unknown): string {
+  const n = parseFloat(String(serial))
+  if (isNaN(n) || n < 1) return ''
+  const d = new Date((n - 25569) * 86400 * 1000)
+  if (isNaN(d.getTime())) return ''
+  return d.toISOString().slice(0, 10)
+}
+
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
   const { canWrite } = usePermissions()
@@ -93,6 +110,10 @@ export function InvoicesPanel() {
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
   const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
   const [payDateModal, setPayDateModal] = useState<{inv:Invoice;date:string}|null>(null)
+  const [sapModal, setSapModal] = useState(false)
+  const [sapRows, setSapRows] = useState<SapInvRow[]>([])
+  const [sapParsing, setSapParsing] = useState(false)
+  const [sapImporting, setSapImporting] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -167,6 +188,110 @@ export function InvoicesPanel() {
     toast('Invoice deleted','info'); load()
   }
 
+  // ── SAP Invoice Import ────────────────────────────────────────────────────
+  async function parseSapFile(file: File) {
+    setSapParsing(true)
+    try {
+      // SheetJS is loaded globally via CDN in the app shell
+      const XLSX = (window as unknown as {XLSX: {read:(d:Uint8Array,o:{type:string})=>unknown}}).XLSX
+      if (!XLSX) { toast('SheetJS not available', 'error'); return }
+      const buf = await file.arrayBuffer()
+      const wb = (XLSX.read(new Uint8Array(buf), { type: 'array' }) as {SheetNames:string[];Sheets:Record<string,unknown>})
+      const ws = wb.Sheets[wb.SheetNames[0]] as unknown
+      const XLSX2 = XLSX as unknown as {utils:{sheet_to_json:(ws:unknown,o:{header:number;defval:string})=>unknown[][]}}
+      const rows = XLSX2.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][]
+      if (!rows.length) { toast('Empty file', 'error'); return }
+
+      const hdrs = rows[0].map(h => String(h).trim().toLowerCase())
+      const ci = (name: string) => hdrs.indexOf(name)
+
+      const colRef  = ci('reference')
+      const colVend = ci('vendor details')
+      const colSupp = ci('supplier')
+      const colPO   = ci('purchasing document')
+      const colDate = ci('document date')
+      const colCur  = ci('currency')
+      const colAmt  = ci('net amount')
+      const colDue  = ci('net due date')
+
+      if (colRef < 0 || colAmt < 0) {
+        toast('Could not find required columns (Reference, Net amount). Check file format.', 'error')
+        return
+      }
+
+      // Existing invoice numbers for dup detection
+      const existingNums = new Set(invoices.map(i => String(i.invoice_number || '').trim()))
+
+      const parsed: SapInvRow[] = []
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        const invNum = String(row[colRef] ?? '').trim()
+        if (!invNum) continue
+        const poNum = colPO >= 0 ? String(row[colPO] ?? '').trim() : ''
+        const matchedPO = pos.find(p => p.po_number && p.po_number.trim() === poNum) || null
+        const isDup = existingNums.has(invNum)
+        parsed.push({
+          invoiceNumber: invNum,
+          vendorDetails: colVend >= 0 ? String(row[colVend] ?? '').trim() : '',
+          vendorNumber:  colSupp >= 0 ? String(row[colSupp] ?? '').trim() : '',
+          poNumber: poNum,
+          matchedPOId: matchedPO ? matchedPO.id : null,
+          invoiceDate: colDate >= 0 ? excelSerialToISO(row[colDate]) : '',
+          dueDate: colDue >= 0 ? excelSerialToISO(row[colDue]) : '',
+          currency: colCur >= 0 ? String(row[colCur] ?? 'AUD').trim() : 'AUD',
+          amount: colAmt >= 0 ? parseFloat(String(row[colAmt])) || 0 : 0,
+          isDup,
+          include: !isDup,
+        })
+      }
+      setSapRows(parsed)
+      setSapModal(true)
+    } catch (err) {
+      toast(`Error reading file: ${err}`, 'error')
+    } finally {
+      setSapParsing(false)
+    }
+  }
+
+  function toggleSapRow(idx: number, val: boolean) {
+    setSapRows(prev => prev.map((r, i) => i === idx ? { ...r, include: val } : r))
+  }
+
+  function toggleAllSapRows(val: boolean) {
+    setSapRows(prev => prev.map(r => r.isDup ? r : { ...r, include: val }))
+  }
+
+  async function confirmSapImport() {
+    const toImport = sapRows.filter(r => r.include)
+    if (!toImport.length) { toast('No invoices selected', 'info'); return }
+    setSapImporting(true)
+    const now = new Date().toISOString()
+    const user = currentUser?.email || 'local'
+    let imported = 0
+    for (const row of toImport) {
+      const { error } = await supabase.from('invoices').insert({
+        project_id: activeProject!.id,
+        po_id: row.matchedPOId || null,
+        invoice_number: row.invoiceNumber,
+        vendor_ref: row.invoiceNumber,
+        vendor_details: row.vendorDetails,
+        status: 'received',
+        status_history: [{ status: 'received', setBy: user, setAt: now, note: 'SAP bulk import' }],
+        source: 'sap_import',
+        currency: row.currency,
+        amount: row.amount,
+        invoice_date: row.invoiceDate || null,
+        due_date: row.dueDate || null,
+        notes: row.matchedPOId ? '' : `Imported unlinked — PO ${row.poNumber} not found`,
+        created_at: now,
+      })
+      if (!error) imported++
+    }
+    const unlinked = toImport.filter(r => !r.matchedPOId).length
+    toast(`${imported} invoice${imported !== 1 ? 's' : ''} imported${unlinked ? ` (${unlinked} unlinked — link to POs in register)` : ''}`, 'success')
+    setSapImporting(false); setSapModal(false); setSapRows([]); load()
+  }
+
   // ── Sorting ───────────────────────────────────────────────────────────────
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -231,6 +356,10 @@ export function InvoicesPanel() {
           </p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
+          <label className="btn btn-sm" style={{cursor:'pointer',background:'#1e40af',color:'#fff',border:'none',position:'relative'}} title="Import from SAP Excel export">
+            {sapParsing ? <span className="spinner" style={{width:'12px',height:'12px'}}/> : '📥 SAP Import'}
+            <input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={e => { const f = e.target.files?.[0]; if (f) { e.target.value=''; parseSapFile(f) } }} disabled={sapParsing} />
+          </label>
           <button className="btn btn-sm" onClick={() => {
             const rows = [['Invoice #','Vendor Ref','PO','Status','Amount','Currency','Invoice Date','Due Date']]
             filtered.forEach(i => {
@@ -569,6 +698,76 @@ export function InvoicesPanel() {
             <div className="modal-footer">
               <button className="btn" onClick={()=>setPayDateModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={async()=>{await doTransition(payDateModal.inv,'paid','',payDateModal.date);setPayDateModal(null)}}>Confirm Payment</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SAP Invoice Import Modal */}
+      {sapModal && (
+        <div className="modal-overlay" onClick={()=>{setSapModal(false);setSapRows([])}}>
+          <div className="modal" style={{maxWidth:'660px',maxHeight:'80vh',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header"><h3>📥 SAP Invoice Import</h3><button className="btn btn-sm" onClick={()=>{setSapModal(false);setSapRows([])}}>✕</button></div>
+            <div style={{padding:'0 20px 8px',fontSize:'12px',color:'var(--text3)'}}>
+              Review and select invoices to import. Duplicates (matching existing invoice numbers) are pre-deselected.
+            </div>
+            {/* Summary pills */}
+            <div style={{display:'flex',gap:'8px',padding:'0 20px 12px',flexWrap:'wrap'}}>
+              {[
+                {label:`${sapRows.length} total`,bg:'#dbeafe',color:'#1e40af'},
+                {label:`${sapRows.filter(r=>!r.isDup).length} new`,bg:'#d1fae5',color:'#059669'},
+                ...(sapRows.filter(r=>r.isDup).length ? [{label:`${sapRows.filter(r=>r.isDup).length} duplicates`,bg:'#fef3c7',color:'#d97706'}] : []),
+                ...(sapRows.filter(r=>!r.matchedPOId&&!r.isDup).length ? [{label:`${sapRows.filter(r=>!r.matchedPOId&&!r.isDup).length} no PO match`,bg:'#fee2e2',color:'#dc2626'}] : []),
+              ].map((p,i) => (
+                <span key={i} style={{padding:'4px 10px',borderRadius:'6px',fontSize:'12px',fontWeight:600,background:p.bg,color:p.color}}>{p.label}</span>
+              ))}
+            </div>
+            <div style={{flex:1,overflow:'auto',padding:'0 20px'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                <thead>
+                  <tr style={{background:'var(--bg3)',position:'sticky',top:0}}>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'center'}}>
+                      <input type="checkbox" checked={sapRows.filter(r=>!r.isDup).every(r=>r.include)} onChange={e=>toggleAllSapRows(e.target.checked)} />
+                    </th>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'left'}}>Invoice #</th>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'left'}}>Vendor</th>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'left'}}>PO #</th>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'left'}}>Date</th>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'right'}}>Amount</th>
+                    <th style={{padding:'6px 8px',border:'1px solid var(--border2)',textAlign:'left'}}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sapRows.map((row, i) => {
+                    const sym = row.currency === 'EUR' ? '€' : row.currency === 'USD' ? 'US$' : '$'
+                    const fmtD = (s: string) => s ? s.split('-').reverse().join('/') : '—'
+                    const statusEl = row.isDup
+                      ? <span style={{fontSize:'10px',padding:'1px 6px',borderRadius:'3px',background:'#fef3c7',color:'#d97706',fontWeight:700}}>Duplicate</span>
+                      : row.matchedPOId
+                        ? <span style={{fontSize:'10px',padding:'1px 6px',borderRadius:'3px',background:'#d1fae5',color:'#059669',fontWeight:700}}>PO Matched</span>
+                        : <span style={{fontSize:'10px',padding:'1px 6px',borderRadius:'3px',background:'#fee2e2',color:'#dc2626',fontWeight:700}}>No PO Match</span>
+                    return (
+                      <tr key={i} style={{opacity: row.isDup ? 0.6 : 1, background: row.isDup ? '#fffbeb' : undefined}}>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)',textAlign:'center'}}>
+                          <input type="checkbox" checked={row.include} disabled={row.isDup} onChange={e=>toggleSapRow(i,e.target.checked)} />
+                        </td>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)',fontFamily:'var(--mono)',fontWeight:600}}>{row.invoiceNumber}</td>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)',maxWidth:'160px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={row.vendorDetails}>{row.vendorDetails.slice(0,40)}</td>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)',fontFamily:'var(--mono)'}}>{row.poNumber || '—'}</td>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)'}}>{fmtD(row.invoiceDate)}</td>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)',textAlign:'right',fontFamily:'var(--mono)',fontWeight:600}}>{sym}{Number(row.amount).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})} {row.currency}</td>
+                        <td style={{padding:'5px 8px',border:'1px solid var(--border2)'}}>{statusEl}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="modal-footer" style={{marginTop:'12px'}}>
+              <button className="btn" onClick={()=>{setSapModal(false);setSapRows([])}}>Cancel</button>
+              <button className="btn btn-primary" style={{background:'#1e40af',color:'#fff',border:'none'}} onClick={confirmSapImport} disabled={sapImporting || !sapRows.some(r=>r.include)}>
+                {sapImporting ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : `Import ${sapRows.filter(r=>r.include).length} Invoice${sapRows.filter(r=>r.include).length!==1?'s':''}`}
+              </button>
             </div>
           </div>
         </div>
