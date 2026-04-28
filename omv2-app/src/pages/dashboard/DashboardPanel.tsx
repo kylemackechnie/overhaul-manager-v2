@@ -75,7 +75,7 @@ export function DashboardPanel() {
       supabase.from('cars').select('id,vehicle_type,rego,vendor,start_date,end_date').eq('project_id', pid),
       supabase.from('accommodation').select('id,property,room,check_in,check_out,occupants').eq('project_id', pid),
       supabase.from('shipments').select('direction,status').eq('project_id', pid),
-      supabase.from('subcon_contracts').select('status,value').eq('project_id', pid),
+      supabase.from('rfq_documents').select('id,stage').eq('project_id', pid),
       supabase.from('work_orders').select('status').eq('project_id', pid),
       supabase.from('issued_log').select('qty').eq('project_id', pid),
       supabase.from('tooling_costings').select('tv_no,charge_start,charge_end').eq('project_id', pid),
@@ -116,9 +116,10 @@ export function DashboardPanel() {
     const partsReceived = parts.filter(p => p.status === 'received' || p.status === 'issued').length
     const partsIssued = (partsData.data || []).filter((p: {status?:string}) => p.status === 'issued').length
 
-    // Subcon
-    const openRfqs = (subconData.data || []).filter(c => c.status === 'draft' || c.status === 'pending').length
-    const contracts = (subconData.data || []).length
+    // Subcon (RFQ-based)
+    const rfqDocs = (subconData.data || []) as {id:string;stage:string}[]
+    const openRfqs = rfqDocs.filter(r => r.stage === 'issued' || r.stage === 'responses_in').length
+    const contracts = rfqDocs.filter(r => r.stage === 'awarded' || r.stage === 'contracted').length
 
     // Work orders
     const woTotal = wos.length
@@ -404,8 +405,8 @@ export function DashboardPanel() {
 
           <ModCard icon="🏗" title="Subcontractors" sub="RFQs, contracts & subcon timesheets" accent="#4f46e5" panel="subcon-rfq"
             stats={[
-              { val: d.openRfqs || '—', lbl: 'Open RFQs', color: '#4f46e5' },
-              { val: d.contracts || '—', lbl: 'Contracts', color: 'var(--text2)' },
+              { val: d.openRfqs || '—', lbl: 'Issued RFQs', color: '#4f46e5' },
+              { val: d.contracts || '—', lbl: 'Awarded', color: 'var(--green)' },
             ]} />
 
           <ModCard icon="🔩" title="Work Orders" sub="WO tracking & actuals allocation" accent="var(--mod-wo)" panel="work-orders"

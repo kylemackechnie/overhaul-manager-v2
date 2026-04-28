@@ -374,7 +374,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'subcon-vendor-snapshot': return <SubconVendorSnapshot />
     case 'subcon-rfq-register':    return <SubconRFQRegisterPanel />
     case 'subcon-rfq-doc':         return <SubconRFQDocPanel />
-    case 'subcon-contracts':      return <SubconRFQPanel />
+    case 'subcon-contracts':      return <POsPanel />
     case 'hr-dashboard':          return <HRDashboardPanel />
     case 'hr-ratecards':          return <RateCardsPanel />
     case 'hr-resources':          return <ResourcesPanel />

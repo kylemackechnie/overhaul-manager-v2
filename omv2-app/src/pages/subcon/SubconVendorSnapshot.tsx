@@ -25,7 +25,7 @@ export function SubconVendorSnapshot() {
     setLoading(true)
     const pid = activeProject!.id
     const [cRes, invRes, carRes, hireRes, accomRes] = await Promise.all([
-      supabase.from('subcon_contracts').select('vendor,value').eq('project_id', pid),
+      supabase.from('purchase_orders').select('vendor,po_value,quote_source').eq('project_id', pid),
       supabase.from('invoices').select('vendor_ref,amount').eq('project_id', pid),
       supabase.from('cars').select('vendor,total_cost').eq('project_id', pid),
       supabase.from('hire_items').select('vendor,hire_cost').eq('project_id', pid),
@@ -38,7 +38,7 @@ export function SubconVendorSnapshot() {
       if (!map[v]) map[v] = { vendor: v, contracts: 0, contractValue: 0, invoices: 0, invoiced: 0, cars: 0, carCost: 0, hire: 0, hireCost: 0, accom: 0, accomCost: 0, total: 0 }
     }
 
-    for (const c of cRes.data || []) { ensure(c.vendor); if (!c.vendor) continue; map[c.vendor].contracts++; map[c.vendor].contractValue += c.value || 0 }
+    for (const c of cRes.data || []) { ensure(c.vendor); if (!c.vendor) continue; map[c.vendor].contracts++; map[c.vendor].contractValue += (c as {po_value?:number}).po_value || 0 }
     for (const i of invRes.data || []) { ensure(i.vendor_ref); if (!i.vendor_ref) continue; map[i.vendor_ref].invoices++; map[i.vendor_ref].invoiced += i.amount || 0 }
     for (const c of carRes.data || []) { ensure(c.vendor); if (!c.vendor) continue; map[c.vendor].cars++; map[c.vendor].carCost += c.total_cost || 0 }
     for (const h of hireRes.data || []) { ensure(h.vendor); if (!h.vendor) continue; map[h.vendor].hire++; map[h.vendor].hireCost += h.hire_cost || 0 }

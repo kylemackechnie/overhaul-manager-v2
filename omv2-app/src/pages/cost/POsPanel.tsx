@@ -448,6 +448,11 @@ function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, 
             </div>
             <div style={{fontWeight:600,fontSize:'14px',marginBottom:'2px'}}>{po.vendor || 'No vendor'}</div>
             <div style={{fontSize:'12px',color:'var(--text2)',marginBottom:'6px'}}>{po.description || '—'}</div>
+            {po.quote_source?.type === 'rfq' && po.quote_source?.docTitle && (
+              <div style={{fontSize:'10px',color:'#059669',fontWeight:600,marginBottom:'4px'}}>
+                🔗 RFQ: {po.quote_source.docTitle}
+              </div>
+            )}
             <div style={{display:'flex',gap:'14px',fontSize:'11px',color:'var(--text3)',flexWrap:'wrap',alignItems:'center'}}>
               <span title={wbsCodes.join(', ')}>📋 <span style={{fontFamily:'var(--mono)',color:'var(--text2)'}}>{wbsDisplay}</span></span>
               {(p.effective_start || p.effective_end) && (

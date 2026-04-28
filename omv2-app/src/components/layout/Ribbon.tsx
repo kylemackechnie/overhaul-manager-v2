@@ -106,9 +106,6 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📊', label: 'RFQ Register', panel: 'subcon-rfq-register' },
         { icon: '📈', label: 'Cost Model', panel: 'subcon-rfq' },
       ]},
-      { label: 'Contracts', buttons: [
-        { icon: '📃', label: 'Contracts', panel: 'subcon-contracts' },
-      ]},
       { label: 'Vendors', buttons: [
         { icon: '📊', label: 'Vendor Snapshot', panel: 'subcon-vendor-snapshot' },
       ]},
@@ -224,7 +221,6 @@ export function Ribbon() {
       supabase.from('hire_items').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hire-dry',r.count||0]),
       supabase.from('nrg_tce_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['nrg-tce',r.count||0]),
       supabase.from('shipments').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['shipping-inbound',r.count||0]),
-      supabase.from('subcon_contracts').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['subcon-dashboard',r.count||0]),
     ]).then(results => {
       const c: Record<string,number> = {}
       results.forEach(([panel, count]) => { c[panel as string] = count as number })
