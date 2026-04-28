@@ -66,7 +66,13 @@ function parseCourseVal(val: unknown, today: string): CourseStatus {
 
 export function InductionsPanel() {
   const { activeProject, setActiveProject } = useAppStore()
-  const [resources, setResources]         = useState<Resource[]>([])\n  const [inductionData, setInductionData] = useState<InductionPerson[]>([])\n  const [fileName, setFileName]           = useState('')\n  const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))\n  const today = new Date().toISOString().slice(0,10)\n\n  useEffect(() => {
+  const [resources, setResources]         = useState<Resource[]>([])
+  const [inductionData, setInductionData] = useState<InductionPerson[]>([])
+  const [fileName, setFileName]           = useState('')
+  const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))
+  const today = new Date().toISOString().slice(0,10)
+
+  useEffect(() => {
     if (!activeProject) return
     supabase.from('resources').select('id,name,role,mob_in,mob_out,company')
       .eq('project_id', activeProject.id)
