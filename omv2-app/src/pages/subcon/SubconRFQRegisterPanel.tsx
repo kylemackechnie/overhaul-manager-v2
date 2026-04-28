@@ -843,7 +843,7 @@ function ResponsesInline({ doc, responses, awardedResp, onAddResponse, onEditRes
                 {r.received_date && <div style={{ fontSize: '10px', color: 'var(--text3)' }}>Received {fmtDate(r.received_date)}</div>}
                 {r.total_quote != null && (
                   <div style={{ fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 700, color: isAwarded ? '#059669' : 'var(--text)' }}>
-                    {fmtMoney(r.total_quote)} {r.currency || ''}
+                    {'$' + Number(r.total_quote).toLocaleString('en-AU', { maximumFractionDigits: 2 })} {r.currency || ''}
                   </div>
                 )}
                 {r.notes && <div style={{ fontSize: '11px', color: 'var(--text2)', flex: 1 }}>{r.notes}</div>}
