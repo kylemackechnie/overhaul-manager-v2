@@ -41,7 +41,6 @@ export function AccommodationPanel() {
   const [selAccom, setSelAccom] = useState<Set<string>>(new Set())
   const [bulkEditModal, setBulkEditModal] = useState(false)
   const [bulkEditForm, setBulkEditForm] = useState({ check_in:'', check_out:'', nightly_rate:0, applyRate:false })
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkForm, setBulkForm] = useState({ property:'', vendor:'', check_in:'', check_out:'', gm_pct:15, n:1, wbs:'' })
   const [form, setForm] = useState<AccomForm>(EMPTY)
   const [saving, setSaving] = useState(false)

@@ -79,7 +79,7 @@ export function InductionsPanel() {
       .then(({ data }) => setResources(data || []))
     // Restore persisted induction data
     if (activeProject.induction_data?.length) {
-      setInductionData(activeProject.induction_data as InductionPerson[])
+      setInductionData(activeProject.induction_data as unknown as InductionPerson[])
       if (activeProject.induction_upload_time) {
         setFileName(`Last uploaded: ${new Date(activeProject.induction_upload_time).toLocaleString('en-AU')}`)
       }
@@ -123,7 +123,7 @@ export function InductionsPanel() {
         .update({ induction_data: people, induction_upload_time: uploadTime })
         .eq('id', activeProject!.id)
         .then(() => {
-          setActiveProject({ ...activeProject!, induction_data: people as unknown as typeof activeProject.induction_data, induction_upload_time: uploadTime })
+          if (activeProject) setActiveProject({ ...activeProject, induction_data: people as unknown as typeof activeProject.induction_data, induction_upload_time: uploadTime })
         })
       toast(`Loaded ${people.length} people from ${file.name}`, 'success')
     } catch {
