@@ -51,7 +51,7 @@ export function NrgTcePanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes] = await Promise.all([
+    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes, poRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('source').order('sort_order').order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
@@ -60,9 +60,11 @@ export function NrgTcePanel() {
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
+      supabase.from('purchase_orders').select('id,tce_item_id,po_value,status').eq('project_id', pid),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
+    setPos((poRes.data || []) as {id:string;tce_item_id:string|null;po_value:number|null;status:string}[])
     setTimesheets((tsRes.data || []) as NrgTimesheet[])
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
