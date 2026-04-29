@@ -75,6 +75,8 @@ export interface TceLine {
   tce_total: number
   kpi_included: boolean
   line_type: string
+  sort_order: number
+  parent_id: string | null
 }
 
 export interface TceImportResult {
@@ -87,6 +89,7 @@ export interface TceImportResult {
 export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string>): TceImportResult {
   const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
   const result: TceImportResult = { added: [], toUpdate: [], skipped: 0, errors: [] }
+  let sortSeq = 0
 
   // ── Overheads tab ──
   const ohName = wb.SheetNames.find(n => /overhead/i.test(n))
@@ -94,13 +97,15 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[ohName], { header: 1, defval: '' }) as Row[]
     const hdr = buildHeaderMap(rows, OH_SYNONYMS, 6)
     if (hdr) {
+      let currentParent: string | null = null
       for (let r = hdr.firstDataRow; r < rows.length; r++) {
         const row = rows[r]
         const itemId = cellStr(row, hdr.colMap.itemId)
         const desc = cellStr(row, hdr.colMap.description)
         if (!itemId || !/^\d+\.\d+\.\d+/.test(itemId)) continue
         if (!desc) continue
-        const isGroup = /^\d+\.\d+\.\d+$/.test(itemId) // 3 segments = group header
+        const isGroup = /^\d+\.\d+\.\d+$/.test(itemId)
+        if (isGroup) currentParent = itemId
         const qty = cellNum(row, hdr.colMap.estimatedQty)
         const rate = cellNum(row, hdr.colMap.tceRate)
         const total = cellNum(row, hdr.colMap.tceTotal) || qty * rate
@@ -110,7 +115,6 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
         const unit = cellStr(row, hdr.colMap.unitType)
 
         if (existingItemIds.has(itemId)) {
-          // Back-fill: only update blank fields
           const fields: Partial<TceLine> = {}
           if (!wo) {} else fields.work_order = wo
           if (!cs) {} else fields.contract_scope = cs
@@ -125,6 +129,8 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
             tce_rate: isGroup ? 0 : rate,
             tce_total: isGroup ? 0 : total,
             kpi_included: kpi, line_type: '',
+            sort_order: sortSeq++,
+            parent_id: isGroup ? null : currentParent,
           })
           existingItemIds.add(itemId)
         }
@@ -140,6 +146,7 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[slName], { header: 1, defval: '' }) as Row[]
     const hdr = buildHeaderMap(rows, SL_SYNONYMS, 6)
     if (hdr) {
+      let currentParent: string | null = null
       for (let r = hdr.firstDataRow; r < rows.length; r++) {
         const row = rows[r]
         const scopeNo   = cellStr(row, hdr.colMap.itemId)
@@ -153,12 +160,14 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
           const wo  = cellStr(row, hdr.colMap.workOrder)
           const cs  = cellStr(row, hdr.colMap.contractScope)
           const headerId = scopeNo || wo || `SL-HDR-${r}`
+          currentParent = headerId
           if (!existingItemIds.has(headerId)) {
             result.added.push({
               item_id: headerId, description: desc, source: 'skilled',
               work_order: wo || null, contract_scope: cs || null,
               unit_type: '', estimated_qty: 0, tce_rate: 0, tce_total: 0,
               kpi_included: false, line_type: 'group',
+              sort_order: sortSeq++, parent_id: null,
             })
             existingItemIds.add(headerId)
           }
@@ -173,12 +182,10 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
         const qty = cellNum(row, hdr.colMap.estimatedQty)
         const rate = cellNum(row, hdr.colMap.tceRate)
         const total = cellNum(row, hdr.colMap.tceTotal) || qty * rate
-        // Resolve WO — priority: WO+Task → task → wo
         let woFinal = ''
         if (wo && task) woFinal = wo.includes('-') ? wo : `${wo}-${task}`
         else if (task) woFinal = task
         else if (wo) woFinal = wo
-        // Sanity check — reject free-text comments
         if (woFinal && (/[\s?]/.test(woFinal) || woFinal.length > 30 || !/\d/.test(woFinal))) woFinal = ''
 
         if (existingItemIds.has(scopeNo)) {
@@ -193,6 +200,7 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
             work_order: woFinal || null, contract_scope: cs || null,
             unit_type: 'hours', estimated_qty: qty, tce_rate: rate, tce_total: total,
             kpi_included: true, line_type: 'Labour',
+            sort_order: sortSeq++, parent_id: currentParent,
           })
           existingItemIds.add(scopeNo)
         }

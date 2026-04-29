@@ -51,7 +51,7 @@ export function NrgTcePanel() {
     setLoading(true)
     const pid = activeProject!.id
     const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes] = await Promise.all([
-      supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
+      supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('sort_order').order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew')
         .eq('project_id', pid).eq('status', 'approved'),
@@ -220,9 +220,13 @@ export function NrgTcePanel() {
       return !!l.contract_scope
     })
     // Drop group headers with no surviving children
-    const liveIds = new Set(filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).map(l => l.item_id))
+    const liveLines = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type))
+    const liveIds = new Set(liveLines.map(l => l.item_id))
+    const liveParents = new Set(liveLines.map((l: {parent_id?: string | null}) => l.parent_id).filter(Boolean))
     filtered = filtered.filter(l => {
       if (!isGroupHeader(l.item_id, l.line_type)) return true
+      // Has a child pointing to it via parent_id, OR has a child by prefix
+      if (liveParents.has(l.item_id)) return true
       const prefix = (l.item_id || '') + '.'
       return [...liveIds].some((id: string | null) => (id || '').startsWith(prefix))
     })
@@ -240,7 +244,11 @@ export function NrgTcePanel() {
 
   const visibleRows = filtered.filter(l => {
     if (isGroupHeader(l.item_id, l.line_type)) return true
-    const parent = filtered.find(p => isGroupHeader(p.item_id, p.line_type) && (l.item_id || '').startsWith((p.item_id || '') + '.'))
+    // Find parent: prefer parent_id match, fall back to prefix match
+    const lp = (l as {parent_id?: string | null}).parent_id
+    const parent = lp
+      ? filtered.find(p => isGroupHeader(p.item_id, p.line_type) && p.item_id === lp)
+      : filtered.find(p => isGroupHeader(p.item_id, p.line_type) && (l.item_id || '').startsWith((p.item_id || '') + '.'))
     return !parent || !collapsed.has(parent.item_id || '')
   })
 
