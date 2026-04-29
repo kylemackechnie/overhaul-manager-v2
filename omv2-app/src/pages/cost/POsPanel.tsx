@@ -413,7 +413,6 @@ export function POsPanel() {
                 </div>
               )}
             </div>
-            </div>
             <div className="modal-footer">
               {modal !== 'new' && <button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{deletePO(modal as PurchaseOrder);setModal(null)}}>Delete</button>}
               <button className="btn" onClick={()=>setModal(null)}>Cancel</button>
