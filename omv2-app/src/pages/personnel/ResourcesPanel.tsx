@@ -731,19 +731,28 @@ export function ResourcesPanel() {
                           const dow = new Date(day+'T12:00:00').getDay()
                           const isWknd = dow===0||dow===6
                           const isEdge = day===r.mob_in || day===r.mob_out
-                          let targetField: 'mob_in'|'mob_out' = 'mob_in'
-                          let tooltip = `Set mob-in → ${day}`
+                          // Clicks inside the range (not on an edge) do nothing — prevents accidental overwrites
+                          let targetField: 'mob_in'|'mob_out'|null = null
+                          let tooltip = ''
                           if (r.mob_in && r.mob_out) {
-                            const mid = (new Date(r.mob_in).getTime() + new Date(r.mob_out).getTime()) / 2
-                            if (new Date(day).getTime() > mid) { targetField = 'mob_out'; tooltip = `Set mob-out → ${day}` }
+                            if (day < r.mob_in) { targetField = 'mob_in'; tooltip = `Move mob-in → ${day}` }
+                            else if (day === r.mob_in) { targetField = 'mob_in'; tooltip = `Move mob-in → ${day}` }
+                            else if (day === r.mob_out) { targetField = 'mob_out'; tooltip = `Move mob-out → ${day}` }
+                            else if (day > r.mob_out) { targetField = 'mob_out'; tooltip = `Move mob-out → ${day}` }
+                            else { tooltip = `${r.name} on-site` }
                           } else if (r.mob_in && !r.mob_out) {
                             if (day > r.mob_in) { targetField = 'mob_out'; tooltip = `Set mob-out → ${day}` }
+                            else { targetField = 'mob_in'; tooltip = `Move mob-in → ${day}` }
                           } else if (!r.mob_in && r.mob_out) {
-                            if (day >= r.mob_out) { targetField = 'mob_out'; tooltip = `Set mob-out → ${day}` }
+                            if (day < r.mob_out) { targetField = 'mob_in'; tooltip = `Set mob-in → ${day}` }
+                            else { targetField = 'mob_out'; tooltip = `Move mob-out → ${day}` }
+                          } else {
+                            targetField = 'mob_in'; tooltip = `Set mob-in → ${day}`
                           }
                           return (
                             <td key={day} style={{padding:'1px',textAlign:'center'}} title={tooltip}
                               onClick={() => {
+                                if (!targetField) return
                                 const label = targetField === 'mob_in' ? 'Mob In' : 'Mob Out'
                                 saveInline(r.id, targetField, day)
                                 toast(`${r.name}: ${label} → ${day}`, 'success')
