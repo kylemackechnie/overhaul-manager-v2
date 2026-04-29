@@ -288,6 +288,20 @@ export interface InvoiceStatusHistory {
 
 // ─── Expenses & Cars & Accommodation ─────────────────────────────────────────
 
+export interface ExpenseLine {
+  id: string
+  expense_id: string
+  description: string
+  cost_ex_gst: number
+  amount: number
+  sell_price: number
+  gm_pct: number
+  chargeable: boolean
+  tce_item_id: string | null
+  sort_order: number
+  created_at: string
+}
+
 export interface Expense {
   id: string
   project_id: string

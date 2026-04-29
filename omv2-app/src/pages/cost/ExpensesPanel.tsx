@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import type { Expense, Resource, WbsItem } from '../../types'
+import type { Expense, ExpenseLine, Resource, WbsItem } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
@@ -37,6 +37,8 @@ export function ExpensesPanel() {
   const [modal, setModal] = useState<null|'new'|Expense>(null)
   const [form, setForm] = useState<ExpenseForm>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [lines, setLines] = useState<ExpenseLine[]>([])  // lines for the currently open modal
+  const [showLines, setShowLines] = useState(false)  // whether lines section is expanded
   const [showImport, setShowImport] = useState(false)
   const [importText, setImportText] = useState('')
   const [importing, setImporting] = useState(false)
@@ -113,10 +115,12 @@ export function ExpensesPanel() {
 
   function openNew() {
     setForm({ ...EMPTY, gm_pct: activeProject?.default_gm || 15 })
+    setLines([])
+    setShowLines(false)
     setModal('new')
   }
 
-  function openEdit(e: Expense) {
+  async function openEdit(e: Expense) {
     setForm({
       resource_id: e.resource_id || '', category: e.category,
       vendor: e.vendor || '', description: e.description, date: e.date || '',
@@ -124,6 +128,11 @@ export function ExpensesPanel() {
       gm_pct: e.gm_pct, currency: e.currency, wbs: e.wbs, notes: e.notes,
       chargeable: e.sell_price > 0, tce_item_id: e.tce_item_id || '',
     })
+    // Load existing lines for this expense
+    const { data } = await supabase.from('expense_lines').select('*').eq('expense_id', e.id).order('sort_order')
+    const existingLines = (data || []) as ExpenseLine[]
+    setLines(existingLines)
+    setShowLines(existingLines.length > 0)
     setModal(e)
   }
 
@@ -175,6 +184,42 @@ export function ExpensesPanel() {
     window.open(url, '_blank')
   }
 
+
+  function addLine() {
+    const newLine: ExpenseLine = {
+      id: 'new_' + Date.now(), expense_id: '',
+      description: '', cost_ex_gst: 0, amount: 0, sell_price: 0,
+      gm_pct: form.gm_pct, chargeable: true, tce_item_id: form.tce_item_id || null,
+      sort_order: lines.length, created_at: '',
+    }
+    setLines(prev => [...prev, newLine])
+  }
+
+  function updateLine(id: string, field: keyof ExpenseLine, value: unknown) {
+    setLines(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const updated = { ...l, [field]: value }
+      // Auto-calc sell when cost or chargeable or gm changes
+      if (field === 'cost_ex_gst' || field === 'chargeable' || field === 'gm_pct') {
+        const cost = field === 'cost_ex_gst' ? (value as number) : l.cost_ex_gst
+        const ch = field === 'chargeable' ? (value as boolean) : l.chargeable
+        const gm = field === 'gm_pct' ? (value as number) : l.gm_pct
+        updated.sell_price = ch && cost > 0 && gm > 0 && gm < 100 ? parseFloat((cost / (1 - gm/100)).toFixed(2)) : 0
+        if (field === 'cost_ex_gst') updated.amount = parseFloat(((value as number) * 1.1).toFixed(2))
+      }
+      return updated
+    }))
+  }
+
+  function removeLine(id: string) {
+    setLines(prev => prev.filter(l => l.id !== id))
+  }
+
+  // Computed rollup when lines are present
+  const linesTotalCost = lines.reduce((s, l) => s + (l.cost_ex_gst || 0), 0)
+  const linesTotalSell = lines.reduce((s, l) => s + (l.sell_price || 0), 0)
+  const hasLines = lines.length > 0
+
   async function save() {
     if (!form.description.trim()) return toast('Description required', 'error')
     setSaving(true)
@@ -187,15 +232,40 @@ export function ExpensesPanel() {
       gm_pct: form.gm_pct, currency: form.currency, wbs: form.wbs, notes: form.notes,
       tce_item_id: form.tce_item_id || null,
     }
+    // If lines present, override top-level cost/sell with rollup
+    if (hasLines) {
+      payload.cost_ex_gst = linesTotalCost
+      payload.amount = parseFloat((linesTotalCost * 1.1).toFixed(2))
+      payload.sell_price = linesTotalSell
+    }
+
+    let expenseId: string
     if (modal === 'new') {
-      const { error } = await supabase.from('expenses').insert(payload)
-      if (error) { toast(error.message, 'error'); setSaving(false); return }
+      const { data, error } = await supabase.from('expenses').insert(payload).select('id').single()
+      if (error || !data) { toast(error?.message || 'Insert failed', 'error'); setSaving(false); return }
+      expenseId = data.id
       toast('Expense added', 'success')
     } else {
-      const { error } = await supabase.from('expenses').update(payload).eq('id', (modal as Expense).id)
+      expenseId = (modal as Expense).id
+      const { error } = await supabase.from('expenses').update(payload).eq('id', expenseId)
       if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('Saved', 'success')
     }
+
+    // Save lines: delete existing then re-insert
+    if (lines.length > 0) {
+      await supabase.from('expense_lines').delete().eq('expense_id', expenseId)
+      const linePayloads = lines.map((l, i) => ({
+        expense_id: expenseId, description: l.description, cost_ex_gst: l.cost_ex_gst,
+        amount: l.amount, sell_price: l.sell_price, gm_pct: l.gm_pct,
+        chargeable: l.chargeable, tce_item_id: l.tce_item_id || null, sort_order: i,
+      }))
+      await supabase.from('expense_lines').insert(linePayloads)
+    } else if (modal !== 'new') {
+      // Lines cleared — delete any existing
+      await supabase.from('expense_lines').delete().eq('expense_id', expenseId)
+    }
+
     setSaving(false); setModal(null); load()
   }
 
@@ -393,7 +463,7 @@ export function ExpensesPanel() {
 
       {modal && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: hasLines || showLines ? '720px' : '540px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modal === 'new' ? 'Add Expense' : 'Edit Expense'}</h3>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
@@ -483,6 +553,58 @@ export function ExpensesPanel() {
               <div className="fg">
                 <label>Notes</label>
                 <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+
+              {/* ── Line Items (optional split) ── */}
+              <div style={{borderTop:'1px solid var(--border)',marginTop:'8px',paddingTop:'8px'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
+                  <button type="button" className="btn btn-sm" style={{fontSize:'11px',background:'none',border:'1px dashed var(--border)',color:'var(--text3)'}}
+                    onClick={()=>{ if(!showLines){ setShowLines(true); if(lines.length===0) addLine() } else { if(lines.length===0) setShowLines(false) } }}>
+                    {showLines ? '▼ Line Items (split receipt)' : '▶ Split this receipt into line items'}
+                  </button>
+                  {hasLines && (
+                    <span style={{fontSize:'11px',color:'var(--text3)'}}>
+                      Cost: <b>{fmt(linesTotalCost)}</b> · Sell: <b style={{color:'var(--green)'}}>{linesTotalSell > 0 ? fmt(linesTotalSell) : '—'}</b>
+                    </span>
+                  )}
+                </div>
+                {showLines && (
+                  <div>
+                    {/* Line items grid */}
+                    <div style={{fontSize:'10px',color:'var(--text3)',display:'grid',gridTemplateColumns:'1fr 80px 32px 44px 80px 1fr 24px',gap:'4px',marginBottom:'3px',padding:'0 2px'}}>
+                      <span>Description</span><span style={{textAlign:'right'}}>Cost ex GST</span><span style={{textAlign:'center'}}>Ch.</span><span>GM%</span><span style={{textAlign:'right'}}>Sell</span><span>TCE</span><span/>
+                    </div>
+                    {lines.map(l => (
+                      <div key={l.id} style={{display:'grid',gridTemplateColumns:'1fr 80px 32px 44px 80px 1fr 24px',gap:'4px',marginBottom:'4px',alignItems:'center'}}>
+                        <input className="input" style={{fontSize:'12px',padding:'3px 6px'}} value={l.description} placeholder="Description"
+                          onChange={e=>updateLine(l.id,'description',e.target.value)} />
+                        <input type="number" className="input" style={{fontSize:'12px',padding:'3px 6px',textAlign:'right'}} value={l.cost_ex_gst||''} placeholder="0.00"
+                          onChange={e=>updateLine(l.id,'cost_ex_gst',parseFloat(e.target.value)||0)} />
+                        <div style={{textAlign:'center'}}>
+                          <input type="checkbox" checked={l.chargeable} style={{accentColor:'var(--accent)',width:'14px',height:'14px',cursor:'pointer'}}
+                            onChange={e=>updateLine(l.id,'chargeable',e.target.checked)} />
+                        </div>
+                        <input type="number" className="input" style={{fontSize:'12px',padding:'3px 6px'}} value={l.chargeable ? l.gm_pct : ''} placeholder="—" disabled={!l.chargeable}
+                          onChange={e=>updateLine(l.id,'gm_pct',parseFloat(e.target.value)||0)} />
+                        <input type="number" className="input" style={{fontSize:'12px',padding:'3px 6px',textAlign:'right',color:'var(--green)'}} value={l.sell_price||''} placeholder="—" disabled={!l.chargeable}
+                          onChange={e=>updateLine(l.id,'sell_price',parseFloat(e.target.value)||0)} />
+                        <select className="input" style={{fontSize:'11px',padding:'3px 4px'}} value={l.tce_item_id||''}
+                          onChange={e=>updateLine(l.id,'tce_item_id',e.target.value||null)}>
+                          <option value="">— No TCE —</option>
+                          {tceLines.map(t=><option key={t.id} value={t.item_id||''}>{t.item_id}</option>)}
+                        </select>
+                        <button type="button" style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:'14px',lineHeight:1,padding:'0'}}
+                          onClick={()=>removeLine(l.id)}>×</button>
+                      </div>
+                    ))}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'6px'}}>
+                      <button type="button" className="btn btn-sm" style={{fontSize:'11px'}} onClick={addLine}>+ Add line</button>
+                      {hasLines && linesTotalCost !== form.cost_ex_gst && (
+                        <span style={{fontSize:'10px',color:'#d97706'}}>⚠ Lines total ({fmt(linesTotalCost)}) differs from receipt total ({fmt(form.cost_ex_gst)})</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="modal-footer">
