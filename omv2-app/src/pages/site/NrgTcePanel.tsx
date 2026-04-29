@@ -165,11 +165,38 @@ export function NrgTcePanel() {
   }
 
   function exportCSV() {
-    downloadCSV(
-      [['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'Unit', 'Est Qty', 'TCE Rate', 'TCE Total', 'KPI', 'Type', 'WBS'],
-       ...lines.map(l => [l.item_id || '', l.source || '', l.description || '', l.work_order || '', l.contract_scope || '', l.unit_type || '', l.estimated_qty || 0, l.tce_rate || 0, l.tce_total || 0, l.kpi_included ? 'Yes' : 'No', l.line_type || '', l.wbs_code || ''])],
-      'nrg_tce_' + (activeProject?.name || 'project')
-    )
+    const leafLines = lines.filter(l => !isGroupHeader(l.item_id, l.line_type))
+    const rows: (string | number)[][] = [
+      ['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'Unit', 'Est Qty', 'Act Hrs', 'TCE Rate', 'TCE Total', 'Committed', 'Actual Cost', 'Remaining', '% Used', 'KPI', 'Type', 'WBS'],
+    ]
+    for (const l of leafLines) {
+      const actHrs = nrgLineActualHours(
+        { item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type },
+        timesheets
+      )
+      const actual   = lineActualCost(l)
+      const committed = lineCommitted(l.item_id)
+      const tce      = l.tce_total || 0
+      const remaining = tce - actual
+      const pct      = tce > 0 ? ((actual / tce) * 100).toFixed(1) + '%' : '—'
+      rows.push([
+        l.item_id || '', l.source || '', l.description || '',
+        l.work_order || '', l.contract_scope || '',
+        l.unit_type || '',
+        l.estimated_qty || 0,
+        actHrs > 0 ? actHrs.toFixed(1) : 0,
+        l.tce_rate || 0,
+        tce,
+        committed,
+        actual,
+        remaining,
+        pct,
+        l.kpi_included ? 'Yes' : 'No',
+        l.line_type || '',
+        l.wbs_code || '',
+      ])
+    }
+    downloadCSV(rows, 'nrg_tce_' + (activeProject?.name || 'project'))
   }
 
   async function del(l: NrgTceLine) {
