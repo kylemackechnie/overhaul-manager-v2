@@ -5,7 +5,7 @@ import { findOrCreatePerson, type Person } from '../../lib/persons'
 import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
-import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
+import { useResizableColumns } from '../../hooks/useResizableColumns'
 import { toast } from '../../components/ui/Toast'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
 

@@ -5,7 +5,6 @@
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
 import { nrgInvoiceActual, nrgInvoiceActualForWeek, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'

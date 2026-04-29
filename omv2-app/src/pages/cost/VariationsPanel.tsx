@@ -11,7 +11,6 @@
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'

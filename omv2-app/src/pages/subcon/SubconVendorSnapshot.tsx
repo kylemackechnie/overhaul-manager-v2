@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 
 const fmt = (n: number) => n > 0 ? '$' + Math.round(n).toLocaleString('en-AU') : '—'

@@ -24,18 +24,6 @@ const MIN_COL_WIDTH = 32
 const MAX_COL_WIDTH = 800
 const RESIZER_WIDTH = 6
 
-export const resizerStyle: React.CSSProperties = {
-  position: 'absolute',
-  right: 0,
-  top: 0,
-  bottom: 0,
-  width: `${RESIZER_WIDTH}px`,
-  cursor: 'col-resize',
-  userSelect: 'none',
-  zIndex: 10,
-  // Subtle visual hint on hover — handled by CSS class
-}
-
 export function useResizableColumns(
   tableId: string,
   /** Default widths in pixels, one per column. Use 0 for "auto" (will read from DOM). */
