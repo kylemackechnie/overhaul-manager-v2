@@ -827,6 +827,10 @@ export function nrgLineActual(
       const rcAny2 = rc as unknown as Record<string, unknown>
       total += day.hours * (pf2(rcAny2.travel_sell) || 30)
     }
+  }  // end member loop
+  }  // end timesheet loop
+
+  // Also add any invoices/expenses directly tagged to this labour line
   total += nrgInvoiceActual(line.item_id, invoices, expenses, variations)
 
   return total
