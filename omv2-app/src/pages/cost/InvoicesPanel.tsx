@@ -4,6 +4,7 @@ import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
 // ── Status workflow (mirrors HTML INV_STATUS / INV_TRANSITIONS) ───────────────
 const INV_STATUS: Record<string,{label:string;color:string;bg:string}> = {
@@ -112,10 +113,40 @@ export function InvoicesPanel() {
   const [payDateModal, setPayDateModal] = useState<{inv:Invoice;date:string}|null>(null)
   const [sapModal, setSapModal] = useState(false)
   const [sapRows, setSapRows] = useState<SapInvRow[]>([])
+  const [dragOverId, setDragOverId] = useState<string|null>(null)
+  const [uploadingId, setUploadingId] = useState<string|null>(null)
   const [sapParsing, setSapParsing] = useState(false)
   const [sapImporting, setSapImporting] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+
+
+  async function handleReceiptUpload(inv: Invoice, file: File) {
+    if (file.size > 10 * 1024 * 1024) { toast('File too large — max 10MB', 'error'); return }
+    setUploadingId(inv.id)
+    const { path, error } = await uploadReceipt(activeProject!.id, inv.id, file)
+    if (error) { toast('Upload failed: ' + error, 'error'); setUploadingId(null); return }
+    const newPaths = [...(inv.receipt_paths || []), path]
+    await supabase.from('invoices').update({ receipt_paths: newPaths }).eq('id', inv.id)
+    setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, receipt_paths: newPaths } : i))
+    toast('Receipt attached', 'success')
+    setUploadingId(null)
+  }
+
+  async function removeInvReceipt(inv: Invoice, path: string) {
+    if (!confirm('Remove this receipt?')) return
+    await deleteReceipt(path)
+    const newPaths = (inv.receipt_paths || []).filter(p => p !== path)
+    await supabase.from('invoices').update({ receipt_paths: newPaths }).eq('id', inv.id)
+    setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, receipt_paths: newPaths } : i))
+    toast('Receipt removed', 'info')
+  }
+
+  async function openInvReceipt(path: string) {
+    const url = await getSignedUrl(path)
+    if (!url) { toast('Could not open receipt', 'error'); return }
+    window.open(url, '_blank')
+  }
 
   async function load() {
     setLoading(true)
@@ -456,7 +487,11 @@ export function InvoicesPanel() {
                 }
 
                 return (
-                  <tr key={inv.id} style={{borderBottom:'1px solid var(--border)',background:unlinked?'#fffbeb':'transparent'}}>
+                  <tr key={inv.id}
+                    style={{borderBottom:'1px solid var(--border)',background: dragOverId===inv.id ? 'rgba(16,185,129,0.06)' : unlinked?'#fffbeb':'transparent', outline: dragOverId===inv.id?'2px dashed var(--accent)':undefined, transition:'background 0.1s'}}
+                    onDragOver={ev=>{ev.preventDefault();setDragOverId(inv.id)}}
+                    onDragLeave={()=>setDragOverId(null)}
+                    onDrop={async ev=>{ev.preventDefault();setDragOverId(null);const f=ev.dataTransfer.files[0];if(f)await handleReceiptUpload(inv,f)}}>
                     {/* Invoice # */}
                     <td style={{padding:'8px 10px',verticalAlign:'top'}}>
                       <div style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:'12px'}}>{inv.invoice_number || '—'}</div>
@@ -523,7 +558,20 @@ export function InvoicesPanel() {
                             </button>
                           ))}
                         </div>
-                        <div style={{display:'flex',gap:'3px'}}>
+                        {/* Receipt attachments */}
+                      <div style={{display:'flex',gap:'3px',flexWrap:'wrap',marginTop:'2px'}}>
+                        {(inv.receipt_paths||[]).map((path: string) => (
+                          <span key={path} style={{display:'inline-flex',alignItems:'center',gap:'2px',fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg3)',border:'1px solid var(--border)',cursor:'pointer',color:'var(--text2)'}} title={fileName(path)} onClick={()=>openInvReceipt(path)}>
+                            {fileIcon(path)} {fileName(path).slice(0,14)}{fileName(path).length>14?'…':''}
+                            <span style={{marginLeft:'2px',color:'var(--text3)',cursor:'pointer',fontSize:'11px'}} onClick={ev=>{ev.stopPropagation();removeInvReceipt(inv,path)}}>×</span>
+                          </span>
+                        ))}
+                        {uploadingId === inv.id
+                          ? <span className="spinner" style={{width:'11px',height:'11px'}} />
+                          : <label style={{cursor:'pointer',fontSize:'9px',color:'var(--text3)',padding:'1px 4px',border:'1px dashed var(--border)',borderRadius:'3px'}} title="Attach receipt">📎<input type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={async ev=>{const f=ev.target.files?.[0];if(f)await handleReceiptUpload(inv,f);ev.target.value=''}} /></label>
+                        }
+                      </div>
+                      <div style={{display:'flex',gap:'3px'}}>
                           <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>{
                             setForm({
                               invoice_number: inv.invoice_number||'', vendor_ref: inv.vendor_ref||'',

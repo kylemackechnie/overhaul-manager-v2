@@ -291,7 +291,7 @@ export function POsPanel() {
                 </div>
                 <div style={{fontSize:'11px',color:meta.color}}>{meta.desc}</div>
               </div>
-              {items.map(po => <PORow key={po.id} po={po} meta={meta} poValue={poValue} poForecast={poForecast} poInvoiced={poInvoiced} invoices={invoices.filter(i=>i.po_id===po.id)} expanded={expanded} setExpanded={setExpanded} openEdit={openEdit} advanceStatus={advanceStatus} setActivePanel={setActivePanel} />)}
+              {items.map(po => <PORow key={po.id} po={po} meta={meta} poValue={poValue} poForecast={poForecast} poInvoiced={poInvoiced} invoices={invoices.filter(i=>i.po_id===po.id)} expanded={expanded} setExpanded={setExpanded} openEdit={openEdit} advanceStatus={advanceStatus} setActivePanel={setActivePanel} onUpload={handleReceiptUpload} onRemove={removePoReceipt} onOpen={openPoReceipt} uploadingId={uploadingId} dragOverId={dragOverId} setDragOverId={setDragOverId} />)}
             </div>
           )
         })
@@ -440,6 +440,12 @@ function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, 
   openEdit: (po: PurchaseOrder) => void
   advanceStatus: (po: PurchaseOrder) => void
   setActivePanel: (panel: string) => void
+  onUpload: (po: PurchaseOrder, file: File) => void
+  onRemove: (po: PurchaseOrder, path: string) => void
+  onOpen: (path: string) => void
+  uploadingId: string | null
+  dragOverId: string | null
+  setDragOverId: (id: string | null) => void
 }) {
   const val = poValue(po)
   const forecast = poForecast(po.id)
@@ -459,7 +465,10 @@ function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, 
 
   return (
     <>
-      <div style={{borderBottom:'1px solid var(--border)'}}>
+      <div style={{borderBottom:'1px solid var(--border)',background: dragOverId===po.id ? 'rgba(16,185,129,0.06)' : undefined, outline: dragOverId===po.id ? '2px dashed var(--accent)' : undefined, transition:'background 0.1s'}}
+        onDragOver={ev=>{ev.preventDefault();setDragOverId(po.id)}}
+        onDragLeave={()=>setDragOverId(null)}
+        onDrop={async ev=>{ev.preventDefault();setDragOverId(null);const f=ev.dataTransfer.files[0];if(f)onUpload(po,f)}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',alignItems:'stretch'}}>
           {/* LEFT: identity */}
           <div style={{padding:'12px 16px',borderRight:'1px solid var(--border)'}}>
@@ -508,6 +517,21 @@ function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, 
                 🧾 Invoices {invCount > 0 ? `(${invCount})` : ''}
               </button>
               <button className="btn btn-sm" style={{fontSize:'11px'}} onClick={()=>openEdit(po)}>Edit</button>
+            </div>
+            {/* Receipt attachments */}
+            <div style={{display:'flex',gap:'4px',flexWrap:'wrap',justifyContent:'flex-end'}}>
+              {(po.receipt_paths||[]).map((path: string) => (
+                <span key={path} style={{display:'inline-flex',alignItems:'center',gap:'2px',fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg3)',border:'1px solid var(--border)',cursor:'pointer',color:'var(--text2)'}} title={fileName(path)} onClick={()=>onOpen(path)}>
+                  {fileIcon(path)} {fileName(path).slice(0,14)}{fileName(path).length>14?'…':''}
+                  <span style={{marginLeft:'2px',color:'var(--text3)',cursor:'pointer',fontSize:'11px'}} onClick={ev=>{ev.stopPropagation();onRemove(po,path)}}>×</span>
+                </span>
+              ))}
+              {uploadingId === po.id
+                ? <span className="spinner" style={{width:'11px',height:'11px'}} />
+                : <label style={{cursor:'pointer',fontSize:'9px',color:'var(--text3)',padding:'1px 4px',border:'1px dashed var(--border)',borderRadius:'3px'}} title="Attach receipt">📎<input type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={async ev=>{const f=ev.target.files?.[0];if(f)await onUpload(po,f);ev.target.value=''}} /></label>
+              }
+            </div>
+            <div style={{display:'flex',gap:'4px'}}>
               {nextStatus && (
                 <button className="btn btn-sm" style={{fontSize:'11px'}} title={`Advance to ${PO_STATUS[nextStatus].label}`} onClick={()=>advanceStatus(po)}>→</button>
               )}
