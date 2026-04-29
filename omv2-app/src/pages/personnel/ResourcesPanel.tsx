@@ -436,7 +436,7 @@ export function ResourcesPanel() {
   const calDays: string[] = []
   const d = new Date(calStart)
   while (d <= calEnd) { calDays.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1) }
-  const calResources = resources.filter(r => r.mob_in || r.mob_out).sort((a,b) => (a.mob_in||'').localeCompare(b.mob_in||''))
+  const calResources = filtered.filter(r => r.mob_in || r.mob_out)
 
   const subconPos = pos.filter(po => po.status !== 'cancelled')
 
@@ -721,7 +721,14 @@ export function ResourcesPanel() {
                           }
                           return (
                             <td key={day} style={{padding:'1px',textAlign:'center'}} title={tooltip}
-                              onClick={() => { saveInline(r.id, targetField, day); toast(`${r.name}: ${targetField==='mob_in'?'Mob In':'Mob Out'} → ${day}`, 'success') }}>
+                              onClick={() => {
+                                const isRemove = day === r.mob_in && targetField === 'mob_in'
+                                  || day === r.mob_out && targetField === 'mob_out'
+                                const val = isRemove ? null : day
+                                const label = targetField === 'mob_in' ? 'Mob In' : 'Mob Out'
+                                saveInline(r.id, targetField, val)
+                                toast(`${r.name}: ${label} ${isRemove ? 'cleared' : '→ ' + day}`, 'success')
+                              }}>
                               <div style={{
                                 width:'16px',height:'14px',borderRadius:'2px',margin:'auto',cursor:'pointer',
                                 background: onsite ? 'var(--accent)' : isToday ? 'rgba(0,137,138,0.1)' : isWknd ? 'rgba(0,0,0,0.03)' : 'transparent',
