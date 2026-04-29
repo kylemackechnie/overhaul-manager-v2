@@ -794,11 +794,39 @@ export function nrgLineActual(
           if (day.laha) total += pf(rcAny.laha_sell) || 0
           if (day.meal) total += pf(rcAny.meal_sell) || 0
         }
+
+        // Travel allowance — only if this line is the travel TCE target for this member/timesheet
+        if (day.travel && match.hours > 0) {
+          const memberTravelItem = (member as unknown as { travelTceItemId?: string | null }).travelTceItemId
+          const tsTravelDefault = ((ts as unknown as { travel_tce_default?: string }).travel_tce_default || '').trim()
+          const effectiveTravelItem = memberTravelItem || tsTravelDefault || null
+          if (effectiveTravelItem === line.item_id) {
+            total += match.hours * (pf(rcAny.travel_sell) || 30)
+          }
+        }
       }
     }
-  }
 
-  // Also add any invoices/expenses directly tagged to this labour line
+    // ── Travel allowance pass ──
+    // Separate from the alloc-match loop above because travel days may have
+    // a different TCE scope for labour (e.g. 2.02.4.13) vs travel allowance
+    // (2.02.4.12). The alloc-match loop handles labour cost; this handles the
+    // travel allowance sell for the travel TCE target line only.
+    if (!rc) continue
+    for (const [, day] of Object.entries(member.days)) {
+      if (!day.travel || !day.hours || day.hours <= 0) continue
+      const memberTravelItem = (member as unknown as { travelTceItemId?: string | null }).travelTceItemId
+      const tsTravelDefault = ((ts as unknown as { travel_tce_default?: string }).travel_tce_default || '').trim()
+      const effectiveTravelItem = memberTravelItem || tsTravelDefault || null
+      if (effectiveTravelItem !== line.item_id) continue
+      // Check we haven't already added travel for this day via the alloc-match loop
+      const allocs = day.nrgWoAllocations || []
+      const matchedThisDay = nrgMatchAllocForLine(allocs, line)
+      if (matchedThisDay) continue  // already counted above
+      const pf2 = (v: unknown) => { const n = parseFloat(String(v ?? 0)); return isNaN(n) ? 0 : n }
+      const rcAny2 = rc as unknown as Record<string, unknown>
+      total += day.hours * (pf2(rcAny2.travel_sell) || 30)
+    }
   total += nrgInvoiceActual(line.item_id, invoices, expenses, variations)
 
   return total
