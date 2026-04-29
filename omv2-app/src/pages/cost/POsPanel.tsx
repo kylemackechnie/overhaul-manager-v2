@@ -412,7 +412,7 @@ export function POsPanel() {
                   </select>
                 </div>
               )}
-              </div>
+            </div>
             </div>
             <div className="modal-footer">
               {modal !== 'new' && <button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{deletePO(modal as PurchaseOrder);setModal(null)}}>Delete</button>}
