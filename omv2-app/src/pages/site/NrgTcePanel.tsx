@@ -17,7 +17,8 @@ const EMPTY = {
   unit_type: '', estimated_qty: 0, tce_rate: 0, details: {} as Record<string, unknown>
 }
 
-const isGroupHeader = (id: string | null | undefined) => !!id && /^\d+\.\d+\.\d+$/.test(id)
+const isGroupHeader = (id: string | null | undefined, lineType?: string | null) => 
+  (!!id && /^\d+\.\d+\.\d+$/.test(id)) || lineType === 'group'
 
 const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0 })
 
@@ -215,13 +216,13 @@ export function NrgTcePanel() {
     // Hide skilled leaf rows with no contract scope (NRG convention: blank = unused scope)
     filtered = filtered.filter(l => {
       if (l.source !== 'skilled') return true
-      if (isGroupHeader(l.item_id)) return true
+      if (isGroupHeader(l.item_id, l.line_type)) return true
       return !!l.contract_scope
     })
     // Drop group headers with no surviving children
-    const liveIds = new Set(filtered.filter(l => !isGroupHeader(l.item_id)).map(l => l.item_id))
+    const liveIds = new Set(filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).map(l => l.item_id))
     filtered = filtered.filter(l => {
-      if (!isGroupHeader(l.item_id)) return true
+      if (!isGroupHeader(l.item_id, l.line_type)) return true
       const prefix = (l.item_id || '') + '.'
       return [...liveIds].some((id: string | null) => (id || '').startsWith(prefix))
     })
@@ -238,14 +239,14 @@ export function NrgTcePanel() {
   }
 
   const visibleRows = filtered.filter(l => {
-    if (isGroupHeader(l.item_id)) return true
-    const parent = filtered.find(p => isGroupHeader(p.item_id) && (l.item_id || '').startsWith((p.item_id || '') + '.'))
+    if (isGroupHeader(l.item_id, l.line_type)) return true
+    const parent = filtered.find(p => isGroupHeader(p.item_id, p.line_type) && (l.item_id || '').startsWith((p.item_id || '') + '.'))
     return !parent || !collapsed.has(parent.item_id || '')
   })
 
-  const leafIds = filtered.filter(l => !isGroupHeader(l.item_id)).map(l => l.id)
+  const leafIds = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).map(l => l.id)
   const allLeafSel = leafIds.length > 0 && leafIds.every(id => selected.has(id))
-  const totalTce = filtered.filter(l => !isGroupHeader(l.item_id)).reduce((s, l) => s + (l.tce_total || 0), 0)
+  const totalTce = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + (l.tce_total || 0), 0)
 
   // Get sorted unique week keys from timesheets for weekly columns
   const weekKeys = showWeekly
@@ -356,7 +357,7 @@ export function NrgTcePanel() {
                 </thead>
                 <tbody>
                   {visibleRows.map(l => {
-                    const isHdr = isGroupHeader(l.item_id)
+                    const isHdr = isGroupHeader(l.item_id, l.line_type)
                     const isCol = isHdr && collapsed.has(l.item_id || '')
                     const isSel = !isHdr && selected.has(l.id)
 
@@ -472,10 +473,10 @@ export function NrgTcePanel() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
-                    <td colSpan={10} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id)).length} lines)</td>
+                    <td colSpan={10} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).length} lines)</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{(() => {
-                      const tot = filtered.filter(l => !isGroupHeader(l.item_id)).reduce((s, l) => s + lineActualCost(l), 0)
+                      const tot = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + lineActualCost(l), 0)
                       return tot > 0 ? fmt(tot) : '—'
                     })()}</td>
                     <td colSpan={4} />
