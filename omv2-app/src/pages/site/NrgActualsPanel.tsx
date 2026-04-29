@@ -188,6 +188,86 @@ export function NrgActualsPanel() {
   const totPct = totTce > 0 ? (totAct / totTce) * 100 : null
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
 
+  function printReport() {
+    const projName = activeProject?.name || 'Project'
+    const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+    const weekLabel = weekFilter
+      ? (() => { const dt = new Date(weekFilter + 'T00:00:00'); const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate()+6); return dt.toLocaleDateString('en-AU',{day:'2-digit',month:'short'}) + ' – ' + sun.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) })()
+      : 'Project to Date'
+    const fmtP = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
+
+    const TH = (s: string, right = false) =>
+      `<th style="background:#f1f5f9;border:1px solid #cbd5e1;padding:5px 8px;font-size:9px;text-transform:uppercase;text-align:${right?'right':'left'};color:#475569;font-weight:700">${s}</th>`
+    const TD = (s: string, right = false, bold = false) =>
+      `<td style="border:1px solid #e2e8f0;padding:4px 8px;font-size:10px;vertical-align:top;${right?'text-align:right;font-family:monospace;':''}${bold?'font-weight:700;':''}">${s}</td>`
+
+    const pctBar = (pct: number | null) => {
+      if (pct === null) return '—'
+      const color = pct > 100 ? '#dc2626' : pct > 80 ? '#d97706' : '#16a34a'
+      return `<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;background:#e2e8f0;border-radius:3px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pct)}%;background:${color};border-radius:3px"></div></div><span style="font-family:monospace;font-size:9px;color:${color};font-weight:700">${Math.round(pct)}%</span></div>`
+    }
+
+    const bySource: Record<string, typeof displayed> = {}
+    for (const row of displayed) {
+      const src = row.line.source === 'skilled' ? 'Skilled Labour' : 'Overhead'
+      if (!bySource[src]) bySource[src] = []
+      bySource[src].push(row)
+    }
+
+    const colHeaders = weekFilter
+      ? [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('TCE Value', true), TH('Actuals', true), TH('This Week', true), TH('Remaining', true), TH('% Used')]
+      : [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('TCE Value', true), TH('Actuals', true), TH('Remaining', true), TH('% Used')]
+
+    const sectionHTML = Object.entries(bySource).map(([srcLabel, rows]) => {
+      const srcTce = rows.reduce((s, x) => s + x.tce, 0)
+      const srcAct = rows.reduce((s, x) => s + x.actuals, 0)
+      const rowsHTML = rows.map(({ line, actuals, tce, pct, weekActuals }) => {
+        const rem = tce - actuals
+        const cells = weekFilter
+          ? [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(weekActuals||0),true), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
+          : [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
+        return `<tr>${cells.join('')}</tr>`
+      }).join('')
+      const footCols = weekFilter ? 7 : 6
+      return `<div style="margin-bottom:24px;page-break-inside:avoid">
+        <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;padding:6px 0;border-bottom:2px solid #e2e8f0">${srcLabel} <span style="font-weight:400;font-size:10px;color:#64748b">— TCE: ${fmtP(srcTce)} · Actuals: ${fmtP(srcAct)} · Remaining: ${fmtP(srcTce-srcAct)}</span></div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+          <thead><tr>${colHeaders.join('')}</tr></thead>
+          <tbody>${rowsHTML}</tbody>
+          <tfoot><tr>
+            <td colspan="${footCols}" style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8">Subtotal — ${srcLabel}</td>
+            <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-family:monospace;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8">${fmtP(srcAct)}</td>
+          </tr></tfoot>
+        </table>
+      </div>`
+    }).join('')
+
+    const totAct2 = displayed.reduce((s, x) => s + x.actuals, 0)
+    const totTce2 = displayed.reduce((s, x) => s + x.tce, 0)
+    const totPct2 = totTce2 > 0 ? (totAct2/totTce2*100) : null
+    const totColor = totPct2 && totPct2 > 100 ? '#dc2626' : totPct2 && totPct2 > 80 ? '#d97706' : '#16a34a'
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>NRG Actuals — ${projName}</title>
+<style>body{font-family:-apple-system,Arial,sans-serif;margin:0;padding:24px;color:#0f172a}@media print{button{display:none!important}body{padding:12px}@page{size:A4 landscape;margin:10mm}}.kpi{display:inline-block;border:1px solid #e2e8f0;border-radius:6px;padding:10px 16px;margin-right:10px;margin-bottom:10px;min-width:130px}.kpi-val{font-size:18px;font-weight:700;font-family:monospace}.kpi-lbl{font-size:10px;color:#64748b;margin-top:2px}</style>
+</head><body>
+<button onclick="window.print()" style="padding:6px 18px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;margin-bottom:16px">🖨 Print / Save PDF</button>
+<div style="margin-bottom:6px;font-size:11px;color:#64748b">${projName} · Generated ${dateStr} · Period: ${weekLabel}</div>
+<h1 style="font-size:20px;font-weight:800;margin:0 0 16px">NRG Actuals Report</h1>
+<div style="margin-bottom:20px">
+  <div class="kpi"><div class="kpi-val" style="color:#0284c7">${fmtP(totTce2)}</div><div class="kpi-lbl">TCE Value</div></div>
+  <div class="kpi"><div class="kpi-val" style="color:#16a34a">${fmtP(totAct2)}</div><div class="kpi-lbl">Actuals to Date</div></div>
+  <div class="kpi"><div class="kpi-val" style="color:${totColor}">${fmtP(totTce2-totAct2)}</div><div class="kpi-lbl">Remaining</div></div>
+  ${totPct2 !== null ? `<div class="kpi"><div class="kpi-val" style="color:${totColor}">${Math.round(totPct2)}%</div><div class="kpi-lbl">% TCE Used</div></div>` : ''}
+</div>
+${sectionHTML}
+</body></html>`
+
+    const win = window.open('', '_blank', 'width=1200,height=820')
+    if (!win) { alert('Popup blocked — allow popups for this site'); return }
+    win.document.write(html)
+    win.document.close()
+  }
+
   function exportCSV() {
     const header = ['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'TCE Value', 'Actuals']
     if (weekFilter) header.push(`Week ${weekStart}`)
@@ -220,6 +300,7 @@ export function NrgActualsPanel() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-sm" onClick={printReport}>🖨 Print</button>
           <button className="btn btn-sm" title="Recalculate cost lines from timesheets (run after re-saving timesheets)" onClick={load}>↻ Refresh</button>
         </div>
       </div>
