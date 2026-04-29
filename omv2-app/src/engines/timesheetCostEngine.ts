@@ -155,6 +155,7 @@ export async function writeTimesheetCostLines(
         meal?: boolean
         fsa?: boolean
         camp?: boolean
+        travel?: boolean
         nrgWoAllocations?: Array<{
           tceItemId?: string
           wo?: string
@@ -202,8 +203,14 @@ export async function writeTimesheetCostLines(
         if (day.meal) { dayCostAllow += pf(rcAny.meal_cost); daySellAllow += pf(rcAny.meal_sell) }
       }
 
+      // ── Travel allowance (hours-based, separate TCE item) ──
+      const travelRate = pf(rcAny.travel_cost) || 30
+      const travelRateSell = pf(rcAny.travel_sell) || 30
+      const dayCostTravel = day.travel && dayHours > 0 ? dayHours * travelRate : 0
+      const daySellTravel = day.travel && dayHours > 0 ? dayHours * travelRateSell : 0
+
       // Nothing to write — skip the day
-      if (!hasLabour && dayCostAllow === 0 && daySellAllow === 0) continue
+      if (!hasLabour && dayCostAllow === 0 && daySellAllow === 0 && dayCostTravel === 0) continue
 
       // ── Labour rows: split across allocations proportionally by hours ──
       // Labour rows always carry allowances=0 — allowances now go to a dedicated
@@ -253,11 +260,7 @@ export async function writeTimesheetCostLines(
         }
       }
 
-      // ── Dedicated allowance row ──
-      // Tagged to (member.allowancesTceItemId → timesheet default → null).
-      // null means the user hasn't picked one yet — surfaces in NRG Actuals as
-      // unallocated so they can correct it without it bleeding into a labour
-      // scope item. Skip the row entirely if the day has no allowances.
+      // ── Dedicated allowance row (LAHA / Meal / FSA / Camp) ──
       if (dayCostAllow > 0 || daySellAllow > 0) {
         const memberAllowanceItem = (member as unknown as { allowancesTceItemId?: string | null }).allowancesTceItemId
         const allowanceItemId: string | null = memberAllowanceItem || tsAllowancesDefault || null
@@ -281,6 +284,37 @@ export async function writeTimesheetCostLines(
           sell_labour: 0,
           cost_allowances: dayCostAllow,
           sell_allowances: daySellAllow,
+          timesheet_status: timesheet.status,
+        })
+      }
+
+      // ── Dedicated travel allowance row ──
+      // Tagged to member.travelTceItemId → timesheet travel_tce_default → null.
+      // Hours-based: hours × travel_cost/sell from rate card.
+      if (dayCostTravel > 0 || daySellTravel > 0) {
+        const memberTravelItem = (member as unknown as { travelTceItemId?: string | null }).travelTceItemId
+        const tsTravelDefault = ((timesheet as unknown as { travel_tce_default?: string }).travel_tce_default || '').trim()
+        const travelItemId: string | null = memberTravelItem || tsTravelDefault || null
+        rows.push({
+          project_id: projectId,
+          timesheet_id: timesheet.id,
+          week_start: weekStart,
+          week_ending: weekEnding,
+          work_date: workDate,
+          person_id: member.personId,
+          person_name: member.name,
+          role: member.role,
+          category,
+          wbs: memberWbs,
+          tce_item_id: travelItemId,
+          work_order: null,
+          day_type: dayType,
+          shift_type: shiftType,
+          allocated_hours: 0,
+          cost_labour: 0,
+          sell_labour: 0,
+          cost_allowances: dayCostTravel,
+          sell_allowances: daySellTravel,
           timesheet_status: timesheet.status,
         })
       }
@@ -335,9 +369,11 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
   const fsaCost   = pf(rcX.fsa_cost,   130)
   const campSell  = pf(rcX.camp,        199)
   const campCost  = pf(rcX.camp_cost || rcX.camp, 165.20)
+  const travelCostRate = pf(rcX.travel_cost, 30)
+  const travelSellRate = pf(rcX.travel_sell, 30)
 
   Object.entries(member.days || {}).forEach(([, d]) => {
-    const day = d as { dayType?: string; shiftType?: string; hours?: number; laha?: boolean; meal?: boolean; fsa?: boolean; camp?: boolean }
+    const day = d as { dayType?: string; shiftType?: string; hours?: number; laha?: boolean; meal?: boolean; fsa?: boolean; camp?: boolean; travel?: boolean }
 
     // Allowances apply on every day entry (rest days included), matching the
     // writer's behaviour from the dedicated-allowance-row commit.
@@ -349,6 +385,9 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
       if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
       if (day.meal) { allowances += mealSell; allowCost += mealCost }
     }
+    // Travel: hours-based, applies for all categories
+    const h0 = day.hours || 0
+    if (day.travel && h0 > 0) { allowances += h0 * travelSellRate; allowCost += h0 * travelCostRate }
 
     const h = day.hours || 0
     if (h <= 0) return

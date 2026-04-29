@@ -103,6 +103,8 @@ export interface RateCard {
   meal_cost: number
   meal_sell: number
   camp: number
+  travel_cost: number
+  travel_sell: number
   created_at: string
   updated_at: string
 }

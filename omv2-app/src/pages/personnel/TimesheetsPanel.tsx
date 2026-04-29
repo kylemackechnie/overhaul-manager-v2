@@ -435,6 +435,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       crew: week.crew, regime: week.regime, status: week.status, wbs: week.wbs, notes: week.notes,
       scope_tracking: (week as WeeklyTimesheet & { scope_tracking?: string }).scope_tracking || 'none',
       allowances_tce_default: (week as WeeklyTimesheet & { allowances_tce_default?: string }).allowances_tce_default || '',
+      travel_tce_default: (week as WeeklyTimesheet & { travel_tce_default?: string }).travel_tce_default || '',
     }).eq('id', week.id)
     if (error) { toast(error.message, 'error'); return }
     // Write wo_actuals rows for reporting
@@ -913,6 +914,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                         .filter(l => l.item_id && !isGroupHeader(l.item_id))
                         .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
                     </select>
+                    <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Travel TCE:</span>
+                    <select className="input" style={{ width: '180px', fontSize: '12px', padding: '3px 6px' }}
+                      value={(activeWeek as WeeklyTimesheet & { travel_tce_default?: string }).travel_tce_default || ''}
+                      onChange={e => setActiveWeek({ ...activeWeek, travel_tce_default: e.target.value } as WeeklyTimesheet)}
+                      title="Default TCE item for all crew travel allowances on this timesheet.">
+                      <option value="">— Unallocated —</option>
+                      {tceLines
+                        .filter(l => l.item_id && !isGroupHeader(l.item_id, l.line_type))
+                        .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                    </select>
                   </>
                 )}
               </div>
@@ -1083,6 +1094,37 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                         </div>
                       )
                     })()}
+                    {/* Travel TCE dropdown — per-person, same pattern as Allowance TCE */}
+                    {scopeMode === 'nrg_tce' && tceLines.length > 0 && (() => {
+                      const memberAny = member as unknown as { travelTceItemId?: string | null }
+                      const personOverride = memberAny.travelTceItemId || ''
+                      const tsDefault = (activeWeek as WeeklyTimesheet & { travel_tce_default?: string }).travel_tce_default || ''
+                      const effective = personOverride || tsDefault
+                      return (
+                        <div style={{ marginTop: '2px' }}>
+                          <div style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 600, marginBottom: '2px' }}>✈️ Travel TCE</div>
+                          <select
+                            value={personOverride}
+                            style={{ width: '100%', fontSize: '9px', padding: '2px 3px', border: `1px solid ${effective ? '#f59e0b' : 'var(--border2)'}`, borderRadius: '3px', background: effective ? 'rgba(245,158,11,0.06)' : 'var(--bg3)', color: effective ? '#f59e0b' : 'var(--text3)', cursor: 'pointer' }}
+                            title={personOverride ? `Override: ${personOverride}` : tsDefault ? `Using timesheet default: ${tsDefault}` : 'No default — travel will land as unallocated'}
+                            onChange={e => {
+                              const val = e.target.value
+                              setActiveWeek(w => w ? ({
+                                ...w,
+                                crew: w.crew.map(m => m.personId === member.personId
+                                  ? ({ ...m, travelTceItemId: val || null } as typeof m)
+                                  : m)
+                              }) : w)
+                            }}
+                          >
+                            <option value="">{tsDefault ? `↳ Use default (${tsDefault})` : '↳ Use default (unallocated)'}</option>
+                            {tceLines
+                              .filter(l => l.item_id && !isGroupHeader(l.item_id, l.line_type))
+                              .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                          </select>
+                        </div>
+                      )
+                    })()}
                     {/* EBA Meal Break Adjustment — trades only (+½h per worked day, cost & sell only) */}
                     {(type === 'trades') && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginTop: '2px' }}
@@ -1123,7 +1165,14 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                         {/* EBA adjustment display */}
                         {adjH > 0 && <div style={{ fontSize: '9px', color: TYPE_COLOR[type], textAlign: 'center', marginTop: '1px' }}>{dispHrs.toFixed(1)}h (adj)</div>}
                         <select value={dayType} style={{ width: '100%', fontSize: '9px', padding: '1px 2px', border: '1px solid var(--border2)', borderRadius: '2px', background: 'var(--bg3)', color: 'var(--text3)', marginTop: '2px' }}
-                          onChange={e => setDay(member.personId, d, 'dayType', e.target.value)}>
+                          onChange={e => {
+                            const newType = e.target.value
+                            setDayMulti(member.personId, d, {
+                              dayType: newType,
+                              // Auto-tick travel allowance when dayType = travel, auto-clear otherwise
+                              travel: newType === 'travel',
+                            })
+                          }}>
                           {DAY_TYPES.map(dt => <option key={dt.key} value={dt.key}>{dt.label}</option>)}
                         </select>
                         <select value={shiftType} style={{ width: '100%', fontSize: '9px', padding: '1px 2px', border: '1px solid var(--border2)', borderRadius: '2px', background: 'var(--bg3)', color: 'var(--text3)', marginTop: '1px' }}
@@ -1177,6 +1226,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             </label>
                             <label style={{ cursor: 'pointer', color: meal ? TYPE_COLOR[type] : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
                               <input type="checkbox" checked={meal} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'meal', e.target.checked)} /> Meal
+                            </label>
+                            <label style={{ cursor: 'pointer', color: ((raw as Record<string,unknown>).travel as boolean) ? '#f59e0b' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="checkbox" checked={!!((raw as Record<string,unknown>).travel as boolean)} style={{ accentColor: '#f59e0b', width: '10px', height: '10px' }} onChange={e => setDay(member.personId, d, 'travel', e.target.checked)} /> Travel
                             </label>
                           </div>
                         )}

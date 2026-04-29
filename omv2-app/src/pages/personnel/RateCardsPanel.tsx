@@ -19,6 +19,7 @@ type RateForm = {
   rates: { cost: Record<string,number>; sell: Record<string,number> }
   laha_cost: number; laha_sell: number; fsa_cost: number; fsa_sell: number
   meal_cost: number; meal_sell: number; camp: number
+  travel_cost: number; travel_sell: number
   regime: { wdNT: number; wdT15: number; satT15: number; nightNT: number; restNT: number }
 }
 
@@ -27,7 +28,7 @@ const EMPTY_REGIME = { wdNT:7.2, wdT15:3.3, satT15:3.0, nightNT:7.2, restNT:7.2 
 const EMPTY_FORM: RateForm = {
   role:'', category:'trades', subcon_vendor:'', currency: 'AUD',
   rates:{ cost: emptyRates(), sell: emptyRates() },
-  laha_cost:0, laha_sell:0, fsa_cost:0, fsa_sell:0, meal_cost:0, meal_sell:0, camp:0,
+  laha_cost:0, laha_sell:0, fsa_cost:0, fsa_sell:0, meal_cost:0, meal_sell:0, camp:0, travel_cost:30, travel_sell:30,
   regime: { ...EMPTY_REGIME },
 }
 
@@ -96,6 +97,8 @@ export function RateCardsPanel() {
       laha_cost: rc.laha_cost, laha_sell: rc.laha_sell,
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
       meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
+      travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
+      travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
       regime: { ...EMPTY_REGIME, ...(rcAny.regime || {}) },
     })
     setModal(rc)
@@ -113,6 +116,7 @@ export function RateCardsPanel() {
       laha_cost: form.laha_cost, laha_sell: form.laha_sell,
       fsa_cost: form.fsa_cost, fsa_sell: form.fsa_sell,
       meal_cost: form.meal_cost, meal_sell: form.meal_sell, camp: form.camp,
+      travel_cost: form.travel_cost, travel_sell: form.travel_sell,
       regime: form.regime,
     }
     if (modal === 'new') {
@@ -144,6 +148,8 @@ export function RateCardsPanel() {
       laha_cost: rc.laha_cost, laha_sell: rc.laha_sell,
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
       meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
+      travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
+      travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
     })
     if (error) { toast(error.message, 'error'); return }
     toast('Duplicated', 'success'); load()
@@ -367,6 +373,8 @@ export function RateCardsPanel() {
                   <div className="fg"><label>Meal Cost</label><input type="number" className="input" value={form.meal_cost} onChange={e=>setForm(f=>({...f,meal_cost:parseFloat(e.target.value)||0}))} /></div>
                   <div className="fg"><label>Meal Sell</label><input type="number" className="input" value={form.meal_sell} onChange={e=>setForm(f=>({...f,meal_sell:parseFloat(e.target.value)||0}))} /></div>
                   <div className="fg"><label>Camp ($/night)</label><input type="number" className="input" value={form.camp} onChange={e=>setForm(f=>({...f,camp:parseFloat(e.target.value)||0}))} /></div>
+                  <div className="fg"><label>Travel Allowance Cost ($/hr)</label><input type="number" className="input" value={form.travel_cost} onChange={e=>setForm(f=>({...f,travel_cost:parseFloat(e.target.value)||0}))} /></div>
+                  <div className="fg"><label>Travel Allowance Sell ($/hr)</label><input type="number" className="input" value={form.travel_sell} onChange={e=>setForm(f=>({...f,travel_sell:parseFloat(e.target.value)||0}))} /></div>
                 </div>
               </div>
               <details style={{border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden',marginTop:'4px'}}>
