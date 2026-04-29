@@ -184,6 +184,8 @@ export function NrgTcePanel() {
           tce_rate: l.tce_rate || 0, tce_total: l.tce_total || 0,
           kpi_included: l.kpi_included || false, line_type: l.line_type || '',
           wbs_code: '', category: '', forecast_enabled: true,
+          sort_order: l.sort_order ?? 0,
+          parent_id: l.parent_id ?? null,
         }))
         const { error } = await supabase.from('nrg_tce_lines').insert(rows)
         if (error) { toast(error.message, 'error'); setImporting(false); return }
