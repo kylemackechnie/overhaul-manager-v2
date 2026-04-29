@@ -424,14 +424,6 @@ export function ResourcesPanel() {
     })
 
   const arrow = (col: SortCol) => sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''
-  const Th = ({col,label,title}:{col:SortCol,label:string,title?:string}) => (
-    <th style={{cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}} onClick={()=>doSort(col)} title={title||label}>
-      {label}<span style={{color:'var(--accent)',fontSize:'10px'}}>{arrow(col)}</span>
-    </th>
-  )
-
-  const catCounts: Record<string,number> = {}
-  resources.forEach(r => { catCounts[r.category] = (catCounts[r.category]||0) + 1 })
 
   // Heatmap calendar
   const today = new Date().toISOString().slice(0,10)

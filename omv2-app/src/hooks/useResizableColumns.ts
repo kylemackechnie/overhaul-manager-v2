@@ -22,7 +22,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const STORAGE_PREFIX = 'col_widths_v1_'
 const MIN_COL_WIDTH = 32
 const MAX_COL_WIDTH = 800
-const RESIZER_WIDTH = 6
 
 export function useResizableColumns(
   tableId: string,
