@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { findOrCreatePerson, type Person } from '../../lib/persons'
@@ -67,7 +67,7 @@ export function ResourcesPanel() {
   const [catFilter, setCatFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [sortCol, setSortCol] = useState<SortCol>('status')
+  const [sortCol, setSortCol] = useState<SortCol>('name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
@@ -436,7 +436,20 @@ export function ResourcesPanel() {
   const calDays: string[] = []
   const d = new Date(calStart)
   while (d <= calEnd) { calDays.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1) }
-  const calResources = filtered.filter(r => r.mob_in || r.mob_out)
+  // Stable calendar order — locked to filtered order at load time
+  // Use the current filtered order but maintain stability across saves
+  const calResourceIds = useRef<string[]>([])
+  const calWithDates = filtered.filter(r => r.mob_in || r.mob_out)
+  // Update order when the set of IDs changes (new person added/removed), but not on date changes
+  const newIds = calWithDates.map(r => r.id).sort().join(',')
+  const prevIds = useRef('')
+  if (newIds !== prevIds.current) {
+    prevIds.current = newIds
+    calResourceIds.current = calWithDates.map(r => r.id)
+  }
+  const calResources = calResourceIds.current
+    .map(id => resources.find(r => r.id === id))
+    .filter((r): r is Resource => !!r && !!(r.mob_in || r.mob_out))
 
   const subconPos = pos.filter(po => po.status !== 'cancelled')
 
@@ -554,9 +567,18 @@ export function ResourcesPanel() {
                     />
                     <div className="col-resizer" {...rOnResize(0)} />
                   </th>
-                  {[['Status','status'],['Name','name'],['Role / Trade','role'],['Shift','shift'],['Company','company'],['Mob In','mob_in'],['Mob Out','mob_out'],['Phone','phone'],['Email','email'],['LAHA','laha'],['Meal','meal'],['FSA','fsa'],['Car','car'],['Flights','flights'],['Room','room'],['WBS','wbs'],['PO','po'],['','actions']].map(([label], i) => (
-                    <th key={i+1} ref={el=>rThRef(el,i+1)} className="resizable" style={{width:rw[i+1]}}>
-                      {label}
+                  {([
+                    ['Status','status'],['Name','name'],['Role / Trade','role'],['Shift','shift'],
+                    ['Company','company'],['Mob In','mob_in'],['Mob Out','mob_out'],
+                    ['Phone',null],['Email',null],
+                    ['LAHA','allow_laha'],['Meal','allow_meal'],['FSA','allow_fsa'],
+                    ['Car',null],['Flights',null],['Room',null],
+                    ['WBS','wbs'],['PO',null],['',null]
+                  ] as [string, string|null][]).map(([label, col], i) => (
+                    <th key={i+1} ref={el=>rThRef(el,i+1)} className="resizable"
+                      style={{width:rw[i+1], cursor: col ? 'pointer' : undefined, userSelect:'none'}}
+                      onClick={col ? () => doSort(col as SortCol) : undefined}>
+                      {label}{col ? <span style={{color:'var(--accent)',fontSize:'10px',marginLeft:'2px'}}>{arrow(col as SortCol)}</span> : null}
                       <div className="col-resizer" {...rOnResize(i+1)} />
                     </th>
                   ))}
@@ -722,12 +744,9 @@ export function ResourcesPanel() {
                           return (
                             <td key={day} style={{padding:'1px',textAlign:'center'}} title={tooltip}
                               onClick={() => {
-                                const isRemove = day === r.mob_in && targetField === 'mob_in'
-                                  || day === r.mob_out && targetField === 'mob_out'
-                                const val = isRemove ? null : day
                                 const label = targetField === 'mob_in' ? 'Mob In' : 'Mob Out'
-                                saveInline(r.id, targetField, val)
-                                toast(`${r.name}: ${label} ${isRemove ? 'cleared' : '→ ' + day}`, 'success')
+                                saveInline(r.id, targetField, day)
+                                toast(`${r.name}: ${label} → ${day}`, 'success')
                               }}>
                               <div style={{
                                 width:'16px',height:'14px',borderRadius:'2px',margin:'auto',cursor:'pointer',
