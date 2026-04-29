@@ -53,7 +53,7 @@ export function NrgTcePanel() {
     const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('source').order('sort_order').order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
-      supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew')
+      supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
         .eq('project_id', pid).eq('status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
