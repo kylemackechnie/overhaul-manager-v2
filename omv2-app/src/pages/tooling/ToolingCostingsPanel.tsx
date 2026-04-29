@@ -468,7 +468,7 @@ export function ToolingCostingsPanel() {
                       <div className="fg" style={{ margin: 0 }}><label>WBS</label>
                         <select className="input" value={c.import_wbs || ''} onChange={e => updateField(c.id, 'import_wbs', e.target.value)}>
                           <option value="">— No WBS —</option>
-                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}</option>)}
+                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}{w.name ? ` — ${w.name}` : ''}</option>)}
                         </select></div>
                     </div>
                     {c.import_cost_eur && (
@@ -497,7 +497,7 @@ export function ToolingCostingsPanel() {
                       <div className="fg" style={{ margin: 0 }}><label>WBS</label>
                         <select className="input" value={c.export_wbs || ''} onChange={e => updateField(c.id, 'export_wbs', e.target.value)}>
                           <option value="">— No WBS —</option>
-                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}</option>)}
+                          {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}{w.name ? ` — ${w.name}` : ''}</option>)}
                         </select></div>
                     </div>
                     {c.export_cost_eur && (

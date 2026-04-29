@@ -371,7 +371,7 @@ export function POsPanel() {
                       {i===0 && <label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>WBS</label>}
                       <select className="input" value={line.wbs} onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,wbs:e.target.value}:l)}))}>
                         <option value="">— WBS —</option>
-                        {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}</option>)}
+                        {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}
                       </select>
                     </div>
                     <div>
