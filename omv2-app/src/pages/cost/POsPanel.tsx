@@ -68,7 +68,7 @@ export function POsPanel() {
   const [filterVendor, setFilterVendor] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [wbsList, setWbsList] = useState<{id:string;code:string;name:string}[]>([])
-  const [tceLines, setTceLines] = useState<{item_id:string;description:string;line_type:string|null}[]>([])
+  const [tceLines, setTceLines] = useState<{item_id:string;description:string;line_type:string|null;source:string}[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -89,7 +89,7 @@ export function POsPanel() {
       supabase.from('cars').select('id,linked_po_id,total_cost').eq('project_id', pid),
       supabase.from('accommodation').select('id,linked_po_id,total_cost').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
-      supabase.from('nrg_tce_lines').select('item_id,description,line_type').eq('project_id', pid).order('sort_order').order('item_id'),
+      supabase.from('nrg_tce_lines').select('item_id,description,line_type,source').eq('project_id', pid).order('source').order('sort_order').order('item_id'),
     ])
     setPos((poRes.data||[]) as PurchaseOrder[])
     setInvoices((invRes.data||[]) as InvRow[])
@@ -97,7 +97,7 @@ export function POsPanel() {
     setCars((carRes.data||[]) as CarRow[])
     setAccom((acRes.data||[]) as AcRow[])
     setWbsList((wbsRes.data||[]) as {id:string;code:string;name:string}[])
-    setTceLines((tceRes.data||[]) as {item_id:string;description:string;line_type:string|null}[])
+    setTceLines((tceRes.data||[]) as {item_id:string;description:string;line_type:string|null;source:string}[])
     setLoading(false)
   }
 
@@ -406,9 +406,13 @@ export function POsPanel() {
                     value={(form as typeof form & {tce_item_id?:string}).tce_item_id || ''}
                     onChange={e => setForm(f => ({...f, tce_item_id: e.target.value || null} as typeof f))}>
                     <option value="">— No TCE link —</option>
-                    {tceLines
-                      .filter(l => l.line_type !== 'group' && !/^\d+\.\d+\.\d+$/.test(l.item_id || ''))
-                      .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                    {(['overhead','skilled'] as const).map(src => {
+                      const srcLines = tceLines.filter(l => l.source === src && l.line_type !== 'group' && !/^\d+\.\d+\.\d+$/.test(l.item_id || ''))
+                      if (!srcLines.length) return null
+                      return <optgroup key={src} label={src === 'overhead' ? 'Overhead' : 'Skilled Labour'}>
+                        {srcLines.map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                      </optgroup>
+                    })}
                   </select>
                 </div>
               )}
