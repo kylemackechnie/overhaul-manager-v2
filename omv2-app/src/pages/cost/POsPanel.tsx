@@ -37,11 +37,12 @@ type PoForm = {
   po_number: string; internal_ref: string; vendor: string; description: string
   status: string; currency: string; po_type: string; notes: string
   effective_start: string; effective_end: string; raised_date: string
+  tce_item_id: string | null
   lines: PoLine[]
 }
 const EMPTY_FORM: PoForm = {
   po_number:'', internal_ref:'', vendor:'', description:'', status:'draft',
-  currency:'AUD', po_type:'fixed', notes:'', effective_start:'', effective_end:'',
+  currency:'AUD', po_type:'fixed', notes:'', effective_start:'', effective_end:'', tce_item_id:null,
   raised_date:'', lines:[mkLine()],
 }
 
@@ -67,6 +68,7 @@ export function POsPanel() {
   const [filterVendor, setFilterVendor] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [wbsList, setWbsList] = useState<{id:string;code:string;name:string}[]>([])
+  const [tceLines, setTceLines] = useState<{item_id:string;description:string;line_type:string|null}[]>([])
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -80,13 +82,14 @@ export function POsPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [poRes, invRes, hireRes, carRes, acRes, wbsRes] = await Promise.all([
+    const [poRes, invRes, hireRes, carRes, acRes, wbsRes, tceRes] = await Promise.all([
       supabase.from('purchase_orders').select('*').eq('project_id', pid).order('created_at', { ascending: false }),
       supabase.from('invoices').select('id,po_id,amount,status').eq('project_id', pid),
       supabase.from('hire_items').select('id,linked_po_id,hire_cost').eq('project_id', pid),
       supabase.from('cars').select('id,linked_po_id,total_cost').eq('project_id', pid),
       supabase.from('accommodation').select('id,linked_po_id,total_cost').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
+      supabase.from('nrg_tce_lines').select('item_id,description,line_type').eq('project_id', pid).order('sort_order').order('item_id'),
     ])
     setPos((poRes.data||[]) as PurchaseOrder[])
     setInvoices((invRes.data||[]) as InvRow[])
@@ -94,6 +97,7 @@ export function POsPanel() {
     setCars((carRes.data||[]) as CarRow[])
     setAccom((acRes.data||[]) as AcRow[])
     setWbsList((wbsRes.data||[]) as {id:string;code:string;name:string}[])
+    setTceLines((tceRes.data||[]) as {item_id:string;description:string;line_type:string|null}[])
     setLoading(false)
   }
 
@@ -166,6 +170,7 @@ export function POsPanel() {
       status: po.status || 'draft', currency: po.currency || 'AUD',
       po_type: p.po_type || 'fixed', notes: po.notes || '',
       effective_start: p.effective_start || '', effective_end: p.effective_end || '',
+      tce_item_id: (po as PurchaseOrder).tce_item_id || null,
       raised_date: po.raised_date || '',
       lines: p.line_items?.length ? p.line_items : [mkLine()],
     })
@@ -188,6 +193,7 @@ export function POsPanel() {
       status: form.status,
       currency: form.currency,
       po_type: form.po_type,
+      tce_item_id: form.tce_item_id || null,
       po_value: formValue || null,
       effective_start: form.effective_start || null,
       effective_end: form.effective_end || null,
@@ -392,6 +398,20 @@ export function POsPanel() {
               <div className="fg">
                 <label>Notes</label>
                 <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} />
+              </div>
+              {tceLines.length > 0 && (
+                <div className="fg">
+                  <label>🎯 TCE Line</label>
+                  <select className="input"
+                    value={(form as typeof form & {tce_item_id?:string}).tce_item_id || ''}
+                    onChange={e => setForm(f => ({...f, tce_item_id: e.target.value || null} as typeof f))}>
+                    <option value="">— No TCE link —</option>
+                    {tceLines
+                      .filter(l => l.line_type !== 'group' && !/^\d+\.\d+\.\d+$/.test(l.item_id || ''))
+                      .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                  </select>
+                </div>
+              )}
               </div>
             </div>
             <div className="modal-footer">

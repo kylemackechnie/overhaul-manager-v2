@@ -30,6 +30,7 @@ export function NrgTcePanel() {
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
+  const [pos, setPos] = useState<{id:string;tce_item_id:string|null;po_value:number|null;status:string}[]>([])
   const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | NrgTceLine>(null)
@@ -72,6 +73,14 @@ export function NrgTcePanel() {
 
   const toggleCollapse = (id: string) =>
     setCollapsed(s => { const ns = new Set(s); ns.has(id) ? ns.delete(id) : ns.add(id); return ns })
+
+  /** Sum of open (non-cancelled, non-closed) PO values linked to this TCE line */
+  function lineCommitted(itemId: string | null): number {
+    if (!itemId) return 0
+    return pos
+      .filter(p => p.tce_item_id === itemId && p.status !== 'cancelled' && p.status !== 'closed')
+      .reduce((s, p) => s + (p.po_value || 0), 0)
+  }
 
   function lineActualCost(l: NrgTceLine): number {
     return nrgLineActual(
@@ -353,6 +362,7 @@ export function NrgTcePanel() {
                     <th style={{ width: '60px', textAlign: 'right' }}>Act. Hrs</th>
                     <th style={{ width: '74px', textAlign: 'right' }}>TCE Rate</th>
                     <th style={{ width: '82px', textAlign: 'right' }}>TCE Total</th>
+                    <th style={{ width: '82px', textAlign: 'right' }}>Committed</th>
                     <th style={{ width: '82px', textAlign: 'right' }}>Actual Cost</th>
                     <th style={{ width: '40px' }}>KPI</th>
                     <th style={{ width: '110px' }}>Type</th>
@@ -386,6 +396,10 @@ export function NrgTcePanel() {
                           </td>
                           <td colSpan={8} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px' }}>{groupTotal ? fmt(groupTotal) : '—'}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#1e40af' }}>{(() => {
+                            const gc = children.reduce((s, ch) => s + lineCommitted(ch.item_id), 0)
+                            return gc > 0 ? fmt(gc) : '—'
+                          })()}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#4f46e5' }}>{(() => {
                             const groupActual = children.reduce((s, c) => s + lineActualCost(c), 0)
                             return groupActual > 0 ? fmt(groupActual) : '—'
@@ -428,6 +442,10 @@ export function NrgTcePanel() {
                         })()}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#1e40af' }}>{(() => {
+                          const committed = lineCommitted(l.item_id)
+                          return committed > 0 ? fmt(committed) : <span style={{ color: 'var(--text3)' }}>—</span>
+                        })()}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)', fontWeight: 600 }}>{(() => {
                           const actual = lineActualCost(l)
                           const over = l.tce_total > 0 && actual > l.tce_total

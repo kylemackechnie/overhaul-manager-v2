@@ -235,6 +235,7 @@ export interface PurchaseOrder {
   raised_date: string | null
   closed_date: string | null
   notes: string
+  tce_item_id: string | null
   created_at: string
   updated_at: string
   // Computed (not in DB)
