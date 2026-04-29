@@ -80,6 +80,7 @@ export interface HourSplit {
 export interface RegimeConfig {
   wdNT?: number; wdT15?: number; satT15?: number
   nightNT?: number; restNT?: number
+  seag?: boolean  // SE AG billing mode: Sun/PH = 2.5T, Sat = all DT, WD OT = T1.5 only
 }
 
 export function splitHours(
@@ -98,11 +99,12 @@ export function splitHours(
   const SAT_T15  = rc.satT15  ?? 3
   const NIGHT_NT = rc.nightNT ?? 7.2
   const REST_NT  = rc.restNT  ?? 7.2
+  const IS_SEAG  = !!rc.seag
 
   // Normalise dayType — accept both snake_case ('public_holiday') and camelCase ('publicHoliday')
   const d = dayType === 'publicHoliday' ? 'public_holiday' : dayType
 
-  // Public holiday — all hours at DT1.5
+  // Public holiday — SE AG: all 2.5T. Trades: all DT1.5 (same bucket ddt15)
   if (d === 'public_holiday') {
     return night ? { ...zero, ndt15: totalHrs } : { ...zero, ddt15: totalHrs }
   }
@@ -117,7 +119,25 @@ export function splitHours(
     return { ...zero, dnt: totalHrs }
   }
 
-  // Night work
+  // ── SE AG billing mode ────────────────────────────────────────────────────
+  // Mon–Fri: first wdNT hrs = NT (dnt), remainder = T1.5 (dt15), no DT band
+  // Saturday: all hours = DT (ddt) — 2T, no T1.5 band
+  // Sunday & PH: all hours = DT1.5 (ddt15) — 2.5T (handled above for PH)
+  // Night shift not separately rated — falls through to day logic
+  if (IS_SEAG) {
+    if (d === 'saturday') {
+      return { ...zero, ddt: totalHrs }
+    }
+    if (d === 'sunday') {
+      return { ...zero, ddt15: totalHrs }
+    }
+    // Weekday (and night — SE AG doesn't distinguish): NT → T1.5, no DT
+    const dnt  = Math.min(totalHrs, WD_NT)
+    const dt15 = Math.max(0, totalHrs - WD_NT)
+    return { ...zero, dnt, dt15 }
+  }
+
+  // ── Standard trades/management ────────────────────────────────────────────
   if (night) {
     if (d === 'saturday' || d === 'sunday') {
       return { ...zero, ndt: totalHrs }

@@ -20,11 +20,12 @@ type RateForm = {
   laha_cost: number; laha_sell: number; fsa_cost: number; fsa_sell: number
   meal_cost: number; meal_sell: number; camp: number
   travel_cost: number; travel_sell: number
-  regime: { wdNT: number; wdT15: number; satT15: number; nightNT: number; restNT: number }
+  regime: { wdNT: number; wdT15: number; satT15: number; nightNT: number; restNT: number; seag: boolean }
 }
 
 const emptyRates = () => ({ dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 })
-const EMPTY_REGIME = { wdNT:7.2, wdT15:3.3, satT15:3.0, nightNT:7.2, restNT:7.2 }
+const EMPTY_REGIME      = { wdNT:7.2, wdT15:3.3, satT15:3.0, nightNT:7.2, restNT:7.2, seag:false }
+const EMPTY_REGIME_SEAG = { wdNT:8,   wdT15:16,  satT15:0,   nightNT:0,   restNT:7.2, seag:true  }
 const EMPTY_FORM: RateForm = {
   role:'', category:'trades', subcon_vendor:'', currency: 'AUD',
   rates:{ cost: emptyRates(), sell: emptyRates() },
@@ -98,7 +99,7 @@ export function RateCardsPanel() {
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
       meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
       travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
-      regime: { ...EMPTY_REGIME, ...(rcAny.regime || {}) },
+      regime: { ...(rc.category === 'seag' ? EMPTY_REGIME_SEAG : EMPTY_REGIME), ...(rcAny.regime || {}) },
     })
     setModal(rc)
   }
@@ -380,25 +381,52 @@ export function RateCardsPanel() {
                   ⚙️ Regime Config <span style={{fontSize:'10px',fontWeight:400,color:'var(--text3)'}}>Hour thresholds for NT/OT splits — defaults: WD NT 7.2h, T1.5 3.3h</span>
                 </summary>
                 <div style={{padding:'12px',background:'var(--bg2)'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:'8px'}}>
-                    {([
-                      ['wdNT',   'Weekday NT (hrs)', 7.2],
-                      ['wdT15',  'Weekday T1.5 (hrs)', 3.3],
-                      ['satT15', 'Sat T1.5 (hrs)', 3.0],
-                      ['nightNT','Night NT (hrs)', 7.2],
-                      ['restNT', 'Rest Day NT (hrs)', 7.2],
-                    ] as [keyof typeof EMPTY_REGIME, string, number][]).map(([key, label, def]) => (
-                      <div key={key} className="fg" style={{margin:0}}>
-                        <label style={{fontSize:'10px'}}>{label}</label>
-                        <input type="number" className="input" min={0} max={24} step={0.1}
-                          value={form.regime[key] ?? def}
-                          onChange={e => setForm(f => ({ ...f, regime: { ...f.regime, [key]: parseFloat(e.target.value) || 0 } }))} />
+                  {form.category === 'seag' ? (
+                    <div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',marginBottom:'8px'}}>
+                        <div className="fg" style={{margin:0}}>
+                          <label style={{fontSize:'10px'}}>WD Normal Time (hrs)</label>
+                          <input type="number" className="input" min={0} max={24} step={0.1}
+                            value={form.regime.wdNT ?? 8}
+                            onChange={e => setForm(f => ({ ...f, regime: { ...f.regime, wdNT: parseFloat(e.target.value) || 0 } }))} />
+                        </div>
+                        <div style={{padding:'8px 10px',background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.3)',borderRadius:'5px'}}>
+                          <div style={{fontSize:'11px',fontWeight:600,color:'#92400e'}}>Saturday</div>
+                          <div style={{fontSize:'10px',color:'var(--text2)',marginTop:'2px'}}>All hours → DT (2×)</div>
+                          <div style={{fontSize:'9px',color:'var(--text3)',marginTop:'1px'}}>satT15=0, no T1.5 band</div>
+                        </div>
+                        <div style={{padding:'8px 10px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:'5px'}}>
+                          <div style={{fontSize:'11px',fontWeight:600,color:'#991b1b'}}>Sunday &amp; PH</div>
+                          <div style={{fontSize:'10px',color:'var(--text2)',marginTop:'2px'}}>All hours → DT1.5 (2.5×)</div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <div style={{fontSize:'10px',color:'var(--text3)',marginTop:'6px'}}>
-                    Weekday day shift: first <b>wdNT</b> hrs = NT, next <b>wdT15</b> = T1.5, remainder = DT. Night: first <b>nightNT</b> = NT, remainder = DT. Sat T1.5 applies before DT on Saturday (lt12 regime).
-                  </div>
+                      <div style={{fontSize:'10px',color:'var(--text3)'}}>
+                        SE AG: WD first <b>{form.regime.wdNT ?? 8}h</b> = NT (1×), extra = T1.5 (1.5×), no DT band. Sat = all DT (2×). Sun/PH = all DT1.5 (2.5×).
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:'8px'}}>
+                        {([
+                          ['wdNT',   'Weekday NT (hrs)', 7.2],
+                          ['wdT15',  'Weekday T1.5 (hrs)', 3.3],
+                          ['satT15', 'Sat T1.5 (hrs)', 3.0],
+                          ['nightNT','Night NT (hrs)', 7.2],
+                          ['restNT', 'Rest Day NT (hrs)', 7.2],
+                        ] as [keyof typeof EMPTY_REGIME, string, number][]).map(([key, label, def]) => (
+                          <div key={key} className="fg" style={{margin:0}}>
+                            <label style={{fontSize:'10px'}}>{label}</label>
+                            <input type="number" className="input" min={0} max={24} step={0.1}
+                              value={form.regime[key] ?? def}
+                              onChange={e => setForm(f => ({ ...f, regime: { ...f.regime, [key]: parseFloat(e.target.value) || 0 } }))} />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{fontSize:'10px',color:'var(--text3)',marginTop:'6px'}}>
+                        Weekday day shift: first <b>wdNT</b> hrs = NT, next <b>wdT15</b> = T1.5, remainder = DT. Night: first <b>nightNT</b> = NT, remainder = DT. Sat T1.5 applies before DT on Saturday (lt12 regime).
+                      </div>
+                    </div>
+                  )}
                 </div>
               </details>
 
