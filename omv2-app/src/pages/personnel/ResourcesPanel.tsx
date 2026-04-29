@@ -614,8 +614,8 @@ export function ResourcesPanel() {
                           )
                         })()}
                       </td>
-                      <td style={{fontSize:'12px',color:'var(--text3)'}}>{r.shift||'day'}</td>
-                      <td style={{minWidth:'110px'}}>
+                      <td style={{fontSize:'12px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.shift||'day'}</td>
+                      <td style={{overflow:'hidden'}}>
                         <input defaultValue={r.company||''}
                           style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:'var(--text2)',cursor:'pointer',padding:'1px 2px'}}
                           placeholder="—"
@@ -624,18 +624,18 @@ export function ResourcesPanel() {
                           onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
                         />
                       </td>
-                      <td><input type="date" defaultValue={r.mob_in||''}
-                        style={{width:'110px',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
+                      <td style={{overflow:'hidden'}}><input type="date" defaultValue={r.mob_in||''}
+                        style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
                         onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)'}}
                         onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';saveInline(r.id,'mob_in',(e.target as HTMLInputElement).value||null)}}
                       /></td>
-                      <td><input type="date" defaultValue={r.mob_out||''}
-                        style={{width:'110px',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
+                      <td style={{overflow:'hidden'}}><input type="date" defaultValue={r.mob_out||''}
+                        style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
                         onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)'}}
                         onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';saveInline(r.id,'mob_out',(e.target as HTMLInputElement).value||null)}}
                       /></td>
-                      <td style={{minWidth:'110px',fontSize:'11px',color:'var(--text3)'}}>{r.phone||'—'}</td>
-                      <td style={{minWidth:'140px',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'140px'}}>{r.email||'—'}</td>
+                      <td style={{fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.phone||'—'}</td>
+                      <td style={{fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.email||'—'}</td>
                       <td style={{textAlign:'center'}}>
                         <input type="checkbox" checked={!!r.allow_laha} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_laha',e.target.checked)} />
@@ -648,10 +648,10 @@ export function ResourcesPanel() {
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>
-                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hr-cars'):undefined} title={car?'View in Car Hire':undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
-                      <td style={{fontSize:'11px',color:'var(--text2)',whiteSpace:'nowrap',maxWidth:'140px',overflow:'hidden',textOverflow:'ellipsis'}} title={r.flights||undefined}>{r.flights||'—'}</td>
-                      <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined} title={room?'View in Accommodation':undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
-                      <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',maxWidth:'130px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
+                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hr-cars'):undefined} title={car?'View in Car Hire':undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
+                      <td style={{fontSize:'11px',color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.flights||undefined}>{r.flights||'—'}</td>
+                      <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined} title={room?'View in Accommodation':undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
+                      <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
                       <td>
                         {r.category==='subcontractor' ? (
                           po
