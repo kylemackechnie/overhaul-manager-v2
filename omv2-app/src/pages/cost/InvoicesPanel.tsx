@@ -55,6 +55,7 @@ interface Invoice {
   period_from: string|null; period_to: string|null; source: string|null
   sap_doc_number: string|null; sap_wbs: string|null; tce_item_id: string|null
   status_history: StatusHistoryEntry[]; notes: string|null; dispute_note: string|null
+  receipt_paths: string[]
   created_at: string
 }
 
@@ -136,7 +137,7 @@ export function InvoicesPanel() {
   async function removeInvReceipt(inv: Invoice, path: string) {
     if (!confirm('Remove this receipt?')) return
     await deleteReceipt(path)
-    const newPaths = (inv.receipt_paths || []).filter(p => p !== path)
+    const newPaths = (inv.receipt_paths || []).filter((p: string) => p !== path)
     await supabase.from('invoices').update({ receipt_paths: newPaths }).eq('id', inv.id)
     setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, receipt_paths: newPaths } : i))
     toast('Receipt removed', 'info')
