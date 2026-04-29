@@ -24,6 +24,7 @@ const SL_SYNONYMS: Record<string, string[]> = {
   workOrderTask:  ['work order task'],
   itemId:         ['scope no', 'scope number', 'item id'],
   description:    ['activity description', 'scope description', 'description'],
+  scopeType:      ['scope type'],
   estimatedQty:   ['estimated hours', 'hours'],
   tceRate:        ['gang rate', 'unit rate', '$/hr'],
   tceTotal:       ['estimated total cost', 'total cost'],
@@ -84,7 +85,7 @@ export interface TceImportResult {
 }
 
 export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string>): TceImportResult {
-  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellStyles: true })
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
   const result: TceImportResult = { added: [], toUpdate: [], skipped: 0, errors: [] }
 
   // ── Overheads tab ──
@@ -136,67 +137,28 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
   // ── Skilled Labour tab ──
   const slName = wb.SheetNames.find(n => /skilled|labour/i.test(n))
   if (slName) {
-    const ws = wb.Sheets[slName]
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as Row[]
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[slName], { header: 1, defval: '' }) as Row[]
     const hdr = buildHeaderMap(rows, SL_SYNONYMS, 6)
     if (hdr) {
-      // Decode the sheet reference to get cell addresses for font access
-      const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : null
-
-      /**
-       * Check if a cell at (rowIdx, colIdx) — 0-based — is bold in XLSX.
-       * XLSX.js stores font in cell.s.font when styles are loaded (requires {cellStyles:true}).
-       * We use the raw cell object from ws[address] to check .s?.font?.bold.
-       */
-      const isCellBold = (rowIdx: number, colIdx: number): boolean => {
-        if (!ref) return false
-        const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx })
-        const cell = ws[addr]
-        return !!(cell?.s?.font?.bold)
-      }
-
-      // Col indices from header detection
-      const colB = hdr.colMap.workOrder       // "Work Order and Work Order Task Combined"
-      const colD = hdr.colMap.description     // "Activity description"
-      const colC = hdr.colMap.itemId          // "Scope No."
-
       for (let r = hdr.firstDataRow; r < rows.length; r++) {
         const row = rows[r]
-        const scopeNo = cellStr(row, colC)
-        const desc    = cellStr(row, colD)
-        const woCellVal = cellStr(row, colB)
+        const scopeNo   = cellStr(row, hdr.colMap.itemId)
+        const desc      = cellStr(row, hdr.colMap.description)
+        const scopeType = cellStr(row, hdr.colMap.scopeType).toUpperCase()
 
         if (!desc) continue
 
-        // ── Header detection ──
-        // A row is a section HEADER when col B is bold (sz=10 in source).
-        // XLSX.js only carries bold when the file has embedded styles.
-        // Fallback: if styles unavailable, use the integer WO pattern (no dash suffix)
-        // as the signal — headers have a bare integer WO (e.g. 28243980), line items
-        // have a dash-suffixed task (e.g. 28243980-04).
-        const colBBold = isCellBold(r, colB ?? 1)
-        const woBareInt = woCellVal && /^\d{8,}$/.test(woCellVal.trim()) // e.g. "28243980"
-        const woHasTask = woCellVal && /^\d{8,}-\d+$/.test(woCellVal.trim()) // e.g. "28243980-04"
-
-        const isHeader = colBBold || (woBareInt && !woHasTask && !scopeNo.includes('.'))
-
-        if (isHeader) {
-          // Emit as a group header line — no hours, marks the section boundary
-          const scopeRef = scopeNo || woCellVal || ''
-          const headerId = scopeRef || `SL-HDR-${r}`
+        // ── Section header: Scope Type = 'H' ──
+        if (scopeType === 'H') {
+          const wo  = cellStr(row, hdr.colMap.workOrder)
+          const cs  = cellStr(row, hdr.colMap.contractScope)
+          const headerId = scopeNo || wo || `SL-HDR-${r}`
           if (!existingItemIds.has(headerId)) {
             result.added.push({
-              item_id: headerId,
-              description: desc,
-              source: 'skilled',
-              work_order: woCellVal || null,
-              contract_scope: cellStr(row, hdr.colMap.contractScope) || null,
-              unit_type: '',
-              estimated_qty: 0,
-              tce_rate: 0,
-              tce_total: 0,
-              kpi_included: false,
-              line_type: 'group',
+              item_id: headerId, description: desc, source: 'skilled',
+              work_order: wo || null, contract_scope: cs || null,
+              unit_type: '', estimated_qty: 0, tce_rate: 0, tce_total: 0,
+              kpi_included: false, line_type: 'group',
             })
             existingItemIds.add(headerId)
           }
@@ -205,18 +167,18 @@ export function parseNrgTceFile(buffer: ArrayBuffer, existingItemIds: Set<string
 
         // ── Line item ──
         if (!scopeNo || !/^\d+\.\d+/.test(scopeNo)) continue
-
-        const wo  = woCellVal
-        const cs  = cellStr(row, hdr.colMap.contractScope)
-        const qty = cellNum(row, hdr.colMap.estimatedQty)
-        const rate  = cellNum(row, hdr.colMap.tceRate)
-        const total = cellNum(row, hdr.colMap.tceTotal) || qty * rate
-
-        // WO resolution: the combined column already has "28243980-04" style values
-        // in the cleaned file. Fall back to composing from separate columns if needed.
-        let woFinal = wo
+        const wo = cellStr(row, hdr.colMap.workOrder)
         const task = cellStr(row, hdr.colMap.workOrderTask)
-        if (!woFinal && task) woFinal = task
+        const cs = cellStr(row, hdr.colMap.contractScope)
+        const qty = cellNum(row, hdr.colMap.estimatedQty)
+        const rate = cellNum(row, hdr.colMap.tceRate)
+        const total = cellNum(row, hdr.colMap.tceTotal) || qty * rate
+        // Resolve WO — priority: WO+Task → task → wo
+        let woFinal = ''
+        if (wo && task) woFinal = wo.includes('-') ? wo : `${wo}-${task}`
+        else if (task) woFinal = task
+        else if (wo) woFinal = wo
+        // Sanity check — reject free-text comments
         if (woFinal && (/[\s?]/.test(woFinal) || woFinal.length > 30 || !/\d/.test(woFinal))) woFinal = ''
 
         if (existingItemIds.has(scopeNo)) {
