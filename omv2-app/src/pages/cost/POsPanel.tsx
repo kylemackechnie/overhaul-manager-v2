@@ -4,6 +4,7 @@ import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 import type { PurchaseOrder } from '../../types'
 
 // ── Status metadata (matches HTML PO_STATUS) ──────────────────────────────────
@@ -180,6 +181,33 @@ export function POsPanel() {
   function openNew() { setForm({ ...EMPTY_FORM, lines:[mkLine()] }); setModal('new') }
 
   const formValue = form.lines.reduce((s, l) => s + (l.value || 0), 0)
+
+  async function handleReceiptUpload(po: PurchaseOrder, file: File) {
+    if (file.size > 10 * 1024 * 1024) { toast('File too large — max 10MB', 'error'); return }
+    setUploadingId(po.id)
+    const { path, error } = await uploadReceipt(activeProject!.id, po.id, file)
+    if (error) { toast('Upload failed: ' + error, 'error'); setUploadingId(null); return }
+    const newPaths = [...(po.receipt_paths || []), path]
+    await supabase.from('purchase_orders').update({ receipt_paths: newPaths }).eq('id', po.id)
+    setPos(prev => prev.map(p => p.id === po.id ? { ...p, receipt_paths: newPaths } : p))
+    toast('Receipt attached', 'success')
+    setUploadingId(null)
+  }
+
+  async function removePoReceipt(po: PurchaseOrder, path: string) {
+    if (!confirm('Remove this receipt?')) return
+    await deleteReceipt(path)
+    const newPaths = (po.receipt_paths || []).filter(p => p !== path)
+    await supabase.from('purchase_orders').update({ receipt_paths: newPaths }).eq('id', po.id)
+    setPos(prev => prev.map(p => p.id === po.id ? { ...p, receipt_paths: newPaths } : p))
+    toast('Receipt removed', 'info')
+  }
+
+  async function openPoReceipt(path: string) {
+    const url = await getSignedUrl(path)
+    if (!url) { toast('Could not open receipt', 'error'); return }
+    window.open(url, '_blank')
+  }
 
   async function save() {
     if (!form.vendor.trim()) { toast('Vendor required', 'error'); return }

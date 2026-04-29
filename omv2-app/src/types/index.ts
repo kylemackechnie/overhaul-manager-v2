@@ -267,6 +267,7 @@ export interface Invoice {
   sap_doc_number: string | null
   sap_wbs: string | null
   tce_item_id: string | null
+  receipt_paths: string[]
   linked_asset_ids: string[]
   status_history: InvoiceStatusHistory[]
   notes: string
