@@ -282,7 +282,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [bulkAddModal, setBulkAddModal] = useState(false)
   const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number}[]>([])
-  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string}[]>([])
+  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null}[]>([])
   // Multi-match resolver — opens a modal listing every TasTK-imported alloc whose
   // WO maps to >1 TCE candidate item. User splits the hours, then save replaces
   // each ambiguous alloc with explicit {wo, tceItemId, hours} rows.
@@ -294,8 +294,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       supabase.from('work_orders').select('id,wo_number,description').eq('project_id', activeProject.id).neq('status','cancelled').order('wo_number')
         .then(r => setWorkOrders((r.data||[]) as {id:string;wo_number:string;description:string}[]))
       // Always load TCE lines when project has them — needed for allocation modal regardless of scope_tracking
-      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source').eq('project_id', activeProject.id).order('item_id')
-        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string}[]))
+      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source,line_type').eq('project_id', activeProject.id).order('sort_order').order('item_id')
+        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null}[]))
     }
   }, [activeProject?.id])
 

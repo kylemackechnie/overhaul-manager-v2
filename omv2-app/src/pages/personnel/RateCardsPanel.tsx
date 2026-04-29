@@ -98,7 +98,6 @@ export function RateCardsPanel() {
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
       meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
       travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
-      travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
       regime: { ...EMPTY_REGIME, ...(rcAny.regime || {}) },
     })
     setModal(rc)
@@ -148,7 +147,6 @@ export function RateCardsPanel() {
       laha_cost: rc.laha_cost, laha_sell: rc.laha_sell,
       fsa_cost: rc.fsa_cost, fsa_sell: rc.fsa_sell,
       meal_cost: rc.meal_cost, meal_sell: rc.meal_sell, camp: rc.camp,
-      travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
       travel_cost: (rc as unknown as {travel_cost?:number}).travel_cost ?? 30, travel_sell: (rc as unknown as {travel_sell?:number}).travel_sell ?? 30,
     })
     if (error) { toast(error.message, 'error'); return }
