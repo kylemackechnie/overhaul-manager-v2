@@ -11,7 +11,8 @@ import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry } fro
 // Group-header rows in NRG TCE have item_ids like "2.02.4" (3 segments).
 // Real bookable lines have 4+ segments. Used by allocation pickers to filter
 // out the headers that aren't valid scope/allowance targets.
-const isGroupHeader = (id: string | null | undefined): boolean => !!id && /^\d+\.\d+\.\d+$/.test(id)
+const isGroupHeader = (id: string | null | undefined, lineType?: string | null): boolean =>
+  (!!id && /^\d+\.\d+\.\d+$/.test(id)) || lineType === 'group'
 
 type TsType = 'trades' | 'mgmt' | 'seag' | 'subcon'
 const TYPE_LABELS: Record<TsType, string> = { trades: 'Trades', mgmt: 'Management', seag: 'SE AG', subcon: 'Subcontractor' }
