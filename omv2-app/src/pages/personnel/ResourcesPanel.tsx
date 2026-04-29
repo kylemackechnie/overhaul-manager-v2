@@ -408,8 +408,6 @@ export function ResourcesPanel() {
     else { setSortCol(col); setSortAsc(true) }
   }
 
-  void doSort; void arrow  // kept for future sort wiring on resizable headers
-
   const catCounts: Record<string,number> = {}
   resources.forEach(r => { catCounts[r.category] = (catCounts[r.category]||0) + 1 })
 
@@ -429,6 +427,7 @@ export function ResourcesPanel() {
     })
 
   const arrow = (col: SortCol) => sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''
+  void doSort; void arrow  // kept for future sort wiring on resizable headers
 
   // Heatmap calendar
   const today = new Date().toISOString().slice(0,10)
