@@ -549,6 +549,7 @@ export interface NrgTimesheetCrewDay {
   meal?: boolean
   fsa?: boolean
   camp?: boolean
+  travel?: boolean
 }
 
 export interface NrgTimesheetCrew {
@@ -810,16 +811,13 @@ export function nrgLineActual(
       if (rc) {
         const rcAny2 = rc as unknown as Record<string, unknown>
         for (const [, tday] of Object.entries(member.days)) {
-          if (!(tday as Record<string,unknown>).travel || !(tday as Record<string,unknown>).hours) continue
-          const tHours = (tday as Record<string,unknown>).hours as number
-          if (tHours <= 0) continue
+          if (!tday.travel || !tday.hours || tday.hours <= 0) continue
           const memberTravelItem = (member as unknown as { travelTceItemId?: string | null }).travelTceItemId
           const tsTravelDefault = ((ts as unknown as { travel_tce_default?: string }).travel_tce_default || '').trim()
           const effectiveTravelItem = memberTravelItem || tsTravelDefault || null
           if (effectiveTravelItem !== line.item_id) continue
-          // Skip if already counted via alloc-match loop
-          if (nrgMatchAllocForLine((tday as Record<string,unknown>).nrgWoAllocations as [] || [], line)) continue
-          total += tHours * (pf(rcAny2.travel_sell) || 30)
+          if (nrgMatchAllocForLine(tday.nrgWoAllocations || [], line)) continue
+          total += tday.hours * (pf(rcAny2.travel_sell) || 30)
         }
       }
     }  // end member loop
