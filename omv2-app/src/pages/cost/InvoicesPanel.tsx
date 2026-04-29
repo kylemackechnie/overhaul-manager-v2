@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -410,7 +411,7 @@ export function InvoicesPanel() {
         <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
       ) : (
         <div className="card" style={{padding:0,overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',minWidth:'1000px'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',tableLayout:'fixed',minWidth:'1000px'}}>
             <thead>
               <tr>
                 <SortTh col="invoice" label="Invoice #" />

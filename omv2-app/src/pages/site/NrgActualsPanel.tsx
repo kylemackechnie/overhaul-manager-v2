@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
 import { nrgInvoiceActual, nrgInvoiceActualForWeek, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
@@ -249,7 +250,7 @@ export function NrgActualsPanel() {
             <span style={{ fontWeight: 600 }}>Total Progress</span>
             <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{fmt(totAct)} / {fmt(totTce)}</span>
           </div>
-          <div style={{ background: 'var(--border2)', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--border2)', borderRadius: '4px', height: '10px', overflow: 'auto' }}>
             <div style={{ height: '100%', width: Math.min(100, totPct || 0) + '%', background: (totPct || 0) > 100 ? 'var(--red)' : (totPct || 0) > 80 ? 'var(--amber)' : 'var(--green)', borderRadius: '4px', transition: 'width .3s' }} />
           </div>
         </div>
@@ -301,7 +302,7 @@ export function NrgActualsPanel() {
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ fontSize: '12px', minWidth: '900px' }}>
+            <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '900px' }}>
               <thead>
                 <tr>
                   <th style={{ width: '80px' }}>Item ID</th>

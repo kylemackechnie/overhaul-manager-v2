@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 
 interface ActualRow {
@@ -129,7 +130,7 @@ export function WOActualsPanel() {
           <p>Allocate hours to work orders using the 📋 button in timesheet cells, then save the timesheet.</p>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <table>
             <thead>
               <tr>

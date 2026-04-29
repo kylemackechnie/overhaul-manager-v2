@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { HireItem, PurchaseOrder } from '../../types'
@@ -343,7 +344,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setHireSelected(new Set())}>✕ Clear</button>
             </div>
           )}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             <table>
               <thead>
                 <tr><th style={{width:'32px',textAlign:'center'}}>

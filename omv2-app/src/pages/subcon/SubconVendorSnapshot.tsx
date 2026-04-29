@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 
 const fmt = (n: number) => n > 0 ? '$' + Math.round(n).toLocaleString('en-AU') : '—'
@@ -69,7 +70,7 @@ export function SubconVendorSnapshot() {
       {rows.length === 0 ? (
         <div className="empty-state"><div className="icon">📊</div><h3>No vendor data yet</h3><p>Add contracts, invoices, hire items, and accommodation to see the vendor breakdown.</p></div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <table>
             <thead>
               <tr>

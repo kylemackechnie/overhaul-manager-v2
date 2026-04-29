@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
@@ -45,6 +46,12 @@ export function NrgTcePanel() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkWbs, setBulkWbs] = useState('')
   const [bulkContract, setBulkContract] = useState('')
+
+
+  // Resizable columns — fixed columns only (weekly date cols use fixed 80px)
+  // Order matches thead: checkbox, ItemID, Source, Description, WorkOrder, ContractScope, Unit, EstQty, ActHrs, TCERate, TCETotal, Committed, ActualCost, KPI, Type, WBS, Actions
+  const TCE_COL_DEFAULTS = [28, 80, 72, 220, 90, 100, 56, 60, 60, 74, 82, 82, 82, 40, 110, 95, 60]
+  const { widths: cw, onResizeStart, thRef } = useResizableColumns('nrg-tce', TCE_COL_DEFAULTS)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -373,35 +380,31 @@ export function NrgTcePanel() {
         : filtered.length === 0 ? (
           <div className="empty-state"><div className="icon">📋</div><h3>No TCE lines</h3><p>Import from XLSX or add lines manually.</p></div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ fontSize: '12px', minWidth: '1100px' }}>
+              <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '1100px' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '28px' }}>
-                      <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />
-                    </th>
-                    <th style={{ width: '80px' }}>Item ID</th>
-                    <th style={{ width: '72px' }}>Source</th>
-                    <th>Description</th>
-                    <th style={{ width: '90px' }}>Work Order</th>
-                    <th style={{ width: '100px' }}>Contract Scope</th>
-                    <th style={{ width: '56px' }}>Unit</th>
-                    <th style={{ width: '60px', textAlign: 'right' }}>Est. Qty</th>
-                    <th style={{ width: '60px', textAlign: 'right' }}>Act. Hrs</th>
-                    <th style={{ width: '74px', textAlign: 'right' }}>TCE Rate</th>
-                    <th style={{ width: '82px', textAlign: 'right' }}>TCE Total</th>
-                    <th style={{ width: '82px', textAlign: 'right' }}>Committed</th>
-                    <th style={{ width: '82px', textAlign: 'right' }}>Actual Cost</th>
-                    <th style={{ width: '40px' }}>KPI</th>
-                    <th style={{ width: '110px' }}>Type</th>
-                    <th style={{ width: '95px' }}>WBS</th>
+                    {[
+                      { label: <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />, align: 'center' },
+                      { label: 'Item ID' }, { label: 'Source' }, { label: 'Description' },
+                      { label: 'Work Order' }, { label: 'Contract Scope' }, { label: 'Unit' },
+                      { label: 'Est. Qty', align: 'right' }, { label: 'Act. Hrs', align: 'right' },
+                      { label: 'TCE Rate', align: 'right' }, { label: 'TCE Total', align: 'right' },
+                      { label: 'Committed', align: 'right' }, { label: 'Actual Cost', align: 'right' },
+                      { label: 'KPI' }, { label: 'Type' }, { label: 'WBS' }, { label: '' },
+                    ].map((col, i) => (
+                      <th key={i} ref={el => thRef(el, i)} className="resizable"
+                        style={{ width: cw[i], textAlign: (col as {align?:string}).align as 'right'|'center'|undefined }}>
+                        {col.label}
+                        <div className="col-resizer" {...onResizeStart(i)} />
+                      </th>
+                    ))}
                     {showWeekly && weekKeys.map(wk => (
-                      <th key={wk} style={{ width: '80px', textAlign: 'right', fontSize: '10px', color: 'var(--text3)' }}>
+                      <th key={wk} style={{ width: 80, textAlign: 'right', fontSize: '10px', color: 'var(--text3)' }}>
                         {new Date(wk + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short' })}
                       </th>
                     ))}
-                    <th style={{ width: '60px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -423,7 +426,7 @@ export function NrgTcePanel() {
                             {l.item_id}
                             {isCol && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#6366f1' }}>({childCount} · {fmt(groupTotal)})</span>}
                           </td>
-                          <td colSpan={8} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
+                          <td colSpan={13} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px' }}>{groupTotal ? fmt(groupTotal) : '—'}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#1e40af' }}>{(() => {
                             const gc = children.reduce((s, ch) => s + lineCommitted(ch.item_id), 0)
@@ -530,7 +533,7 @@ export function NrgTcePanel() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
-                    <td colSpan={10} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).length} lines)</td>
+                    <td colSpan={11} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).length} lines)</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{(() => {
                       const tot = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + lineActualCost(l), 0)

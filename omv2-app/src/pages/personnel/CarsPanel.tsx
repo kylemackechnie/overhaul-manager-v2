@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Car, Resource, PurchaseOrder } from '../../types'
@@ -235,7 +236,7 @@ export function CarsPanel() {
             <p>Add car hire records for this project.</p>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             <table>
               <thead>
                 <tr><th style={{width:'32px'}}><input type="checkbox" onChange={e=>setCarSelected(e.target.checked?new Set(cars.map(c=>c.id)):new Set())} /></th>

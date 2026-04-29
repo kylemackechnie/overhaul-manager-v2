@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -284,7 +285,7 @@ export function POsPanel() {
           if (!items.length) return null
           const meta = PO_STATUS[status]
           return (
-            <div key={status} className="card" style={{padding:0,marginBottom:'14px',overflow:'hidden'}}>
+            <div key={status} className="card" style={{padding:0,marginBottom:'14px',overflow:'auto'}}>
               <div style={{padding:'10px 16px',borderBottom:'1px solid var(--border)',background:meta.bg,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                 <div style={{fontWeight:700,fontSize:'12px',color:meta.color,textTransform:'uppercase',letterSpacing:'.06em'}}>
                   {meta.label} · {items.length} PO{items.length!==1?'s':''}

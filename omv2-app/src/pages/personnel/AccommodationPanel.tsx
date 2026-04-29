@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Accommodation, Resource, PurchaseOrder } from '../../types'
@@ -317,7 +318,7 @@ export function AccommodationPanel() {
             <p>Add accommodation bookings for this project.</p>
           </div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             {selAccom.size > 0 && (
               <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',flexWrap:'wrap'}}>
                 <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{selAccom.size} selected</span>

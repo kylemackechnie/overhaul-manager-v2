@@ -5,6 +5,7 @@ import { findOrCreatePerson, type Person } from '../../lib/persons'
 import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { toast } from '../../components/ui/Toast'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
 
@@ -42,6 +43,11 @@ type SortCol = 'status'|'name'|'role'|'shift'|'company'|'mob_in'|'mob_out'|'allo
 
 export function ResourcesPanel() {
   const { activeProject, setActivePanel } = useAppStore()
+
+  const RES_COL_DEFAULTS = [32, 70, 140, 110, 60, 110, 80, 80, 110, 150, 40, 40, 40, 100, 100, 120, 100, 80, 80]
+  const { widths: rw, onResizeStart: rOnResize, thRef: rThRef } = useResizableColumns('resources', RES_COL_DEFAULTS)
+  const totalResWidth = rw.reduce((s, w) => s + w, 0)
+
   const { canWrite } = usePermissions()
   const [resources, setResources] = useState<Resource[]>([])
   const [rcs, setRcs] = useState<RateCard[]>([])
@@ -535,12 +541,12 @@ export function ResourcesPanel() {
                   const table = mirror.parentElement?.querySelector('div:not(.scroll-mirror)') as HTMLElement | null
                   if (table) table.scrollLeft = mirror.scrollLeft
                 }}>
-                <div style={{width:'1800px',height:'1px'}} />
+                <div style={{width: totalResWidth + 'px', height:'1px'}} />
               </div>
-              <table style={{minWidth:'1800px'}}>
+              <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
-                  <th style={{width:'32px',textAlign:'center',padding:'8px 6px'}}>
+                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:rw[0],textAlign:'center',padding:'8px 6px'}}>
                     <input type="checkbox"
                       style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                       checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
@@ -550,25 +556,14 @@ export function ResourcesPanel() {
                         else setSelected(new Set())
                       }}
                     />
+                    <div className="col-resizer" {...rOnResize(0)} />
                   </th>
-                  <Th col="status" label="Status" />
-                  <Th col="name" label="Name" />
-                  <Th col="role" label="Role / Trade" />
-                  <Th col="shift" label="Shift" />
-                  <Th col="company" label="Company" />
-                  <Th col="mob_in" label="Mob In" />
-                  <Th col="mob_out" label="Mob Out" />
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <Th col="allow_laha" label="LAHA" title="Living Away from Home Allowance" />
-                  <Th col="allow_meal" label="Meal" title="Meal Allowance" />
-                  <Th col="allow_fsa" label="FSA" title="Field Service Allowance" />
-                  <th>Car</th>
-                  <th>Flights</th>
-                  <th>Room</th>
-                  <th>WBS</th>
-                  <th>PO</th>
-                  <th style={{width:'80px'}}></th>
+                  {[['Status','status'],['Name','name'],['Role / Trade','role'],['Shift','shift'],['Company','company'],['Mob In','mob_in'],['Mob Out','mob_out'],['Phone','phone'],['Email','email'],['LAHA','laha'],['Meal','meal'],['FSA','fsa'],['Car','car'],['Flights','flights'],['Room','room'],['WBS','wbs'],['PO','po'],['','actions']].map(([label], i) => (
+                    <th key={i+1} ref={el=>rThRef(el,i+1)} className="resizable" style={{width:rw[i+1]}}>
+                      {label}
+                      <div className="col-resizer" {...rOnResize(i+1)} />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>

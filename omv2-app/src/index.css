@@ -550,3 +550,25 @@ thead th {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── Resizable column handles ─────────────────────────────────────────────── */
+th.resizable {
+  position: relative;
+  overflow: visible !important;
+}
+th.resizable .col-resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 10;
+  border-right: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+th.resizable .col-resizer:hover,
+th.resizable .col-resizer:active {
+  border-right-color: var(--accent, #0f766e);
+}

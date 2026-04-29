@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useResizableColumns, resizerStyle } from '../../hooks/useResizableColumns'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -507,7 +508,7 @@ export function VariationsPanel() {
             const isExpanded = expandedId === v.id
             const nextStatuses = NEXT_STATUS[v.status]||[]
             return (
-              <div key={v.id} className="card" style={{padding:0,overflow:'hidden'}}>
+              <div key={v.id} className="card" style={{padding:0,overflow:'auto'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'12px 16px',cursor:'pointer'}} onClick={()=>setExpandedId(isExpanded?null:v.id)}>
                   <span style={{fontFamily:'var(--mono)',fontWeight:700,color:'var(--accent)',minWidth:'80px'}}>{v.number}</span>
                   <span style={{flex:1,fontWeight:500}}>{v.title||'—'}</span>
