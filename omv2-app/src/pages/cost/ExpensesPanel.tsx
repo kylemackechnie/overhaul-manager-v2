@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Expense, Resource, WbsItem } from '../../types'
 import { downloadCSV } from '../../lib/csv'
+import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
 const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Other']
 
@@ -43,6 +44,8 @@ export function ExpensesPanel() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState<null|'wbs'|'gm'|'vendor'|'person'>(null)
   const [bulkVal, setBulkVal] = useState('')
+  const [dragOverId, setDragOverId] = useState<string|null>(null)
+  const [uploadingId, setUploadingId] = useState<string|null>(null)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -142,6 +145,34 @@ export function ExpensesPanel() {
 
   function toggleChargeable(ch: boolean) {
     setForm(f => ({ ...f, chargeable: ch, sell_price: ch ? calcSell(f.cost_ex_gst, f.gm_pct) : 0 }))
+  }
+
+
+  async function handleReceiptUpload(expense: Expense, file: File) {
+    if (file.size > 10 * 1024 * 1024) { toast('File too large — max 10MB', 'error'); return }
+    setUploadingId(expense.id)
+    const { path, error } = await uploadReceipt(activeProject!.id, expense.id, file)
+    if (error) { toast('Upload failed: ' + error, 'error'); setUploadingId(null); return }
+    const newPaths = [...(expense.receipt_paths || []), path]
+    await supabase.from('expenses').update({ receipt_paths: newPaths }).eq('id', expense.id)
+    setExpenses(prev => prev.map(e => e.id === expense.id ? { ...e, receipt_paths: newPaths } : e))
+    toast('Receipt attached', 'success')
+    setUploadingId(null)
+  }
+
+  async function removeReceipt(expense: Expense, path: string) {
+    if (!confirm('Remove this receipt?')) return
+    await deleteReceipt(path)
+    const newPaths = (expense.receipt_paths || []).filter(p => p !== path)
+    await supabase.from('expenses').update({ receipt_paths: newPaths }).eq('id', expense.id)
+    setExpenses(prev => prev.map(e => e.id === expense.id ? { ...e, receipt_paths: newPaths } : e))
+    toast('Receipt removed', 'info')
+  }
+
+  async function openReceipt(path: string) {
+    const url = await getSignedUrl(path)
+    if (!url) { toast('Could not open receipt', 'error'); return }
+    window.open(url, '_blank')
   }
 
   async function save() {
@@ -309,12 +340,16 @@ export function ExpensesPanel() {
                   <th>Date</th><th>Description</th><th>Category</th>
                   <th style={{ textAlign: 'right' }}>Cost (ex GST)</th>
                   <th style={{ textAlign: 'right' }}>Sell</th>
-                  <th>WBS</th><th></th>
+                  <th>Receipts</th><th>WBS</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(e => (
-                  <tr key={e.id}>
+                  <tr key={e.id}
+                    onDragOver={ev=>{ev.preventDefault();setDragOverId(e.id)}}
+                    onDragLeave={()=>setDragOverId(null)}
+                    onDrop={async ev=>{ev.preventDefault();setDragOverId(null);const f=ev.dataTransfer.files[0];if(f)await handleReceiptUpload(e,f)}}
+                    style={{background: dragOverId===e.id ? 'rgba(16,185,129,0.08)' : undefined, outline: dragOverId===e.id ? '2px dashed var(--accent)' : undefined, transition:'background 0.1s'}}>
                     <td style={{textAlign:'center',padding:'5px 6px'}}>
                       <input type="checkbox" checked={selected.has(e.id)} onChange={()=>toggleSelect(e.id)} style={{accentColor:'#f472b6'}} />
                     </td>
@@ -325,7 +360,26 @@ export function ExpensesPanel() {
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : 'var(--text3)' }}>
                       {e.sell_price > 0 ? fmt(e.sell_price) : '—'}
                     </td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{e.wbs || '—'}</td>
+                    <td>
+                      <div style={{display:'flex',gap:'4px',flexWrap:'wrap',alignItems:'center'}}>
+                        {(e.receipt_paths||[]).map(p => (
+                          <span key={p} style={{display:'inline-flex',alignItems:'center',gap:'2px',fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg3)',border:'1px solid var(--border)',cursor:'pointer',color:'var(--text2)'}}
+                            title={fileName(p)} onClick={()=>openReceipt(p)}>
+                            {fileIcon(p)} {fileName(p).slice(0,12)}{fileName(p).length>12?'…':''}
+                            <span style={{marginLeft:'2px',color:'var(--text3)',cursor:'pointer'}}
+                              onClick={ev=>{ev.stopPropagation();removeReceipt(e,p)}}>×</span>
+                          </span>
+                        ))}
+                        {uploadingId === e.id
+                          ? <span className="spinner" style={{width:'12px',height:'12px'}} />
+                          : <label style={{cursor:'pointer',fontSize:'10px',color:'var(--text3)',padding:'1px 4px',border:'1px dashed var(--border)',borderRadius:'3px'}} title="Attach receipt">
+                              📎<input type="file" accept="image/*,.pdf" style={{display:'none'}}
+                                onChange={async ev=>{const f=ev.target.files?.[0];if(f)await handleReceiptUpload(e,f);ev.target.value=''}} />
+                            </label>
+                        }
+                      </div>
+                    </td>
+                    <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.wbs || '—'}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm" onClick={() => openEdit(e)}>Edit</button>
                       <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(e)}>✕</button>
