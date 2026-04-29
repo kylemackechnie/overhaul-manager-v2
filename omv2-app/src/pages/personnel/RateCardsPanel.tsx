@@ -413,7 +413,7 @@ export function RateCardsPanel() {
                           ['satT15', 'Sat T1.5 (hrs)', 3.0],
                           ['nightNT','Night NT (hrs)', 7.2],
                           ['restNT', 'Rest Day NT (hrs)', 7.2],
-                        ] as [keyof typeof EMPTY_REGIME, string, number][]).map(([key, label, def]) => (
+                        ] as ['wdNT'|'wdT15'|'satT15'|'nightNT'|'restNT', string, number][]).map(([key, label, def]) => (
                           <div key={key} className="fg" style={{margin:0}}>
                             <label style={{fontSize:'10px'}}>{label}</label>
                             <input type="number" className="input" min={0} max={24} step={0.1}
