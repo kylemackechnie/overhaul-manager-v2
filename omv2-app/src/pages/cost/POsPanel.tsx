@@ -64,6 +64,8 @@ export function POsPanel() {
   const [modal, setModal] = useState<null|'new'|PurchaseOrder>(null)
   const [form, setForm] = useState<PoForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [dragOverId, setDragOverId] = useState<string|null>(null)
+  const [uploadingId, setUploadingId] = useState<string|null>(null)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterVendor, setFilterVendor] = useState('')
@@ -458,7 +460,7 @@ export function POsPanel() {
 }
 
 // ── PO Row component ──────────────────────────────────────────────────────────
-function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, setExpanded, openEdit, advanceStatus, setActivePanel }: {
+function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, setExpanded, openEdit, advanceStatus, setActivePanel, onUpload, onRemove, onOpen, uploadingId, dragOverId, setDragOverId }: {
   po: PurchaseOrder; meta: typeof PO_STATUS[string]
   poValue: (po: PurchaseOrder) => number
   poForecast: (id: string) => number | null
