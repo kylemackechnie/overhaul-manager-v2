@@ -408,6 +408,11 @@ export function ResourcesPanel() {
     else { setSortCol(col); setSortAsc(true) }
   }
 
+  void doSort; void arrow  // kept for future sort wiring on resizable headers
+
+  const catCounts: Record<string,number> = {}
+  resources.forEach(r => { catCounts[r.category] = (catCounts[r.category]||0) + 1 })
+
   const statusOrder: Record<string,number> = {onsite:0,incoming:1,upcoming:2,future:3,departed:4,unknown:5}
 
   let filtered = resources
