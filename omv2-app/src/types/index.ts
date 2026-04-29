@@ -510,6 +510,8 @@ export interface NrgTceLine {
   notes: string
   linked_module: string | null
   linked_ids: unknown[]
+  sort_order: number
+  parent_id: string | null
   created_at: string; updated_at: string
 }
 

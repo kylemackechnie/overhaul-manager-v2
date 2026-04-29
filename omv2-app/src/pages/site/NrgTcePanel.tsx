@@ -222,7 +222,7 @@ export function NrgTcePanel() {
     // Drop group headers with no surviving children
     const liveLines = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type))
     const liveIds = new Set(liveLines.map(l => l.item_id))
-    const liveParents = new Set(liveLines.map((l: {parent_id?: string | null}) => l.parent_id).filter(Boolean))
+    const liveParents = new Set(liveLines.map(l => l.parent_id).filter(Boolean))
     filtered = filtered.filter(l => {
       if (!isGroupHeader(l.item_id, l.line_type)) return true
       // Has a child pointing to it via parent_id, OR has a child by prefix
@@ -245,7 +245,7 @@ export function NrgTcePanel() {
   const visibleRows = filtered.filter(l => {
     if (isGroupHeader(l.item_id, l.line_type)) return true
     // Find parent: prefer parent_id match, fall back to prefix match
-    const lp = (l as {parent_id?: string | null}).parent_id
+    const lp = l.parent_id
     const parent = lp
       ? filtered.find(p => isGroupHeader(p.item_id, p.line_type) && p.item_id === lp)
       : filtered.find(p => isGroupHeader(p.item_id, p.line_type) && (l.item_id || '').startsWith((p.item_id || '') + '.'))
