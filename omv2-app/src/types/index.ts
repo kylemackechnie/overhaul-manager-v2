@@ -303,6 +303,7 @@ export interface Expense {
   chargeable: boolean
   tce_item_id: string | null
   attachment: unknown | null
+  receipt_paths: string[]
   wbs: string
   notes: string
   created_at: string

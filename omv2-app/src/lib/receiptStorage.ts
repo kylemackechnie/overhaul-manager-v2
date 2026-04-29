@@ -15,7 +15,6 @@ export async function uploadReceipt(
   expenseId: string,
   file: File,
 ): Promise<{ path: string; error: string | null }> {
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const path = `${projectId}/${expenseId}/${Date.now()}_${safeName}`
 
