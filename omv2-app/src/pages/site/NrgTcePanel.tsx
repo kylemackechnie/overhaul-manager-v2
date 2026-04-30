@@ -520,9 +520,9 @@ export function NrgTcePanel() {
                         {isTceVisible('item_id') && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', paddingLeft: '20px', color: 'var(--text3)' }}>{l.item_id || l.wbs_code || '—'}</td>}
                         {isTceVisible('source') && <td>{sourceBadge(l.source)}</td>}
                         {isTceVisible('description') && <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} title={l.description}>{l.description || '—'}</td>}
-                        {isTceVisible('work_order') && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{l.work_order || '—'}</td>}
-                        {isTceVisible('contract_scope') && <td style={{ fontSize: '11px' }}>{l.contract_scope ? <span style={{ background: '#ede9fe', color: '#6b21a8', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>{l.contract_scope}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>}
-                        {isTceVisible('unit') && <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{l.unit_type || '—'}</td>}
+                        {isTceVisible('work_order') && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.work_order || '—'}</td>}
+                        {isTceVisible('contract_scope') && <td style={{ fontSize: '11px', overflow: 'hidden' }}>{l.contract_scope ? <span style={{ background: '#ede9fe', color: '#6b21a8', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>{l.contract_scope}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>}
+                        {isTceVisible('unit') && <td style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.unit_type || '—'}</td>}
                         {isTceVisible('est_qty') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>}
                         {isTceVisible('act_hrs') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{(() => {
                           const hrs = nrgLineActualHours({ item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type }, timesheets)
