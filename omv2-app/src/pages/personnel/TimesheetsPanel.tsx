@@ -84,11 +84,12 @@ function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resource
       // applied even if they have 0 hours (e.g. Sat/Sun rest days on site)
       const resource = resources?.find(r => r.id === m.personId)
       if (resource) {
-        const hasLaha = !!(resource as Record<string, unknown>).allow_laha
-        const hasMeal = !!(resource as Record<string, unknown>).allow_meal
+        const res = resource as unknown as Record<string, unknown>
+        const hasLaha = !!res.allow_laha
+        const hasMeal = !!res.allow_meal
         if (hasLaha || hasMeal) {
-          const mobIn  = ((resource as Record<string, unknown>).mob_in  as string | null) || null
-          const mobOut = ((resource as Record<string, unknown>).mob_out as string | null) || null
+          const mobIn  = (res.mob_in  as string | null) || null
+          const mobOut = (res.mob_out as string | null) || null
           for (const ds of weekDates) {
             const onProject = (!mobIn || ds >= mobIn) && (!mobOut || ds <= mobOut)
             if (!onProject) continue
