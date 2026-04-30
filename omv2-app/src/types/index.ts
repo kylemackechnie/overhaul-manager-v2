@@ -1,5 +1,19 @@
 // ─── Core Entities ───────────────────────────────────────────────────────────
 
+// ─── User Preferences ─────────────────────────────────────────────────────────
+
+export interface DashboardTileConfig {
+  id: string
+  visible: boolean
+  order: number
+  size: 'normal' | 'wide'
+}
+
+export interface UserPrefs {
+  col_widths?: Record<string, number[]>     // tableId → widths[]
+  dashboard_layout?: DashboardTileConfig[]  // ordered tile configs
+}
+
 export interface AppUser {
   id: string
   auth_id: string | null
@@ -14,6 +28,7 @@ export interface AppUser {
   force_password_reset?: boolean
   invited_by?: string | null
   invited_at?: string | null
+  preferences?: UserPrefs
 }
 
 export interface Site {

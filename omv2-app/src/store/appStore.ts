@@ -1,11 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppUser, Project } from '../types'
+import type { AppUser, Project, UserPrefs } from '../types'
 
 interface AppStore {
   // Auth
   currentUser: AppUser | null
   setCurrentUser: (user: AppUser | null) => void
+
+  // User preferences (in-memory reactive store — persistence handled by useUserPrefs)
+  userPrefs: UserPrefs
+  setUserPrefs: (prefs: UserPrefs) => void
 
   // Active project
   activeProjectId: string | null
@@ -34,6 +38,9 @@ export const useAppStore = create<AppStore>()(
     (set) => ({
       currentUser: null,
       setCurrentUser: (user) => set({ currentUser: user }),
+
+      userPrefs: {},
+      setUserPrefs: (prefs) => set({ userPrefs: prefs }),
 
       activeProjectId: null,
       activeProject: null,

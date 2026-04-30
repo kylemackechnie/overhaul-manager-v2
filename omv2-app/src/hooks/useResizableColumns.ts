@@ -2,59 +2,52 @@
  * useResizableColumns
  *
  * Provides drag-to-resize column widths for <table> elements.
- * Widths persist in localStorage, namespaced by tableId.
+ * Widths persist per-user via useUserPrefs (localStorage + Supabase sync).
  * On first mount with no stored data, reads actual rendered widths
  * from th elements so columns never "jump" on first drag.
  *
  * Usage:
- *   const { widths, onResizeStart, thRef } = useResizableColumns('my-table', {
- *     col0: 80, col1: 200, col2: 120, ...
- *   })
- *   // In thead:
+ *   const { widths, onResizeStart, thRef } = useResizableColumns('my-table', [80, 200, 120])
  *   <th ref={el => thRef(el, 0)} style={{ width: widths[0] }}>
- *     ...
  *     <div {...onResizeStart(0)} style={resizerStyle} />
  *   </th>
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useUserPrefs } from './useUserPrefs'
 
-const STORAGE_PREFIX = 'col_widths_v1_'
 const MIN_COL_WIDTH = 32
 const MAX_COL_WIDTH = 800
 
 export function useResizableColumns(
   tableId: string,
-  /** Default widths in pixels, one per column. Use 0 for "auto" (will read from DOM). */
   defaults: number[],
 ) {
-  const storageKey = STORAGE_PREFIX + tableId
+  const { prefs, setPref } = useUserPrefs()
   const thRefs = useRef<(HTMLTableCellElement | null)[]>([])
   const dragging = useRef<{ colIdx: number; startX: number; startWidth: number } | null>(null)
-  const [widths, setWidths] = useState<number[]>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed: number[] = JSON.parse(stored)
-        // If stored length matches defaults, use stored. Otherwise discard (column count changed).
-        if (parsed.length === defaults.length && parsed.every(w => typeof w === 'number' && w >= MIN_COL_WIDTH)) {
-          return parsed
-        }
-      }
-    } catch { /* ignore */ }
-    return defaults
-  })
 
-  // On mount: for any column with default=0, read actual rendered width from DOM
+  const getStored = (): number[] | null => {
+    const stored = prefs.col_widths?.[tableId]
+    if (stored && stored.length === defaults.length && stored.every(w => typeof w === 'number' && w >= MIN_COL_WIDTH)) {
+      return stored
+    }
+    return null
+  }
+
+  const [widths, setWidths] = useState<number[]>(() => getStored() ?? defaults)
+
+  // When Supabase prefs arrive asynchronously, apply stored widths
+  const storedKey = prefs.col_widths?.[tableId]?.join(',')
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) return // already have persisted widths, don't override
-    } catch { /* ignore */ }
-    // Read rendered widths for columns that were set to 0 (auto)
+    const stored = getStored()
+    if (stored) setWidths(stored)
+  }, [storedKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-measure DOM for default=0 columns on first mount
+  useEffect(() => {
     const hasAuto = defaults.some(d => d === 0)
-    if (!hasAuto) return
-    // Small delay to let table render
+    if (!hasAuto || getStored()) return
     const timer = setTimeout(() => {
       const rendered = thRefs.current.map((th, i) => {
         if (defaults[i] === 0 && th) return Math.max(MIN_COL_WIDTH, th.offsetWidth)
@@ -66,8 +59,8 @@ export function useResizableColumns(
   }, [tableId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useCallback((w: number[]) => {
-    try { localStorage.setItem(storageKey, JSON.stringify(w)) } catch { /* ignore */ }
-  }, [storageKey])
+    setPref('col_widths', { ...prefs.col_widths, [tableId]: w })
+  }, [prefs.col_widths, tableId, setPref])
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     if (!dragging.current) return
@@ -109,9 +102,11 @@ export function useResizableColumns(
   }, [])
 
   const resetWidths = useCallback(() => {
-    try { localStorage.removeItem(storageKey) } catch { /* ignore */ }
+    const next = { ...prefs.col_widths }
+    delete next[tableId]
+    setPref('col_widths', next)
     setWidths(defaults)
-  }, [storageKey, defaults]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [prefs.col_widths, tableId, defaults, setPref])
 
   return { widths, onResizeStart, thRef, resetWidths }
 }
