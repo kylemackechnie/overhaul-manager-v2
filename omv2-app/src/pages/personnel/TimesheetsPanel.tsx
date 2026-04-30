@@ -27,7 +27,7 @@ const DAY_TYPES = [
   { key: 'weekday', label: 'Weekday' }, { key: 'saturday', label: 'Saturday' },
   { key: 'sunday', label: 'Sunday' }, { key: 'public_holiday', label: 'Public Holiday' },
   { key: 'rest', label: 'Rest/Fatigue' }, { key: 'standby', label: 'Standby' },
-  { key: 'travel', label: 'Travel' }, { key: 'mob', label: 'Mob/Demob' },
+  { key: 'travel', label: 'Direct Travel' }, { key: 'sea_travel', label: 'SEA Travel' }, { key: 'mob', label: 'Mob/Demob' },
 ]
 
 function getMon(dateStr: string) {
@@ -131,7 +131,7 @@ function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfi
   if (dayType === 'rest') {
     return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
   }
-  if (dayType === 'travel' || dayType === 'mob') {
+  if (dayType === 'travel' || dayType === 'sea_travel' || dayType === 'mob') {
     return { ...zero, dnt: hrs }
   }
   if (night) {
@@ -188,7 +188,7 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
         const h = effH, night = cell.shiftType === 'night', dt = cell.dayType||'weekday'
         if (dt === 'public_holiday') night ? (split.ndt15=h) : (split.ddt15=h)
         else if (dt === 'rest') night ? (split.nnt=h) : (split.dnt=h)
-        else if (dt === 'travel'||dt==='mob') split.dnt=h
+        else if (dt === 'travel'||dt==='sea_travel'||dt==='mob') split.dnt=h
         else if (night) { if (dt==='saturday'||dt==='sunday') split.ndt=h; else { split.nnt=Math.min(h,7.2); split.ndt=Math.max(0,h-7.2) } }
         else if (dt==='saturday') { split.dt15=Math.min(h,3); split.ddt=Math.max(0,h-3) }
         else if (dt==='sunday') split.ddt=h
@@ -1241,7 +1241,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             setDayMulti(member.personId, d, {
                               dayType: newType,
                               // Auto-tick travel allowance when dayType = travel, auto-clear otherwise
-                              travel: newType === 'travel',
+                              travel: newType === 'travel',  // Direct Travel auto-ticks allowance; SEA Travel does not
                             })
                           }}>
                           {DAY_TYPES.map(dt => <option key={dt.key} value={dt.key}>{dt.label}</option>)}

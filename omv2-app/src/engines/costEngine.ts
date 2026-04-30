@@ -115,7 +115,7 @@ export function splitHours(
   }
 
   // Travel / mob — flat day NT
-  if (d === 'travel' || d === 'mob') {
+  if (d === 'travel' || d === 'sea_travel' || d === 'mob') {
     return { ...zero, dnt: totalHrs }
   }
 
