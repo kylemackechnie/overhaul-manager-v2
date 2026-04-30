@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
@@ -97,6 +98,7 @@ function excelSerialToISO(serial: unknown): string {
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
   const { canWrite } = usePermissions()
+  const { prefs, setPref } = useUserPrefs()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PO[]>([])
   const [tceLines, setTceLines] = useState<{ id: string; item_id: string; description: string }[]>([])
@@ -105,10 +107,14 @@ export function InvoicesPanel() {
   const [form, setForm] = useState<InvForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
+  const [filterStatus, _setFilterStatus] = useState((prefs.inv_filter_status as string) || '')
   const [filterPO, setFilterPO] = useState('')
-  const [sortCol, setSortCol] = useState<SortCol>('status')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [sortCol, _setSortCol] = useState<SortCol>((prefs.inv_sort_col as SortCol) || 'status')
+  const [sortDir, _setSortDir] = useState<SortDir>((prefs.inv_sort_dir as SortDir) || 'asc')
+
+  function setFilterStatus(v: string)  { _setFilterStatus(v); setPref('inv_filter_status', v) }
+  function setSortCol(v: SortCol)      { _setSortCol(v);      setPref('inv_sort_col', v) }
+  function setSortDir(v: SortDir)      { _setSortDir(v);      setPref('inv_sort_dir', v) }
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
   const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
   const [payDateModal, setPayDateModal] = useState<{inv:Invoice;date:string}|null>(null)

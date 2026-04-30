@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useState, useEffect } from 'react'
 import { GlobalSearch } from '../GlobalSearch'
+import { usePermissions } from '../../lib/permissions'
+import type { Module } from '../../lib/permissions'
 
 interface RibbonButton {
   icon: string
@@ -19,11 +21,15 @@ interface RibbonTab {
   key: string
   label: string
   groups: RibbonGroup[]
+  module?: Module   // permission module — undefined means always visible
+  pinned?: boolean  // pinned tabs cannot be hidden by the user
 }
 
+// Maps ribbon tab key → permission module. Tabs without a module are always shown.
+// Project tab is pinned — always visible regardless of user preferences.
 const RIBBON_MODULES: RibbonTab[] = [
   {
-    key: 'project', label: 'Project',
+    key: 'project', label: 'Project', pinned: true,  // always visible
     groups: [
       { label: 'Overview', buttons: [
         { icon: '📊', label: 'Dashboard', panel: 'dashboard' },
@@ -40,7 +46,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'cost', label: 'Cost Tracking',
+    key: 'cost', label: 'Cost Tracking', module: 'cost_tracking',
     groups: [
       { label: 'Tracking', buttons: [
         { icon: '💰', label: 'Dashboard', panel: 'cost-dashboard' },
@@ -63,7 +69,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'personnel', label: 'Personnel',
+    key: 'personnel', label: 'Personnel', module: 'personnel',
     groups: [
       { label: 'People', buttons: [
         { icon: '👥', label: 'Dashboard', panel: 'hr-dashboard' },
@@ -85,7 +91,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'hse', label: 'HSE',
+    key: 'hse', label: 'HSE', module: 'hse',
     groups: [
       { label: 'HSE', buttons: [
         { icon: '🦺', label: 'Dashboard', panel: 'hse-dashboard' },
@@ -96,7 +102,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'subcon', label: 'Subcontractors',
+    key: 'subcon', label: 'Subcontractors', module: 'subcontractors',
     groups: [
       { label: 'Overview', buttons: [
         { icon: '🏢', label: 'Dashboard', panel: 'subcon-dashboard' },
@@ -112,7 +118,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'logistics', label: 'Logistics',
+    key: 'logistics', label: 'Logistics', module: 'logistics',
     groups: [
       { label: 'Shipping', buttons: [
         { icon: '🚢', label: 'Dashboard', panel: 'shipping-dashboard' },
@@ -123,7 +129,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'hardware', label: 'Hardware',
+    key: 'hardware', label: 'Hardware', module: 'hardware' as Module,
     groups: [
       { label: 'Hardware', buttons: [
         { icon: '💰', label: 'Dashboard', panel: 'hardware-dashboard' },
@@ -144,7 +150,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'tooling', label: 'Tooling',
+    key: 'tooling', label: 'Tooling', module: 'tooling' as Module,
     groups: [
       { label: 'SE AG Tooling', buttons: [
         { icon: '🔩', label: 'Dashboard', panel: 'tooling-dashboard' },
@@ -165,7 +171,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'site', label: 'Site Specific',
+    key: 'site', label: 'Site Specific', module: 'site_specific' as Module,
     groups: [
       { label: 'Overview', buttons: [
         { icon: '🏭', label: 'Site Dashboard', panel: 'site-dashboard' },
@@ -187,7 +193,7 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
-    key: 'global', label: 'Global',
+    key: 'global', label: 'Global', module: 'global' as Module,
     groups: [
       { label: 'Global Registers', buttons: [
         { icon: '🧰', label: 'Tooling', panel: 'global-tooling' },
@@ -202,9 +208,14 @@ const RIBBON_MODULES: RibbonTab[] = [
 export function Ribbon() {
   const { activePanel, setActivePanel, activeRibbonTab, setActiveRibbonTab, activeProject } = useAppStore()
   const { signOut, currentUser } = useAuth()
+  const { canRead } = usePermissions()
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [counts, setCounts] = useState<Record<string,number>>({})
 
+  // Filter tabs by permission — tabs without a module are always shown (e.g. Project)
+  const visibleTabs = RIBBON_MODULES.filter(tab =>
+    !tab.module || canRead(tab.module)
+  )
   useEffect(() => {
     if (!activeProject) return
     const pid = activeProject.id
@@ -230,7 +241,7 @@ export function Ribbon() {
 
   if (!activeProject) return null
 
-  const activeTab = RIBBON_MODULES.find(t => t.key === activeRibbonTab) || RIBBON_MODULES[0]
+  const activeTab = visibleTabs.find(t => t.key === activeRibbonTab) || visibleTabs[0]
 
   return (
     <div style={{
@@ -320,7 +331,7 @@ export function Ribbon() {
         display: 'flex', flexWrap: 'wrap', gap: '2px',
         padding: '4px 12px 0', background: 'var(--bg2)'
       }}>
-        {RIBBON_MODULES.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => {

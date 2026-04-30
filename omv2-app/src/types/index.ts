@@ -69,8 +69,24 @@ export const PAYROLL_RULES_DEFAULTS: PayrollRules = {
 }
 
 export interface UserPrefs {
-  col_widths?: Record<string, number[]>     // tableId → widths[]
-  dashboard_layout?: DashboardTileConfig[]  // ordered tile configs
+  col_widths?: Record<string, number[]>                    // legacy — position-indexed (kept for migration period)
+  col_widths_v2?: Record<string, Record<string, number>>   // current — ID-keyed widths per table
+  dashboard_layout?: DashboardTileConfig[]                 // dashboard widget order/size/visibility
+
+  // ── Forecast ──────────────────────────────────────────────────────────────
+  forecast_period?: string   // 'week' | 'fortnight' | 'month'
+  forecast_mode?: string     // 'cost' | 'sell' | 'hours'
+
+  // ── TCE Register ──────────────────────────────────────────────────────────
+  tce_source_filter?: string // 'all' | 'skilled' | 'overhead'
+  tce_hide_unused?: boolean
+  tce_show_weekly?: boolean
+
+  // ── Invoices ──────────────────────────────────────────────────────────────
+  inv_sort_col?: string      // SortCol
+  inv_sort_dir?: string      // 'asc' | 'desc'
+  inv_filter_status?: string
+}
 }
 
 export interface AppUser {

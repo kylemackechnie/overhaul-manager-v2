@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useResizableColumns } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
@@ -25,6 +26,7 @@ const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigi
 
 export function NrgTcePanel() {
   const { activeProject } = useAppStore()
+  const { prefs, setPref } = useUserPrefs()
   const [lines, setLines] = useState<NrgTceLine[]>([])
   const [wbsList, setWbsList] = useState<{ id: string; code: string; name: string }[]>([])
   const [timesheets, setTimesheets] = useState<NrgTimesheet[]>([])
@@ -38,9 +40,13 @@ export function NrgTcePanel() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [sourceFilter, setSourceFilter] = useState('all')
-  const [hideUnused, setHideUnused] = useState(false)
-  const [showWeekly, setShowWeekly] = useState(false)
+  const [sourceFilter, _setSourceFilter] = useState((prefs.tce_source_filter as string) || 'all')
+  const [hideUnused, _setHideUnused] = useState((prefs.tce_hide_unused as boolean) ?? false)
+  const [showWeekly, _setShowWeekly] = useState((prefs.tce_show_weekly as boolean) ?? false)
+
+  function setSourceFilter(v: string) { _setSourceFilter(v); setPref('tce_source_filter', v) }
+  function setHideUnused(v: boolean)  { _setHideUnused(v);  setPref('tce_hide_unused', v) }
+  function setShowWeekly(v: boolean)  { _setShowWeekly(v);  setPref('tce_show_weekly', v) }
   const [importing, setImporting] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 import {
   buildForecast, weekKey, monthKey, weekLabel, monthLabel,
   EUR_CATS, bucketTotalBase,
@@ -69,11 +70,15 @@ interface PeriodGroup {
 
 export function ForecastPanel() {
   const { activeProject } = useAppStore()
+  const { prefs, setPref } = useUserPrefs()
   const [data, setData] = useState<ForecastData | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [period, setPeriod] = useState<Period>('week')
-  const [mode, setMode] = useState<Mode>('cost')
+  const [period, _setPeriod] = useState<Period>((prefs.forecast_period as Period) || 'week')
+  const [mode, _setMode] = useState<Mode>((prefs.forecast_mode as Mode) || 'cost')
+
+  function setPeriod(v: Period) { _setPeriod(v); setPref('forecast_period', v) }
+  function setMode(v: Mode) { _setMode(v); setPref('forecast_mode', v) }
   const [showConfig, setShowConfig] = useState(false)
   const [config, setConfig] = useState({
     labour: true, dryHire: true, wetHire: true, localHire: true,

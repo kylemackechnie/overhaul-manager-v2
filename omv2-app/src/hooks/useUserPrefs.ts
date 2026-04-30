@@ -12,9 +12,9 @@
  * Multiple components can call useUserPrefs() — the module-level _loadedFor set
  * prevents redundant Supabase fetches within a single page session.
  *
- * Usage:
- *   const { prefs, setPref } = useUserPrefs()
- *   setPref('col_widths', { ...prefs.col_widths, [tableId]: newWidths })
+ * Bugs fixed:
+ *   - _loadedFor now cleared on logout so next login re-fetches from Supabase
+ *   - debounce timer cancelled on unmount so no stale writes fire after logout
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -47,9 +47,20 @@ export function useUserPrefs() {
   const { currentUser, userPrefs, setUserPrefs } = useAppStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load prefs on mount (once per userId per session)
+  // ── Cancel debounce on unmount (prevents stale writes after logout) ─────────
   useEffect(() => {
-    if (!currentUser) return
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
+
+  // ── Clear loaded flag on logout so next login re-fetches from Supabase ──────
+  useEffect(() => {
+    if (!currentUser) {
+      _loadedFor.clear()
+      return
+    }
+
     const uid = currentUser.id
 
     // Immediately apply localStorage cache so UI is never blank
@@ -71,32 +82,26 @@ export function useUserPrefs() {
         if (error || !data) return
         const remote = (data.preferences as UserPrefs) || {}
         if (Object.keys(remote).length === 0) return
-        // Merge: remote wins at the top level key, but we deep-merge col_widths
-        // so locally-set widths for new tables aren't wiped by an older Supabase snapshot
+        // Merge: remote wins at top level key, but deep-merge col_widths so
+        // locally-set widths for new tables aren't wiped by an older Supabase snapshot
         const merged: UserPrefs = {
           ...cached,
           ...remote,
-          col_widths: { ...cached.col_widths, ...remote.col_widths },
+          col_widths:    { ...cached.col_widths,    ...remote.col_widths },
+          col_widths_v2: { ...cached.col_widths_v2, ...remote.col_widths_v2 },
         }
         setUserPrefs(merged)
         writeLS(uid, merged)
       })
   }, [currentUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear loaded flag when user changes (logout → new login)
-  useEffect(() => {
-    if (!currentUser) {
-      // Reset so next login re-fetches
-      // (don't clear _loadedFor globally — just on logout)
-    }
-  }, [currentUser?.id])
-
   const setPref = useCallback(
     <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) => {
       if (!currentUser) return
       const uid = currentUser.id
 
-      // Build next prefs — use store's current value (captured in callback)
+      // Always read from store at call time — avoids stale closure issue when
+      // multiple components write prefs in rapid succession
       const next: UserPrefs = { ...useAppStore.getState().userPrefs, [key]: value }
 
       // 1. Immediate in-memory update
