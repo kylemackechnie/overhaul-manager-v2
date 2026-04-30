@@ -403,7 +403,7 @@ export function CostReportPanel() {
         </div>
       ) : (
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
-          <div style={{ overflowX:'auto' }}>
+          <div className="table-scroll-x">
             <table style={{ fontSize:'12px', minWidth:'1200px' }}>
               <thead>
                 <tr>

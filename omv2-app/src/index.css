@@ -512,6 +512,16 @@ thead th {
   background: var(--bg3);
 }
 
+/* Fix sticky thead inside horizontal scroll wrappers.
+   overflow-x: auto creates a scroll container that traps sticky.
+   Setting overflow-y: visible allows the sticky to escape vertically. */
+.table-scroll-x {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* Apply to any direct table wrapper with overflow-x:auto via JS className */
+
 /* ── Toast notifications ──────────────────────────────────────────────────── */
 .toast-container {
   position: fixed;
