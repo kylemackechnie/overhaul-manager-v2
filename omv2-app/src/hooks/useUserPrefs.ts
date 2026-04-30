@@ -90,6 +90,8 @@ export function useUserPrefs() {
           col_widths:    { ...cached.col_widths,    ...remote.col_widths },
           col_widths_v2: { ...cached.col_widths_v2, ...remote.col_widths_v2 },
           hidden_cols:   { ...cached.hidden_cols,   ...remote.hidden_cols },
+          // ribbon_tabs: remote wins entirely (it's a full ordered list)
+          ribbon_tabs: remote.ribbon_tabs ?? cached.ribbon_tabs,
         }
         setUserPrefs(merged)
         writeLS(uid, merged)

@@ -1,10 +1,17 @@
 import { useAppStore } from '../../store/appStore'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { GlobalSearch } from '../GlobalSearch'
 import { usePermissions } from '../../lib/permissions'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 import type { Module } from '../../lib/permissions'
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+} from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 interface RibbonButton {
   icon: string
@@ -205,6 +212,28 @@ const RIBBON_MODULES: RibbonTab[] = [
   },
 ]
 
+// ── Sortable tab pill (used in the picker modal) ──────────────────────────────
+function SortableTabPill({ id, label, hidden, onToggle }: {
+  id: string; label: string; hidden: boolean; onToggle: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1,
+      display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '6px',
+      background: hidden ? 'var(--bg3)' : 'rgba(99,102,241,0.1)',
+      border: `1px solid ${hidden ? 'var(--border)' : 'var(--accent)'}`,
+    }}>
+      <span {...attributes} {...listeners} style={{ cursor: 'grab', color: 'var(--text3)', fontSize: '14px', lineHeight: 1 }}>⠿</span>
+      <span style={{ flex: 1, fontSize: '13px', fontWeight: hidden ? 400 : 600, color: hidden ? 'var(--text3)' : 'var(--text)' }}>{label}</span>
+      <button onClick={onToggle} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px',
+        color: hidden ? 'var(--text3)' : 'var(--accent)', fontWeight: 600, padding: '2px 6px',
+        borderRadius: '4px', background: hidden ? 'var(--bg2)' : 'rgba(99,102,241,0.15)' }}>
+        {hidden ? 'Show' : 'Hide'}
+      </button>
+    </div>
+  )
+}
+
 export function Ribbon() {
   const { activePanel, setActivePanel, activeRibbonTab, setActiveRibbonTab, activeProject } = useAppStore()
   const { signOut, currentUser } = useAuth()
@@ -212,10 +241,73 @@ export function Ribbon() {
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [counts, setCounts] = useState<Record<string,number>>({})
 
-  // Filter tabs by permission — tabs without a module are always shown (e.g. Project)
-  const visibleTabs = RIBBON_MODULES.filter(tab =>
-    !tab.module || canRead(tab.module)
-  )
+  const { prefs, setPref } = useUserPrefs()
+  const [showTabPicker, setShowTabPicker] = useState(false)
+
+  // ── Tab personalisation ────────────────────────────────────────────────────
+  // Merge saved prefs with current RIBBON_MODULES registry.
+  // New tabs added to the registry appear at the end, visible by default.
+  // Tabs the user has no permission to see are always excluded (permission > pref).
+  // Pinned tabs (project) can be hidden in prefs but are always shown.
+  type TabPref = { key: string; hidden: boolean; order: number }
+  const savedTabPrefs = (prefs.ribbon_tabs ?? []) as TabPref[]
+
+  const mergedTabOrder = useCallback((): TabPref[] => {
+    const knownKeys = new Set(RIBBON_MODULES.map(t => t.key))
+    const maxOrder = savedTabPrefs.reduce((m, t) => Math.max(m, t.order), -1)
+    const merged = savedTabPrefs.filter(t => knownKeys.has(t.key))
+    const savedKeys = new Set(savedTabPrefs.map(t => t.key))
+    let next = maxOrder + 1
+    for (const tab of RIBBON_MODULES) {
+      if (!savedKeys.has(tab.key)) merged.push({ key: tab.key, hidden: false, order: next++ })
+    }
+    return merged.sort((a, b) => a.order - b.order)
+  }, [savedTabPrefs])
+
+  const tabOrder = mergedTabOrder()
+
+  // Apply: permission filter first, then user personalisation
+  // Pinned tabs always shown regardless of hidden pref
+  const permittedTabs = RIBBON_MODULES.filter(t => !t.module || canRead(t.module))
+  const permittedKeys = new Set(permittedTabs.map(t => t.key))
+
+  const orderedTabs = tabOrder
+    .filter(tp => permittedKeys.has(tp.key))
+    .map(tp => ({ ...tp, tab: RIBBON_MODULES.find(t => t.key === tp.key)! }))
+
+  // visibleTabs: shown in ribbon row (not hidden, or pinned)
+  const visibleTabs = orderedTabs
+    .filter(({ hidden, tab }) => !hidden || tab.pinned)
+    .map(({ tab }) => tab)
+
+  // hiddenPermittedTabs: for the "…More" overflow
+  const hiddenPermittedTabs = orderedTabs
+    .filter(({ hidden, tab }) => hidden && !tab.pinned)
+    .map(({ tab }) => tab)
+
+  function saveTabPrefs(next: TabPref[]) {
+    setPref('ribbon_tabs', next)
+  }
+
+  function toggleTabHidden(key: string) {
+    const current = tabOrder.map(t =>
+      t.key === key ? { ...t, hidden: !t.hidden } : t
+    )
+    saveTabPrefs(current)
+  }
+
+  function handleTabDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = tabOrder.findIndex(t => t.key === active.id)
+    const newIdx = tabOrder.findIndex(t => t.key === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reordered = arrayMove(tabOrder, oldIdx, newIdx).map((t, i) => ({ ...t, order: i }))
+    saveTabPrefs(reordered)
+  }
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  const [moreOpen, setMoreOpen] = useState(false)
   useEffect(() => {
     if (!activeProject) return
     const pid = activeProject.id
@@ -241,7 +333,7 @@ export function Ribbon() {
 
   if (!activeProject) return null
 
-  const activeTab = visibleTabs.find(t => t.key === activeRibbonTab) || visibleTabs[0]
+  const activeTab = RIBBON_MODULES.find(t => t.key === activeRibbonTab) ?? visibleTabs[0]
 
   return (
     <div style={{
@@ -328,7 +420,7 @@ export function Ribbon() {
 
       {/* Tab row */}
       <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: '2px',
+        display: 'flex', alignItems: 'flex-end', gap: '2px',
         padding: '4px 12px 0', background: 'var(--bg2)'
       }}>
         {visibleTabs.map(tab => (
@@ -336,7 +428,6 @@ export function Ribbon() {
             key={tab.key}
             onClick={() => {
               setActiveRibbonTab(tab.key)
-              // Auto-navigate to first button of this tab
               const firstGroup = tab.groups[0]
               const firstBtn = firstGroup?.buttons[0]
               if (firstBtn) setActivePanel(firstBtn.panel)
@@ -359,6 +450,61 @@ export function Ribbon() {
             {tab.label}
           </button>
         ))}
+
+        {/* …More — shows hidden permitted tabs */}
+        {hiddenPermittedTabs.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMoreOpen(o => !o)}
+              style={{
+                padding: '5px 10px', background: 'transparent', border: '1px solid transparent',
+                borderRadius: '4px 4px 0 0', cursor: 'pointer', fontSize: '12px',
+                color: 'var(--text3)', marginBottom: '-1px',
+              }}
+              title={`${hiddenPermittedTabs.length} hidden tab${hiddenPermittedTabs.length > 1 ? 's' : ''}`}
+            >
+              ···
+            </button>
+            {moreOpen && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, zIndex: 200,
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+                borderRadius: '6px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                padding: '4px', minWidth: '160px',
+              }} onMouseLeave={() => setMoreOpen(false)}>
+                {hiddenPermittedTabs.map(tab => (
+                  <button key={tab.key} onClick={() => {
+                    setActiveRibbonTab(tab.key)
+                    const firstBtn = tab.groups[0]?.buttons[0]
+                    if (firstBtn) setActivePanel(firstBtn.panel)
+                    setMoreOpen(false)
+                  }} style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '7px 12px', background: 'none', border: 'none',
+                    cursor: 'pointer', fontSize: '12px', color: 'var(--text2)',
+                    borderRadius: '4px',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ⚙ Tab customiser */}
+        <button
+          onClick={() => setShowTabPicker(true)}
+          style={{
+            marginLeft: 'auto', padding: '4px 8px', background: 'transparent',
+            border: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--text3)',
+            borderRadius: '4px', marginBottom: '2px', lineHeight: 1,
+          }}
+          title="Customise tabs"
+        >⚙</button>
       </div>
 
       {/* Ribbon strip */}
@@ -421,6 +567,59 @@ export function Ribbon() {
           </div>
         ))}
       </div>
+
+      {/* ── Tab picker modal ─────────────────────────────────────────────────── */}
+      {showTabPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1300,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}
+          onClick={() => setShowTabPicker(false)}>
+          <div style={{ background: 'var(--bg2)', borderRadius: '12px', width: '420px', maxWidth: '95vw',
+            maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.35)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>Customise Tabs</div>
+                <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+                  Drag to reorder · toggle to show/hide · hidden tabs accessible via ···
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-sm" onClick={() => { saveTabPrefs([]); }}>Reset</button>
+                <button className="btn btn-sm" onClick={() => setShowTabPicker(false)}>Done</button>
+              </div>
+            </div>
+
+            {/* Sortable list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
+                <SortableContext items={tabOrder.map(t => t.key)} strategy={horizontalListSortingStrategy}>
+                  {tabOrder
+                    .filter(tp => permittedKeys.has(tp.key))
+                    .map(tp => {
+                      const tab = RIBBON_MODULES.find(t => t.key === tp.key)!
+                      return (
+                        <SortableTabPill
+                          key={tp.key}
+                          id={tp.key}
+                          label={tab.label}
+                          hidden={tp.hidden && !tab.pinned}
+                          onToggle={() => tab.pinned ? undefined : toggleTabHidden(tp.key)}
+                        />
+                      )
+                    })}
+                </SortableContext>
+              </DndContext>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '8px', textAlign: 'center' }}>
+                📌 Project tab is always visible · hidden tabs remain accessible via ···
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

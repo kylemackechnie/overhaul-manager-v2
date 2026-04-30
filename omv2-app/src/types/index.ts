@@ -89,6 +89,9 @@ export interface UserPrefs {
 
   // ── Column visibility ─────────────────────────────────────────────────────
   hidden_cols?: Record<string, string[]>  // tableId → array of hidden column IDs
+
+  // ── Ribbon tabs ───────────────────────────────────────────────────────────
+  ribbon_tabs?: { key: string; hidden: boolean; order: number }[]  // tab personalisation
 }
 
 export interface AppUser {
