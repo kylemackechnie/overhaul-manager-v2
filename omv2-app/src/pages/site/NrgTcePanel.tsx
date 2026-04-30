@@ -95,11 +95,10 @@ export function NrgTcePanel() {
     setPref('hidden_cols', { ...existing, 'nrg-tce': Array.from(next) })
   }
 
+  // Resizable columns — ID-keyed
+  // Order matches TCE_COLS. Checkbox col (idx 0) is separate.
   const TCE_COL_DEFAULTS = TCE_COLS.map(c => ({ id: c.id, default: c.default }))
   const { widths: cw, onResizeStart, thRef } = useResizableColumns('nrg-tce', TCE_COL_DEFAULTS)
-
-  // Total width = checkbox (28px) + sum of visible column widths
-  const totalTceWidth = 28 + TCE_COLS.reduce((s, c, i) => s + (isTceVisible(c.id) ? (cw[i + 1] || c.default) : 0), 0)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -440,9 +439,9 @@ export function NrgTcePanel() {
         : filtered.length === 0 ? (
           <div className="empty-state"><div className="icon">📋</div><h3>No TCE lines</h3><p>Import from XLSX or add lines manually.</p></div>
         ) : (
-          <div className="card" style={{ padding: 0 }}>
-            <div className="table-scroll-x">
-              <table className="table-fixed" style={{ fontSize: '12px', tableLayout: 'fixed', width: '100%', minWidth: totalTceWidth + 'px' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '1100px' }}>
                 <thead>
                   <tr>
                     <th ref={el => thRef(el, 0)} style={{ width: 28, textAlign: 'center' }}>

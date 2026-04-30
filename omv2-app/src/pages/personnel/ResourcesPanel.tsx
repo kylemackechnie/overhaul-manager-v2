@@ -585,7 +585,7 @@ export function ResourcesPanel() {
           )}
           {/* Resource table — scrollbar mirrored to top */}
           <div className="card" style={{padding:0,marginBottom:'16px'}}>
-            <div className="table-scroll-x" onScroll={e => {
+            <div style={{overflowX:'auto'}} onScroll={e => {
               const el = e.currentTarget
               const mirror = el.parentElement?.querySelector('.scroll-mirror') as HTMLElement | null
               if (mirror) mirror.scrollLeft = el.scrollLeft
@@ -598,7 +598,7 @@ export function ResourcesPanel() {
                 }}>
                 <div style={{width: totalResWidth + 'px', height:'1px'}} />
               </div>
-              <table className="table-fixed" style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
+              <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
                   <th ref={el=>rThRef(el,0)} className="resizable" style={{width:rw[0],textAlign:'center',padding:'8px 6px'}}>
@@ -764,7 +764,7 @@ export function ResourcesPanel() {
                   <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelected(new Set())}>✕ Clear</button>
                 </div>
               )}
-              <div className="table-scroll-x">
+              <div style={{overflowX:'auto'}}>
                 <table style={{borderCollapse:'collapse',fontSize:'10px',whiteSpace:'nowrap'}}>
                   <thead>
                     <tr>

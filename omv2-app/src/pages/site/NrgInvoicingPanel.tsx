@@ -309,7 +309,7 @@ export function NrgInvoicingPanel() {
       </div>
 
       <div className="card" style={{padding:0,overflow:'hidden'}}>
-        <div className="table-scroll-x">
+        <div style={{overflowX:'auto'}}>
           <table style={{fontSize:'12px',minWidth:'700px',borderCollapse:'collapse'}}>
             <thead>
               <tr style={{background:'var(--bg3)'}}>

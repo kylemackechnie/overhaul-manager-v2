@@ -507,27 +507,10 @@ tr:hover td { background: var(--bg3); }
 /* Sticky table headers */
 thead th {
   position: sticky;
-  top: var(--ribbon-h, 114px);
+  top: 0;
   z-index: 2;
   background: var(--bg3);
 }
-
-/* Clip cell content in fixed-layout tables */
-.table-fixed td {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 0;
-}
-
-/* Fix sticky thead inside horizontal scroll wrappers.
-   overflow-x: auto creates a scroll container that traps sticky.
-   Setting overflow-y: visible allows the sticky to escape vertically. */
-.table-scroll-x {
-  overflow-x: auto;
-  overflow-y: visible;
-}
-
-/* Apply to any direct table wrapper with overflow-x:auto via JS className */
 
 /* ── Toast notifications ──────────────────────────────────────────────────── */
 .toast-container {
