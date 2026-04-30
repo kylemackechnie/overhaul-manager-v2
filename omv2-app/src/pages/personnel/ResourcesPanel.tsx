@@ -598,7 +598,7 @@ export function ResourcesPanel() {
                 }}>
                 <div style={{width: totalResWidth + 'px', height:'1px'}} />
               </div>
-              <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
+              <table className="table-fixed" style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
                   <th ref={el=>rThRef(el,0)} className="resizable" style={{width:rw[0],textAlign:'center',padding:'8px 6px'}}>

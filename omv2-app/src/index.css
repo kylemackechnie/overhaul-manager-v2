@@ -512,6 +512,13 @@ thead th {
   background: var(--bg3);
 }
 
+/* Clip cell content in fixed-layout tables */
+.table-fixed td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
+}
+
 /* Fix sticky thead inside horizontal scroll wrappers.
    overflow-x: auto creates a scroll container that traps sticky.
    Setting overflow-y: visible allows the sticky to escape vertically. */

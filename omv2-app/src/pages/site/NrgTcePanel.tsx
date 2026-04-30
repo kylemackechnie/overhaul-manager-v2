@@ -442,15 +442,7 @@ export function NrgTcePanel() {
         ) : (
           <div className="card" style={{ padding: 0 }}>
             <div className="table-scroll-x">
-              <table style={{ fontSize: '12px', tableLayout: 'fixed', width: '100%', minWidth: totalTceWidth + 'px' }}>
-                <colgroup>
-                  <col style={{ width: '28px' }} />
-                  {TCE_COLS.map((col, i) => isTceVisible(col.id)
-                    ? <col key={col.id} style={{ width: (cw[i + 1] || col.default) + 'px' }} />
-                    : null
-                  )}
-                  {showWeekly && weekKeys.map(wk => <col key={wk} style={{ width: '80px' }} />)}
-                </colgroup>
+              <table className="table-fixed" style={{ fontSize: '12px', tableLayout: 'fixed', width: '100%', minWidth: totalTceWidth + 'px' }}>
                 <thead>
                   <tr>
                     <th ref={el => thRef(el, 0)} style={{ width: 28, textAlign: 'center' }}>
