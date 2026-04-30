@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { writeTimesheetCostLines, calcPersonTotals } from '../../engines/timesheetCostEngine'
+import { splitHours } from '../../engines/costEngine'
 import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
@@ -110,54 +111,8 @@ function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resource
 }
 // Hour split driven by rate-card thresholds. 12hr cards set wdT15=0/satT15=0
 // to collapse to NT→DT. Same logic as the canonical engine.
-type HourSplit = { dnt:number; dt15:number; ddt:number; ddt15:number; nnt:number; ndt:number; ndt15:number }
 type RegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
 
-function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfig?: RegimeConfig, calendarDayType?: string): HourSplit {
-  const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
-  if (hrs <= 0) return zero
-
-  const night = shiftType === 'night'
-  const rc = regimeConfig || {}
-  const WD_NT    = (rc as {wdNT?:number}).wdNT    ?? 7.2
-  const WD_T15   = (rc as {wdT15?:number}).wdT15   ?? 3.3
-  const SAT_T15  = (rc as {satT15?:number}).satT15  ?? 3
-  const NIGHT_NT = (rc as {nightNT?:number}).nightNT ?? 7.2
-  const REST_NT  = (rc as {restNT?:number}).restNT  ?? 7.2
-
-  if (dayType === 'public_holiday') {
-    return night ? { ...zero, ndt15: hrs } : { ...zero, ddt15: hrs }
-  }
-  if (dayType === 'rest') {
-    return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
-  }
-  if (dayType === 'travel' || dayType === 'sea_travel' || dayType === 'mob') {
-    if (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') {
-      return { ...zero, dt15: hrs }
-    }
-    return { ...zero, dnt: hrs }
-  }
-  if (night) {
-    if (dayType === 'saturday' || dayType === 'sunday') return { ...zero, ndt: hrs }
-    const nnt = Math.min(hrs, NIGHT_NT)
-    const ndt = Math.max(0, hrs - NIGHT_NT)
-    return { ...zero, nnt, ndt }
-  }
-  // Day — Saturday: T1.5 → DT (SAT_T15=0 collapses to pure DT)
-  if (dayType === 'saturday') {
-    const t15 = Math.min(hrs, SAT_T15)
-    const ddt = Math.max(0, hrs - SAT_T15)
-    return { ...zero, dt15: t15, ddt }
-  }
-  if (dayType === 'sunday') {
-    return { ...zero, ddt: hrs }
-  }
-  // Weekday day — NT → T1.5 → DT (WD_T15=0 collapses to NT → DT)
-  const dnt  = Math.min(hrs, WD_NT)
-  const dt15 = Math.min(Math.max(0, hrs - WD_NT), WD_T15)
-  const ddt  = Math.max(0, hrs - WD_NT - WD_T15)
-  return { ...zero, dnt, dt15, ddt }
-}
 // printTimesheet remains local — it renders the print-ready HTML, not pure totals.
 
 

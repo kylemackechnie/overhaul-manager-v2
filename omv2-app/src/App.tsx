@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import { useAppStore } from './store/appStore'
 import { usePermissions, AccessDenied, type Module } from './lib/permissions'
 import { useAuth } from './hooks/useAuth'
+import { setPayrollRules } from './engines/costEngine'
 import { LoginPage } from './pages/LoginPage'
 import { Header } from './components/layout/Header'
 import { Ribbon } from './components/layout/Ribbon'
@@ -81,6 +82,7 @@ import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
 import { GlobalRateDefaultsPanel } from './pages/settings/GlobalRateDefaultsPanel'
+import { PayrollRulesPanel } from './pages/settings/PayrollRulesPanel'
 import { ProfilePage } from './pages/settings/ProfilePage'
 import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
@@ -113,6 +115,9 @@ export default function App() {
     if (sessionStorage.getItem('force_password_reset') === '1') {
       setActivePanel('profile')
     }
+    // Load global payroll rules into the engine on boot
+    supabase.from('payroll_rules').select('rules').eq('id', 1).single()
+      .then(({ data }) => { if (data?.rules) setPayrollRules(data.rules) })
   }, [])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
@@ -279,7 +284,7 @@ export default function App() {
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
         {/* Profile and settings panels don't require an active project */}
-        {(['profile', 'user-management', 'audit-trail', 'sites'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults'].includes(activePanel)) ? (
           <PanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -435,6 +440,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
     case 'rate-defaults':         return <GlobalRateDefaultsPanel />
+    case 'payroll-rules':         return <PayrollRulesPanel />
     case 'profile':               return <ProfilePage />
     case 'sites':                 return <SitesPanel />
     case 'audit-trail':           return <AuditTrailPanel />

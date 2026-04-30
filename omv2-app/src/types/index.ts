@@ -9,6 +9,65 @@ export interface DashboardTileConfig {
   size: 'normal' | 'wide'
 }
 
+// ─── Payroll Rules ────────────────────────────────────────────────────────────
+
+export interface PayrollRules {
+  // ── Weekday thresholds (Trades / Subcon day shift) ────────────────────────
+  wd_nt_hours:    number   // hours at NT before T1.5 kicks in      default 7.2
+  wd_t15_hours:   number   // hours at T1.5 before DT kicks in       default 3.3
+
+  // ── Saturday (Trades / Subcon day shift) ─────────────────────────────────
+  sat_t15_hours:  number   // hours at T1.5 before DT kicks in       default 3.0
+
+  // ── Sunday (Trades / Subcon day shift) ───────────────────────────────────
+  sunday_rate:    'ddt' | 'ddt15' | 'dt15'                        // default ddt
+
+  // ── Public Holiday (Trades / Subcon day shift) ────────────────────────────
+  ph_rate:        'ddt15' | 'ddt' | 'dt15'                       // default ddt15
+
+  // ── Night shift (Trades / Subcon) ────────────────────────────────────────
+  night_nt_hours:      number                     // NT band on night shift   default 7.2
+  night_sat_sun_rate:  'ndt' | 'ndt15'            // Sat/Sun night rate       default ndt
+  night_ph_rate:       'ndt15' | 'ndt'            // PH night rate            default ndt15
+
+  // ── Rest / Fatigue ────────────────────────────────────────────────────────
+  rest_nt_hours:  number                           // NT cap on rest days      default 7.2
+  rest_rate:      'dnt' | 'dt15'                  // rate bucket              default dnt
+
+  // ── Travel & Mob/Demob ────────────────────────────────────────────────────
+  travel_weekday_rate: 'dnt' | 'dt15'             // weekday travel rate      default dnt
+  travel_sunday_rate:  'dt15' | 'ddt' | 'dnt'    // Sunday travel rate       default dt15
+  travel_ph_rate:      'dt15' | 'ddt15' | 'dnt'  // PH travel rate           default dt15
+  mob_weekday_rate:    'dnt' | 'dt15'             // weekday mob rate         default dnt
+  mob_sunday_rate:     'dt15' | 'ddt' | 'dnt'    // Sunday mob rate          default dt15
+  mob_ph_rate:         'dt15' | 'ddt15' | 'dnt'  // PH mob rate              default dt15
+
+  // ── Allowance behaviour ───────────────────────────────────────────────────
+  meal_break_adj_hours: number                    // EBA adj per worked day   default 0.5
+  mgmt_laha_uses_fsa:   boolean                   // legacy LAHA→FSA mapping  default true
+}
+
+export const PAYROLL_RULES_DEFAULTS: PayrollRules = {
+  wd_nt_hours:          7.2,
+  wd_t15_hours:         3.3,
+  sat_t15_hours:        3.0,
+  sunday_rate:          'ddt',
+  ph_rate:              'ddt15',
+  night_nt_hours:       7.2,
+  night_sat_sun_rate:   'ndt',
+  night_ph_rate:        'ndt15',
+  rest_nt_hours:        7.2,
+  rest_rate:            'dnt',
+  travel_weekday_rate:  'dnt',
+  travel_sunday_rate:   'dt15',
+  travel_ph_rate:       'dt15',
+  mob_weekday_rate:     'dnt',
+  mob_sunday_rate:      'dt15',
+  mob_ph_rate:          'dt15',
+  meal_break_adj_hours: 0.5,
+  mgmt_laha_uses_fsa:   true,
+}
+
 export interface UserPrefs {
   col_widths?: Record<string, number[]>     // tableId → widths[]
   dashboard_layout?: DashboardTileConfig[]  // ordered tile configs

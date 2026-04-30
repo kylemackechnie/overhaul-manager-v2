@@ -4,7 +4,22 @@
  * All outputs verified to match the original HTML app.
  */
 
-import type { RateCard, CrewMember, DayEntry, DayCostRow, PersonDay } from '../types'
+import type { RateCard, CrewMember, DayEntry, DayCostRow, PersonDay, PayrollRules, PAYROLL_RULES_DEFAULTS as _defaults } from '../types'
+import { PAYROLL_RULES_DEFAULTS } from '../types'
+
+// ─── Global payroll rules store ───────────────────────────────────────────────
+// Set once on app boot via setPayrollRules(). splitHours reads from here so
+// every call site automatically gets the current rules without threading params.
+let _rules: PayrollRules = { ...PAYROLL_RULES_DEFAULTS }
+void _defaults // suppress unused import warning
+
+export function setPayrollRules(rules: Partial<PayrollRules>) {
+  _rules = { ...PAYROLL_RULES_DEFAULTS, ...rules }
+}
+
+export function getPayrollRules(): PayrollRules {
+  return _rules
+}
 
 // ─── Date utilities ───────────────────────────────────────────────────────────
 
@@ -95,32 +110,46 @@ export function splitHours(
 
   const night = shiftType === 'night'
   const rc = (regimeConfig || {}) as RegimeConfig
-  const WD_NT    = rc.wdNT    ?? 7.2
-  const WD_T15   = rc.wdT15   ?? 3.3
-  const SAT_T15  = rc.satT15  ?? 3
-  const NIGHT_NT = rc.nightNT ?? 7.2
-  const REST_NT  = rc.restNT  ?? 7.2
+  // Per-rate-card regime overrides take precedence over global rules
+  const WD_NT    = rc.wdNT    ?? _rules.wd_nt_hours
+  const WD_T15   = rc.wdT15   ?? _rules.wd_t15_hours
+  const SAT_T15  = rc.satT15  ?? _rules.sat_t15_hours
+  const NIGHT_NT = rc.nightNT ?? _rules.night_nt_hours
+  const REST_NT  = rc.restNT  ?? _rules.rest_nt_hours
   const IS_SEAG  = !!rc.seag
 
   // Normalise dayType — accept both snake_case ('public_holiday') and camelCase ('publicHoliday')
   const d = dayType === 'publicHoliday' ? 'public_holiday' : dayType
 
-  // Public holiday — SE AG: all 2.5T. Trades: all DT1.5 (same bucket ddt15)
+  // Public holiday
   if (d === 'public_holiday') {
-    return night ? { ...zero, ndt15: totalHrs } : { ...zero, ddt15: totalHrs }
+    const bucket = _rules.ph_rate   // ddt15 | ddt | dt15
+    return night
+      ? { ...zero, [bucket.startsWith('n') ? bucket : 'n' + bucket]: totalHrs }
+      : { ...zero, [bucket]: totalHrs }
   }
 
-  // Rest/fatigue — flat NT
+  // Rest/fatigue
   if (d === 'rest') {
-    return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
+    const bucket = _rules.rest_rate  // dnt | dt15
+    const cap = REST_NT
+    return night
+      ? { ...zero, nnt: Math.min(totalHrs, cap) }
+      : { ...zero, [bucket]: Math.min(totalHrs, cap) }
   }
 
-  // Travel / mob — flat NT, except Sunday or Public Holiday = T1.5 (global rule)
+  // Travel / SEA Travel / Mob — rate depends on calendar day type
   if (d === 'travel' || d === 'sea_travel' || d === 'mob') {
-    if (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') {
-      return { ...zero, dt15: totalHrs }
+    const isMob = d === 'mob'
+    let bucket: string
+    if (calendarDayType === 'public_holiday') {
+      bucket = isMob ? _rules.mob_ph_rate : _rules.travel_ph_rate
+    } else if (calendarDayType === 'sunday') {
+      bucket = isMob ? _rules.mob_sunday_rate : _rules.travel_sunday_rate
+    } else {
+      bucket = isMob ? _rules.mob_weekday_rate : _rules.travel_weekday_rate
     }
-    return { ...zero, dnt: totalHrs }
+    return { ...zero, [bucket]: totalHrs }
   }
 
   // ── SE AG billing mode ────────────────────────────────────────────────────
@@ -144,7 +173,7 @@ export function splitHours(
   // ── Standard trades/management ────────────────────────────────────────────
   if (night) {
     if (d === 'saturday' || d === 'sunday') {
-      return { ...zero, ndt: totalHrs }
+      return { ...zero, [_rules.night_sat_sun_rate]: totalHrs }
     }
     // Weekday night: NT up to NIGHT_NT, remainder DT
     const nnt = Math.min(totalHrs, NIGHT_NT)
@@ -153,21 +182,19 @@ export function splitHours(
   }
 
   // Day — Saturday: T1.5 up to SAT_T15, remainder DT.
-  // For 12hr-pattern cards (SAT_T15=0), the result is pure DT — same as the
-  // old ge12 special case, just driven by the threshold value instead of a flag.
+  // For 12hr-pattern cards (SAT_T15=0), the result is pure DT.
   if (d === 'saturday') {
     const t15 = Math.min(totalHrs, SAT_T15)
     const ddt = Math.max(0, totalHrs - SAT_T15)
     return { ...zero, dt15: t15, ddt }
   }
 
-  // Day — Sunday (all DT, not DT1.5)
+  // Day — Sunday
   if (d === 'sunday') {
-    return { ...zero, ddt: totalHrs }
+    return { ...zero, [_rules.sunday_rate]: totalHrs }
   }
 
   // Weekday day: NT → T1.5 → DT.
-  // For 12hr-pattern cards (WD_T15=0), the formula collapses naturally to NT → DT.
   const dnt  = Math.min(totalHrs, WD_NT)
   const dt15 = Math.min(Math.max(0, totalHrs - WD_NT), WD_T15)
   const ddt  = Math.max(0, totalHrs - WD_NT - WD_T15)
