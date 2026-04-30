@@ -185,6 +185,32 @@ export function ExpensesPanel() {
   }
 
 
+
+  function buildRefSlug(category: string, vendor: string, description: string): string {
+    const clean = (s: string) => s.trim().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').slice(0, 24)
+    const parts = [clean(category)||'Cost', clean(vendor)||'Vendor', clean(description)||'Desc']
+    return parts.join('_')
+  }
+
+  // Live preview for new expenses (number not yet assigned)
+  const refPreview = `EXP-####_${buildRefSlug(form.category, form.vendor, form.description)}`
+
+  async function assignExpenseRef(expenseId: string): Promise<string> {
+    // Get max existing ref number for this project
+    const { data } = await supabase
+      .from('expenses')
+      .select('expense_ref')
+      .eq('project_id', activeProject!.id)
+      .not('expense_ref', 'is', null)
+    const nums = (data || [])
+      .map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
+      .filter(n => n > 0)
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
+    const ref = `EXP-${String(next).padStart(4,'0')}_${buildRefSlug(form.category, form.vendor, form.description)}`
+    await supabase.from('expenses').update({ expense_ref: ref }).eq('id', expenseId)
+    return ref
+  }
+
   function addLine() {
     const newLine: ExpenseLine = {
       id: 'new_' + Date.now(), expense_id: '',
@@ -244,6 +270,7 @@ export function ExpensesPanel() {
       const { data, error } = await supabase.from('expenses').insert(payload).select('id').single()
       if (error || !data) { toast(error?.message || 'Insert failed', 'error'); setSaving(false); return }
       expenseId = data.id
+      await assignExpenseRef(expenseId)
       toast('Expense added', 'success')
     } else {
       expenseId = (modal as Expense).id
@@ -424,7 +451,10 @@ export function ExpensesPanel() {
                       <input type="checkbox" checked={selected.has(e.id)} onChange={()=>toggleSelect(e.id)} style={{accentColor:'#f472b6'}} />
                     </td>
                     <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{e.date || '—'}</td>
-                    <td style={{ fontWeight: 500 }}>{e.description}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {e.description}
+                      {e.expense_ref && <div style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)',marginTop:'1px'}}>{e.expense_ref}</div>}
+                    </td>
                     <td style={{ fontSize: '12px', color: 'var(--text3)' }}>{e.category || '—'}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(e.cost_ex_gst || 0)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : 'var(--text3)' }}>
@@ -469,6 +499,30 @@ export function ExpensesPanel() {
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
+              {/* ISO Reference — read-only, auto-assigned on first save */}
+              <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',padding:'8px 12px',marginBottom:'12px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px'}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:600,marginBottom:'2px',letterSpacing:'0.04em'}}>ISO FILING REFERENCE</div>
+                  {modal !== 'new' && (modal as Expense).expense_ref ? (
+                    <div style={{fontFamily:'var(--mono)',fontSize:'12px',fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {(modal as Expense).expense_ref}
+                    </div>
+                  ) : (
+                    <div style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {refPreview}
+                    </div>
+                  )}
+                </div>
+                {modal !== 'new' && (modal as Expense).expense_ref ? (
+                  <button type="button" className="btn btn-sm" style={{flexShrink:0,fontSize:'11px'}} title="Copy to clipboard"
+                    onClick={()=>{ navigator.clipboard.writeText((modal as Expense).expense_ref!); toast('Copied!','success') }}>
+                    📋 Copy
+                  </button>
+                ) : (
+                  <span style={{fontSize:'10px',color:'var(--text3)',flexShrink:0}}>assigned on save</span>
+                )}
+              </div>
+
               <div className="fg-row">
                 <div className="fg" style={{ flex: 2 }}>
                   <label>Description</label>
