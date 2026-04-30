@@ -4,14 +4,13 @@
  * All outputs verified to match the original HTML app.
  */
 
-import type { RateCard, CrewMember, DayEntry, DayCostRow, PersonDay, PayrollRules, PAYROLL_RULES_DEFAULTS as _defaults } from '../types'
+import type { RateCard, CrewMember, DayEntry, DayCostRow, PersonDay, PayrollRules } from '../types'
 import { PAYROLL_RULES_DEFAULTS } from '../types'
 
 // ─── Global payroll rules store ───────────────────────────────────────────────
 // Set once on app boot via setPayrollRules(). splitHours reads from here so
 // every call site automatically gets the current rules without threading params.
 let _rules: PayrollRules = { ...PAYROLL_RULES_DEFAULTS }
-void _defaults // suppress unused import warning
 
 export function setPayrollRules(rules: Partial<PayrollRules>) {
   _rules = { ...PAYROLL_RULES_DEFAULTS, ...rules }
