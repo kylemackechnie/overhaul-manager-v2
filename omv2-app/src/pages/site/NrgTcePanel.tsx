@@ -406,16 +406,16 @@ export function NrgTcePanel() {
         </label>
         {collapsed.size > 0 && (
           <button className="btn btn-sm" style={{ color: 'var(--text3)' }} onClick={() => setCollapsed(new Set())}>Expand All</button>
-          <SavedViewsBar
-            panelId="nrg-tce"
-            currentFilters={{ sourceFilter, hideUnused, showWeekly }}
-            onLoad={filters => {
-              if (typeof filters.sourceFilter === 'string') setSourceFilter(filters.sourceFilter)
-              if (typeof filters.hideUnused === 'boolean') setHideUnused(filters.hideUnused)
-              if (typeof filters.showWeekly === 'boolean') setShowWeekly(filters.showWeekly)
-            }}
-          />
         )}
+        <SavedViewsBar
+          panelId="nrg-tce"
+          currentFilters={{ sourceFilter, hideUnused, showWeekly }}
+          onLoad={filters => {
+            if (typeof filters.sourceFilter === 'string') setSourceFilter(filters.sourceFilter)
+            if (typeof filters.hideUnused === 'boolean') setHideUnused(filters.hideUnused)
+            if (typeof filters.showWeekly === 'boolean') setShowWeekly(filters.showWeekly)
+          }}
+        />
       </div>
 
       {/* Bulk action bar */}
