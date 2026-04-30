@@ -600,18 +600,18 @@ export function ResourcesPanel() {
                       <td><span className="badge" style={ss}>{ss.label}</span></td>
                       <td style={{fontWeight:600,minWidth:'130px'}}>
                         <div style={{display:'flex',alignItems:'center',gap:4}}>
-                          <input className="res-inline" defaultValue={r.name}
-                            style={{fontWeight:600,flex:1,background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'13px',fontFamily:'inherit',color:'inherit',cursor:'pointer',padding:'1px 2px'}}
-                            onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)';(e.target as HTMLInputElement).style.background='var(--bg3)'}}
-                            onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'name',(e.target as HTMLInputElement).value.trim()||r.name)}}
-                            onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
-                          />
                           {((r as unknown as {person_id?:string}).person_id) && (
                             <button title="View person profile" onClick={() => openPersonCard((r as unknown as {person_id:string}).person_id)}
                               style={{background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:'12px',padding:'0 2px',flexShrink:0,opacity:0.7}}>
                               👤
                             </button>
                           )}
+                          <input className="res-inline" defaultValue={r.name}
+                            style={{fontWeight:600,flex:1,minWidth:0,background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'13px',fontFamily:'inherit',color:'inherit',cursor:'pointer',padding:'1px 2px'}}
+                            onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)';(e.target as HTMLInputElement).style.background='var(--bg3)'}}
+                            onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'name',(e.target as HTMLInputElement).value.trim()||r.name)}}
+                            onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
+                          />
                         </div>
                       </td>
                       <td style={{minWidth:'140px'}}>
