@@ -1185,7 +1185,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     const shiftType = (raw.shiftType as string) || 'day'
                     const laha = (raw.laha as boolean) || false
                     const meal = (raw.meal as boolean) || false
-                    const isPH = holidays.has(d); const isWknd = i >= 5
+                    const isPH = holidays.has(d)
                     // EBA adj for display and split
                     const adjH = (member.mealBreakAdj && cellHrs > 0) ? 0.5 : 0
                     const dispHrs = cellHrs + adjH
