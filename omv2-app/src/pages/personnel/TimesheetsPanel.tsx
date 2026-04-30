@@ -706,24 +706,32 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const unresolvedCount = activeWeek ? findUnresolvedAllocs().length : 0
 
   function buildPreDays(r: Resource, weekStart: string): Record<string, DayEntry> {
-    // Pre-fill standard hours from project settings and apply resource allowances
+    // Pre-fill standard hours from project settings and apply resource allowances.
+    // LAHA/meal are applied to ALL days the person is on the project (mob window),
+    // not just days with standard hours — allowances are paid regardless of hours worked.
     const std = (activeProject as typeof activeProject & {std_hours?: {day:Record<string,number>;night:Record<string,number>}})?.std_hours
     const days: Record<string, DayEntry> = {}
-    if (!std) return days
     const dayNames = ['mon','tue','wed','thu','fri','sat','sun']
     const monday = new Date(weekStart + 'T12:00:00')
+    const mobIn  = (r as Resource & {mob_in?:string|null}).mob_in  || null
+    const mobOut = (r as Resource & {mob_out?:string|null}).mob_out || null
+    const hasLaha = !!(r as Resource & {allow_laha?:boolean}).allow_laha
+    const hasMeal = !!(r as Resource & {allow_meal?:boolean}).allow_meal
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday); d.setDate(monday.getDate() + i)
       const ds = d.toISOString().slice(0, 10)
       const dow = dayNames[i]
       const shift = (r as Resource & {shift?:string}).shift || 'day'
       const dayType = autoType(ds, holidays)
-      const hrs = shift === 'night' ? (std.night?.[dow] || 0) : (std.day?.[dow] || 0)
-      if (hrs > 0) {
+      const hrs = std ? (shift === 'night' ? (std.night?.[dow] || 0) : (std.day?.[dow] || 0)) : 0
+      // Person is on the project this day if within their mob window (or no mob dates set)
+      const onProject = (!mobIn || ds >= mobIn) && (!mobOut || ds <= mobOut)
+      // Create entry if they have hours, or if they're on project with an allowance to apply
+      if (hrs > 0 || (onProject && (hasLaha || hasMeal))) {
         days[ds] = {
           dayType, shiftType: shift === 'night' ? 'night' : 'day', hours: hrs,
-          laha: !!(r as Resource & {allow_laha?:boolean}).allow_laha,
-          meal: !!(r as Resource & {allow_meal?:boolean}).allow_meal,
+          laha: hasLaha && onProject,
+          meal: hasMeal && onProject,
         } as DayEntry
       }
     }
@@ -1187,7 +1195,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     const SPLIT_COLORS: Record<string,string> = { dnt:'var(--accent)', dt15:'var(--orange)', ddt:'var(--red)', ddt15:'var(--red)', nnt:'var(--mod-tooling,#8b5cf6)', ndt:'var(--mod-tooling,#8b5cf6)', ndt15:'var(--mod-tooling,#8b5cf6)' }
                     const splitEntries = split ? (Object.entries(split) as [string,number][]).filter(([,v])=>v>0) : []
                     return (
-                      <div key={d} style={{ background: isPH ? 'rgba(139,92,246,0.05)' : isWknd ? 'rgba(194,65,12,0.03)' : 'var(--bg2)', padding: '4px 5px', borderLeft: '1px solid var(--border)' }}>
+                      <div key={d} style={{ background: isPH ? 'rgba(139,92,246,0.05)' : 'var(--bg2)', padding: '4px 5px', borderLeft: '1px solid var(--border)' }}>
                         <input type="number" min="0" max="24" step="0.5" value={cellHrs || ''} placeholder="0"
                           style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 600, padding: '2px 4px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: cellHrs > 0 ? 'var(--text)' : 'var(--text3)', textAlign: 'center' }}
                           onChange={e => setDay(member.personId, d, 'hours', parseFloat(e.target.value) || 0)} />
