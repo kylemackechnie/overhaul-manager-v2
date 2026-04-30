@@ -67,15 +67,13 @@ function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resource
       const days = { ...m.days }
       let changed = false
 
-      // 1. Public holiday overrides
+      // 1. Public holiday overrides — only apply to days with NO existing entry.
+      // If the user has already saved a dayType on a PH day, respect their choice.
       if (holidays.size) {
-        Object.keys(days).forEach(ds => {
-          if (holidays.has(ds)) {
-            const cell = days[ds] as Record<string, unknown>
-            if (cell && cell.dayType !== 'public_holiday') {
-              days[ds] = { ...cell, dayType: 'public_holiday' } as unknown as typeof days[typeof ds]
-              changed = true
-            }
+        weekDates.forEach(ds => {
+          if (holidays.has(ds) && !days[ds]) {
+            days[ds] = { dayType: 'public_holiday', shiftType: 'day', hours: 0, laha: false, meal: false } as unknown as typeof days[typeof ds]
+            changed = true
           }
         })
       }
@@ -517,9 +515,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         if (m.personId !== personId) return m
         const rawEntry = m.days[date]
         const existing: DayEntry = rawEntry
-          ? (holidays.has(date) && (rawEntry as Record<string,unknown>).dayType !== 'public_holiday'
-              ? { ...(rawEntry as DayEntry), dayType: 'public_holiday' }
-              : rawEntry as DayEntry)
+          ? rawEntry as DayEntry
           : { dayType: autoType(date, holidays), shiftType: 'day' as const, hours: 0, laha: false, meal: false }
         return { ...m, days: { ...m.days, [date]: { ...existing, [field]: value } as DayEntry } }
       })
@@ -1219,7 +1215,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     const raw = (member.days[d] || {}) as Record<string, unknown>
                     const cellHrs = (raw.hours as number) || 0
                     const rawDayType = (raw.dayType as string) || autoType(d, holidays)
-                    const dayType = holidays.has(d) ? 'public_holiday' : rawDayType
+                    const dayType = rawDayType
                     const shiftType = (raw.shiftType as string) || 'day'
                     const laha = (raw.laha as boolean) || false
                     const meal = (raw.meal as boolean) || false
