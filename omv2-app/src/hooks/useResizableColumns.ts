@@ -3,8 +3,11 @@
  *
  * Provides drag-to-resize column widths for <table> elements.
  * Widths persist per-user via useUserPrefs (localStorage + Supabase sync).
- * On first mount with no stored data, reads actual rendered widths
- * from th elements so columns never "jump" on first drag.
+ *
+ * Initialisation strategy:
+ *   1. Synchronous localStorage read via appStore.getState() — works immediately
+ *      even before useUserPrefs effect fires (avoids flash-to-defaults on refresh)
+ *   2. storedKey effect as secondary catch for when auth resolves after first render
  *
  * Usage:
  *   const { widths, onResizeStart, thRef } = useResizableColumns('my-table', [80, 200, 120])
@@ -15,9 +18,31 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useUserPrefs } from './useUserPrefs'
+import { useAppStore } from '../store/appStore'
 
 const MIN_COL_WIDTH = 32
 const MAX_COL_WIDTH = 800
+const LS_PREFS_PREFIX = 'omv2_prefs_'
+
+/** Synchronous localStorage read — bypasses the async useUserPrefs effect cycle */
+function readStoredSync(tableId: string, defaults: number[]): number[] | null {
+  try {
+    const uid = useAppStore.getState().currentUser?.id
+    if (!uid) return null
+    const raw = localStorage.getItem(LS_PREFS_PREFIX + uid)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { col_widths?: Record<string, number[]> }
+    const stored = parsed?.col_widths?.[tableId]
+    if (
+      stored &&
+      stored.length === defaults.length &&
+      stored.every(w => typeof w === 'number' && w >= MIN_COL_WIDTH)
+    ) {
+      return stored
+    }
+  } catch { /* ignore */ }
+  return null
+}
 
 export function useResizableColumns(
   tableId: string,
@@ -35,9 +60,12 @@ export function useResizableColumns(
     return null
   }
 
-  const [widths, setWidths] = useState<number[]>(() => getStored() ?? defaults)
+  // Synchronous init — reads localStorage directly so we never flash defaults on refresh
+  const [widths, setWidths] = useState<number[]>(
+    () => readStoredSync(tableId, defaults) ?? defaults
+  )
 
-  // When Supabase prefs arrive asynchronously, apply stored widths
+  // Secondary: when prefs load into appStore asynchronously (e.g. auth resolves after mount)
   const storedKey = prefs.col_widths?.[tableId]?.join(',')
   useEffect(() => {
     const stored = getStored()
@@ -47,7 +75,7 @@ export function useResizableColumns(
   // Auto-measure DOM for default=0 columns on first mount
   useEffect(() => {
     const hasAuto = defaults.some(d => d === 0)
-    if (!hasAuto || getStored()) return
+    if (!hasAuto || getStored() || readStoredSync(tableId, defaults)) return
     const timer = setTimeout(() => {
       const rendered = thRefs.current.map((th, i) => {
         if (defaults[i] === 0 && th) return Math.max(MIN_COL_WIDTH, th.offsetWidth)
