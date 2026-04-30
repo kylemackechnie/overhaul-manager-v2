@@ -6,8 +6,36 @@ import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
 import { useResizableColumns } from '../../hooks/useResizableColumns'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
+
+// ── Column registry ───────────────────────────────────────────────────────────
+// All resizable columns except col-0 (checkbox) which is always visible.
+// id must be stable — it's the key used in col_widths_v2 and hidden_cols.resources.
+const RES_COLS = [
+  { id: 'status',    label: 'Status',       default: 70,  group: 'Identity' },
+  { id: 'name',      label: 'Name',         default: 140, group: 'Identity' },
+  { id: 'role',      label: 'Role / Trade', default: 110, group: 'Identity' },
+  { id: 'shift',     label: 'Shift',        default: 60,  group: 'Identity' },
+  { id: 'company',   label: 'Company',      default: 110, group: 'Identity' },
+  { id: 'mob_in',    label: 'Mob In',       default: 80,  group: 'Mob' },
+  { id: 'mob_out',   label: 'Mob Out',      default: 80,  group: 'Mob' },
+  { id: 'phone',     label: 'Phone',        default: 110, group: 'Contact' },
+  { id: 'email',     label: 'Email',        default: 150, group: 'Contact' },
+  { id: 'laha',      label: 'LAHA',         default: 40,  group: 'Allowances' },
+  { id: 'meal',      label: 'Meal',         default: 40,  group: 'Allowances' },
+  { id: 'fsa',       label: 'FSA',          default: 40,  group: 'Allowances' },
+  { id: 'car',       label: 'Car',          default: 100, group: 'Logistics' },
+  { id: 'flights',   label: 'Flights',      default: 100, group: 'Logistics' },
+  { id: 'room',      label: 'Room',         default: 120, group: 'Logistics' },
+  { id: 'wbs',       label: 'WBS',          default: 100, group: 'Assignment' },
+  { id: 'po',        label: 'PO',           default: 80,  group: 'Assignment' },
+  { id: 'actions',   label: '',             default: 80,  group: 'Assignment' },
+] as const
+
+type ResColId = typeof RES_COLS[number]['id']
+const RES_COL_GROUPS = ['Identity', 'Mob', 'Contact', 'Allowances', 'Logistics', 'Assignment'] as const
 
 const CATEGORIES = ['trades','management','seag','subcontractor'] as const
 const SHIFTS = ['day','night','both'] as const
@@ -44,9 +72,25 @@ type SortCol = 'status'|'name'|'role'|'shift'|'company'|'mob_in'|'mob_out'|'allo
 export function ResourcesPanel() {
   const { activeProject, setActivePanel } = useAppStore()
 
-  const RES_COL_DEFAULTS = [32, 70, 140, 110, 60, 110, 80, 80, 110, 150, 40, 40, 40, 100, 100, 120, 100, 80, 80]
-  const { widths: rw, onResizeStart: rOnResize, thRef: rThRef } = useResizableColumns('resources', RES_COL_DEFAULTS)
-  const totalResWidth = rw.reduce((s, w) => s + w, 0)
+  const { prefs, setPref } = useUserPrefs()
+  const [showColPicker, setShowColPicker] = useState(false)
+
+  // Column visibility — stored as hidden_cols.resources (set of hidden col IDs)
+  // Registry-merge: unknown stored IDs are ignored; new cols default visible
+  const storedHidden = new Set<string>((prefs.hidden_cols as Record<string, string[]> | undefined)?.['resources'] ?? [])
+  const hiddenCols = new Set(storedHidden)
+  function setHiddenCols(next: Set<string>) {
+    const existing = (prefs.hidden_cols as Record<string, string[]> | undefined) ?? {}
+    setPref('hidden_cols', { ...existing, resources: Array.from(next) })
+  }
+  function isVisible(id: ResColId) { return !hiddenCols.has(id) }
+
+  // Col widths via ID-keyed hook
+  const { widths: rw, onResizeStart: rOnResize, thRef: rThRef } =
+    useResizableColumns('resources', RES_COLS.map(c => ({ id: c.id, default: c.default })))
+
+  // Total width = checkbox col (32px) + sum of visible column widths
+  const totalResWidth = 32 + RES_COLS.reduce((s, c, i) => s + (isVisible(c.id) ? rw[i] : 0), 0)
 
   const { canWrite } = usePermissions()
   const [resources, setResources] = useState<Resource[]>([])
@@ -479,6 +523,7 @@ export function ResourcesPanel() {
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
           <button className="btn btn-sm" onClick={() => setShowImport(s => !s)}>📥 Import CSV</button>
+          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ''}</button>
           <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')}>+ Add Person</button>
         </div>
       </div>
@@ -567,21 +612,26 @@ export function ResourcesPanel() {
                     />
                     <div className="col-resizer" {...rOnResize(0)} />
                   </th>
-                  {([
-                    ['Status','status'],['Name','name'],['Role / Trade','role'],['Shift','shift'],
-                    ['Company','company'],['Mob In','mob_in'],['Mob Out','mob_out'],
-                    ['Phone',null],['Email',null],
-                    ['LAHA','allow_laha'],['Meal','allow_meal'],['FSA','allow_fsa'],
-                    ['Car',null],['Flights',null],['Room',null],
-                    ['WBS','wbs'],['PO',null],['',null]
-                  ] as [string, string|null][]).map(([label, col], i) => (
-                    <th key={i+1} ref={el=>rThRef(el,i+1)} className="resizable"
-                      style={{width:rw[i+1], cursor: col ? 'pointer' : undefined, userSelect:'none'}}
-                      onClick={col ? () => doSort(col as SortCol) : undefined}>
-                      {label}{col ? <span style={{color:'var(--accent)',fontSize:'10px',marginLeft:'2px'}}>{arrow(col as SortCol)}</span> : null}
-                      <div className="col-resizer" {...rOnResize(i+1)} />
-                    </th>
-                  ))}
+                  {RES_COLS.map((col, i) => {
+                    if (!isVisible(col.id)) return null
+                    const sortKey = col.id === 'status' ? 'status'
+                      : col.id === 'name' ? 'name'
+                      : col.id === 'role' ? 'role'
+                      : col.id === 'mob_in' ? 'mob_in'
+                      : col.id === 'mob_out' ? 'mob_out'
+                      : col.id === 'company' ? 'company'
+                      : col.id === 'wbs' ? 'wbs'
+                      : col.id === 'shift' ? 'shift'
+                      : null
+                    return (
+                      <th key={col.id} ref={el=>rThRef(el,i)} className="resizable"
+                        style={{width:rw[i], cursor: sortKey ? 'pointer' : undefined, userSelect:'none'}}
+                        onClick={sortKey ? () => doSort(sortKey as SortCol) : undefined}>
+                        {col.label}{sortKey ? <span style={{color:'var(--accent)',fontSize:'10px',marginLeft:'2px'}}>{arrow(sortKey as SortCol)}</span> : null}
+                        <div className="col-resizer" {...rOnResize(i)} />
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -593,18 +643,18 @@ export function ResourcesPanel() {
                   const po = r.linked_po_id ? pos.find(p => p.id === r.linked_po_id) : null
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
+                      {/* Checkbox — always visible */}
                       <td style={{textAlign:'center',padding:'5px 6px'}}>
                         <input type="checkbox" checked={selected.has(r.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                           onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(r.id) : next.delete(r.id); return next })} />
                       </td>
-                      <td><span className="badge" style={ss}>{ss.label}</span></td>
-                      <td style={{fontWeight:600,minWidth:'130px'}}>
+                      {/* Visibility-gated cells — rendered in RES_COLS order */}
+                      {isVisible('status') && <td><span className="badge" style={ss}>{ss.label}</span></td>}
+                      {isVisible('name') && <td style={{fontWeight:600}}>
                         <div style={{display:'flex',alignItems:'center',gap:4}}>
                           {((r as unknown as {person_id?:string}).person_id) && (
                             <button title="View person profile" onClick={() => openPersonCard((r as unknown as {person_id:string}).person_id)}
-                              style={{background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:'12px',padding:'0 2px',flexShrink:0,opacity:0.7}}>
-                              👤
-                            </button>
+                              style={{background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:'12px',padding:'0 2px',flexShrink:0,opacity:0.7}}>👤</button>
                           )}
                           <input className="res-inline" defaultValue={r.name}
                             style={{fontWeight:600,flex:1,minWidth:0,background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'13px',fontFamily:'inherit',color:'inherit',cursor:'pointer',padding:'1px 2px'}}
@@ -612,82 +662,78 @@ export function ResourcesPanel() {
                             onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'name',(e.target as HTMLInputElement).value.trim()||r.name)}}
                             onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
                           />
-                          {r.notes && (
-                            <span title={r.notes} style={{flexShrink:0,cursor:'default',fontSize:'11px',lineHeight:1,opacity:0.75}}>🚩</span>
-                          )}
+                          {r.notes && <span title={r.notes} style={{flexShrink:0,cursor:'default',fontSize:'11px',lineHeight:1,opacity:0.75}}>🚩</span>}
                         </div>
-                      </td>
-                      <td style={{minWidth:'140px'}}>
+                      </td>}
+                      {isVisible('role') && <td style={{minWidth:'140px'}}>
                         {(() => {
                           const isInRc = rcs.some(rc => rc.role === r.role)
                           const colour = !r.role ? 'var(--text3)' : isInRc ? 'var(--text2)' : 'var(--red)'
                           return (
-                            <select
-                              defaultValue={r.role||''}
-                              title={!isInRc && r.role ? `"${r.role}" is not in the current rate cards — pick one or update Rate Cards.` : ''}
+                            <select defaultValue={r.role||''} title={!isInRc && r.role ? `"${r.role}" not in rate cards` : ''}
                               style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:colour,cursor:'pointer',padding:'1px 2px',appearance:'none'}}
                               onFocus={e=>{(e.target as HTMLSelectElement).style.borderBottomColor='var(--accent)';(e.target as HTMLSelectElement).style.background='var(--bg3)'}}
                               onBlur={e=>{(e.target as HTMLSelectElement).style.borderBottomColor='transparent';(e.target as HTMLSelectElement).style.background='transparent'}}
-                              onChange={e=>saveInline(r.id,'role',(e.target as HTMLSelectElement).value)}
-                            >
+                              onChange={e=>saveInline(r.id,'role',(e.target as HTMLSelectElement).value)}>
                               <option value="">— select role —</option>
-                              {r.role && !isInRc && (
-                                <option value={r.role}>{r.role} (not in rate cards)</option>
-                              )}
+                              {r.role && !isInRc && <option value={r.role}>{r.role} (not in rate cards)</option>}
                               {rcs.map(rc => <option key={rc.id} value={rc.role}>{rc.role}</option>)}
                             </select>
                           )
                         })()}
-                      </td>
-                      <td style={{fontSize:'12px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.shift||'day'}</td>
-                      <td style={{overflow:'hidden'}}>
-                        <input defaultValue={r.company||''}
+                      </td>}
+                      {isVisible('shift') && <td style={{fontSize:'12px',color:'var(--text3)'}}>{r.shift||'day'}</td>}
+                      {isVisible('company') && <td style={{overflow:'hidden'}}>
+                        <input defaultValue={r.company||''} placeholder="—"
                           style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:'var(--text2)',cursor:'pointer',padding:'1px 2px'}}
-                          placeholder="—"
                           onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)';(e.target as HTMLInputElement).style.background='var(--bg3)'}}
                           onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'company',(e.target as HTMLInputElement).value.trim())}}
                           onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
                         />
-                      </td>
-                      <td style={{overflow:'hidden'}}><input type="date" defaultValue={r.mob_in||''}
-                        style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
-                        onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)'}}
-                        onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';saveInline(r.id,'mob_in',(e.target as HTMLInputElement).value||null)}}
-                      /></td>
-                      <td style={{overflow:'hidden'}}><input type="date" defaultValue={r.mob_out||''}
-                        style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
-                        onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)'}}
-                        onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';saveInline(r.id,'mob_out',(e.target as HTMLInputElement).value||null)}}
-                      /></td>
-                      <td style={{fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.phone||'—'}</td>
-                      <td style={{fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.email||'—'}</td>
-                      <td style={{textAlign:'center'}}>
+                      </td>}
+                      {isVisible('mob_in') && <td style={{overflow:'hidden'}}>
+                        <input type="date" defaultValue={r.mob_in||''}
+                          style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
+                          onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)'}}
+                          onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';saveInline(r.id,'mob_in',(e.target as HTMLInputElement).value||null)}}
+                        />
+                      </td>}
+                      {isVisible('mob_out') && <td style={{overflow:'hidden'}}>
+                        <input type="date" defaultValue={r.mob_out||''}
+                          style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'var(--mono)',cursor:'pointer',padding:'1px 2px'}}
+                          onFocus={e=>{(e.target as HTMLInputElement).style.borderBottomColor='var(--accent)'}}
+                          onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';saveInline(r.id,'mob_out',(e.target as HTMLInputElement).value||null)}}
+                        />
+                      </td>}
+                      {isVisible('phone') && <td style={{fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.phone||'—'}</td>}
+                      {isVisible('email') && <td style={{fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.email||'—'}</td>}
+                      {isVisible('laha') && <td style={{textAlign:'center'}}>
                         <input type="checkbox" checked={!!r.allow_laha} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_laha',e.target.checked)} />
-                      </td>
-                      <td style={{textAlign:'center'}}>
+                      </td>}
+                      {isVisible('meal') && <td style={{textAlign:'center'}}>
                         <input type="checkbox" checked={!!r.allow_meal} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_meal',e.target.checked)} />
-                      </td>
-                      <td style={{textAlign:'center'}}>
+                      </td>}
+                      {isVisible('fsa') && <td style={{textAlign:'center'}}>
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
-                      </td>
-                      <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hr-cars'):undefined} title={car?'View in Car Hire':undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>
-                      <td style={{fontSize:'11px',color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={r.flights||undefined}>{r.flights||'—'}</td>
-                      <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined} title={room?'View in Accommodation':undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>
-                      <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>
-                      <td>
+                      </td>}
+                      {isVisible('car') && <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>}
+                      {isVisible('flights') && <td style={{fontSize:'11px',color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.flights||'—'}</td>}
+                      {isVisible('room') && <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>}
+                      {isVisible('wbs') && <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>}
+                      {isVisible('po') && <td>
                         {r.category==='subcontractor' ? (
                           po
                             ? <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#d1fae5',color:'#065f46',fontWeight:700}}>{po.po_number||'PO'}</span>
                             : <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b',fontWeight:700}}>⚠ No PO</span>
                         ) : <span style={{color:'var(--text3)'}}>—</span>}
-                      </td>
-                      <td style={{whiteSpace:'nowrap'}}>
+                      </td>}
+                      {isVisible('actions') && <td style={{whiteSpace:'nowrap'}}>
                         <button className="btn btn-sm" onClick={()=>openEdit(r)}>More</button>
                         <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={()=>del(r)}>✕</button>
-                      </td>
+                      </td>}
                     </tr>
                   )
                 })}
@@ -988,6 +1034,57 @@ export function ResourcesPanel() {
             <div className="modal-footer">
               <button className="btn" onClick={()=>setBulkModal(false)}>Cancel</button>
               <button className="btn btn-primary" style={{background:'var(--mod-hr)',border:'none'}} onClick={applyBulkEdit}>Apply to Selected</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Column picker modal ───────────────────────────────────────────────── */}
+      {showColPicker && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(3px)'}}
+          onClick={()=>setShowColPicker(false)}>
+          <div style={{background:'var(--bg2)',borderRadius:'12px',width:'460px',maxWidth:'95vw',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 50px rgba(0,0,0,0.35)',border:'1px solid var(--border)'}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:'15px'}}>Columns</div>
+                <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}}>Choose which columns to show in the resource list</div>
+              </div>
+              <div style={{display:'flex',gap:'8px'}}>
+                <button className="btn btn-sm" onClick={()=>{setHiddenCols(new Set());setShowColPicker(false)}}>Show All</button>
+                <button className="btn btn-sm" onClick={()=>setShowColPicker(false)}>Done</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'12px 20px'}}>
+              {RES_COL_GROUPS.map(group => {
+                const cols = RES_COLS.filter(c => c.group === group && c.label)
+                if (cols.length === 0) return null
+                return (
+                  <div key={group} style={{marginBottom:'16px'}}>
+                    <div style={{fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:'8px'}}>{group}</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+                      {cols.map(col => {
+                        const visible = isVisible(col.id as ResColId)
+                        return (
+                          <label key={col.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',borderRadius:'6px',background:visible?'var(--accent-dim,rgba(99,102,241,0.1))':'var(--bg3)',border:`1px solid ${visible?'var(--accent)':'var(--border)'}`,cursor:'pointer',userSelect:'none'}}>
+                            <input type="checkbox" checked={visible}
+                              onChange={e=>{
+                                const next = new Set(hiddenCols)
+                                if (e.target.checked) next.delete(col.id)
+                                else next.add(col.id)
+                                setHiddenCols(next)
+                              }}
+                              style={{accentColor:'var(--accent)',width:'14px',height:'14px',flexShrink:0}}
+                            />
+                            <span style={{fontSize:'13px',fontWeight:visible?600:400,color:visible?'var(--text)':'var(--text3)'}}>{col.label}</span>
+                            {visible && <span style={{marginLeft:'auto',fontSize:'10px',color:'var(--accent)'}}>✓ Visible</span>}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

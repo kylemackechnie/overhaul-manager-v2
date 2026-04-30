@@ -86,6 +86,9 @@ export interface UserPrefs {
   inv_sort_col?: string      // SortCol
   inv_sort_dir?: string      // 'asc' | 'desc'
   inv_filter_status?: string
+
+  // ── Column visibility ─────────────────────────────────────────────────────
+  hidden_cols?: Record<string, string[]>  // tableId → array of hidden column IDs
 }
 
 export interface AppUser {

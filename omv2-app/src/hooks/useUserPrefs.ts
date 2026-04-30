@@ -89,6 +89,7 @@ export function useUserPrefs() {
           ...remote,
           col_widths:    { ...cached.col_widths,    ...remote.col_widths },
           col_widths_v2: { ...cached.col_widths_v2, ...remote.col_widths_v2 },
+          hidden_cols:   { ...cached.hidden_cols,   ...remote.hidden_cols },
         }
         setUserPrefs(merged)
         writeLS(uid, merged)
