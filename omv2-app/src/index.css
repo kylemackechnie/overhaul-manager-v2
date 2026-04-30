@@ -507,7 +507,7 @@ tr:hover td { background: var(--bg3); }
 /* Sticky table headers */
 thead th {
   position: sticky;
-  top: 0;
+  top: var(--ribbon-h, 114px);
   z-index: 2;
   background: var(--bg3);
 }
