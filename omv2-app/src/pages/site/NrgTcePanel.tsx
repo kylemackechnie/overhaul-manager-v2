@@ -10,7 +10,7 @@ import { nrgLineActual, nrgLineActualHours, nrgMatchAllocForLine, type NrgTimesh
 import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
-const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other', 'Fixed Price'] as const
+const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other', 'Fixed Price', 'Invoice / Receipt'] as const
 
 const EMPTY = {
   wbs_code: '', description: '', category: '', source: 'overhead' as 'overhead' | 'skilled',
