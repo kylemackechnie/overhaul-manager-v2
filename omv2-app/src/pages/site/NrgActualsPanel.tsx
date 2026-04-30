@@ -175,7 +175,11 @@ export function NrgActualsPanel() {
       return { line: l, actuals, tce, pct, weekActuals }
     })
 
-  let displayed = withActuals
+  // Split: Fixed Price lines get their own table; rate-driven lines get the main table + filters
+  const rateRows = withActuals.filter(x => x.line.line_type !== 'Fixed Price')
+  const fpRows   = withActuals.filter(x => x.line.line_type === 'Fixed Price')
+
+  let displayed = rateRows
   if (sourceFilter === 'overhead') displayed = displayed.filter(x => x.line.source === 'overhead')
   if (sourceFilter === 'skilled') displayed = displayed.filter(x => x.line.source === 'skilled')
   if (filter === 'over') displayed = displayed.filter(x => x.pct !== null && x.pct > 100)
@@ -186,6 +190,7 @@ export function NrgActualsPanel() {
   const totTce = withActuals.reduce((s, x) => s + x.tce, 0)
   const totAct = withActuals.reduce((s, x) => s + x.actuals, 0)
   const totPct = totTce > 0 ? (totAct / totTce) * 100 : null
+  const fpTotTce = fpRows.reduce((s, x) => s + x.tce, 0)
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
 
   function printReport() {
@@ -289,7 +294,7 @@ ${sectionHTML}
   if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1100px' }}>
+    <div style={{ padding: '24px', maxWidth: '1600px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>NRG Actuals</h1>
@@ -336,146 +341,189 @@ ${sectionHTML}
         </div>
       )}
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        {[
-          { key: 'all', label: `All (${withActuals.length})` },
-          { key: 'with_actuals', label: `Has Actuals (${withActuals.filter(x => x.actuals > 0).length})` },
-          { key: 'over', label: `Over TCE (${withActuals.filter(x => x.pct !== null && x.pct > 100).length})` },
-          { key: 'near', label: `Near Limit (${withActuals.filter(x => x.pct !== null && x.pct > 80 && x.pct <= 100).length})` },
-          { key: 'no_actuals', label: `No Actuals (${withActuals.filter(x => x.actuals === 0).length})` },
-        ].map(f => (
-          <button key={f.key} className="btn btn-sm"
-            style={{ background: filter === f.key ? 'var(--accent)' : '', color: filter === f.key ? '#fff' : '' }}
-            onClick={() => setFilter(f.key)}>{f.label}</button>
-        ))}
-        <div style={{ borderLeft: '1px solid var(--border)', margin: '0 4px' }} />
-        {['all', 'overhead', 'skilled'].map(s => (
-          <button key={s} className="btn btn-sm"
-            style={{ background: sourceFilter === s ? '#6366f1' : '', color: sourceFilter === s ? '#fff' : '' }}
-            onClick={() => setSourceFilter(s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
-        ))}
-        <div style={{ borderLeft: '1px solid var(--border)', margin: '0 4px' }} />
-        {/* Week filter — adds a "This Week" column showing labour + invoice/expense/variation
-            actuals that fall in the selected Mon-Sun window. Empty option = no column. */}
-        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>This week:</span>
-        <select className="input" style={{ fontSize: '12px', padding: '3px 6px', height: '28px' }}
-          value={weekFilter} onChange={e => setWeekFilter(e.target.value)}>
-          <option value="">— Project to date —</option>
-          {availableWeeks.map(w => {
-            const dt = new Date(w + 'T00:00:00')
-            const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate() + 6)
-            const lbl = `${dt.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })} – ${sun.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })}`
-            return <option key={w} value={w}>{lbl}</option>
-          })}
-        </select>
-      </div>
-
       {lines.length === 0 ? (
         <div className="empty-state">
           <div className="icon">📊</div>
           <h3>No TCE lines</h3>
           <p>Import the NRG TCE spreadsheet on the TCE Register tab first.</p>
         </div>
-      ) : displayed.length === 0 ? (
-        <div className="empty-state"><div className="icon">✅</div><h3>No lines match this filter</h3></div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '900px' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '80px' }}>Item ID</th>
-                  <th style={{ width: '70px' }}>Source</th>
-                  <th>Description</th>
-                  <th style={{ width: '90px' }}>Work Order</th>
-                  <th style={{ width: '100px' }}>Contract</th>
-                  <th style={{ textAlign: 'right', width: '90px' }}>TCE Value</th>
-                  <th style={{ textAlign: 'right', width: '90px' }}>Actuals</th>
-                  {weekFilter && <th style={{ textAlign: 'right', width: '95px', background: '#eff6ff' }} title="Labour + invoices/expenses/variations falling in this week">This Week</th>}
-                  <th style={{ textAlign: 'right', width: '90px' }}>Remaining</th>
-                  <th style={{ width: '120px' }}>Progress</th>
-                  <th style={{ width: '90px' }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayed.map(({ line, actuals, tce, pct, weekActuals }) => {
-                  const rem = tce - actuals
-                  const pctNum = pct !== null ? Math.round(pct) : null
-                  const barColor = pctNum === null ? 'var(--text3)' : pctNum > 100 ? 'var(--red)' : pctNum > 80 ? 'var(--amber)' : 'var(--green)'
-                  const badge = statusBadge(pct, actuals > 0)
-                  return (
-                    <tr key={line.id}>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
-                      <td>
-                        {line.line_type === 'Fixed Price' ? (
-                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
-                            background: '#ede9fe', color: '#6b21a8',
-                            fontWeight: 600, textTransform: 'uppercase' as const }}
-                            title="Fixed Price — TCE planned cost is the actuals">
-                            FIXED
-                          </span>
-                        ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
+
+          {/* ── Left card: Rate-driven lines ─────────────────────────────── */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {/* Card header */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '13px' }}>Rate-Driven Lines</div>
+                <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+                  {rateRows.length} lines · {fmt(rateRows.reduce((s,x)=>s+x.actuals,0))} of {fmt(rateRows.reduce((s,x)=>s+x.tce,0))} TCE
+                </div>
+              </div>
+              {/* Filters */}
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                {[
+                  { key: 'all',          label: `All (${rateRows.length})` },
+                  { key: 'with_actuals', label: `Has Actuals (${rateRows.filter(x=>x.actuals>0).length})` },
+                  { key: 'over',         label: `Over TCE (${rateRows.filter(x=>x.pct!==null&&x.pct>100).length})` },
+                  { key: 'near',         label: `Near Limit (${rateRows.filter(x=>x.pct!==null&&x.pct>80&&x.pct<=100).length})` },
+                  { key: 'no_actuals',   label: `No Actuals (${rateRows.filter(x=>x.actuals===0).length})` },
+                ].map(f => (
+                  <button key={f.key} className="btn btn-sm"
+                    style={{ fontSize: '10px', padding: '2px 6px', background: filter===f.key?'var(--accent)':'', color: filter===f.key?'#fff':'' }}
+                    onClick={() => setFilter(f.key)}>{f.label}</button>
+                ))}
+                <div style={{ borderLeft: '1px solid var(--border)', margin: '0 2px' }} />
+                {['all','overhead','skilled'].map(s => (
+                  <button key={s} className="btn btn-sm"
+                    style={{ fontSize: '10px', padding: '2px 6px', background: sourceFilter===s?'#6366f1':'', color: sourceFilter===s?'#fff':'' }}
+                    onClick={() => setSourceFilter(s)}>{s.charAt(0).toUpperCase()+s.slice(1)}</button>
+                ))}
+              </div>
+            </div>
+            {/* Week filter row */}
+            <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg3)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text3)' }}>This week:</span>
+              <select className="input" style={{ fontSize: '11px', padding: '2px 6px', height: '26px' }}
+                value={weekFilter} onChange={e => setWeekFilter(e.target.value)}>
+                <option value="">— Project to date —</option>
+                {availableWeeks.map(w => {
+                  const dt = new Date(w + 'T00:00:00')
+                  const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate()+6)
+                  return <option key={w} value={w}>{dt.toLocaleDateString('en-AU',{day:'2-digit',month:'short'})} – {sun.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'})}</option>
+                })}
+              </select>
+            </div>
+            {displayed.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>✅ No lines match this filter</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '700px', width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '80px' }}>Item ID</th>
+                      <th style={{ width: '70px' }}>Source</th>
+                      <th>Description</th>
+                      <th style={{ width: '90px' }}>Work Order</th>
+                      <th style={{ textAlign: 'right', width: '90px' }}>TCE</th>
+                      <th style={{ textAlign: 'right', width: '90px' }}>Actuals</th>
+                      {weekFilter && <th style={{ textAlign: 'right', width: '80px', background: '#eff6ff' }}>This Wk</th>}
+                      <th style={{ textAlign: 'right', width: '80px' }}>Rem.</th>
+                      <th style={{ width: '110px' }}>Progress</th>
+                      <th style={{ width: '85px' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayed.map(({ line, actuals, tce, pct, weekActuals }) => {
+                      const rem = tce - actuals
+                      const pctNum = pct !== null ? Math.round(pct) : null
+                      const barColor = pctNum === null ? 'var(--text3)' : pctNum > 100 ? 'var(--red)' : pctNum > 80 ? 'var(--amber)' : 'var(--green)'
+                      const badge = statusBadge(pct, actuals > 0)
+                      return (
+                        <tr key={line.id}>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
+                          <td>
+                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
+                              background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
+                              color: line.source === 'skilled' ? '#1e40af' : '#64748b',
+                              fontWeight: 600, textTransform: 'uppercase' as const }}>
+                              {line.source}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 500, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>{line.description || '—'}</td>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>{line.work_order || '—'}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(tce)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : 'var(--text3)' }}>{fmt(actuals)}</td>
+                          {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', background: '#eff6ff', color: weekActuals > 0 ? '#1e40af' : 'var(--text3)' }}>{fmt(weekActuals)}</td>}
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: rem < 0 ? 'var(--red)' : 'var(--text2)' }}>{fmt(rem)}</td>
+                          <td>
+                            {pctNum !== null ? (
+                              <div>
+                                <div style={{ background: 'var(--border2)', borderRadius: '3px', height: '6px', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: Math.min(100, pctNum) + '%', background: barColor, borderRadius: '3px' }} />
+                                </div>
+                                <div style={{ fontSize: '10px', color: barColor, fontFamily: 'var(--mono)', marginTop: '2px', fontWeight: 600 }}>{pctNum}%</div>
+                              </div>
+                            ) : <span style={{ fontSize: '11px', color: 'var(--text3)' }}>—</span>}
+                          </td>
+                          <td><span className="badge" style={badge}>{badge.label}</span></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--bg3)', fontWeight: 700 }}>
+                      <td colSpan={4} style={{ padding: '8px 12px' }}>TOTAL ({displayed.length})</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s,x)=>s+x.tce,0))}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s,x)=>s+x.actuals,0))}</td>
+                      {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', background: '#dbeafe', color: '#1e40af' }}>{fmt(displayed.reduce((s,x)=>s+(x.weekActuals||0),0))}</td>}
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: displayed.reduce((s,x)=>s+x.tce-x.actuals,0)<0?'var(--red)':'var(--text)' }}>{fmt(displayed.reduce((s,x)=>s+x.tce-x.actuals,0))}</td>
+                      <td colSpan={2} style={{ fontSize: '11px', color: 'var(--text2)', padding: '8px 12px' }}>
+                        {(() => { const t=displayed.reduce((s,x)=>s+x.tce,0); const a=displayed.reduce((s,x)=>s+x.actuals,0); return t>0?Math.round(a/t*100)+'% used':'—' })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── Right card: Fixed Price lines ────────────────────────────── */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', borderTop: '3px solid #7c3aed' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'rgba(124,58,237,0.04)' }}>
+              <div style={{ fontWeight: 700, fontSize: '13px', color: '#6b21a8' }}>Fixed Price Items</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+                {fpRows.length} lines · {fmt(fpTotTce)} total contract value
+              </div>
+            </div>
+            {fpRows.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>No fixed price lines</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ fontSize: '12px', tableLayout: 'fixed', width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '80px' }}>Item ID</th>
+                      <th>Description</th>
+                      <th style={{ width: '100px' }}>Contract</th>
+                      <th style={{ textAlign: 'right', width: '110px' }}>Contract Value</th>
+                      <th style={{ width: '80px' }}>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fpRows.map(({ line, tce }) => (
+                      <tr key={line.id}>
+                        <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
+                        <td style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>{line.description || '—'}</td>
+                        <td>
+                          {line.contract_scope
+                            ? <span style={{ background: '#ede9fe', color: '#6b21a8', padding: '1px 4px', borderRadius: '3px', fontSize: '10px' }}>{line.contract_scope}</span>
+                            : <span style={{ color: 'var(--text3)' }}>—</span>}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#6b21a8' }}>{fmt(tce)}</td>
+                        <td>
                           <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
                             background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
                             color: line.source === 'skilled' ? '#1e40af' : '#64748b',
                             fontWeight: 600, textTransform: 'uppercase' as const }}>
                             {line.source}
                           </span>
-                        )}
-                      </td>
-                      <td style={{ fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>
-                        {line.description || '—'}
-                      </td>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>{line.work_order || '—'}</td>
-                      <td style={{ fontSize: '10px' }}>
-                        {line.contract_scope
-                          ? <span style={{ background: '#ede9fe', color: '#6b21a8', padding: '1px 4px', borderRadius: '3px' }}>{line.contract_scope}</span>
-                          : <span style={{ color: 'var(--text3)' }}>—</span>}
-                      </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(tce)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : 'var(--text3)' }}>{fmt(actuals)}</td>
-                      {weekFilter && (
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', background: '#eff6ff', color: weekActuals > 0 ? '#1e40af' : 'var(--text3)' }}>
-                          {fmt(weekActuals)}
                         </td>
-                      )}
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: rem < 0 ? 'var(--red)' : 'var(--text2)' }}>{fmt(rem)}</td>
-                      <td>
-                        {pctNum !== null ? (
-                          <div>
-                            <div style={{ background: 'var(--border2)', borderRadius: '3px', height: '6px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: Math.min(100, pctNum) + '%', background: barColor, borderRadius: '3px' }} />
-                            </div>
-                            <div style={{ fontSize: '10px', color: barColor, fontFamily: 'var(--mono)', marginTop: '2px', fontWeight: 600 }}>{pctNum}%</div>
-                          </div>
-                        ) : <span style={{ fontSize: '11px', color: 'var(--text3)' }}>—</span>}
-                      </td>
-                      <td><span className="badge" style={badge}>{badge.label}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'rgba(124,58,237,0.06)', fontWeight: 700 }}>
+                      <td colSpan={3} style={{ padding: '8px 12px', color: '#6b21a8' }}>TOTAL ({fpRows.length})</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: '#6b21a8' }}>{fmt(fpTotTce)}</td>
+                      <td />
                     </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'var(--bg3)', fontWeight: 700 }}>
-                  <td colSpan={5} style={{ padding: '8px 12px' }}>TOTAL ({displayed.length} lines)</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s, x) => s + x.tce, 0))}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s, x) => s + x.actuals, 0))}</td>
-                  {weekFilter && (
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', background: '#dbeafe', color: '#1e40af' }}>
-                      {fmt(displayed.reduce((s, x) => s + (x.weekActuals || 0), 0))}
-                    </td>
-                  )}
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: displayed.reduce((s, x) => s + x.tce - x.actuals, 0) < 0 ? 'var(--red)' : 'var(--text)' }}>
-                    {fmt(displayed.reduce((s, x) => s + x.tce - x.actuals, 0))}
-                  </td>
-                  <td colSpan={2} style={{ fontSize: '12px', color: 'var(--text2)', padding: '8px 12px' }}>
-                    {totTce > 0 ? Math.round(totAct / totTce * 100) + '% of total TCE used' : '—'}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
+
         </div>
       )}
     </div>
