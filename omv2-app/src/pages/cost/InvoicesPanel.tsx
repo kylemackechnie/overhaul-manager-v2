@@ -332,7 +332,7 @@ export function InvoicesPanel() {
 
   // ── Sorting ───────────────────────────────────────────────────────────────
   function toggleSort(col: SortCol) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    if (sortCol === col) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
 

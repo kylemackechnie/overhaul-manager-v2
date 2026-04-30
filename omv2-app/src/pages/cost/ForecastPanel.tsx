@@ -324,7 +324,7 @@ export function ForecastPanel() {
               </button>
             ))}
           </div>
-          <button className="btn btn-sm" onClick={() => setMode(m => m === 'cost' ? 'sell' : 'cost')}>
+          <button className="btn btn-sm" onClick={() => setMode(mode === 'cost' ? 'sell' : 'cost')}>
             View: {mode === 'cost' ? 'Cost' : 'Sell'}
           </button>
           <button className="btn btn-sm" onClick={() => setShowConfig(s => !s)}>⚙ Configure</button>
