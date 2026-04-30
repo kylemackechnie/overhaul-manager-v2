@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
+import { SavedViewsBar } from '../../components/ui/SavedViewsBar'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
@@ -463,6 +464,15 @@ export function InvoicesPanel() {
           <option value="">All POs</option>
           {pos.map(p => <option key={p.id} value={p.id}>{p.po_number || p.internal_ref || p.vendor || p.id.slice(0,8)}</option>)}
         </select>
+        <SavedViewsBar
+          panelId="invoices"
+          currentFilters={{ filterStatus, sortCol, sortDir }}
+          onLoad={filters => {
+            if (typeof filters.filterStatus === 'string') setFilterStatus(filters.filterStatus)
+            if (typeof filters.sortCol === 'string') setSortCol(filters.sortCol as typeof sortCol)
+            if (typeof filters.sortDir === 'string') setSortDir(filters.sortDir as typeof sortDir)
+          }}
+        />
       </div>
 
       {/* Summary bar */}

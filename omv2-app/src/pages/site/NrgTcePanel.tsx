@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useResizableColumns } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
+import { SavedViewsBar } from '../../components/ui/SavedViewsBar'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
@@ -405,6 +406,15 @@ export function NrgTcePanel() {
         </label>
         {collapsed.size > 0 && (
           <button className="btn btn-sm" style={{ color: 'var(--text3)' }} onClick={() => setCollapsed(new Set())}>Expand All</button>
+          <SavedViewsBar
+            panelId="nrg-tce"
+            currentFilters={{ sourceFilter, hideUnused, showWeekly }}
+            onLoad={filters => {
+              if (typeof filters.sourceFilter === 'string') setSourceFilter(filters.sourceFilter)
+              if (typeof filters.hideUnused === 'boolean') setHideUnused(filters.hideUnused)
+              if (typeof filters.showWeekly === 'boolean') setShowWeekly(filters.showWeekly)
+            }}
+          />
         )}
       </div>
 

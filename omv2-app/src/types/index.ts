@@ -92,6 +92,9 @@ export interface UserPrefs {
 
   // ── Ribbon tabs ───────────────────────────────────────────────────────────
   ribbon_tabs?: { key: string; hidden: boolean; order: number }[]  // tab personalisation
+
+  // ── Saved views ───────────────────────────────────────────────────────────
+  saved_views?: Record<string, { name: string; filters: Record<string, unknown> }[]>
 }
 
 export interface AppUser {
