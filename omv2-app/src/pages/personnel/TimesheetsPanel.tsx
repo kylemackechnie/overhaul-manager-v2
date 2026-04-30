@@ -113,7 +113,7 @@ function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resource
 type HourSplit = { dnt:number; dt15:number; ddt:number; ddt15:number; nnt:number; ndt:number; ndt15:number }
 type RegimeConfig = { wdNT?:number; wdT15?:number; satT15?:number; nightNT?:number; restNT?:number } | null | undefined
 
-function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfig?: RegimeConfig): HourSplit {
+function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfig?: RegimeConfig, calendarDayType?: string): HourSplit {
   const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
   if (hrs <= 0) return zero
 
@@ -132,6 +132,9 @@ function splitHours(hrs: number, dayType: string, shiftType: string, regimeConfi
     return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
   }
   if (dayType === 'travel' || dayType === 'sea_travel' || dayType === 'mob') {
+    if (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') {
+      return { ...zero, dt15: hrs }
+    }
     return { ...zero, dnt: hrs }
   }
   if (night) {
@@ -494,7 +497,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     } catch { /* non-critical */ }
     // Write timesheet_cost_lines — single source of truth for TCE actuals + invoicing
     try {
-      await writeTimesheetCostLines(week, activeProject!.id, rateCards, tceLines, resources, activeProject)
+      await writeTimesheetCostLines(week, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays)
     } catch { /* non-critical */ }
     toast('Saved', 'success')
     setSheets(prev => prev.map(s => s.id === week.id ? week : s))
@@ -940,7 +943,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       {s.status !== 'approved' && <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Quick approve" onClick={async()=>{
                         await supabase.from('weekly_timesheets').update({status:'approved'}).eq('id',s.id)
                         // Re-write cost lines with updated status
-                        try { await writeTimesheetCostLines({...s, status:'approved'}, activeProject!.id, rateCards, tceLines, resources, activeProject) } catch { /* non-critical */ }
+                        try { await writeTimesheetCostLines({...s, status:'approved'}, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays) } catch { /* non-critical */ }
                         load()
                       }}>✓ Approve</button>}
                       <button className="btn btn-sm" title="Duplicate week" onClick={() => duplicateWeek(s)}>⧉</button>
@@ -1223,7 +1226,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     // EBA adj for display and split
                     const adjH = (member.mealBreakAdj && cellHrs > 0) ? 0.5 : 0
                     const dispHrs = cellHrs + adjH
-                    const split = dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, (rc?.regime as RegimeConfig)) : null
+                    const calDow = new Date(d + 'T12:00:00').getDay()
+                    const calendarDayType = holidays.has(d) ? 'public_holiday' : calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
+                    const split = dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, (rc?.regime as RegimeConfig), calendarDayType) : null
                     // Split summary labels/colors matching HTML
                     const SPLIT_LABELS: Record<string,string> = { dnt:'NT', dt15:'T1.5', ddt:'DT', ddt15:'DT1.5', nnt:'NNT', ndt:'NDT', ndt15:'NDT1.5' }
                     const SPLIT_COLORS: Record<string,string> = { dnt:'var(--accent)', dt15:'var(--orange)', ddt:'var(--red)', ddt15:'var(--red)', nnt:'var(--mod-tooling,#8b5cf6)', ndt:'var(--mod-tooling,#8b5cf6)', ndt15:'var(--mod-tooling,#8b5cf6)' }

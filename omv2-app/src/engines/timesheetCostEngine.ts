@@ -82,6 +82,7 @@ export async function writeTimesheetCostLines(
   tceLines: TceLineLite[] = [],
   resources: ResourceLite[] = [],
   project: Project | null = null,
+  publicHolidays: Set<string> = new Set(),
 ): Promise<{ error: string | null }> {
   // Build a one-to-many WO → item_ids map. Single match → safe to auto-resolve.
   // Multi match → ambiguous, leave alloc unresolved so the user picks the line.
@@ -172,6 +173,9 @@ export async function writeTimesheetCostLines(
 
       const dayType = day.dayType || 'weekday'
       const shiftType = (day.shiftType === 'night' ? 'night' : 'day') as 'day' | 'night'
+      // Calendar day type — used for travel Sunday/PH uplift rule
+      const calDow = new Date(workDate + 'T12:00:00').getDay()
+      const calendarDayType = publicHolidays?.has?.(workDate) ? 'public_holiday' : calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
 
       // ── Day-level labour calc (matches UI's calcPersonTotals exactly) ──
       // Apply meal-break adjustment to effective hours, then split ONCE for the
@@ -181,7 +185,7 @@ export async function writeTimesheetCostLines(
       if (hasLabour) {
         const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
         const effH = dayHours + adjH
-        const split = splitHours(effH, dayType, shiftType, rcRegime)
+        const split = splitHours(effH, dayType, shiftType, rcRegime, calendarDayType)
         dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
         dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
       }
@@ -372,8 +376,10 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
   const travelCostRate = pf(rcX.travel_cost, 30)
   const travelSellRate = pf(rcX.travel_sell, 30)
 
-  Object.entries(member.days || {}).forEach(([, d]) => {
+  Object.entries(member.days || {}).forEach(([dateKey, d]) => {
     const day = d as { dayType?: string; shiftType?: string; hours?: number; laha?: boolean; meal?: boolean; fsa?: boolean; camp?: boolean; travel?: boolean }
+    const calDow = new Date(dateKey + 'T12:00:00').getDay()
+    const calendarDayType = calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
 
     // Allowances apply on every day entry (rest days included), matching the
     // writer's behaviour from the dedicated-allowance-row commit.
@@ -397,7 +403,7 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
     const effH = h + adjH
     hours += effH
 
-    const split = splitHours(effH, day.dayType || 'weekday', (day.shiftType === 'night' ? 'night' : 'day'), rcRegime)
+    const split = splitHours(effH, day.dayType || 'weekday', (day.shiftType === 'night' ? 'night' : 'day'), rcRegime, calendarDayType)
     Object.entries(split).forEach(([b, bh]) => {
       if (bh > 0) {
         labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)

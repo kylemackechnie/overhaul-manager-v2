@@ -87,7 +87,8 @@ export function splitHours(
   totalHrs: number,
   dayType: string,
   shiftType: string,
-  regimeConfig?: RegimeConfig | unknown
+  regimeConfig?: RegimeConfig | unknown,
+  calendarDayType?: string,
 ): HourSplit {
   const zero: HourSplit = { dnt:0, dt15:0, ddt:0, ddt15:0, nnt:0, ndt:0, ndt15:0 }
   if (totalHrs <= 0) return zero
@@ -114,8 +115,11 @@ export function splitHours(
     return night ? { ...zero, nnt: REST_NT } : { ...zero, dnt: REST_NT }
   }
 
-  // Travel / mob — flat day NT
+  // Travel / mob — flat NT, except Sunday or Public Holiday = T1.5 (global rule)
   if (d === 'travel' || d === 'sea_travel' || d === 'mob') {
+    if (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') {
+      return { ...zero, dt15: totalHrs }
+    }
     return { ...zero, dnt: totalHrs }
   }
 
@@ -208,7 +212,9 @@ export function calcCrewMemberTotal(
   for (const [date, day] of Object.entries(member.days as Record<string, DayEntry>)) {
     if (!day || !day.hours) continue
     const dayType = fcDayType(date, publicHolidays)
-    const split = splitHours(day.hours, dayType, day.shiftType, rc?.regime)
+    const calDow = new Date(date + 'T12:00:00').getDay()
+    const calendarDayType = publicHolidays.includes(date) ? 'public_holiday' : calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
+    const split = splitHours(day.hours, dayType, day.shiftType, rc?.regime, calendarDayType)
     hours += day.hours
     if (rc) {
       cost += calcHoursCost(split, rc, 'cost')
@@ -784,7 +790,7 @@ export function nrgLineActual(
       const rc = getRateCardForRole(member.role)
       const rcAny = rc as unknown as Record<string, unknown>
       const isMgmt = rcAny && (rcAny.category === 'management' || rcAny.category === 'seag')
-      for (const [, day] of Object.entries(member.days)) {
+      for (const [dayDate, day] of Object.entries(member.days)) {
         if (!day.hours || day.hours <= 0) continue
         const allocs = day.nrgWoAllocations || []
         const match = nrgMatchAllocForLine(allocs, line)
@@ -804,7 +810,10 @@ export function nrgLineActual(
           : storedDayType === 'saturday' ? 'saturday'
           : storedDayType === 'sunday'   ? 'sunday'
           : 'weekday'
-        const split = splitHours(effH, dayType, day.shiftType as 'day' | 'night', rc.regime)
+        const calDow = new Date(dayDate + 'T12:00:00').getDay()
+        const calendarDayType = calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
+        const split = splitHours(effH, storedDayType, day.shiftType as 'day' | 'night', rc.regime, calendarDayType)
+        void dayType // retained for reference; storedDayType used directly above
         total += calcHoursCost(split, rc, 'sell')
 
         // Allowances (sell) — must match invoicing panel logic exactly
