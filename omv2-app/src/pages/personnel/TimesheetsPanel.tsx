@@ -28,7 +28,7 @@ const DAY_TYPES = [
   { key: 'weekday', label: 'Weekday' }, { key: 'saturday', label: 'Saturday' },
   { key: 'sunday', label: 'Sunday' }, { key: 'public_holiday', label: 'Public Holiday' },
   { key: 'rest', label: 'Rest/Fatigue' }, { key: 'standby', label: 'Standby' },
-  { key: 'travel', label: 'Direct Travel' }, { key: 'sea_travel', label: 'SEA Travel' }, { key: 'mob', label: 'Mob/Demob' },
+  { key: 'travel', label: 'Direct Travel' }, { key: 'sea_travel', label: 'SEA Travel' },
 ]
 
 function getMon(dateStr: string) {
