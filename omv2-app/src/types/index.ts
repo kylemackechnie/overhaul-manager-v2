@@ -87,7 +87,6 @@ export interface UserPrefs {
   inv_sort_dir?: string      // 'asc' | 'desc'
   inv_filter_status?: string
 }
-}
 
 export interface AppUser {
   id: string
