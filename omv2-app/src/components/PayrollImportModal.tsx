@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import { useState } from 'react'
 import { toast } from './ui/Toast'
 import { downloadTemplate } from '../lib/templates'
@@ -44,55 +43,59 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
   async function handleTasTK(file: File) {
     setImporting(true); setResult(null)
     try {
-      const buffer = await file.arrayBuffer()
-      const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][]
+      const text = await file.text()
+      const lines = text.trim().split('\n')
+      if (lines.length < 2) { setResult({ msg: 'File is empty', ok: false }); setImporting(false); return }
 
-      let headerIdx = -1
-      rows.forEach((row, i) => {
-        if (row.some(c => String(c).includes('Contractor Name') || String(c) === 'EMP_NAME')) headerIdx = i
-      })
-      if (headerIdx < 0) { setResult({ msg: 'Cannot find header row — need "Contractor Name" or "EMP_NAME" column', ok: false }); setImporting(false); return }
+      function parseCSVLine(line: string): string[] {
+        const fields: string[] = []; let inQ = false; let field = ''
+        for (const ch of line) {
+          if (ch === '"') inQ = !inQ
+          else if (ch === ',' && !inQ) { fields.push(field.trim()); field = '' }
+          else field += ch
+        }
+        fields.push(field.trim())
+        return fields
+      }
 
-      const hdr = rows[headerIdx].map(c => String(c).trim())
-      const col = (...names: string[]) => { for (const n of names) { const i = hdr.findIndex(h => h === n || h.includes(n)); if (i >= 0) return i } return -1 }
-      const iName = col('Contractor Name', 'EMP_NAME')
-      const iPos = col('Position', 'POSITION')
-      const iDate = col('Date', 'DATE')
-      const iHrs = col('Hours Worked', 'HOURS')
-      if (iName < 0 || iDate < 0 || iHrs < 0) { setResult({ msg: 'Missing required columns (Name, Date, Hours Worked)', ok: false }); setImporting(false); return }
+      const hdr = parseCSVLine(lines[0])
+      const col = (name: string) => hdr.findIndex(h => h === name)
+      const iName   = col('Full Name')
+      const iDate   = col('Timesheet Date')
+      const iQty    = col('Quantity')
+      const iOp     = col('Operation - Custom Code')
+      const iWoCode = col('Work Order - Custom Code')
+
+      if (iName < 0 || iDate < 0 || iQty < 0) {
+        setResult({ msg: 'Missing required columns — expected "Full Name", "Timesheet Date", "Quantity"', ok: false })
+        setImporting(false); return
+      }
 
       const weekDates = weekDateSet(aw.week_start)
-      const personDays: Record<string, Record<string, { hours: number; isNight: boolean }>> = {}
+      type RowEntry = { qty: number; op: string; woCode: string }
+      const personDays: Record<string, Record<string, RowEntry[]>> = {}
 
-      for (let i = headerIdx + 1; i < rows.length; i++) {
-        const row = rows[i]
-        const name = String(row[iName] || '').trim()
-        if (!name || name === 'EMP_NAME' || name === 'Contractor Name') continue
-        let dateStr = ''
-        const raw = row[iDate]
-        if (typeof raw === 'number') {
-          const d = new Date(Math.round((Number(raw) - 25569) * 86400 * 1000))
-          dateStr = d.toISOString().slice(0, 10)
-        } else {
-          const m = String(raw).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/)
-          if (m) dateStr = `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
-          else { const m2 = String(raw).match(/(\d{4})-(\d{2})-(\d{2})/); if (m2) dateStr = String(raw).slice(0, 10) }
-        }
-        if (!dateStr || !weekDates.has(dateStr)) continue
-        const hrs = parseFloat(String(row[iHrs])) || 0
-        if (hrs <= 0) continue
-        const posStr = String(row[iPos] || ''); const posParts = posStr.split('-')
-        const shiftCode = posParts[posParts.length - 2] || ''
-        const isNight = shiftCode.toUpperCase().startsWith('N')
+      for (let i = 1; i < lines.length; i++) {
+        const row = parseCSVLine(lines[i])
+        const name = row[iName]?.trim() || ''
+        if (!name) continue
+        const rawDate = row[iDate]?.trim() || ''
+        const dm = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+        if (!dm) continue
+        const dateStr = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`
+        if (!weekDates.has(dateStr)) continue
+        const qty = parseFloat(row[iQty] || '0') || 0
+        if (qty <= 0) continue
+        const op     = (iOp >= 0 ? row[iOp]?.trim() : '') || ''
+        const woCode = (iWoCode >= 0 ? row[iWoCode]?.trim() : '') || ''
         if (!personDays[name]) personDays[name] = {}
-        if (!personDays[name][dateStr]) personDays[name][dateStr] = { hours: 0, isNight }
-        personDays[name][dateStr].hours += hrs
+        if (!personDays[name][dateStr]) personDays[name][dateStr] = []
+        personDays[name][dateStr].push({ qty, op, woCode })
       }
 
       let matched = 0; const unmatched: string[] = []; let daysWritten = 0
       const crew = (aw.crew || []) as CrewMember[]
+
       const updatedCrew = crew.map(member => {
         let bestScore = 0; let bestMatch = ''
         Object.keys(personDays).forEach(pName => {
@@ -102,13 +105,27 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         if (bestScore < 0.65) return member
         matched++
         const updatedDays = { ...member.days }
-        Object.entries(personDays[bestMatch]).forEach(([dateStr, dayData]) => {
-          const existing = updatedDays[dateStr] || {}
-          updatedDays[dateStr] = { ...existing, hours: dayData.hours, shiftType: dayData.isNight ? 'night' : 'day', dayType: (existing.dayType as string) || 'weekday' }
+        Object.entries(personDays[bestMatch]).forEach(([dateStr, rows]) => {
+          const totalHours = rows.reduce((s, r) => s + r.qty, 0)
+          const isMob = rows.some(r => r.op === 'Mob/Demob')
+          const existing = (updatedDays[dateStr] || {}) as DayEntry & { nrgWoAllocations?: { tceItemId: string; hours: number }[] }
+          const dayType = isMob ? 'travel' : ((existing.dayType as string) || 'weekday')
+          const rowsWithWo = rows.filter(r => r.woCode)
+          const nrgWoAllocations = rowsWithWo.length > 0
+            ? rowsWithWo.map(r => ({ tceItemId: r.woCode, hours: r.qty }))
+            : existing.nrgWoAllocations
+          updatedDays[dateStr] = {
+            ...existing,
+            hours: totalHours,
+            dayType,
+            shiftType: (existing.shiftType as string) || 'day',
+            ...(nrgWoAllocations ? { nrgWoAllocations } : {}),
+          }
           daysWritten++
         })
         return { ...member, days: updatedDays }
       })
+
       Object.keys(personDays).forEach(name => {
         if (!crew.some(m => fuzzyMatch(m.name, name) >= 0.65)) unmatched.push(name)
       })
@@ -123,7 +140,6 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
     }
     setImporting(false)
   }
-
   async function handleUKG(file: File) {
     setImporting(true); setResult(null)
     try {
@@ -218,10 +234,10 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
             <div style={{ border: '2px dashed var(--border2)', borderRadius: '8px', padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '24px', marginBottom: '8px' }}>📊</div>
               <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>TasTK / TimeCloud</div>
-              <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '10px' }}>XLSX export from TasTK workforce system</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '10px' }}>CSV export — columns: Full Name, Timesheet Date, Quantity, Operation, Work Order Custom Code</div>
               <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
                 {importing ? <span className="spinner" style={{ width: '12px', height: '12px' }} /> : '📂'} Choose File
-                <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+                <input type="file" accept=".csv" style={{ display: 'none' }}
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleTasTK(f) }} />
               </label>
             </div>
