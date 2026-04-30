@@ -510,17 +510,34 @@ export function ExpensesPanel() {
                   ) : (
                     <div style={{fontFamily:'var(--mono)',fontSize:'12px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                       {refPreview}
+                      {modal === 'new' && <span style={{fontSize:'10px',marginLeft:'6px',opacity:0.6}}>(assigned on save)</span>}
                     </div>
                   )}
                 </div>
-                {modal !== 'new' && (modal as Expense).expense_ref ? (
-                  <button type="button" className="btn btn-sm" style={{flexShrink:0,fontSize:'11px'}} title="Copy to clipboard"
-                    onClick={()=>{ navigator.clipboard.writeText((modal as Expense).expense_ref!); toast('Copied!','success') }}>
-                    📋 Copy
-                  </button>
-                ) : (
-                  <span style={{fontSize:'10px',color:'var(--text3)',flexShrink:0}}>assigned on save</span>
-                )}
+                <div style={{display:'flex',gap:'6px',flexShrink:0}}>
+                  {modal !== 'new' && (modal as Expense).expense_ref ? (
+                    <button type="button" className="btn btn-sm" style={{fontSize:'11px'}} title="Copy to clipboard"
+                      onClick={()=>{ navigator.clipboard.writeText((modal as Expense).expense_ref!); toast('Copied to clipboard','success') }}>
+                      📋 Copy
+                    </button>
+                  ) : modal !== 'new' && !(modal as Expense).expense_ref ? (
+                    <>
+                      <button type="button" className="btn btn-sm" style={{fontSize:'11px'}} title="Copy preview to clipboard"
+                        onClick={()=>{ navigator.clipboard.writeText(refPreview.replace('####', '??')); toast('Preview copied (save to get final ref)','success') }}>
+                        📋 Copy preview
+                      </button>
+                      <button type="button" className="btn btn-sm" style={{fontSize:'11px'}} title="Generate and assign reference now"
+                        onClick={async ()=>{ const ref = await assignExpenseRef((modal as Expense).id); setModal(prev => prev && typeof prev !== 'string' ? {...(prev as Expense), expense_ref: ref} : prev); setExpenses(prev => prev.map(e => e.id === (modal as Expense).id ? {...e, expense_ref: ref} : e)); toast('Reference assigned','success') }}>
+                        ⚡ Generate now
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="btn btn-sm" style={{fontSize:'11px'}} title="Copy preview to clipboard"
+                      onClick={()=>{ navigator.clipboard.writeText(refPreview); toast('Preview copied (save to get final ref)','success') }}>
+                      📋 Copy preview
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="fg-row">
