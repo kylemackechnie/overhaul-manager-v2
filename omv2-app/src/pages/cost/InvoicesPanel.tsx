@@ -7,6 +7,32 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
+// ── Invoice column registry ───────────────────────────────────────────────────
+const INV_COLS = [
+  { id: 'invoice',      label: 'Invoice #',      defaultVisible: true,  group: 'Core' },
+  { id: 'po_vendor',    label: 'PO / Vendor',    defaultVisible: true,  group: 'Core' },
+  { id: 'inv_date',     label: 'Inv Date',       defaultVisible: true,  group: 'Dates' },
+  { id: 'due_date',     label: 'Due Date',       defaultVisible: true,  group: 'Dates' },
+  { id: 'expected',     label: 'Expected',       defaultVisible: true,  group: 'Financials' },
+  { id: 'amount',       label: 'Amount',         defaultVisible: true,  group: 'Financials' },
+  { id: 'status',       label: 'Status',         defaultVisible: true,  group: 'Workflow' },
+  { id: 'last_action',  label: 'Last Action',    defaultVisible: true,  group: 'Workflow' },
+  { id: 'dtp',          label: 'DTP',            defaultVisible: true,  group: 'Workflow' },
+  { id: 'actions',      label: 'Actions',        defaultVisible: true,  group: 'Workflow' },
+  // Optional — hidden by default
+  { id: 'vendor_ref',   label: 'Vendor Ref',     defaultVisible: false, group: 'Core' },
+  { id: 'vendor_details', label: 'Vendor Details', defaultVisible: false, group: 'Core' },
+  { id: 'currency',     label: 'Currency',       defaultVisible: false, group: 'Financials' },
+  { id: 'period_from',  label: 'Period From',    defaultVisible: false, group: 'Dates' },
+  { id: 'period_to',    label: 'Period To',      defaultVisible: false, group: 'Dates' },
+  { id: 'tce_item',     label: 'TCE Item',       defaultVisible: false, group: 'Financials' },
+  { id: 'sap_doc',      label: 'SAP Doc #',      defaultVisible: false, group: 'Core' },
+  { id: 'notes',        label: 'Notes',          defaultVisible: false, group: 'Workflow' },
+] as const
+
+type InvColId = typeof INV_COLS[number]['id']
+const INV_COL_GROUPS = ['Core', 'Dates', 'Financials', 'Workflow'] as const
+
 // ── Status workflow (mirrors HTML INV_STATUS / INV_TRANSITIONS) ───────────────
 const INV_STATUS: Record<string,{label:string;color:string;bg:string}> = {
   received: { label:'Received', color:'#d97706', bg:'#fef3c7' },
@@ -99,6 +125,16 @@ export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
   const { canWrite } = usePermissions()
   const { prefs, setPref } = useUserPrefs()
+
+  // Column visibility
+  const [showColPicker, setShowColPicker] = useState(false)
+  const invHiddenStored = (prefs.hidden_cols as Record<string, string[]> | undefined)?.['invoices']
+  const invHidden = new Set<string>(invHiddenStored ?? INV_COLS.filter(c => !c.defaultVisible).map(c => c.id))
+  function isInvVisible(id: InvColId) { return !invHidden.has(id) }
+  function setInvHidden(next: Set<string>) {
+    const existing = (prefs.hidden_cols as Record<string, string[]> | undefined) ?? {}
+    setPref('hidden_cols', { ...existing, invoices: Array.from(next) })
+  }
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pos, setPos] = useState<PO[]>([])
   const [tceLines, setTceLines] = useState<{ id: string; item_id: string; description: string }[]>([])
@@ -407,6 +443,7 @@ export function InvoicesPanel() {
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
           <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
 
@@ -451,16 +488,24 @@ export function InvoicesPanel() {
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',tableLayout:'fixed',minWidth:'1000px'}}>
             <thead>
               <tr>
-                <SortTh col="invoice" label="Invoice #" />
-                <SortTh col="po" label="PO / Vendor" />
-                <SortTh col="date" label="Inv Date" align="center" />
-                <SortTh col="due" label="Due Date" align="center" />
-                <SortTh col="expected" label="Expected" align="right" />
-                <SortTh col="amount" label="Amount" align="right" />
-                <SortTh col="status" label="Status" />
-                <SortTh col="lastaction" label="Last Action" />
-                <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>DTP</th>
-                <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Actions</th>
+                {isInvVisible('invoice') && <SortTh col="invoice" label="Invoice #" />}
+                {isInvVisible('po_vendor') && <SortTh col="po" label="PO / Vendor" />}
+                {isInvVisible('inv_date') && <SortTh col="date" label="Inv Date" align="center" />}
+                {isInvVisible('due_date') && <SortTh col="due" label="Due Date" align="center" />}
+                {isInvVisible('expected') && <SortTh col="expected" label="Expected" align="right" />}
+                {isInvVisible('amount') && <SortTh col="amount" label="Amount" align="right" />}
+                {isInvVisible('status') && <SortTh col="status" label="Status" />}
+                {isInvVisible('last_action') && <SortTh col="lastaction" label="Last Action" />}
+                {isInvVisible('dtp') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>DTP</th>}
+                {isInvVisible('vendor_ref') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Vendor Ref</th>}
+                {isInvVisible('vendor_details') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Vendor Details</th>}
+                {isInvVisible('currency') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>Currency</th>}
+                {isInvVisible('period_from') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>Period From</th>}
+                {isInvVisible('period_to') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>Period To</th>}
+                {isInvVisible('tce_item') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>TCE Item</th>}
+                {isInvVisible('sap_doc') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',fontFamily:'var(--mono)'}}>SAP Doc #</th>}
+                {isInvVisible('notes') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Notes</th>}
+                {isInvVisible('actions') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -500,48 +545,45 @@ export function InvoicesPanel() {
                     onDragLeave={()=>setDragOverId(null)}
                     onDrop={async ev=>{ev.preventDefault();setDragOverId(null);const f=ev.dataTransfer.files[0];if(f)await handleReceiptUpload(inv,f)}}>
                     {/* Invoice # */}
-                    <td style={{padding:'8px 10px',verticalAlign:'top'}}>
+                    {isInvVisible('invoice') && <td style={{padding:'8px 10px',verticalAlign:'top'}}>
                       <div style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:'12px'}}>{inv.invoice_number || '—'}</div>
-                      {inv.vendor_ref && <div style={{fontSize:'10px',color:'var(--text3)'}}>{inv.vendor_ref}</div>}
                       {inv.source === 'sap_import' && <div style={{fontSize:'9px',color:'#7c3aed'}}>SAP Import</div>}
-                    </td>
+                    </td>}
                     {/* PO / Vendor */}
-                    <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'10px'}}>
+                    {isInvVisible('po_vendor') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'10px'}}>
                       {po ? (
                         <>
                           <div style={{fontFamily:'var(--mono)',fontWeight:600}}>{po.po_number || po.internal_ref || '—'}</div>
                           <div style={{color:'var(--text3)'}}>{po.vendor}</div>
                         </>
                       ) : (
-                        <>
-                          <div style={{color:'var(--text3)',fontStyle:'italic'}}>{inv.vendor_details || inv.vendor_ref || '—'}
-                            <span style={{fontSize:'9px',fontWeight:700,padding:'1px 5px',borderRadius:'3px',background:'#fef3c7',color:'#d97706',marginLeft:'4px'}}>⚠ No PO</span>
-                          </div>
-                        </>
+                        <div style={{color:'var(--text3)',fontStyle:'italic'}}>{inv.vendor_details || inv.vendor_ref || '—'}
+                          <span style={{fontSize:'9px',fontWeight:700,padding:'1px 5px',borderRadius:'3px',background:'#fef3c7',color:'#d97706',marginLeft:'4px'}}>⚠ No PO</span>
+                        </div>
                       )}
-                    </td>
+                    </td>}
                     {/* Inv Date */}
-                    <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top'}}>{fmtDate(inv.invoice_date)}</td>
+                    {isInvVisible('inv_date') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top'}}>{fmtDate(inv.invoice_date)}</td>}
                     {/* Due Date */}
-                    <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',color:isOverdue?'var(--red)':'var(--text2)',fontWeight:isOverdue?600:400}}>
+                    {isInvVisible('due_date') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',color:isOverdue?'var(--red)':'var(--text2)',fontWeight:isOverdue?600:400}}>
                       {fmtDate(inv.due_date)}{isOverdue?' ⚠':''}
-                    </td>
+                    </td>}
                     {/* Expected */}
-                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text3)',verticalAlign:'top'}}>
+                    {isInvVisible('expected') && <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text3)',verticalAlign:'top'}}>
                       {inv.expected_amount ? fmt(inv.expected_amount, sym) : '—'}
-                    </td>
+                    </td>}
                     {/* Amount */}
-                    <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:700,color:'#1e40af',verticalAlign:'top'}}>
+                    {isInvVisible('amount') && <td style={{padding:'8px 10px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:700,color:'#1e40af',verticalAlign:'top'}}>
                       {fmt(inv.amount, sym)}
                       {varianceEl}
                       {cur !== 'AUD' && <div style={{fontSize:'9px',color:'var(--text3)'}}>{cur}</div>}
-                    </td>
+                    </td>}
                     {/* Status */}
-                    <td style={{padding:'8px 10px',verticalAlign:'top'}}>
+                    {isInvVisible('status') && <td style={{padding:'8px 10px',verticalAlign:'top'}}>
                       <span style={{fontSize:'10px',fontWeight:700,padding:'3px 8px',borderRadius:'3px',background:sc.bg,color:sc.color}}>{sc.label}</span>
-                    </td>
+                    </td>}
                     {/* Last Action */}
-                    <td style={{padding:'8px 10px',verticalAlign:'top',minWidth:'140px'}}>
+                    {isInvVisible('last_action') && <td style={{padding:'8px 10px',verticalAlign:'top',minWidth:'140px'}}>
                       {lastAction ? (
                         <>
                           <div style={{fontSize:'10px',fontWeight:600,color:INV_STATUS[lastAction.status]?.color||'var(--text2)'}}>{INV_STATUS[lastAction.status]?.label||lastAction.status}</div>
@@ -550,13 +592,22 @@ export function InvoicesPanel() {
                           {lastAction.note && <div style={{fontSize:'9px',color:'#dc2626',fontStyle:'italic',maxWidth:'160px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={lastAction.note}>{lastAction.note}</div>}
                         </>
                       ) : <span style={{color:'var(--text3)',fontSize:'10px'}}>—</span>}
-                    </td>
+                    </td>}
                     {/* DTP */}
-                    <td style={{padding:'8px 10px',textAlign:'center',fontFamily:'var(--mono)',verticalAlign:'top',color:inv.status==='paid'?'#059669':dtp!=null&&dtp>30?'var(--red)':dtp!=null&&dtp>14?'var(--orange)':'var(--text3)'}}>
+                    {isInvVisible('dtp') && <td style={{padding:'8px 10px',textAlign:'center',fontFamily:'var(--mono)',verticalAlign:'top',color:inv.status==='paid'?'#059669':dtp!=null&&dtp>30?'var(--red)':dtp!=null&&dtp>14?'var(--orange)':'var(--text3)'}}>
                       {inv.status==='paid'?'✓':dtp!=null?dtp+'d':'—'}
-                    </td>
+                    </td>}
+                    {/* Optional columns */}
+                    {isInvVisible('vendor_ref') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'11px',color:'var(--text3)'}}>{inv.vendor_ref || '—'}</td>}
+                    {isInvVisible('vendor_details') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'11px',color:'var(--text2)'}}>{inv.vendor_details || '—'}</td>}
+                    {isInvVisible('currency') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px'}}>{cur}</td>}
+                    {isInvVisible('period_from') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px'}}>{fmtDate(inv.period_from) || '—'}</td>}
+                    {isInvVisible('period_to') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px'}}>{fmtDate(inv.period_to) || '—'}</td>}
+                    {isInvVisible('tce_item') && <td style={{padding:'8px 10px',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{inv.tce_item_id || '—'}</td>}
+                    {isInvVisible('sap_doc') && <td style={{padding:'8px 10px',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px',color:'#7c3aed'}}>{(inv as typeof inv & {sap_doc_number?:string}).sap_doc_number || '—'}</td>}
+                    {isInvVisible('notes') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'11px',color:'var(--text2)',maxWidth:'160px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={inv.notes||undefined}>{inv.notes || '—'}</td>}
                     {/* Actions */}
-                    <td style={{padding:'8px 10px',verticalAlign:'top',whiteSpace:'nowrap'}}>
+                    {isInvVisible('actions') && <td style={{padding:'8px 10px',verticalAlign:'top',whiteSpace:'nowrap'}}>
                       <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
                         <div style={{display:'flex',gap:'3px'}}>
                           {transitions.map(t => (
@@ -594,7 +645,7 @@ export function InvoicesPanel() {
                           <button className="btn btn-sm" style={{fontSize:'10px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>
                         </div>
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 )
               })}
@@ -823,6 +874,58 @@ export function InvoicesPanel() {
               <button className="btn btn-primary" style={{background:'#1e40af',color:'#fff',border:'none'}} onClick={confirmSapImport} disabled={sapImporting || !sapRows.some(r=>r.include)}>
                 {sapImporting ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : `Import ${sapRows.filter(r=>r.include).length} Invoice${sapRows.filter(r=>r.include).length!==1?'s':''}`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Column picker modal ───────────────────────────────────────────── */}
+      {showColPicker && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(3px)'}}
+          onClick={()=>setShowColPicker(false)}>
+          <div style={{background:'var(--bg2)',borderRadius:'12px',width:'440px',maxWidth:'95vw',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 50px rgba(0,0,0,0.35)',border:'1px solid var(--border)'}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{padding:'16px 20px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:'15px'}}>Invoice Columns</div>
+                <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}}>Columns marked † are hidden by default</div>
+              </div>
+              <div style={{display:'flex',gap:'8px'}}>
+                <button className="btn btn-sm" onClick={()=>{setInvHidden(new Set());setShowColPicker(false)}}>Show All</button>
+                <button className="btn btn-sm" onClick={()=>setShowColPicker(false)}>Done</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'12px 20px'}}>
+              {INV_COL_GROUPS.map(group => {
+                const cols = INV_COLS.filter(c => c.group === group)
+                return (
+                  <div key={group} style={{marginBottom:'16px'}}>
+                    <div style={{fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:'8px'}}>{group}</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+                      {cols.map(col => {
+                        const visible = isInvVisible(col.id)
+                        return (
+                          <label key={col.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',borderRadius:'6px',background:visible?'rgba(99,102,241,0.1)':'var(--bg3)',border:`1px solid ${visible?'var(--accent)':'var(--border)'}`,cursor:'pointer',userSelect:'none'}}>
+                            <input type="checkbox" checked={visible}
+                              onChange={e=>{
+                                const next = new Set(invHidden)
+                                if (e.target.checked) next.delete(col.id)
+                                else next.add(col.id)
+                                setInvHidden(next)
+                              }}
+                              style={{accentColor:'var(--accent)',width:'14px',height:'14px',flexShrink:0}}
+                            />
+                            <span style={{fontSize:'13px',fontWeight:visible?600:400,color:visible?'var(--text)':'var(--text3)'}}>
+                              {col.label}{!col.defaultVisible?' †':''}
+                            </span>
+                            {visible && <span style={{marginLeft:'auto',fontSize:'10px',color:'var(--accent)'}}>✓</span>}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

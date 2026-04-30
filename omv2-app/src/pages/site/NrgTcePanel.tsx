@@ -13,6 +13,32 @@ import type { NrgTceLine, RateCard } from '../../types'
 const SOURCES = ['overhead', 'skilled'] as const
 const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other', 'Fixed Price', 'Invoice / Receipt'] as const
 
+// ── TCE column registry ───────────────────────────────────────────────────────
+const TCE_COLS = [
+  { id: 'item_id',        label: 'Item ID',        default: 80,  defaultVisible: true,  group: 'Identity' },
+  { id: 'source',         label: 'Source',          default: 72,  defaultVisible: true,  group: 'Identity' },
+  { id: 'description',    label: 'Description',     default: 220, defaultVisible: true,  group: 'Identity' },
+  { id: 'work_order',     label: 'Work Order',      default: 90,  defaultVisible: true,  group: 'Scope' },
+  { id: 'contract_scope', label: 'Contract Scope',  default: 100, defaultVisible: true,  group: 'Scope' },
+  { id: 'unit',           label: 'Unit',            default: 56,  defaultVisible: true,  group: 'Estimates' },
+  { id: 'est_qty',        label: 'Est. Qty',        default: 60,  defaultVisible: true,  group: 'Estimates' },
+  { id: 'act_hrs',        label: 'Act. Hrs',        default: 60,  defaultVisible: true,  group: 'Estimates' },
+  { id: 'tce_rate',       label: 'TCE Rate',        default: 74,  defaultVisible: true,  group: 'Financials' },
+  { id: 'tce_total',      label: 'TCE Total',       default: 82,  defaultVisible: true,  group: 'Financials' },
+  { id: 'committed',      label: 'Committed',       default: 82,  defaultVisible: true,  group: 'Financials' },
+  { id: 'actual_cost',    label: 'Actual Cost',     default: 82,  defaultVisible: true,  group: 'Financials' },
+  { id: 'kpi',            label: 'KPI',             default: 40,  defaultVisible: true,  group: 'Admin' },
+  { id: 'line_type',      label: 'Type',            default: 110, defaultVisible: true,  group: 'Admin' },
+  { id: 'wbs',            label: 'WBS',             default: 95,  defaultVisible: true,  group: 'Admin' },
+  { id: 'actions',        label: '',                default: 60,  defaultVisible: true,  group: 'Admin' },
+  // Optional — hidden by default, user can add
+  { id: 'category',       label: 'Category',        default: 90,  defaultVisible: false, group: 'Identity' },
+  { id: 'notes',          label: 'Notes',           default: 160, defaultVisible: false, group: 'Admin' },
+] as const
+
+type TceColId = typeof TCE_COLS[number]['id']
+const TCE_COL_GROUPS = ['Identity', 'Scope', 'Estimates', 'Financials', 'Admin'] as const
+
 const EMPTY = {
   wbs_code: '', description: '', category: '', source: 'overhead' as 'overhead' | 'skilled',
   tce_total: 0, item_id: '', work_order: '', contract_scope: '', line_type: '', kpi_included: false,
@@ -55,8 +81,22 @@ export function NrgTcePanel() {
 
 
   // Resizable columns — fixed columns only (weekly date cols use fixed 80px)
-  // Order matches thead: checkbox, ItemID, Source, Description, WorkOrder, ContractScope, Unit, EstQty, ActHrs, TCERate, TCETotal, Committed, ActualCost, KPI, Type, WBS, Actions
-  const TCE_COL_DEFAULTS = [28, 80, 72, 220, 90, 100, 56, 60, 60, 74, 82, 82, 82, 40, 110, 95, 60]
+  // Column visibility
+  const [showColPicker, setShowColPicker] = useState(false)
+  // Simpler approach: stored hidden list is the source of truth, initialised with defaults
+  const tceHiddenStored = (prefs.hidden_cols as Record<string, string[]> | undefined)?.['nrg-tce']
+  const tceHidden = new Set<string>(
+    tceHiddenStored ?? TCE_COLS.filter(c => !c.defaultVisible).map(c => c.id)
+  )
+  function isTceVisible(id: TceColId) { return !tceHidden.has(id) }
+  function setTceHidden(next: Set<string>) {
+    const existing = (prefs.hidden_cols as Record<string, string[]> | undefined) ?? {}
+    setPref('hidden_cols', { ...existing, 'nrg-tce': Array.from(next) })
+  }
+
+  // Resizable columns — ID-keyed
+  // Order matches TCE_COLS. Checkbox col (idx 0) is separate.
+  const TCE_COL_DEFAULTS = TCE_COLS.map(c => ({ id: c.id, default: c.default }))
   const { widths: cw, onResizeStart, thRef } = useResizableColumns('nrg-tce', TCE_COL_DEFAULTS)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -338,6 +378,9 @@ export function NrgTcePanel() {
             <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportFile} />
           </label>
           <button className="btn btn-sm" onClick={openNew}>＋ Add Line</button>
+          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">
+            ⚙ Columns{tceHidden.size > TCE_COLS.filter(c => !c.defaultVisible).length ? ` (${tceHidden.size - TCE_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}
+          </button>
           <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={clearAll}>🗑 Clear All</button>
         </div>
       </div>
@@ -391,21 +434,23 @@ export function NrgTcePanel() {
               <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '1100px' }}>
                 <thead>
                   <tr>
-                    {[
-                      { label: <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />, align: 'center' },
-                      { label: 'Item ID' }, { label: 'Source' }, { label: 'Description' },
-                      { label: 'Work Order' }, { label: 'Contract Scope' }, { label: 'Unit' },
-                      { label: 'Est. Qty', align: 'right' }, { label: 'Act. Hrs', align: 'right' },
-                      { label: 'TCE Rate', align: 'right' }, { label: 'TCE Total', align: 'right' },
-                      { label: 'Committed', align: 'right' }, { label: 'Actual Cost', align: 'right' },
-                      { label: 'KPI' }, { label: 'Type' }, { label: 'WBS' }, { label: '' },
-                    ].map((col, i) => (
-                      <th key={i} ref={el => thRef(el, i)} className="resizable"
-                        style={{ width: cw[i], textAlign: (col as {align?:string}).align as 'right'|'center'|undefined }}>
-                        {col.label}
-                        <div className="col-resizer" {...onResizeStart(i)} />
-                      </th>
-                    ))}
+                    <th ref={el => thRef(el, 0)} style={{ width: 28, textAlign: 'center' }}>
+                      <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />
+                    </th>
+                    {TCE_COLS.map((col, i) => {
+                      if (!isTceVisible(col.id)) return null
+                      const alignMap: Record<string, 'right'|'center'|undefined> = {
+                        est_qty: 'right', act_hrs: 'right', tce_rate: 'right',
+                        tce_total: 'right', committed: 'right', actual_cost: 'right',
+                      }
+                      return (
+                        <th key={col.id} ref={el => thRef(el, i + 1)} className="resizable"
+                          style={{ width: cw[i + 1], textAlign: alignMap[col.id] }}>
+                          {col.label}
+                          <div className="col-resizer" {...onResizeStart(i + 1)} />
+                        </th>
+                      )
+                    })}
                     {showWeekly && weekKeys.map(wk => (
                       <th key={wk} style={{ width: 80, textAlign: 'right', fontSize: '10px', color: 'var(--text3)' }}>
                         {new Date(wk + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short' })}
@@ -432,21 +477,25 @@ export function NrgTcePanel() {
                             {l.item_id}
                             {isCol && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#6366f1' }}>({childCount} · {fmt(groupTotal)})</span>}
                           </td>
-                          <td colSpan={13} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px' }}>{groupTotal ? fmt(groupTotal) : '—'}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#1e40af' }}>{(() => {
+                          <td colSpan={TCE_COLS.filter(c => isTceVisible(c.id) && !['item_id','tce_total','committed','actual_cost','wbs','actions'].includes(c.id)).length} style={{ fontWeight: 700, fontSize: '12px' }}>{l.description}</td>
+                          {isTceVisible('tce_total') && <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px' }}>{groupTotal ? fmt(groupTotal) : '—'}</td>}
+                          {isTceVisible('committed') && <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#1e40af' }}>{(() => {
                             const gc = children.reduce((s, ch) => s + lineCommitted(ch.item_id), 0)
                             return gc > 0 ? fmt(gc) : '—'
-                          })()}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#4f46e5' }}>{(() => {
+                          })()}</td>}
+                          {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#4f46e5' }}>{(() => {
                             const groupActual = children.reduce((s, c) => s + lineActualCost(c), 0)
                             return groupActual > 0 ? fmt(groupActual) : '—'
-                          })()}</td>
-                          <td colSpan={3}></td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
+                          })()}</td>}
+                          {isTceVisible('kpi') && <td></td>}
+                          {isTceVisible('line_type') && <td></td>}
+                          {isTceVisible('wbs') && <td></td>}
+                          {isTceVisible('category') && <td></td>}
+                          {isTceVisible('notes') && <td></td>}
+                          {isTceVisible('actions') && <td style={{ whiteSpace: 'nowrap' }}>
                             <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px' }} onClick={() => openEdit(l)}>✏</button>
                             <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginLeft: '3px', color: 'var(--red)' }} onClick={() => del(l)}>🗑</button>
-                          </td>
+                          </td>}
                         </tr>
                       )
                     }
@@ -458,56 +507,40 @@ export function NrgTcePanel() {
                             const ns = new Set(selected); e.target.checked ? ns.add(l.id) : ns.delete(l.id); setSelected(ns)
                           }} />
                         </td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', paddingLeft: '20px', color: 'var(--text3)' }}>{l.item_id || l.wbs_code || '—'}</td>
-                        <td>{sourceBadge(l.source)}</td>
-                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} title={l.description}>
-                          {l.description || '—'}
-                        </td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{l.work_order || '—'}</td>
-                        <td style={{ fontSize: '11px' }}>
-                          {l.contract_scope
-                            ? <span style={{ background: '#ede9fe', color: '#6b21a8', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>{l.contract_scope}</span>
-                            : <span style={{ color: 'var(--text3)' }}>—</span>}
-                        </td>
-                        <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{l.unit_type || '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{(() => {
-                          const hrs = nrgLineActualHours(
-                            { item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type },
-                            timesheets
-                          )
+                        {isTceVisible('item_id') && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', paddingLeft: '20px', color: 'var(--text3)' }}>{l.item_id || l.wbs_code || '—'}</td>}
+                        {isTceVisible('source') && <td>{sourceBadge(l.source)}</td>}
+                        {isTceVisible('description') && <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} title={l.description}>{l.description || '—'}</td>}
+                        {isTceVisible('work_order') && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{l.work_order || '—'}</td>}
+                        {isTceVisible('contract_scope') && <td style={{ fontSize: '11px' }}>{l.contract_scope ? <span style={{ background: '#ede9fe', color: '#6b21a8', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>{l.contract_scope}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>}
+                        {isTceVisible('unit') && <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{l.unit_type || '—'}</td>}
+                        {isTceVisible('est_qty') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>}
+                        {isTceVisible('act_hrs') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{(() => {
+                          const hrs = nrgLineActualHours({ item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type }, timesheets)
                           return hrs > 0 ? hrs.toFixed(1) : '—'
-                        })()}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#1e40af' }}>{(() => {
+                        })()}</td>}
+                        {isTceVisible('tce_rate') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>}
+                        {isTceVisible('tce_total') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>}
+                        {isTceVisible('committed') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#1e40af' }}>{(() => {
                           const committed = lineCommitted(l.item_id)
                           return committed > 0 ? fmt(committed) : <span style={{ color: 'var(--text3)' }}>—</span>
-                        })()}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)', fontWeight: 600 }}>{(() => {
+                        })()}</td>}
+                        {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{(() => {
                           const actual = lineActualCost(l)
                           const over = l.tce_total > 0 && actual > l.tce_total
-                          return actual > 0
-                            ? <span style={{ color: over ? 'var(--red)' : 'var(--green)' }}>{fmt(actual)}</span>
-                            : <span style={{ color: 'var(--text3)' }}>—</span>
-                        })()}</td>
-                        <td>
-                          {l.kpi_included
-                            ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span>
-                            : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}
-                        </td>
-                        <td>
+                          return actual > 0 ? <span style={{ color: over ? 'var(--red)' : 'var(--green)' }}>{fmt(actual)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
+                        })()}</td>}
+                        {isTceVisible('kpi') && <td>{l.kpi_included ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span> : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}</td>}
+                        {isTceVisible('line_type') && <td>
                           <select style={{ fontSize: '11px', padding: '2px 4px', height: '26px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', width: '100%' }}
-                            value={l.line_type || ''}
-                            onChange={e => setLineType(l.id, e.target.value)}>
+                            value={l.line_type || ''} onChange={e => setLineType(l.id, e.target.value)}>
                             {LINE_TYPES.map(t => <option key={t} value={t}>{t || '— Set type —'}</option>)}
                           </select>
-                        </td>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {l.wbs_code
-                            ? <span style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px' }}>{l.wbs_code}</span>
-                            : <span style={{ color: 'var(--text3)' }}>—</span>}
-                        </td>
+                        </td>}
+                        {isTceVisible('wbs') && <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {l.wbs_code ? <span style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '3px', padding: '1px 4px' }}>{l.wbs_code}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}
+                        </td>}
+                        {isTceVisible('category') && <td style={{ fontSize: '11px', color: 'var(--text3)' }}>{(l as NrgTceLine & {category?:string}).category || '—'}</td>}
+                        {isTceVisible('notes') && <td style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(l as NrgTceLine & {notes?:string}).notes || undefined}>{(l as NrgTceLine & {notes?:string}).notes || '—'}</td>}
                         {showWeekly && weekKeys.map(wk => {
                           // Weekly hours from approved TCE-mode timesheets for this line
                           const wkHrs = timesheets.filter(ts => ts.week_start === wk).reduce((s, ts) => {
@@ -529,10 +562,10 @@ export function NrgTcePanel() {
                             </td>
                           )
                         })}
-                        <td style={{ whiteSpace: 'nowrap' }}>
+                        {isTceVisible('actions') && <td style={{ whiteSpace: 'nowrap' }}>
                           <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px' }} onClick={() => openEdit(l)}>✏</button>
                           <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginLeft: '3px', color: 'var(--red)' }} onClick={() => del(l)}>🗑</button>
-                        </td>
+                        </td>}
                       </tr>
                     )
                   })}
@@ -611,6 +644,59 @@ export function NrgTcePanel() {
             <div className="modal-footer">
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : null} Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Column picker modal ───────────────────────────────────────────── */}
+      {showColPicker && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1200, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(3px)' }}
+          onClick={() => setShowColPicker(false)}>
+          <div style={{ background:'var(--bg2)', borderRadius:'12px', width:'440px', maxWidth:'95vw', maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 50px rgba(0,0,0,0.35)', border:'1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding:'16px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:'15px' }}>TCE Register Columns</div>
+                <div style={{ fontSize:'11px', color:'var(--text3)', marginTop:'2px' }}>Columns marked † are hidden by default</div>
+              </div>
+              <div style={{ display:'flex', gap:'8px' }}>
+                <button className="btn btn-sm" onClick={() => { setTceHidden(new Set()); setShowColPicker(false) }}>Show All</button>
+                <button className="btn btn-sm" onClick={() => setShowColPicker(false)}>Done</button>
+              </div>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'12px 20px' }}>
+              {TCE_COL_GROUPS.map(group => {
+                const cols = TCE_COLS.filter(c => c.group === group && c.label)
+                if (cols.length === 0) return null
+                return (
+                  <div key={group} style={{ marginBottom:'16px' }}>
+                    <div style={{ fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--text3)', marginBottom:'8px' }}>{group}</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+                      {cols.map(col => {
+                        const visible = isTceVisible(col.id)
+                        return (
+                          <label key={col.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 10px', borderRadius:'6px', background:visible?'rgba(99,102,241,0.1)':'var(--bg3)', border:`1px solid ${visible?'var(--accent)':'var(--border)'}`, cursor:'pointer', userSelect:'none' }}>
+                            <input type="checkbox" checked={visible}
+                              onChange={e => {
+                                const next = new Set(tceHidden)
+                                if (e.target.checked) next.delete(col.id)
+                                else next.add(col.id)
+                                setTceHidden(next)
+                              }}
+                              style={{ accentColor:'var(--accent)', width:'14px', height:'14px', flexShrink:0 }}
+                            />
+                            <span style={{ fontSize:'13px', fontWeight:visible?600:400, color:visible?'var(--text)':'var(--text3)' }}>
+                              {col.label}{!col.defaultVisible ? ' †' : ''}
+                            </span>
+                            {visible && <span style={{ marginLeft:'auto', fontSize:'10px', color:'var(--accent)' }}>✓</span>}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
