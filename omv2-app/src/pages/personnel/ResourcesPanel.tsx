@@ -68,7 +68,7 @@ const STATUS_STYLE: Record<string,{bg:string,color:string,label:string}> = {
   unknown: {bg:'#f1f5f9',color:'#94a3b8',label:'No dates'},
 }
 
-type SortCol = 'status'|'name'|'role'|'shift'|'company'|'mob_in'|'mob_out'|'allow_laha'|'allow_meal'|'allow_fsa'
+type SortCol = 'status'|'name'|'role'|'category'|'shift'|'company'|'mob_in'|'mob_out'|'allow_laha'|'allow_meal'|'allow_fsa'
 
 export function ResourcesPanel() {
   const { activeProject, setActivePanel } = useAppStore()
@@ -618,6 +618,7 @@ export function ResourcesPanel() {
                     const sortKey = col.id === 'status' ? 'status'
                       : col.id === 'name' ? 'name'
                       : col.id === 'role' ? 'role'
+                      : col.id === 'category' ? 'category'
                       : col.id === 'mob_in' ? 'mob_in'
                       : col.id === 'mob_out' ? 'mob_out'
                       : col.id === 'company' ? 'company'
