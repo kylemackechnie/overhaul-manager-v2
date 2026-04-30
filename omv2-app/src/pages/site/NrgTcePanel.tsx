@@ -95,11 +95,11 @@ export function NrgTcePanel() {
     setPref('hidden_cols', { ...existing, 'nrg-tce': Array.from(next) })
   }
 
-  // Total width = checkbox (28px) + sum of visible column widths
-  const totalTceWidth = 28 + TCE_COLS.reduce((s, c, i) => s + (isTceVisible(c.id) ? (cw[i + 1] || c.default) : 0), 0)
-  // Order matches TCE_COLS. Checkbox col (idx 0) is separate.
   const TCE_COL_DEFAULTS = TCE_COLS.map(c => ({ id: c.id, default: c.default }))
   const { widths: cw, onResizeStart, thRef } = useResizableColumns('nrg-tce', TCE_COL_DEFAULTS)
+
+  // Total width = checkbox (28px) + sum of visible column widths
+  const totalTceWidth = 28 + TCE_COLS.reduce((s, c, i) => s + (isTceVisible(c.id) ? (cw[i + 1] || c.default) : 0), 0)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
