@@ -52,7 +52,7 @@ function autoType(dateStr: string, holidays: Set<string>): string {
 
 // Mirrors HTML PH override: walk all day entries and force dayType='public_holiday'
 // for any date in the project's holidays set. Called whenever a week becomes active.
-function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resources?: import('../types').Resource[]): WeeklyTimesheet {
+function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resources?: Resource[]): WeeklyTimesheet {
   // Build the 7 dates for this week
   const weekDates: string[] = []
   const mon = new Date(week.week_start + 'T12:00:00')
