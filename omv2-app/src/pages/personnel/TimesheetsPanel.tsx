@@ -1177,7 +1177,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     <button className="btn btn-sm" style={{ fontSize: '10px', padding: '2px 6px', color: 'var(--red)', alignSelf: 'flex-start' }} onClick={() => removePerson(member.personId)}>✕ Remove</button>
                   </div>
                   {/* Day cells */}
-                  {days.map((d, i) => {
+                  {days.map((d) => {
                     const raw = (member.days[d] || {}) as Record<string, unknown>
                     const cellHrs = (raw.hours as number) || 0
                     const rawDayType = (raw.dayType as string) || autoType(d, holidays)
