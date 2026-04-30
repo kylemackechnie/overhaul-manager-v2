@@ -585,6 +585,42 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     return opts
   }
 
+  // ── Allowance / Travel TCE option renderer ──────────────────────────────
+  // Renders <optgroup> sections matching TCE register order (skilled → overhead).
+  // Excludes group-header rows and Fixed Price lines (not relevant for allowances).
+  function renderAllowanceTceOptions() {
+    const skilled = tceLines.filter(l =>
+      l.item_id &&
+      l.source === 'skilled' &&
+      !isGroupHeader(l.item_id, l.line_type) &&
+      l.line_type !== 'Fixed Price'
+    )
+    const overhead = tceLines.filter(l =>
+      l.item_id &&
+      l.source === 'overhead' &&
+      !isGroupHeader(l.item_id, l.line_type) &&
+      l.line_type !== 'Fixed Price'
+    )
+    return (
+      <>
+        {skilled.length > 0 && (
+          <optgroup label="Skilled Labour">
+            {skilled.map(l => (
+              <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>
+            ))}
+          </optgroup>
+        )}
+        {overhead.length > 0 && (
+          <optgroup label="Overhead">
+            {overhead.map(l => (
+              <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    )
+  }
+
   // ── Multi-match resolver helpers ────────────────────────────────────────
   // Map of WO → candidate TCE items. When a TasTK-imported alloc references a
   // WO with >1 candidate, the writer can't auto-resolve and the time becomes
@@ -911,9 +947,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       onChange={e => setActiveWeek({ ...activeWeek, allowances_tce_default: e.target.value } as WeeklyTimesheet)}
                       title="Default TCE item for all crew allowances on this timesheet. Override per person below.">
                       <option value="">— Unallocated —</option>
-                      {tceLines
-                        .filter(l => l.item_id && !isGroupHeader(l.item_id))
-                        .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                      {renderAllowanceTceOptions()}
                     </select>
                     <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Travel TCE:</span>
                     <select className="input" style={{ width: '180px', fontSize: '12px', padding: '3px 6px' }}
@@ -921,9 +955,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       onChange={e => setActiveWeek({ ...activeWeek, travel_tce_default: e.target.value } as WeeklyTimesheet)}
                       title="Default TCE item for all crew travel allowances on this timesheet.">
                       <option value="">— Unallocated —</option>
-                      {tceLines
-                        .filter(l => l.item_id && !isGroupHeader(l.item_id, l.line_type))
-                        .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                      {renderAllowanceTceOptions()}
                     </select>
                   </>
                 )}
@@ -1088,9 +1120,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             }}
                           >
                             <option value="">{tsDefault ? `↳ Use default (${tsDefault})` : '↳ Use default (unallocated)'}</option>
-                            {tceLines
-                              .filter(l => l.item_id && !isGroupHeader(l.item_id))
-                              .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                            {renderAllowanceTceOptions()}
                           </select>
                         </div>
                       )
@@ -1119,9 +1149,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             }}
                           >
                             <option value="">{tsDefault ? `↳ Use default (${tsDefault})` : '↳ Use default (unallocated)'}</option>
-                            {tceLines
-                              .filter(l => l.item_id && !isGroupHeader(l.item_id, l.line_type))
-                              .map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                            {renderAllowanceTceOptions()}
                           </select>
                         </div>
                       )
