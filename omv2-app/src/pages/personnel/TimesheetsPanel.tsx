@@ -588,7 +588,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   // ── Allowance / Travel TCE option renderer ──────────────────────────────
   // Renders <optgroup> sections matching TCE register order (skilled → overhead).
   // Excludes group-header rows and Fixed Price lines (not relevant for allowances).
-  function renderAllowanceTceOptions() {
+  function renderAllowanceTceOptions(excludeSkilled = false) {
     const skilled = tceLines.filter(l =>
       l.item_id &&
       l.source === 'skilled' &&
@@ -603,7 +603,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     )
     return (
       <>
-        {skilled.length > 0 && (
+        {!excludeSkilled && skilled.length > 0 && (
           <optgroup label="Skilled Labour">
             {skilled.map(l => (
               <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>
@@ -947,7 +947,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       onChange={e => setActiveWeek({ ...activeWeek, allowances_tce_default: e.target.value } as WeeklyTimesheet)}
                       title="Default TCE item for all crew allowances on this timesheet. Override per person below.">
                       <option value="">— Unallocated —</option>
-                      {renderAllowanceTceOptions()}
+                      {renderAllowanceTceOptions(type === 'trades')}
                     </select>
                     <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Travel TCE:</span>
                     <select className="input" style={{ width: '180px', fontSize: '12px', padding: '3px 6px' }}
@@ -955,7 +955,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       onChange={e => setActiveWeek({ ...activeWeek, travel_tce_default: e.target.value } as WeeklyTimesheet)}
                       title="Default TCE item for all crew travel allowances on this timesheet.">
                       <option value="">— Unallocated —</option>
-                      {renderAllowanceTceOptions()}
+                      {renderAllowanceTceOptions(type === 'trades')}
                     </select>
                   </>
                 )}
@@ -1120,7 +1120,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             }}
                           >
                             <option value="">{tsDefault ? `↳ Use default (${tsDefault})` : '↳ Use default (unallocated)'}</option>
-                            {renderAllowanceTceOptions()}
+                            {renderAllowanceTceOptions(type === 'trades')}
                           </select>
                         </div>
                       )
@@ -1149,7 +1149,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             }}
                           >
                             <option value="">{tsDefault ? `↳ Use default (${tsDefault})` : '↳ Use default (unallocated)'}</option>
-                            {renderAllowanceTceOptions()}
+                            {renderAllowanceTceOptions(type === 'trades')}
                           </select>
                         </div>
                       )
