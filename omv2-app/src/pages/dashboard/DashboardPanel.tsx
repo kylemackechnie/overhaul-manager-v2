@@ -18,7 +18,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { WidgetPicker } from '../../components/dashboard/WidgetPicker'
-import { getDefaultLayout, mergeLayout, TILE_REGISTRY } from '../../components/dashboard/tileRegistry'
+import { getDefaultLayout, mergeLayout } from '../../components/dashboard/tileRegistry'
 import type { DashboardTileConfig } from '../../types'
 
 // ── Formatters ────────────────────────────────────────────────────────────────
