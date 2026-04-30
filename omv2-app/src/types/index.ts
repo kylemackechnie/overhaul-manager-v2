@@ -319,6 +319,7 @@ export interface Expense {
   tce_item_id: string | null
   attachment: unknown | null
   receipt_paths: string[]
+  expense_ref: string | null
   wbs: string
   notes: string
   created_at: string
