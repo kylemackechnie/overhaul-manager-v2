@@ -17,6 +17,7 @@ const RES_COLS = [
   { id: 'status',    label: 'Status',       default: 70,  group: 'Identity' },
   { id: 'name',      label: 'Name',         default: 140, group: 'Identity' },
   { id: 'role',      label: 'Role / Trade', default: 110, group: 'Identity' },
+  { id: 'category',  label: 'Category',     default: 100, group: 'Identity' },
   { id: 'shift',     label: 'Shift',        default: 60,  group: 'Identity' },
   { id: 'company',   label: 'Company',      default: 110, group: 'Identity' },
   { id: 'mob_in',    label: 'Mob In',       default: 80,  group: 'Mob' },
@@ -681,6 +682,15 @@ export function ResourcesPanel() {
                             </select>
                           )
                         })()}
+                      </td>}
+                      {isVisible('category') && <td>
+                        <select defaultValue={r.category||'trades'}
+                          style={{background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:'var(--text2)',cursor:'pointer',padding:'1px 2px',appearance:'none'}}
+                          onFocus={e=>{(e.target as HTMLSelectElement).style.borderBottomColor='var(--accent)';(e.target as HTMLSelectElement).style.background='var(--bg3)'}}
+                          onBlur={e=>{(e.target as HTMLSelectElement).style.borderBottomColor='transparent';(e.target as HTMLSelectElement).style.background='transparent'}}
+                          onChange={e=>saveInline(r.id,'category',(e.target as HTMLSelectElement).value)}>
+                          {CATEGORIES.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+                        </select>
                       </td>}
                       {isVisible('shift') && <td style={{fontSize:'12px',color:'var(--text3)'}}>{r.shift||'day'}</td>}
                       {isVisible('company') && <td style={{overflow:'hidden'}}>
