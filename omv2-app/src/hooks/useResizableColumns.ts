@@ -20,9 +20,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useUserPrefs } from './useUserPrefs'
 import { useAppStore } from '../store/appStore'
 
-const MIN_COL_WIDTH = 32
+const MIN_COL_WIDTH = 40     // hard floor (px)
 const MAX_COL_WIDTH = 800
 const LS_PREFS_PREFIX = 'omv2_prefs_'
+
+/** Per-column minimum: largest of the hard floor and 50% of the default width */
+function colMin(defaultWidth: number): number {
+  return Math.max(MIN_COL_WIDTH, Math.floor(defaultWidth * 0.5))
+}
 
 /** Synchronous localStorage read — bypasses the async useUserPrefs effect cycle */
 function readStoredSync(tableId: string, defaults: number[]): number[] | null {
@@ -50,7 +55,7 @@ export function useResizableColumns(
 ) {
   const { prefs, setPref } = useUserPrefs()
   const thRefs = useRef<(HTMLTableCellElement | null)[]>([])
-  const dragging = useRef<{ colIdx: number; startX: number; startWidth: number } | null>(null)
+  const dragging = useRef<{ colIdx: number; startX: number; startWidth: number; minWidth: number } | null>(null)
 
   const getStored = (): number[] | null => {
     const stored = prefs.col_widths?.[tableId]
@@ -92,11 +97,12 @@ export function useResizableColumns(
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     if (!dragging.current) return
-    const dx = e.clientX - dragging.current.startX
-    const newW = Math.max(MIN_COL_WIDTH, Math.min(MAX_COL_WIDTH, dragging.current.startWidth + dx))
+    const { colIdx, startX, startWidth, minWidth } = dragging.current
+    const dx = e.clientX - startX
+    const newW = Math.max(minWidth, Math.min(MAX_COL_WIDTH, startWidth + dx))
     setWidths(prev => {
       const next = [...prev]
-      next[dragging.current!.colIdx] = newW
+      next[colIdx] = newW
       return next
     })
   }, [])
@@ -117,7 +123,8 @@ export function useResizableColumns(
       e.stopPropagation()
       const th = thRefs.current[colIdx]
       const startWidth = th ? th.offsetWidth : (widths[colIdx] || 100)
-      dragging.current = { colIdx, startX: e.clientX, startWidth }
+      const minWidth = colMin(defaults[colIdx] ?? MIN_COL_WIDTH)
+      dragging.current = { colIdx, startX: e.clientX, startWidth, minWidth }
       document.addEventListener('mousemove', onMouseMove)
       document.addEventListener('mouseup', onMouseUp)
       document.body.style.cursor = 'col-resize'
