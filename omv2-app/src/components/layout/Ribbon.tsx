@@ -225,7 +225,7 @@ function SortableTabPill({ id, label, hidden, onToggle }: {
     }}>
       <span {...attributes} {...listeners} style={{ cursor: 'grab', color: 'var(--text3)', fontSize: '14px', lineHeight: 1 }}>⠿</span>
       <span style={{ flex: 1, fontSize: '13px', fontWeight: hidden ? 400 : 600, color: hidden ? 'var(--text3)' : 'var(--text)' }}>{label}</span>
-      <button onClick={onToggle} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px',
+      <button onClick={onToggle} style={{ border: 'none', cursor: 'pointer', fontSize: '11px',
         color: hidden ? 'var(--text3)' : 'var(--accent)', fontWeight: 600, padding: '2px 6px',
         borderRadius: '4px', background: hidden ? 'var(--bg2)' : 'rgba(99,102,241,0.15)' }}>
         {hidden ? 'Show' : 'Hide'}
