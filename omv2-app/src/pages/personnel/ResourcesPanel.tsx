@@ -612,6 +612,9 @@ export function ResourcesPanel() {
                             onBlur={e=>{(e.target as HTMLInputElement).style.borderBottomColor='transparent';(e.target as HTMLInputElement).style.background='transparent';saveInline(r.id,'name',(e.target as HTMLInputElement).value.trim()||r.name)}}
                             onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}}
                           />
+                          {r.notes && (
+                            <span title={r.notes} style={{flexShrink:0,cursor:'default',fontSize:'11px',lineHeight:1,opacity:0.75}}>🚩</span>
+                          )}
                         </div>
                       </td>
                       <td style={{minWidth:'140px'}}>
