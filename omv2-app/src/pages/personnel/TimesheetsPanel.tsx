@@ -52,22 +52,59 @@ function autoType(dateStr: string, holidays: Set<string>): string {
 
 // Mirrors HTML PH override: walk all day entries and force dayType='public_holiday'
 // for any date in the project's holidays set. Called whenever a week becomes active.
-function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>): WeeklyTimesheet {
-  if (!holidays.size) return week
+function applyPHOverrides(week: WeeklyTimesheet, holidays: Set<string>, resources?: import('../types').Resource[]): WeeklyTimesheet {
+  // Build the 7 dates for this week
+  const weekDates: string[] = []
+  const mon = new Date(week.week_start + 'T12:00:00')
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon); d.setDate(mon.getDate() + i)
+    weekDates.push(d.toISOString().slice(0, 10))
+  }
+
   return {
     ...week,
     crew: week.crew.map(m => {
       const days = { ...m.days }
       let changed = false
-      Object.keys(days).forEach(ds => {
-        if (holidays.has(ds)) {
-          const cell = days[ds] as Record<string,unknown>
-          if (cell && cell.dayType !== 'public_holiday') {
-            days[ds] = { ...cell, dayType: 'public_holiday' } as unknown as typeof days[typeof ds]
-            changed = true
+
+      // 1. Public holiday overrides
+      if (holidays.size) {
+        Object.keys(days).forEach(ds => {
+          if (holidays.has(ds)) {
+            const cell = days[ds] as Record<string, unknown>
+            if (cell && cell.dayType !== 'public_holiday') {
+              days[ds] = { ...cell, dayType: 'public_holiday' } as unknown as typeof days[typeof ds]
+              changed = true
+            }
+          }
+        })
+      }
+
+      // 2. LAHA/meal reconciliation — ensure all on-project days have allowances
+      // applied even if they have 0 hours (e.g. Sat/Sun rest days on site)
+      const resource = resources?.find(r => r.id === m.personId)
+      if (resource) {
+        const hasLaha = !!(resource as Record<string, unknown>).allow_laha
+        const hasMeal = !!(resource as Record<string, unknown>).allow_meal
+        if (hasLaha || hasMeal) {
+          const mobIn  = ((resource as Record<string, unknown>).mob_in  as string | null) || null
+          const mobOut = ((resource as Record<string, unknown>).mob_out as string | null) || null
+          for (const ds of weekDates) {
+            const onProject = (!mobIn || ds >= mobIn) && (!mobOut || ds <= mobOut)
+            if (!onProject) continue
+            const existing = days[ds] as Record<string, unknown> | undefined
+            // Only fill if the day entry is missing entirely — don't overwrite
+            // explicit user choices on days that already have an entry
+            if (!existing) {
+              const dow = new Date(ds + 'T12:00:00').getDay()
+              const dayType = holidays.has(ds) ? 'public_holiday' : dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'weekday'
+              days[ds] = { dayType, shiftType: 'day', hours: 0, laha: hasLaha, meal: hasMeal } as unknown as typeof days[typeof ds]
+              changed = true
+            }
           }
         }
-      })
+      }
+
       return changed ? { ...m, days } : m
     })
   }
@@ -334,7 +371,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     if (error) { console.error('createWeek error:', error); toast(error.message + (error.details ? ' — ' + error.details : ''), 'error'); setSaving(false); return }
     toast('Week created', 'success'); setSaving(false); setShowNewModal(false)
     setNewForm({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
-    setActiveWeek(applyPHOverrides(data as WeeklyTimesheet, holidays)); load()
+    setActiveWeek(applyPHOverrides(data as WeeklyTimesheet, holidays, resources)); load()
   }
 
 
@@ -883,7 +920,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               const { hours, sell, cost } = weekTotals(s)
               const endD = new Date(s.week_start + 'T12:00:00'); endD.setDate(endD.getDate() + 6)
               return (
-                <div key={s.id} className="card" style={{ borderLeft: `3px solid ${TYPE_COLOR[type]}`, cursor: 'pointer' }} onClick={() => setActiveWeek(applyPHOverrides(s, holidays))}>
+                <div key={s.id} className="card" style={{ borderLeft: `3px solid ${TYPE_COLOR[type]}`, cursor: 'pointer' }} onClick={() => setActiveWeek(applyPHOverrides(s, holidays, resources))}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '180px' }}>
                       <div style={{ fontWeight: 700, fontSize: '14px' }}>
