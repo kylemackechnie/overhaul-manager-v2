@@ -63,8 +63,7 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       const iName   = col('Full Name')
       const iDate   = col('Timesheet Date')
       const iQty    = col('Quantity')
-      const iOp     = col('Operation - Custom Code')
-      const iWoCode = col('Work Order - Custom Code')
+      const iOp = col('Operation - Custom Code')
 
       if (iName < 0 || iDate < 0 || iQty < 0) {
         setResult({ msg: 'Missing required columns — expected "Full Name", "Timesheet Date", "Quantity"', ok: false })
@@ -72,7 +71,7 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       }
 
       const weekDates = weekDateSet(aw.week_start)
-      type RowEntry = { qty: number; op: string; woCode: string }
+      type RowEntry = { qty: number; op: string }
       const personDays: Record<string, Record<string, RowEntry[]>> = {}
 
       for (let i = 1; i < lines.length; i++) {
@@ -86,11 +85,11 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         if (!weekDates.has(dateStr)) continue
         const qty = parseFloat(row[iQty] || '0') || 0
         if (qty <= 0) continue
-        const op     = (iOp >= 0 ? row[iOp]?.trim() : '') || ''
-        const woCode = (iWoCode >= 0 ? row[iWoCode]?.trim() : '') || ''
+        // Operation - Custom Code is either a TCE item ID (e.g. "2.02.5.1") or "Mob/Demob" or blank
+        const op = (iOp >= 0 ? row[iOp]?.trim() : '') || ''
         if (!personDays[name]) personDays[name] = {}
         if (!personDays[name][dateStr]) personDays[name][dateStr] = []
-        personDays[name][dateStr].push({ qty, op, woCode })
+        personDays[name][dateStr].push({ qty, op })
       }
 
       let matched = 0; const unmatched: string[] = []; let daysWritten = 0
@@ -107,12 +106,14 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         const updatedDays = { ...member.days }
         Object.entries(personDays[bestMatch]).forEach(([dateStr, rows]) => {
           const totalHours = rows.reduce((s, r) => s + r.qty, 0)
+          // op is either a TCE item ID (has dots), "Mob/Demob", or blank
           const isMob = rows.some(r => r.op === 'Mob/Demob')
           const existing = (updatedDays[dateStr] || {}) as DayEntry & { nrgWoAllocations?: { tceItemId: string; hours: number }[] }
           const dayType = isMob ? 'travel' : ((existing.dayType as string) || 'weekday')
-          const rowsWithWo = rows.filter(r => r.woCode)
-          const nrgWoAllocations = rowsWithWo.length > 0
-            ? rowsWithWo.map(r => ({ tceItemId: r.woCode, hours: r.qty }))
+          // Rows with a TCE code (not Mob/Demob, not blank) → nrgWoAllocations
+          const rowsWithTce = rows.filter(r => r.op && r.op !== 'Mob/Demob')
+          const nrgWoAllocations = rowsWithTce.length > 0
+            ? rowsWithTce.map(r => ({ tceItemId: r.op, hours: r.qty }))
             : existing.nrgWoAllocations
           updatedDays[dateStr] = {
             ...existing,
