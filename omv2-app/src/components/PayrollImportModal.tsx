@@ -64,6 +64,7 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       const iDate   = col('Timesheet Date')
       const iQty    = col('Quantity')
       const iOp = col('Operation - Custom Code')
+      const iPay = col('Pay Code')
 
       if (iName < 0 || iDate < 0 || iQty < 0) {
         setResult({ msg: 'Missing required columns — expected "Full Name", "Timesheet Date", "Quantity"', ok: false })
@@ -71,7 +72,7 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       }
 
       const weekDates = weekDateSet(aw.week_start)
-      type RowEntry = { qty: number; op: string }
+      type RowEntry = { qty: number; op: string; payCode: string }
       const personDays: Record<string, Record<string, RowEntry[]>> = {}
 
       for (let i = 1; i < lines.length; i++) {
@@ -89,7 +90,8 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         const op = (iOp >= 0 ? row[iOp]?.trim() : '') || ''
         if (!personDays[name]) personDays[name] = {}
         if (!personDays[name][dateStr]) personDays[name][dateStr] = []
-        personDays[name][dateStr].push({ qty, op })
+        const payCode = (iPay >= 0 ? row[iPay]?.trim() : '') || ''
+        personDays[name][dateStr].push({ qty, op, payCode })
       }
 
       let matched = 0; const unmatched: string[] = []; let daysWritten = 0
@@ -111,9 +113,10 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
           const existing = (updatedDays[dateStr] || {}) as DayEntry & { nrgWoAllocations?: { tceItemId: string; hours: number }[] }
           const dayType = isMob ? 'travel' : ((existing.dayType as string) || 'weekday')
           // Rows with a TCE code (not Mob/Demob, not blank) → nrgWoAllocations
+          // payCode preserved per row so client reports can show NT/T1.5/DT split per scope
           const rowsWithTce = rows.filter(r => r.op && r.op !== 'Mob/Demob')
           const nrgWoAllocations = rowsWithTce.length > 0
-            ? rowsWithTce.map(r => ({ tceItemId: r.op, hours: r.qty }))
+            ? rowsWithTce.map(r => ({ tceItemId: r.op, hours: r.qty, payCode: r.payCode }))
             : existing.nrgWoAllocations
           updatedDays[dateStr] = {
             ...existing,
