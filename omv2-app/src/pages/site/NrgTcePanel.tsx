@@ -70,6 +70,13 @@ export function NrgTcePanel() {
   const [sourceFilter, _setSourceFilter] = useState((prefs.tce_source_filter as string) || 'all')
   const [hideUnused, _setHideUnused] = useState((prefs.tce_hide_unused as boolean) ?? false)
   const [showWeekly, _setShowWeekly] = useState((prefs.tce_show_weekly as boolean) ?? false)
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortAsc, setSortAsc] = useState(true)
+
+  function doTceSort(col: string) {
+    if (sortCol === col) setSortAsc(a => !a)
+    else { setSortCol(col); setSortAsc(true) }
+  }
 
   function setSourceFilter(v: string) { _setSourceFilter(v); setPref('tce_source_filter', v) }
   function setHideUnused(v: boolean)  { _setHideUnused(v);  setPref('tce_hide_unused', v) }
@@ -346,7 +353,48 @@ export function NrgTcePanel() {
     return !parent || !collapsed.has(parent.item_id || '')
   })
 
-  const leafIds = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).map(l => l.id)
+  // Sort: leaf lines sorted within their group, group headers stay in place
+  const sortedVisible = (() => {
+    if (!sortCol) return visibleRows
+    const result: typeof visibleRows = []
+    let i = 0
+    while (i < visibleRows.length) {
+      const row = visibleRows[i]
+      if (isGroupHeader(row.item_id, row.line_type)) {
+        // Collect this header + all its immediate leaf children
+        result.push(row)
+        i++
+        const leaves: typeof visibleRows = []
+        while (i < visibleRows.length && !isGroupHeader(visibleRows[i].item_id, visibleRows[i].line_type)) {
+          leaves.push(visibleRows[i])
+          i++
+        }
+        // Sort the leaves
+        leaves.sort((a, b) => {
+          let av: string | number = ''
+          let bv: string | number = ''
+          if (sortCol === 'item_id')     { av = a.item_id || ''; bv = b.item_id || '' }
+          else if (sortCol === 'description') { av = a.description || ''; bv = b.description || '' }
+          else if (sortCol === 'work_order')  { av = a.work_order || ''; bv = b.work_order || '' }
+          else if (sortCol === 'tce_rate')    { av = a.tce_rate || 0; bv = b.tce_rate || 0 }
+          else if (sortCol === 'tce_total')   { av = a.tce_total || 0; bv = b.tce_total || 0 }
+          else if (sortCol === 'line_type')   { av = a.line_type || ''; bv = b.line_type || '' }
+          else if (sortCol === 'wbs')         { av = a.wbs_code || ''; bv = b.wbs_code || '' }
+          else if (sortCol === 'actual_cost') { av = lineActualCost(a); bv = lineActualCost(b) }
+          const cmp = typeof av === 'number'
+            ? (av as number) - (bv as number)
+            : (av as string).localeCompare(bv as string)
+          return sortAsc ? cmp : -cmp
+        })
+        result.push(...leaves)
+      } else {
+        // Top-level leaf (no group header parent) — just add
+        result.push(row)
+        i++
+      }
+    }
+    return result
+  })()
   const allLeafSel = leafIds.length > 0 && leafIds.every(id => selected.has(id))
   const totalTce = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + (l.tce_total || 0), 0)
 
@@ -449,14 +497,21 @@ export function NrgTcePanel() {
                     </th>
                     {TCE_COLS.map((col, i) => {
                       if (!isTceVisible(col.id)) return null
+                      const sortable = ['item_id','description','work_order','tce_rate','tce_total','actual_cost','line_type','wbs'].includes(col.id)
                       const alignMap: Record<string, 'right'|'center'|undefined> = {
                         est_qty: 'right', act_hrs: 'right', tce_rate: 'right',
                         tce_total: 'right', committed: 'right', actual_cost: 'right',
                       }
                       return (
                         <th key={col.id} ref={el => thRef(el, i + 1)} className="resizable"
-                          style={{ width: cw[i + 1], textAlign: alignMap[col.id] }}>
+                          style={{ width: cw[i + 1], textAlign: alignMap[col.id], cursor: sortable ? 'pointer' : undefined, userSelect: 'none' }}
+                          onClick={sortable ? () => doTceSort(col.id) : undefined}>
                           {col.label}
+                          {sortable && (
+                            <span style={{ fontSize: '9px', marginLeft: '3px', color: sortCol === col.id ? 'var(--accent)' : 'var(--border2)' }}>
+                              {sortCol === col.id ? (sortAsc ? '↑' : '↓') : '↕'}
+                            </span>
+                          )}
                           <div className="col-resizer" {...onResizeStart(i + 1)} />
                         </th>
                       )
@@ -469,7 +524,7 @@ export function NrgTcePanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map(l => {
+                  {sortedVisible.map(l => {
                     const isHdr = isGroupHeader(l.item_id, l.line_type)
                     const isCol = isHdr && collapsed.has(l.item_id || '')
                     const isSel = !isHdr && selected.has(l.id)
