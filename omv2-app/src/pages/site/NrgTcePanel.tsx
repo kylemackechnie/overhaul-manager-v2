@@ -60,7 +60,7 @@ export function NrgTcePanel() {
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
-  const [pos, setPos] = useState<{id:string;tce_item_id:string|null;po_value:number|null;status:string}[]>([])
+  const [pos, setPos] = useState<{id:string;tce_item_id:string|null;po_value:number|null;status:string;po_number:string|null;vendor:string|null}[]>([])
   const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | NrgTceLine>(null)
@@ -123,11 +123,11 @@ export function NrgTcePanel() {
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
-      supabase.from('purchase_orders').select('id,tce_item_id,po_value,status').eq('project_id', pid),
+      supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
-    setPos((poRes.data || []) as {id:string;tce_item_id:string|null;po_value:number|null;status:string}[])
+    setPos((poRes.data || []) as {id:string;tce_item_id:string|null;po_value:number|null;status:string;po_number:string|null;vendor:string|null}[])
     setTimesheets((tsRes.data || []) as NrgTimesheet[])
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
@@ -811,8 +811,8 @@ export function NrgTcePanel() {
                       <tbody>
                         {linePOs.map(p => (
                           <tr key={p.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                            <td style={{ padding:'8px' }}>{(p as unknown as Record<string,unknown>).po_number as string || p.id.slice(0,8)}</td>
-                            <td style={{ padding:'8px', color:'var(--text2)' }}>{(p as unknown as Record<string,unknown>).vendor as string || '—'}</td>
+                            <td style={{ padding:'8px' }}>{p.po_number || p.id.slice(0,8)}</td>
+                            <td style={{ padding:'8px', color:'var(--text2)' }}>{p.vendor || '—'}</td>
                             <td style={{ padding:'8px' }}><span style={{ fontSize:'11px', fontWeight:600, padding:'2px 6px', borderRadius:'3px', background:'var(--bg3)' }}>{p.status}</span></td>
                             <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#1e40af' }}>{fmt(p.po_value || 0)}</td>
                           </tr>
