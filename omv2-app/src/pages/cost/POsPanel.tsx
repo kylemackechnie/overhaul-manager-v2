@@ -31,8 +31,8 @@ const fmt = (v: number, cur = 'AUD') => {
 const pct = (v: number, total: number) => total > 0 ? Math.round(v/total*100) + '%' : '0%'
 const fmtDate = (s?: string|null) => s ? s.split('-').reverse().join('/') : '—'
 
-interface PoLine { id: string; description: string; wbs: string; value: number; notes: string }
-const mkLine = (): PoLine => ({ id: Math.random().toString(36).slice(2), description:'', wbs:'', value:0, notes:'' })
+interface PoLine { id: string; description: string; wbs: string; value: number; notes: string; tce_item_id?: string }
+const mkLine = (): PoLine => ({ id: Math.random().toString(36).slice(2), description:'', wbs:'', value:0, notes:'', tce_item_id:'' })
 
 type PoForm = {
   po_number: string; internal_ref: string; vendor: string; description: string
@@ -398,7 +398,7 @@ export function POsPanel() {
                   <button className="btn btn-sm" onClick={()=>setForm(f=>({...f,lines:[...f.lines,mkLine()]}))}>+ Add Line</button>
                 </div>
                 {form.lines.map((line, i) => (
-                  <div key={line.id} style={{display:'grid',gridTemplateColumns:'1fr 100px 120px 32px',gap:'6px',marginBottom:'6px',alignItems:'flex-end'}}>
+                  <div key={line.id} style={{display:'grid',gridTemplateColumns:tceLines.length > 0 ? '1fr 100px 140px 120px 32px' : '1fr 100px 120px 32px',gap:'6px',marginBottom:'6px',alignItems:'flex-end'}}>
                     <div>
                       {i===0 && <label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>Description</label>}
                       <input className="input" value={line.description} onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,description:e.target.value}:l)}))} placeholder="Description / scope" />
@@ -410,6 +410,22 @@ export function POsPanel() {
                         {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}
                       </select>
                     </div>
+                    {tceLines.length > 0 && (
+                      <div>
+                        {i===0 && <label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>TCE Item</label>}
+                        <select className="input" value={line.tce_item_id||''}
+                          onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,tce_item_id:e.target.value}:l)}))}>
+                          <option value="">— No TCE —</option>
+                          {(['overhead','skilled'] as const).map(src => {
+                            const srcLines = tceLines.filter(l => l.source === src && l.line_type !== 'group' && !/^\d+\.\d+\.\d+$/.test(l.item_id || ''))
+                            if (!srcLines.length) return null
+                            return <optgroup key={src} label={src === 'overhead' ? 'Overhead' : 'Skilled'}>
+                              {srcLines.map(l => <option key={l.item_id} value={l.item_id||''}>{l.item_id} — {l.description}</option>)}
+                            </optgroup>
+                          })}
+                        </select>
+                      </div>
+                    )}
                     <div>
                       {i===0 && <label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>Value</label>}
                       <input type="number" className="input" value={line.value||''} min={0} placeholder="0.00"
