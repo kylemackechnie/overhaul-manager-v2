@@ -841,15 +841,15 @@ export function NrgTcePanel() {
                       const rc = rateCards.find(r => r.role.toLowerCase() === member.role.toLowerCase())
                       for (const [, day] of Object.entries(member.days)) {
                         if (!day.hours || day.hours <= 0) continue
-                        const match = (day.nrgWoAllocations || []).find((a: {tceItemId?: string}) =>
+                        const match = (day.nrgWoAllocations || []).find((a: NrgWoAlloc) =>
                           a.tceItemId === drillLine.item_id ||
-                          (drillLine.work_order && (a as unknown as Record<string,unknown>).wo === drillLine.work_order)
+                          (drillLine.work_order && a.wo === drillLine.work_order)
                         )
                         if (!match) continue
-                        memberHours += (match as {hours?: number}).hours || 0
+                        memberHours += match.hours || 0
                         if (rc) {
-                          const adjH = ((member as unknown as {mealBreakAdj?:boolean}).mealBreakAdj && (match as {hours?:number}).hours > 0) ? 0.5 : 0
-                          const effH = ((match as {hours?:number}).hours || 0) + adjH
+                          const adjH = ((member as unknown as {mealBreakAdj?:boolean}).mealBreakAdj && match.hours > 0) ? 0.5 : 0
+                          const effH = (match.hours || 0) + adjH
                           const split = splitHours(effH, day.dayType || 'weekday', day.shiftType as 'day'|'night', rc.regime)
                           memberCost += calcHoursCost(split, rc, 'sell')
                         }
@@ -899,8 +899,8 @@ export function NrgTcePanel() {
                     ))}
                   </tr></thead>
                   <tbody>
-                    {lineInvoices.map(i => (
-                      <tr key={i.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                    {lineInvoices.map((i, idx) => (
+                      <tr key={idx} style={{ borderBottom:'1px solid var(--border)' }}>
                         <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#dbeafe', color:'#1e40af', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Invoice</span></td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(i as unknown as Record<string,unknown>).invoice_number as string || '—'}</td>
                         <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(i as unknown as Record<string,unknown>).vendor_details as string || (i as unknown as Record<string,unknown>).vendor_ref as string || '—'}</td>
@@ -908,17 +908,17 @@ export function NrgTcePanel() {
                         <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#1e40af' }}>{fmt(i.amount || 0)}</td>
                       </tr>
                     ))}
-                    {lineExpenses.map(e => (
-                      <tr key={e.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                    {lineExpenses.map((e, idx) => (
+                      <tr key={idx} style={{ borderBottom:'1px solid var(--border)' }}>
                         <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#fef3c7', color:'#92400e', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Expense</span></td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).ref as string || '—'}</td>
-                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.description || '—'}</td>
+                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(e as unknown as Record<string,unknown>).description as string || (e as unknown as Record<string,unknown>).ref as string || '—'}</td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{e.date || '—'}</td>
                         <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt(e.cost_ex_gst || e.amount || 0)}</td>
                       </tr>
                     ))}
-                    {lineVariations.map(v => (
-                      <tr key={v.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                    {lineVariations.map((v, idx) => (
+                      <tr key={idx} style={{ borderBottom:'1px solid var(--border)' }}>
                         <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#d1fae5', color:'#065f46', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Variation</span></td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(v as unknown as Record<string,unknown>).ref as string || '—'}</td>
                         <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(v as unknown as Record<string,unknown>).description as string || '—'}</td>
