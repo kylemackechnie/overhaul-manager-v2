@@ -395,6 +395,7 @@ export function NrgTcePanel() {
     }
     return result
   })()
+  const leafIds = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).map(l => l.id)
   const allLeafSel = leafIds.length > 0 && leafIds.every(id => selected.has(id))
   const totalTce = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + (l.tce_total || 0), 0)
 
