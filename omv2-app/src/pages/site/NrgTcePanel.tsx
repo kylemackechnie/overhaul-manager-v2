@@ -8,7 +8,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
-import { nrgLineActual, nrgLineActualHours, nrgMatchAllocForLine, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { nrgLineActual, nrgLineActualHours, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
@@ -64,6 +64,8 @@ export function NrgTcePanel() {
   const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | NrgTceLine>(null)
+  const [drillLine, setDrillLine] = useState<NrgTceLine | null>(null)
+  const [drillType, setDrillType] = useState<'actual' | 'committed'>('actual')
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -586,15 +588,18 @@ export function NrgTcePanel() {
                         })()}</td>}
                         {isTceVisible('tce_rate') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>}
                         {isTceVisible('tce_total') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>}
-                        {isTceVisible('committed') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#1e40af' }}>{(() => {
-                          const committed = lineCommitted(l.item_id)
-                          return committed > 0 ? fmt(committed) : <span style={{ color: 'var(--text3)' }}>—</span>
-                        })()}</td>}
-                        {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{(() => {
-                          const actual = lineActualCost(l)
-                          const over = l.tce_total > 0 && actual > l.tce_total
-                          return actual > 0 ? <span style={{ color: over ? 'var(--red)' : 'var(--green)' }}>{fmt(actual)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
-                        })()}</td>}
+                        {isTceVisible('committed') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#1e40af', cursor: lineCommitted(l.item_id) > 0 ? 'pointer' : undefined }}
+                          onClick={lineCommitted(l.item_id) > 0 ? () => { setDrillLine(l); setDrillType('committed') } : undefined}
+                          title={lineCommitted(l.item_id) > 0 ? 'Click to see POs' : undefined}>
+                          {lineCommitted(l.item_id) > 0 ? <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(lineCommitted(l.item_id))}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}
+                        </td>}
+                        {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, cursor: lineActualCost(l) > 0 ? 'pointer' : undefined }}
+                          onClick={lineActualCost(l) > 0 ? () => { setDrillLine(l); setDrillType('actual') } : undefined}
+                          title={lineActualCost(l) > 0 ? 'Click to see breakdown' : undefined}>
+                          {(() => { const actual = lineActualCost(l); const over = l.tce_total > 0 && actual > l.tce_total
+                            return actual > 0 ? <span style={{ color: over ? 'var(--red)' : 'var(--green)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(actual)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
+                          })()}
+                        </td>}
                         {isTceVisible('kpi') && <td>{l.kpi_included ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span> : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}</td>}
                         {isTceVisible('line_type') && <td>
                           <select style={{ fontSize: '11px', padding: '2px 4px', height: '26px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg2)', width: '100%' }}
@@ -763,6 +768,171 @@ export function NrgTcePanel() {
                   </div>
                 )
               })}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Drill-down modal ─────────────────────────────────────────────── */}
+      {drillLine && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1200, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(3px)' }}
+          onClick={() => setDrillLine(null)}>
+          <div style={{ background:'var(--bg2)', borderRadius:'12px', width:'640px', maxWidth:'95vw', maxHeight:'82vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 50px rgba(0,0,0,0.35)', border:'1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ padding:'16px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:'15px' }}>{drillLine.item_id} — {drillLine.description}</div>
+                <div style={{ display:'flex', gap:'8px', marginTop:'8px' }}>
+                  {(['actual','committed'] as const).map(t => (
+                    <button key={t} onClick={() => setDrillType(t)} className="btn btn-sm"
+                      style={{ background: drillType===t ? 'var(--accent)' : undefined, color: drillType===t ? '#fff' : undefined }}>
+                      {t === 'actual' ? 'Actual Cost' : 'Committed (POs)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button className="btn btn-sm" onClick={() => setDrillLine(null)}>✕</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+              {drillType === 'committed' && (() => {
+                const linePOs = pos.filter(p => p.tce_item_id === drillLine.item_id && p.status !== 'cancelled' && p.status !== 'closed')
+                return linePOs.length === 0
+                  ? <div style={{ color:'var(--text3)', fontSize:'13px' }}>No POs committed to this line.</div>
+                  : <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
+                      <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
+                        <th style={{ textAlign:'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>PO</th>
+                        <th style={{ textAlign:'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>Vendor</th>
+                        <th style={{ textAlign:'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>Status</th>
+                        <th style={{ textAlign:'right', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>Value</th>
+                      </tr></thead>
+                      <tbody>
+                        {linePOs.map(p => (
+                          <tr key={p.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                            <td style={{ padding:'8px' }}>{(p as unknown as Record<string,unknown>).po_number as string || p.id.slice(0,8)}</td>
+                            <td style={{ padding:'8px', color:'var(--text2)' }}>{(p as unknown as Record<string,unknown>).vendor as string || '—'}</td>
+                            <td style={{ padding:'8px' }}><span style={{ fontSize:'11px', fontWeight:600, padding:'2px 6px', borderRadius:'3px', background:'var(--bg3)' }}>{p.status}</span></td>
+                            <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#1e40af' }}>{fmt(p.po_value || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
+                        <td colSpan={3} style={{ padding:'8px' }}>Total ({linePOs.length})</td>
+                        <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'#1e40af' }}>{fmt(linePOs.reduce((s,p) => s + (p.po_value||0), 0))}</td>
+                      </tr></tfoot>
+                    </table>
+              })()}
+
+              {drillType === 'actual' && (() => {
+                const isLabour = drillLine.line_type === 'Labour' || drillLine.source === 'skilled'
+                const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+                if (isLabour) {
+                  // Labour: show per-timesheet-week breakdown
+                  type LabourRow = { weekStart: string; person: string; role: string; hours: number; cost: number }
+                  const rows: LabourRow[] = []
+                  for (const ts of timesheets) {
+                    if (ts.status !== 'approved') continue
+                    if (ts.scope_tracking !== 'tce' && ts.scope_tracking !== 'nrg_tce') continue
+                    for (const member of ts.crew) {
+                      let memberHours = 0; let memberCost = 0
+                      const rc = rateCards.find(r => r.role.toLowerCase() === member.role.toLowerCase())
+                      for (const [, day] of Object.entries(member.days)) {
+                        if (!day.hours || day.hours <= 0) continue
+                        const match = (day.nrgWoAllocations || []).find((a: {tceItemId?: string}) =>
+                          a.tceItemId === drillLine.item_id ||
+                          (drillLine.work_order && (a as unknown as Record<string,unknown>).wo === drillLine.work_order)
+                        )
+                        if (!match) continue
+                        memberHours += (match as {hours?: number}).hours || 0
+                        if (rc) {
+                          const adjH = ((member as unknown as {mealBreakAdj?:boolean}).mealBreakAdj && (match as {hours?:number}).hours > 0) ? 0.5 : 0
+                          const effH = ((match as {hours?:number}).hours || 0) + adjH
+                          const split = splitHours(effH, day.dayType || 'weekday', day.shiftType as 'day'|'night', rc.regime)
+                          memberCost += calcHoursCost(split, rc, 'sell')
+                        }
+                      }
+                      if (memberHours > 0) rows.push({ weekStart: ts.week_start, person: member.name, role: member.role, hours: memberHours, cost: memberCost })
+                    }
+                  }
+                  if (!rows.length) return <div style={{ color:'var(--text3)', fontSize:'13px' }}>No approved timesheet allocations found.</div>
+                  return <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
+                    <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
+                      {['Week','Person','Role','Hours','Cost'].map(h => (
+                        <th key={h} style={{ textAlign: h === 'Hours' || h === 'Cost' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {rows.sort((a,b) => a.weekStart.localeCompare(b.weekStart) || a.person.localeCompare(b.person)).map((r,i) => (
+                        <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+                          <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{new Date(r.weekStart+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
+                          <td style={{ padding:'7px 8px', fontWeight:500 }}>{r.person}</td>
+                          <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{r.role}</td>
+                          <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)' }}>{r.hours.toFixed(1)}h</td>
+                          <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'var(--green)' }}>{fmt2(r.cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
+                      <td colSpan={3} style={{ padding:'8px' }}>Total</td>
+                      <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)' }}>{rows.reduce((s,r)=>s+r.hours,0).toFixed(1)}h</td>
+                      <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>{fmt2(rows.reduce((s,r)=>s+r.cost,0))}</td>
+                    </tr></tfoot>
+                  </table>
+                }
+
+                // Non-labour: invoices + expenses + variations
+                const lineInvoices = invoices.filter(i => i.tce_item_id === drillLine.item_id && i.status !== 'rejected')
+                const lineExpenses = expenses.filter(e => e.tce_item_id === drillLine.item_id)
+                const lineVariations = variations.filter(v => v.tce_link === drillLine.item_id && v.status === 'approved')
+                const total = lineInvoices.reduce((s,i)=>s+(i.amount||0),0) + lineExpenses.reduce((s,e)=>s+(e.cost_ex_gst||e.amount||0),0) + lineVariations.reduce((s,v)=>s+(v.sell_total||0),0)
+
+                if (!lineInvoices.length && !lineExpenses.length && !lineVariations.length)
+                  return <div style={{ color:'var(--text3)', fontSize:'13px' }}>No invoices, expenses or variations allocated to this line.</div>
+
+                return <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
+                  <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
+                    {['Source','Reference','Description','Date','Amount'].map(h => (
+                      <th key={h} style={{ textAlign: h === 'Amount' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {lineInvoices.map(i => (
+                      <tr key={i.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                        <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#dbeafe', color:'#1e40af', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Invoice</span></td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(i as unknown as Record<string,unknown>).invoice_number as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(i as unknown as Record<string,unknown>).vendor_details as string || (i as unknown as Record<string,unknown>).vendor_ref as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{(i as unknown as Record<string,unknown>).invoice_date as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#1e40af' }}>{fmt(i.amount || 0)}</td>
+                      </tr>
+                    ))}
+                    {lineExpenses.map(e => (
+                      <tr key={e.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                        <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#fef3c7', color:'#92400e', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Expense</span></td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).ref as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.description || '—'}</td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{e.date || '—'}</td>
+                        <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt(e.cost_ex_gst || e.amount || 0)}</td>
+                      </tr>
+                    ))}
+                    {lineVariations.map(v => (
+                      <tr key={v.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                        <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#d1fae5', color:'#065f46', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Variation</span></td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(v as unknown as Record<string,unknown>).ref as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(v as unknown as Record<string,unknown>).description as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{(v as unknown as Record<string,unknown>).approved_date as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#059669' }}>{fmt(v.sell_total || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
+                    <td colSpan={4} style={{ padding:'8px' }}>Total</td>
+                    <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>{fmt(total)}</td>
+                  </tr></tfoot>
+                </table>
+              })()}
             </div>
           </div>
         </div>
