@@ -490,8 +490,8 @@ export function NrgTcePanel() {
         : filtered.length === 0 ? (
           <div className="empty-state"><div className="icon">📋</div><h3>No TCE lines</h3><p>Import from XLSX or add lines manually.</p></div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-            <div style={{ overflowX: 'auto' }}>
+          <div className="card" style={{ padding: 0 }}>
+            <div className="table-scroll-x">
               <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '1100px' }}>
                 <thead>
                   <tr>

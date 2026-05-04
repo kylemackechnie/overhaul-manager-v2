@@ -752,7 +752,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                 </div>
 
                 {/* Calendar table */}
-                <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '12px' }}>
+                <div className="table-scroll-x" style={{ border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '12px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                     <thead>
                       <tr style={{ background: 'var(--bg3)' }}>

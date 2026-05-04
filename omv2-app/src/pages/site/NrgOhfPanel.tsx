@@ -321,7 +321,7 @@ export function NrgOhfPanel() {
 
       /* Main table */
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="table-scroll-x">
           <table className="data-table" style={{ width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>

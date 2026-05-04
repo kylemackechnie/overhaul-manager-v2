@@ -252,11 +252,11 @@ export function InductionsPanel() {
 
       {/* Table */}
       {resources.length > 0 && inductionData.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="table-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
             <thead>
               <tr style={{ background: 'var(--bg3)' }}>
-                <th style={{ textAlign: 'left', padding: '8px', position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 1, minWidth: '160px' }}>Name</th>
+                <th style={{ textAlign: 'left', padding: '8px', position: 'sticky', left: 0, background: 'var(--bg3)', zIndex: 3, minWidth: '160px' }}>Name</th>
                 <th style={{ textAlign: 'left', padding: '8px', minWidth: '100px' }}>Role</th>
                 <th style={{ textAlign: 'left', padding: '8px', minWidth: '110px' }}>Mob In → Out</th>
                 {INDUCTION_COURSES.map(c => (

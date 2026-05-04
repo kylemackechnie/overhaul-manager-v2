@@ -146,7 +146,7 @@ export function GanttPanel() {
       {rows.length===0 && !loading ? (
         <div className="empty-state"><div className="icon">📋</div><h3>No timeline data</h3><p>Add resources with mob dates, hire items, and tooling to see the Gantt chart.</p></div>
       ) : (
-        <div style={{overflowX:'auto'}}>
+        <div className="table-scroll-x">
           <table style={{borderCollapse:'collapse',minWidth:`${200 + zoom*CELL_W}px`,fontSize:'11px'}}>
             <thead>
               {/* Month header */}

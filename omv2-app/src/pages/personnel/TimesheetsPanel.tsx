@@ -913,7 +913,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         )
       ) : (
         // ── ACTIVE WEEK GRID ──
-        <div style={{ overflowX: 'auto' }}>
+        <div className="table-scroll-x">
           {/* Week controls */}
           <div className="card" style={{ marginBottom: '12px', padding: '10px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

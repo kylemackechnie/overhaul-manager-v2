@@ -138,7 +138,7 @@ export function ToolingDashboard() {
           <div style={{ padding: '10px 14px', fontWeight: 600, fontSize: '12px', borderBottom: '1px solid var(--border)', background: 'var(--bg3)' }}>
             Project TV Register
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll-x">
             <table style={{ fontSize: '12px', minWidth: '900px' }}>
               <thead>
                 <tr>

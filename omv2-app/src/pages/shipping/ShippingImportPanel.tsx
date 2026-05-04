@@ -721,7 +721,7 @@ export function ShippingImportPanel() {
                 &nbsp;
                 <button className="btn btn-xs" onClick={() => setTVParsed(p => p.map(t => ({ ...t, shipType: 'hardware' })))}>All Hardware</button>
               </div>
-              <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+              <div className="table-scroll-x" style={{ marginBottom: '10px' }}>
                 <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg3)' }}>

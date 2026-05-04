@@ -397,7 +397,7 @@ ${sectionHTML}
             {displayed.length === 0 ? (
               <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>✅ No lines match this filter</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll-x">
                 <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '700px', width: '100%' }}>
                   <thead>
                     <tr>
@@ -479,7 +479,7 @@ ${sectionHTML}
             {fpRows.length === 0 ? (
               <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>No fixed price lines</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll-x">
                 <table style={{ fontSize: '12px', tableLayout: 'fixed', width: '100%' }}>
                   <thead>
                     <tr>

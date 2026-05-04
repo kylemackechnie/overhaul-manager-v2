@@ -412,7 +412,7 @@ export function SubconRFQRegisterPanel() {
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll-x">
             <table style={{ fontSize: '12px', minWidth: '1100px', width: '100%' }}>
               <thead>
                 <tr>
@@ -569,7 +569,7 @@ export function SubconRFQRegisterPanel() {
               <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
                 Vendor: <strong style={{ color: '#7c3aed' }}>{importWizard.resp.vendor}</strong> · {importWizard.rows.length} position{importWizard.rows.length !== 1 ? 's' : ''}. Fill in names — leave blank to skip. Imported as <strong>Subcontractor</strong> type.
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg3)' }}>
@@ -662,7 +662,7 @@ export function SubconRFQRegisterPanel() {
                 RFQ: <strong>{equipWizard.doc.title}</strong> · Vendor: <strong style={{ color: 'var(--mod-hire, #d97706)' }}>{equipWizard.resp.vendor}</strong><br />
                 Tick items to import. Adjust rates and dates. All items import as Dry Hire.
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg3)' }}>

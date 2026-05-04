@@ -139,7 +139,7 @@ export function UtilisationPanel() {
             No resource deployments with mob dates in this period.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll-x">
             <table style={{ borderCollapse: 'collapse', minWidth: 900, width: '100%' }}>
               <thead>
                 <tr style={{ background: 'var(--bg3)' }}>

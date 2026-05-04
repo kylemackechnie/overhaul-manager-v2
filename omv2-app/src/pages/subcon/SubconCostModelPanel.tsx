@@ -483,7 +483,7 @@ function CostModelOutput({ result, doc, startDate, endDate, pattern }: { result:
       {labourRoles.length > 0 && (
         <>
           <SectionTitle>Cost per Shift — by Role <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>(shift cost + LAHA per person-position)</span></SectionTitle>
-          <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
+          <div className="table-scroll-x" style={{ marginBottom: '20px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
               <thead>
                 <tr>
@@ -619,7 +619,7 @@ function VendorRateSnapshot({ vendor: v, doc, startDate, pattern }: { vendor: Pe
       <SectionTitle>{v.vendor} — Rate Card &amp; Daily Snapshot</SectionTitle>
 
       {/* Rate card */}
-      <div style={{ overflowX: 'auto', marginBottom: '10px' }}>
+      <div className="table-scroll-x" style={{ marginBottom: '10px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px' }}>
           <thead><tr>
             {['Role', 'Shift', 'DS NT $/hr', 'DS T1.5 $/hr', 'DS DT $/hr', 'DS NT hrs', 'DS T1.5 hrs', 'DS total hrs', 'NS NT $/hr', 'NS DT $/hr', 'NS NT hrs', 'NS total hrs', 'LAHA/day'].map(h => (
@@ -660,7 +660,7 @@ function VendorRateSnapshot({ vendor: v, doc, startDate, pattern }: { vendor: Pe
       </div>
 
       {/* Weekly person snapshot */}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="table-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px' }}>
           <thead><tr>
             <th style={{ ...hStyle, textAlign: 'left', minWidth: '180px' }}>Person</th>
@@ -765,7 +765,7 @@ function DayByDayTable({ result, doc, startDate, endDate }: { result: CostModelR
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="table-scroll-x">
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
         <thead><tr>
           <th style={{ padding: '4px 8px', border: '1px solid var(--border2)', background: 'var(--bg3)', fontSize: '9px', textAlign: 'left' }}>Date</th>
@@ -857,7 +857,7 @@ function CumulativeChart({ result }: { result: CostModelResult }) {
   return (
     <div style={{ marginBottom: '20px' }}>
       <SectionTitle>Cumulative Cost — All Vendors</SectionTitle>
-      <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', overflowX: 'auto' }}>
+      <div className="table-scroll-x" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ minWidth: '480px', display: 'block' }}
           dangerouslySetInnerHTML={{ __html: yLines + xLabels + vendorPaths + legend }} />
       </div>
@@ -875,7 +875,7 @@ function SectionTable({ children, title }: { children: React.ReactNode; title?: 
   return (
     <div style={{ marginBottom: '20px' }}>
       {title && <SectionTitle>{title}</SectionTitle>}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="table-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>{children}</table>
       </div>
     </div>
