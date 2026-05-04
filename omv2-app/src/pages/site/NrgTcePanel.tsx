@@ -8,7 +8,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
-import { nrgLineActual, nrgLineActualHours, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { nrgLineActual, nrgLineActualHours, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
