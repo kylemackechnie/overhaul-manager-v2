@@ -364,7 +364,7 @@ export function ProjectSettingsPanel() {
           <button className="btn btn-sm" onClick={() => setDefaultHours(12)}>12h weekdays</button>
           <button className="btn btn-sm" onClick={() => setDefaultHours(0)}>Clear all</button>
         </div>
-        <div className="table-scroll-x">
+        <div style={{overflowX:'auto'}}>
           <table style={{fontSize:'12px',borderCollapse:'collapse',width:'100%'}}>
             <thead>
               <tr style={{background:'var(--bg3)'}}>
@@ -457,7 +457,7 @@ export function ProjectSettingsPanel() {
               <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:'10px'}}>
                 Enter hours per shift for each day. Set 0 for rest days. Night shift hours are only used for dual-shift or night-only roles in the cost model.
               </div>
-              <div className="table-scroll-x">
+              <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
                   <thead>
                     <tr style={{background:'var(--bg3)'}}>
@@ -573,7 +573,7 @@ export function ProjectSettingsPanel() {
                   </button>
                 ))}
               </div>
-              <div className="table-scroll-x" style={{border:'1px solid var(--border)',borderRadius:'6px'}}>
+              <div style={{overflowX:'auto',border:'1px solid var(--border)',borderRadius:'6px'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
                   <thead>
                     <tr style={{background:'var(--bg3)'}}>

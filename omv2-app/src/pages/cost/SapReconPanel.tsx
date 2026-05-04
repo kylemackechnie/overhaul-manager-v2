@@ -346,7 +346,7 @@ export function SapReconPanel() {
               })
 
               return (
-                <div className="table-scroll-x">
+                <div style={{ overflowX: 'auto' }}>
                   <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '8px' }}>
                     Matching SAP labour entries (cost element 61800160) against project resources.
                   </p>
@@ -391,7 +391,7 @@ export function SapReconPanel() {
               const catRows = Object.entries(sapByCat).sort(([,a],[,b]) => b - a)
               const catTotal = catRows.reduce((s,[,v]) => s + v, 0)
               return (
-                <div className="table-scroll-x">
+                <div style={{ overflowX: 'auto' }}>
                   <table className="data-table">
                     <thead><tr><th>CO Object Name / Category</th><th style={{ textAlign: 'right' }}>SAP Value</th><th style={{ textAlign: 'right' }}>% of Total</th></tr></thead>
                     <tbody>
@@ -430,7 +430,7 @@ export function SapReconPanel() {
               })
               const wbsTotal = wbsRows.reduce((s, r) => s + r.sapVal, 0)
               return (
-                <div className="table-scroll-x">
+                <div style={{ overflowX: 'auto' }}>
                   <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '8px' }}>
                     SAP uses full WBS paths (e.g. 50OC-0002031.01.01.01). Our codes match inner segments.
                   </p>
@@ -461,7 +461,7 @@ export function SapReconPanel() {
 
             {/* RAW */}
             {tab === 'raw' && (
-              <div className="table-scroll-x">
+              <div style={{ overflowX: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>

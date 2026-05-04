@@ -457,7 +457,7 @@ export function MikaPanel() {
 
           {/* Full MIKA table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="table-scroll-x">
+            <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: '11px', width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>

@@ -426,7 +426,7 @@ export function ForecastPanel() {
       ) : (
         <>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="table-scroll-x">
+            <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg3)' }}>

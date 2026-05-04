@@ -90,7 +90,7 @@ export function GlobalPartsPanel() {
           <p>Parts are added through individual project spare parts modules.</p>
         </div>
       ) : (
-        <div className="table-scroll-x">
+        <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>

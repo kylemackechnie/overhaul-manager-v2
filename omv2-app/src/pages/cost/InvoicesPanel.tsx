@@ -494,7 +494,7 @@ export function InvoicesPanel() {
       ) : filtered.length === 0 ? (
         <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
       ) : (
-        <div className="card table-scroll-x" style={{padding:0}}>
+        <div className="card" style={{padding:0,overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',tableLayout:'fixed',minWidth:'1000px'}}>
             <thead>
               <tr>

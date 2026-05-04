@@ -1,7 +1,7 @@
 import { useAppStore } from '../../store/appStore'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { GlobalSearch } from '../GlobalSearch'
 import { usePermissions } from '../../lib/permissions'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
@@ -244,20 +244,6 @@ export function Ribbon() {
   const { prefs, setPref } = useUserPrefs()
   const [showTabPicker, setShowTabPicker] = useState(false)
 
-  // ── Measure ribbon height → set --ribbon-h CSS var for sticky thead ────────
-  const ribbonRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    function update() {
-      if (ribbonRef.current) {
-        document.documentElement.style.setProperty('--ribbon-h', ribbonRef.current.offsetHeight + 'px')
-      }
-    }
-    update()
-    const ro = new ResizeObserver(update)
-    if (ribbonRef.current) ro.observe(ribbonRef.current)
-    return () => ro.disconnect()
-  }, [])
-
   // ── Tab personalisation ────────────────────────────────────────────────────
   // Merge saved prefs with current RIBBON_MODULES registry.
   // New tabs added to the registry appear at the end, visible by default.
@@ -350,7 +336,7 @@ export function Ribbon() {
   const activeTab = RIBBON_MODULES.find(t => t.key === activeRibbonTab) ?? visibleTabs[0]
 
   return (
-    <div ref={ribbonRef} style={{
+    <div style={{
       background: 'var(--bg)', borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 100,
     }}>
