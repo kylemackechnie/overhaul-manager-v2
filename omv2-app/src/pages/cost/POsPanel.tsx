@@ -445,23 +445,6 @@ export function POsPanel() {
                 <label>Notes</label>
                 <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} />
               </div>
-              {tceLines.length > 0 && (
-                <div className="fg">
-                  <label>🎯 TCE Line</label>
-                  <select className="input"
-                    value={(form as typeof form & {tce_item_id?:string}).tce_item_id || ''}
-                    onChange={e => setForm(f => ({...f, tce_item_id: e.target.value || null} as typeof f))}>
-                    <option value="">— No TCE link —</option>
-                    {(['overhead','skilled'] as const).map(src => {
-                      const srcLines = tceLines.filter(l => l.source === src && l.line_type !== 'group' && !/^\d+\.\d+\.\d+$/.test(l.item_id || ''))
-                      if (!srcLines.length) return null
-                      return <optgroup key={src} label={src === 'overhead' ? 'Overhead' : 'Skilled Labour'}>
-                        {srcLines.map(l => <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
-                      </optgroup>
-                    })}
-                  </select>
-                </div>
-              )}
             </div>
             <div className="modal-footer">
               {modal !== 'new' && <button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{deletePO(modal as PurchaseOrder);setModal(null)}}>Delete</button>}
