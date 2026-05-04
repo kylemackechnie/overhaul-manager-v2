@@ -120,7 +120,7 @@ export function NrgTcePanel() {
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
         .eq('project_id', pid).eq('status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,date,description,vendor,expense_ref,category').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
@@ -911,8 +911,8 @@ export function NrgTcePanel() {
                     {lineExpenses.map((e, idx) => (
                       <tr key={idx} style={{ borderBottom:'1px solid var(--border)' }}>
                         <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#fef3c7', color:'#92400e', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Expense</span></td>
-                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).ref as string || '—'}</td>
-                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(e as unknown as Record<string,unknown>).description as string || (e as unknown as Record<string,unknown>).ref as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).expense_ref as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(e as unknown as Record<string,unknown>).description as string || (e as unknown as Record<string,unknown>).vendor as string || (e as unknown as Record<string,unknown>).category as string || '—'}</td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{e.date || '—'}</td>
                         <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt(e.cost_ex_gst || e.amount || 0)}</td>
                       </tr>
