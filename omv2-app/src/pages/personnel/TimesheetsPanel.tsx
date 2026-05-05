@@ -1279,13 +1279,23 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               const scopeLabel = allocs.length === 1
                                 ? (allocs[0].label || allocs[0].tceItemId || allocs[0].wo || '').replace(/^\[(WO|SL|OH)\]\s*/, '').slice(0, 26)
                                 : allocs.length > 1 ? `${allocs.length} scopes` : ''
+                              // Reconciliation check: sum of TCE alloc hours vs day total hours
+                              const tceTotal = allocs.reduce((s, a) => s + (a.hours || 0), 0)
+                              const dayTotal = cellHrs
+                              const reconciled = allocs.length === 0 || Math.abs(tceTotal - dayTotal) < 0.05
                               return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                   <button onClick={() => openTceAlloc(member.personId, d, cellHrs, member.name)}
                                     style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#be185d' : 'var(--border2)'}`, background: allocs.length ? 'rgba(244,114,182,0.08)' : 'transparent', color: allocs.length ? '#be185d' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
                                     {allocs.length ? `🎯 ${allocs.length} alloc${allocs.length > 1 ? 's' : ''}` : '🎯 TCE'}
                                   </button>
-                                  {scopeLabel && (
+                                  {!reconciled && (
+                                    <div title={`TCE total ${tceTotal.toFixed(2)}h ≠ day hours ${dayTotal.toFixed(2)}h — reimport TasTK or adjust allocations`}
+                                      style={{ fontSize: '8px', color: '#d97706', lineHeight: 1.2, textAlign: 'center', cursor: 'help' }}>
+                                      ⚠ {tceTotal.toFixed(1)}h≠{dayTotal.toFixed(1)}h
+                                    </div>
+                                  )}
+                                  {reconciled && scopeLabel && (
                                     <div style={{ fontSize: '8px', color: '#be185d', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={allocs[0]?.label || ''}>
                                       {scopeLabel}
                                     </div>

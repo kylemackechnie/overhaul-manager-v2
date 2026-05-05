@@ -222,11 +222,14 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
           if (!day || day.hours <= 0) continue
           const allocs = day.nrgWoAllocations || []
           if (allocs.length === 0) continue
-          const payCode  = getPayCode(day.dayType)
-          const position = contractPrefix ? `${contractPrefix}-${trade}-${payCode}` : `${trade}-${payCode}`
           const dateSerial = toExcelSerial(dateStr)
           for (const alloc of allocs) {
             if (alloc.hours <= 0) continue
+            // Use payCode from TasTK import when present — this preserves the
+            // exact DT1.0/DT1.5/DT2.0 split from Timecloud. Fall back to
+            // deriving from dayType for manually-entered timesheets.
+            const payCode = (alloc as {payCode?: string}).payCode || getPayCode(day.dayType)
+            const position = contractPrefix ? `${contractPrefix}-${trade}-${payCode}` : `${trade}-${payCode}`
             const { contract, woTask } = resolveContractWo(alloc)
             rows.push({ name:fullName, empNo, position, contract, woTask, dateSerial, hours:alloc.hours })
           }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from './ui/Toast'
 import { downloadTemplate } from '../lib/templates'
+import { supabase } from '../lib/supabase'
 import type { WeeklyTimesheet } from '../types'
 
 
@@ -63,8 +64,9 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       const iName   = col('Full Name')
       const iDate   = col('Timesheet Date')
       const iQty    = col('Quantity')
-      const iOp = col('Operation - Custom Code')
-      const iPay = col('Pay Code')
+      const iOp     = col('Operation - Custom Code')
+      const iPay    = col('Pay Code')
+      const iCustId = col('Custom ID')   // NRG employee number
 
       if (iName < 0 || iDate < 0 || iQty < 0) {
         setResult({ msg: 'Missing required columns — expected "Full Name", "Timesheet Date", "Quantity"', ok: false })
@@ -72,8 +74,9 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       }
 
       const weekDates = weekDateSet(aw.week_start)
+      // key: name → { customId, days: { date → rows[] } }
       type RowEntry = { qty: number; op: string; payCode: string }
-      const personDays: Record<string, Record<string, RowEntry[]>> = {}
+      const personData: Record<string, { customId: string; days: Record<string, RowEntry[]> }> = {}
 
       for (let i = 1; i < lines.length; i++) {
         const row = parseCSVLine(lines[i])
@@ -86,12 +89,14 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         if (!weekDates.has(dateStr)) continue
         const qty = parseFloat(row[iQty] || '0') || 0
         if (qty <= 0) continue
-        // Operation - Custom Code is either a TCE item ID (e.g. "2.02.5.1") or "Mob/Demob" or blank
-        const op = (iOp >= 0 ? row[iOp]?.trim() : '') || ''
-        if (!personDays[name]) personDays[name] = {}
-        if (!personDays[name][dateStr]) personDays[name][dateStr] = []
-        const payCode = (iPay >= 0 ? row[iPay]?.trim() : '') || ''
-        personDays[name][dateStr].push({ qty, op, payCode })
+        const op      = (iOp     >= 0 ? row[iOp]?.trim()     : '') || ''
+        const payCode = (iPay    >= 0 ? row[iPay]?.trim()    : '') || ''
+        const custId  = (iCustId >= 0 ? row[iCustId]?.trim() : '') || ''
+        if (!personData[name]) personData[name] = { customId: custId, days: {} }
+        if (!personData[name].days[dateStr]) personData[name].days[dateStr] = []
+        personData[name].days[dateStr].push({ qty, op, payCode })
+        // Keep most recently seen customId (in case it varies — shouldn't)
+        if (custId) personData[name].customId = custId
       }
 
       let matched = 0; const unmatched: string[] = []; let daysWritten = 0
@@ -99,25 +104,31 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
 
       const updatedCrew = crew.map(member => {
         let bestScore = 0; let bestMatch = ''
-        Object.keys(personDays).forEach(pName => {
+        Object.keys(personData).forEach(pName => {
           const score = fuzzyMatch(member.name, pName)
           if (score > bestScore) { bestScore = score; bestMatch = pName }
         })
         if (bestScore < 0.65) return member
         matched++
+        const pData = personData[bestMatch]
         const updatedDays = { ...member.days }
-        Object.entries(personDays[bestMatch]).forEach(([dateStr, rows]) => {
+
+        Object.entries(pData.days).forEach(([dateStr, rows]) => {
           const totalHours = rows.reduce((s, r) => s + r.qty, 0)
-          // op is either a TCE item ID (has dots), "Mob/Demob", or blank
           const isMob = rows.some(r => r.op === 'Mob/Demob')
-          const existing = (updatedDays[dateStr] || {}) as DayEntry & { nrgWoAllocations?: { tceItemId: string; hours: number }[] }
+          const existing = (updatedDays[dateStr] || {}) as DayEntry & { nrgWoAllocations?: unknown[] }
           const dayType = isMob ? 'travel' : ((existing.dayType as string) || 'weekday')
-          // Rows with a TCE code (not Mob/Demob, not blank) → nrgWoAllocations
-          // payCode preserved per row so client reports can show NT/T1.5/DT split per scope
+
+          // Build nrgWoAllocations: one entry per (scope, payCode) pair.
+          // This preserves the Timecloud split exactly — DT1.0/DT1.5/DT2.0 are
+          // separate entries so the NRG export can emit them as separate rows.
+          // Rows with no scope (blank op, not Mob) are skipped — they have no
+          // TCE item to attribute to.
           const rowsWithTce = rows.filter(r => r.op && r.op !== 'Mob/Demob')
           const nrgWoAllocations = rowsWithTce.length > 0
             ? rowsWithTce.map(r => ({ tceItemId: r.op, hours: r.qty, payCode: r.payCode }))
             : existing.nrgWoAllocations
+
           updatedDays[dateStr] = {
             ...existing,
             hours: totalHours,
@@ -130,12 +141,38 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         return { ...member, days: updatedDays }
       })
 
-      Object.keys(personDays).forEach(name => {
+      Object.keys(personData).forEach(name => {
         if (!crew.some(m => fuzzyMatch(m.name, name) >= 0.65)) unmatched.push(name)
       })
 
       onUpdate({ ...aw, crew: updatedCrew as WeeklyTimesheet['crew'] })
-      let msg = `✓ TasTK: ${matched}/${Object.keys(personDays).length} people matched, ${daysWritten} days written`
+
+      // ── Back-fill NRG employee numbers from Custom ID ─────────────────────
+      // For each matched crew member that has a Custom ID in the CSV, write it
+      // to persons.nrg_employee_number if not already set. Fire-and-forget.
+      const empUpdates: Promise<unknown>[] = []
+      crew.forEach(member => {
+        let bestScore = 0; let bestMatch = ''
+        Object.keys(personData).forEach(pName => {
+          const score = fuzzyMatch(member.name, pName)
+          if (score > bestScore) { bestScore = score; bestMatch = pName }
+        })
+        if (bestScore < 0.65 || !bestMatch) return
+        const custId = personData[bestMatch].customId
+        if (!custId || !member.personId) return
+        // Only write if different from what's stored (avoid unnecessary writes)
+        empUpdates.push(
+          supabase.from('persons')
+            .update({ nrg_employee_number: custId })
+            .eq('id', member.personId)
+            .is('nrg_employee_number', null)  // only set if not already populated
+        )
+      })
+      if (empUpdates.length > 0) {
+        await Promise.all(empUpdates)
+      }
+
+      let msg = `✓ TasTK: ${matched}/${Object.keys(personData).length} people matched, ${daysWritten} days written`
       if (unmatched.length) msg += `. ⚠ Not matched: ${unmatched.join(', ')}`
       setResult({ msg, ok: matched > 0 })
       if (matched > 0) toast(msg, 'success')
