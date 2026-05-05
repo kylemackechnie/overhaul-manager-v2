@@ -23,6 +23,7 @@ import { supabase } from '../lib/supabase'
 import { useAppStore } from '../store/appStore'
 import { toast } from './ui/Toast'
 import type { NrgTceLine } from '../types'
+import { NRG_TIMESHEET_TEMPLATE_B64 } from './nrgTimesheetTemplate'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,54 +120,71 @@ function weekEndingFilename(weekStart: string): string {
   return `${dd}-${mon}-${d.getUTCFullYear()}`
 }
 
-// ─── Template header (rows 1-5) written via SheetJS ──────────────────────────
+// ─── Build workbook from embedded template ────────────────────────────────────
+// Load the original NRG template (preserves logos, colours, merged cells,
+// formatting exactly), clear data rows 6+, write new rows in.
+// Data rows start at row index 5 (0-based) = row 6 in Excel.
+
+const DATA_START_ROW = 5 // 0-based index = Excel row 6
 
 function buildWorkbook(rows: ExportRow[], weekStart: string): XLSX.WorkBook {
-  const wb = XLSX.utils.book_new()
-  const ws: XLSX.WorkSheet = {}
+  // Decode the embedded template
+  const binary = atob(NRG_TIMESHEET_TEMPLATE_B64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const wb = XLSX.read(bytes, { type: 'array', cellStyles: true })
 
-  // Row 1: Title
-  ws['B1'] = { v: ' TIME SHEET', t: 's' }
+  const ws = wb.Sheets[wb.SheetNames[0]]
 
-  // Row 2: Format hints
-  const fmt2 = ['FIRST LAST', 'NNNNNNNN', 'NNN', 'NNNNNNNN-NNNNN', 'NNNNNNN-NN', ' ', 'DD/MM/YYYY', 'HH:MM', 'HH:MM', 'HH:MM']
-  fmt2.forEach((v, i) => { ws[XLSX.utils.encode_cell({ r: 1, c: i })] = { v, t: 's' } })
+  // Clear all existing data rows (keep header rows 1-5)
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:J469')
+  for (let r = DATA_START_ROW; r <= range.e.r; r++) {
+    for (let c = 0; c <= 9; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      if (ws[addr]) {
+        // Preserve style, just clear value
+        ws[addr].v = undefined
+        ws[addr].w = undefined
+        ws[addr].t = 'z'
+      }
+    }
+  }
 
-  // Row 3: Column labels
-  const labels = ['Contractor Name', 'Employee Number', 'Position', 'Contract', 'Work Order Number-Task', ' ', 'Date', 'Start Time', 'End Time', 'Hours Worked']
-  labels.forEach((v, i) => { ws[XLSX.utils.encode_cell({ r: 2, c: i })] = { v, t: 's' } })
-
-  // Row 4: Field names
-  const fields = ['EMP_NAME', 'EMP_NO', 'POSITION', 'CONTRACT', 'WO_NO-TASK', 'SPARE', 'DATE', 'START_TIME', 'END_TIME', 'HOURS']
-  fields.forEach((v, i) => { ws[XLSX.utils.encode_cell({ r: 3, c: i })] = { v, t: 's' } })
-
-  // Data rows starting at row 5 (0-indexed: 4)
+  // Write data rows
   rows.forEach((row, ri) => {
-    const r = 4 + ri
-    ws[XLSX.utils.encode_cell({ r, c: 0 })] = { v: row.name,     t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 1 })] = { v: row.empNo,    t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 2 })] = { v: row.position, t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 3 })] = { v: row.contract, t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 4 })] = { v: row.woTask,   t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 5 })] = { v: '',           t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 6 })] = { v: formatDateDMY(row.date), t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 7 })] = { v: '',           t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 8 })] = { v: '',           t: 's' }
-    ws[XLSX.utils.encode_cell({ r, c: 9 })] = { v: row.hours,    t: 'n' }
+    const r = DATA_START_ROW + ri
+
+    const set = (c: number, v: string | number, t: 's' | 'n') => {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      // Copy style from corresponding template row 6 cell (DATA_START_ROW)
+      const tmplAddr = XLSX.utils.encode_cell({ r: DATA_START_ROW, c })
+      const style = ws[tmplAddr]?.s
+      ws[addr] = { v, t, ...(style ? { s: style } : {}) }
+    }
+
+    set(0, row.name,              's')
+    set(1, row.empNo,             's')
+    set(2, row.position,          's')
+    set(3, row.contract,          's')
+    set(4, row.woTask,            's')
+    set(5, '',                    's')
+    set(6, formatDateDMY(row.date),'s')
+    set(7, '',                    's')
+    set(8, '',                    's')
+    set(9, row.hours,             'n')
   })
 
-  const totalRows = 4 + rows.length
-  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalRows - 1, c: 9 } })
+  // Update sheet ref to cover actual data
+  const lastRow = DATA_START_ROW + rows.length - 1
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(lastRow, range.e.r), c: range.e.c } })
 
-  // Column widths (matching original template)
-  ws['!cols'] = [
-    { wch: 29 }, { wch: 20 }, { wch: 30 }, { wch: 15 },
-    { wch: 28 }, { wch: 3  }, { wch: 12 }, { wch: 12 },
-    { wch: 12 }, { wch: 12 },
-  ]
+  // Rename sheet tab to match week
+  const oldName = wb.SheetNames[0]
+  const sheetName = `NRG WE ${weekEndingLabel(weekStart)}`.slice(0, 31)
+  wb.SheetNames[0] = sheetName
+  wb.Sheets[sheetName] = ws
+  if (oldName !== sheetName) delete wb.Sheets[oldName]
 
-  const sheetName = `NRG WE ${weekEndingLabel(weekStart)}`
-  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31))
   return wb
 }
 
