@@ -500,10 +500,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   function openTceAlloc(personId: string, date: string, hours: number, name: string) {
     const member = activeWeek?.crew.find(m => m.personId === personId)
     const allAllocs = ((member?.days?.[date] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[]) || []
-    // Only show TCE-mode rows in the editor — preserve TasTK rows on save
-    // TCE-mode rows have _tceMode=true or tceItemId set
+    // Show all rows that have any scope identity — _tceMode manual rows, tceItemId rows, and WO-keyed TasTK rows
     const tceRows = allAllocs
-      .filter(a => a._tceMode || a.tceItemId)
+      .filter(a => a._tceMode || a.tceItemId || a.wo)
       .map(a => ({
         key: a.tceItemId ? `tce:${a.tceItemId}` : `wo:${a.wo}`,
         label: a.label || (a.tceItemId ? a.tceItemId : a.wo) || '',
@@ -522,8 +521,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     const updated = activeWeek.crew.map(m => {
       if (m.personId !== tceAllocModal.personId) return m
       const allAllocs = ((m.days?.[tceAllocModal.date] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[]) || []
-      // Preserve TasTK-imported rows (no _tceMode, no tceItemId) — spec: never overwrite these
-      const preserved = allAllocs.filter(a => !a._tceMode && !a.tceItemId)
+      // Preserve only rows with no scope identity at all (shouldn't normally exist,
+      // but guards against data we don't understand). WO-keyed and item-keyed rows
+      // are all shown in the editor and replaced on save.
+      const preserved = allAllocs.filter(a => !a._tceMode && !a.tceItemId && !a.wo)
       // Convert editor rows to correct spec shape
       const tceFinal: NrgWoAlloc[] = tceAllocRows.filter(r => r.hours > 0 && r.key).map(r => {
         if (r.key.startsWith('wo:')) {
@@ -1021,11 +1022,11 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       const workedDays = days.filter(d => ((member.days[d] as Record<string,unknown>)?.hours as number || 0) > 0)
                       let currentKey = ''
                       if (workedDays.length > 0) {
-                        const firstAllocs = ((member.days[workedDays[0]] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId)
+                        const firstAllocs = ((member.days[workedDays[0]] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId || a.wo)
                         if (firstAllocs.length === 1) {
                           const fk = firstAllocs[0].tceItemId ? `tce:${firstAllocs[0].tceItemId}` : `wo:${firstAllocs[0].wo}`
                           const allMatch = workedDays.every(d => {
-                            const da = ((member.days[d] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId)
+                            const da = ((member.days[d] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId || a.wo)
                             return da.length === 1 && (da[0].tceItemId ? `tce:${da[0].tceItemId}` : `wo:${da[0].wo}`) === fk
                           })
                           if (allMatch) currentKey = fk
@@ -1275,7 +1276,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               )
                             })()}
                             {scopeMode === 'nrg_tce' && (() => {
-                              const allocs = ((raw.nrgWoAllocations as NrgWoAlloc[]) || []).filter(a => a._tceMode || a.tceItemId)
+                              const allocs = ((raw.nrgWoAllocations as NrgWoAlloc[]) || []).filter(a => a._tceMode || a.tceItemId || a.wo)
                               const scopeLabel = allocs.length === 1
                                 ? (allocs[0].label || allocs[0].tceItemId || allocs[0].wo || '').replace(/^\[(WO|SL|OH)\]\s*/, '').slice(0, 26)
                                 : allocs.length > 1 ? `${allocs.length} scopes` : ''
