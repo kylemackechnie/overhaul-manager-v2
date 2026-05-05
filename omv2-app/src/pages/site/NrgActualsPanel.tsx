@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
 import { nrgInvoiceActual, nrgInvoiceActualForWeek, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { NrgTimesheetExportModal } from '../../components/NrgTimesheetExportModal'
 import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
 import type { RateCard, WeeklyTimesheet } from '../../types'
 import type { NrgTceLine } from '../../types'
@@ -43,6 +44,7 @@ export function NrgActualsPanel() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
+  const [showExport, setShowExport] = useState(false)
   // Selected week for the "this week" column. Empty = no filter (column hidden).
   // Stored as Monday's ISO date.
   const [weekFilter, setWeekFilter] = useState<string>('')
@@ -304,6 +306,7 @@ ${sectionHTML}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-sm" onClick={() => setShowExport(true)}>📋 NRG Timesheet</button>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={printReport}>🖨 Print</button>
           <button className="btn btn-sm" title="Recalculate cost lines from timesheets (run after re-saving timesheets)" onClick={load}>↻ Refresh</button>
@@ -527,5 +530,6 @@ ${sectionHTML}
         </div>
       )}
     </div>
+    {showExport && <NrgTimesheetExportModal onClose={() => setShowExport(false)} />}
   )
 }

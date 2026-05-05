@@ -13,10 +13,13 @@ import { supabase } from './supabase'
 export interface Person {
   id: string
   full_name: string
+  first_name: string | null
+  last_name: string | null
   preferred_name: string | null
   email: string | null
   phone: string | null
   employee_id: string | null
+  nrg_employee_number: string | null
   company: string | null
   default_category: 'trades' | 'management' | 'seag' | 'subcontractor' | null
   default_role: string | null
@@ -37,14 +40,25 @@ export interface FindOrCreateResult {
 
 export interface PersonInput {
   full_name: string
+  first_name?: string | null
+  last_name?: string | null
   email?: string | null
   phone?: string | null
   company?: string | null
   employee_id?: string | null
+  nrg_employee_number?: string | null
   default_category?: Person['default_category']
   default_role?: string | null
   preferred_name?: string | null
   notes?: string | null
+}
+
+/** Split "First Last" on last space — handles multi-part first names e.g. "Mary Jane Watson" → first="Mary Jane", last="Watson" */
+export function splitFullName(full_name: string): { first_name: string; last_name: string } {
+  const trimmed = full_name.trim()
+  const idx = trimmed.lastIndexOf(' ')
+  if (idx === -1) return { first_name: trimmed, last_name: '' }
+  return { first_name: trimmed.slice(0, idx), last_name: trimmed.slice(idx + 1) }
 }
 
 /**
@@ -82,17 +96,21 @@ export async function findOrCreatePerson(
   }
 
   // 3. Create new
+  const { first_name: autoFirst, last_name: autoLast } = splitFullName(input.full_name)
   const payload: Partial<Person> = {
-    full_name:        input.full_name.trim(),
-    preferred_name:   input.preferred_name || null,
-    email:            email,
-    phone:            input.phone?.trim() || null,
-    employee_id:      input.employee_id?.trim() || null,
-    company:          input.company?.trim() || null,
-    default_category: input.default_category || null,
-    default_role:     input.default_role?.trim() || null,
-    notes:            input.notes || null,
-    active:           true,
+    full_name:            input.full_name.trim(),
+    first_name:           input.first_name?.trim() || autoFirst || null,
+    last_name:            input.last_name?.trim() || autoLast || null,
+    preferred_name:       input.preferred_name || null,
+    email:                email,
+    phone:                input.phone?.trim() || null,
+    employee_id:          input.employee_id?.trim() || null,
+    nrg_employee_number:  input.nrg_employee_number?.trim() || null,
+    company:              input.company?.trim() || null,
+    default_category:     input.default_category || null,
+    default_role:         input.default_role?.trim() || null,
+    notes:                input.notes || null,
+    active:               true,
   }
   const { data, error } = await supabase.from('persons').insert(payload).select().single()
   if (error) throw new Error(`findOrCreatePerson: ${error.message}`)

@@ -39,6 +39,14 @@ export function PersonCard({ person, onClose }: PersonCardProps) {
   const [appUser, setAppUser] = useState<{ id: string; email: string; role: string; active: boolean; last_login: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Inline edit state for person fields
+  const [editingNrgEmp, setEditingNrgEmp] = useState(false)
+  const [nrgEmpVal, setNrgEmpVal] = useState(person.nrg_employee_number || '')
+  const [editingFirstLast, setEditingFirstLast] = useState(false)
+  const [firstVal, setFirstVal] = useState(person.first_name || '')
+  const [lastVal, setLastVal] = useState(person.last_name || '')
+  const [saving, setSaving] = useState(false)
+
   useEffect(() => {
     load()
   }, [person.id])
@@ -63,6 +71,30 @@ export function PersonCard({ person, onClose }: PersonCardProps) {
       setAppUser(data)
     }
     setLoading(false)
+  }
+
+  async function saveNrgEmpNumber() {
+    setSaving(true)
+    const val = nrgEmpVal.trim() || null
+    const { error } = await supabase.from('persons').update({ nrg_employee_number: val }).eq('id', person.id)
+    setSaving(false)
+    if (error) { toast('Failed to save NRG employee number', 'error'); return }
+    person.nrg_employee_number = val
+    setEditingNrgEmp(false)
+    toast('NRG employee number saved', 'success')
+  }
+
+  async function saveFirstLast() {
+    setSaving(true)
+    const first = firstVal.trim() || null
+    const last = lastVal.trim() || null
+    const { error } = await supabase.from('persons').update({ first_name: first, last_name: last }).eq('id', person.id)
+    setSaving(false)
+    if (error) { toast('Failed to save name', 'error'); return }
+    person.first_name = first
+    person.last_name = last
+    setEditingFirstLast(false)
+    toast('Name saved', 'success')
   }
 
   const now = new Date().toISOString().slice(0, 10)
@@ -182,6 +214,67 @@ export function PersonCard({ person, onClose }: PersonCardProps) {
                   </div>
                 </div>
               )}
+
+              {/* ── Person fields (editable) ── */}
+              <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                  Profile Fields
+                </div>
+
+                {/* First / Last name */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>First / Last Name</div>
+                  {editingFirstLast ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input className="input" style={{ flex: 1, fontSize: 12, padding: '4px 8px' }}
+                        placeholder="First" value={firstVal} onChange={e => setFirstVal(e.target.value)} />
+                      <input className="input" style={{ flex: 1, fontSize: 12, padding: '4px 8px' }}
+                        placeholder="Last" value={lastVal} onChange={e => setLastVal(e.target.value)} />
+                      <button className="btn btn-sm btn-primary" disabled={saving} onClick={saveFirstLast}>
+                        {saving ? '…' : '✓'}
+                      </button>
+                      <button className="btn btn-sm" onClick={() => { setFirstVal(person.first_name || ''); setLastVal(person.last_name || ''); setEditingFirstLast(false) }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>
+                        {person.first_name || person.last_name
+                          ? <>{person.first_name} <span style={{ color: 'var(--text2)' }}>{person.last_name}</span></>
+                          : <span style={{ color: 'var(--text3)' }}>Not set — auto-split from full name</span>}
+                      </span>
+                      <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => { setFirstVal(person.first_name || ''); setLastVal(person.last_name || ''); setEditingFirstLast(true) }}>Edit</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* NRG Employee Number */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>NRG Employee Number</div>
+                  {editingNrgEmp ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input className="input" style={{ flex: 1, fontSize: 12, padding: '4px 8px' }}
+                        placeholder="e.g. 140" value={nrgEmpVal} onChange={e => setNrgEmpVal(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveNrgEmpNumber(); if (e.key === 'Escape') { setNrgEmpVal(person.nrg_employee_number || ''); setEditingNrgEmp(false) } }} />
+                      <button className="btn btn-sm btn-primary" disabled={saving} onClick={saveNrgEmpNumber}>
+                        {saving ? '…' : '✓'}
+                      </button>
+                      <button className="btn btn-sm" onClick={() => { setNrgEmpVal(person.nrg_employee_number || ''); setEditingNrgEmp(false) }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>
+                        {person.nrg_employee_number
+                          ? <span style={{ fontFamily: 'var(--mono)', background: 'var(--bg3)', padding: '1px 6px', borderRadius: 4 }}>{person.nrg_employee_number}</span>
+                          : <span style={{ color: 'var(--text3)' }}>Not set</span>}
+                      </span>
+                      <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => setEditingNrgEmp(true)}>Edit</button>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+                    Used for NRG weekly timesheet exports. Global — applies across all projects.
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
