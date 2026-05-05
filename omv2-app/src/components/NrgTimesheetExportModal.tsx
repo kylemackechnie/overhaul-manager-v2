@@ -121,7 +121,7 @@ function weekEndingFilename(weekStart: string): string {
 
 // ─── Template header (rows 1-5) written via SheetJS ──────────────────────────
 
-function buildWorkbook(rows: ExportRow[], weekStart: string, projectName: string): XLSX.WorkBook {
+function buildWorkbook(rows: ExportRow[], weekStart: string): XLSX.WorkBook {
   const wb = XLSX.utils.book_new()
   const ws: XLSX.WorkSheet = {}
 
@@ -149,8 +149,6 @@ function buildWorkbook(rows: ExportRow[], weekStart: string, projectName: string
     ws[XLSX.utils.encode_cell({ r, c: 3 })] = { v: row.contract, t: 's' }
     ws[XLSX.utils.encode_cell({ r, c: 4 })] = { v: row.woTask,   t: 's' }
     ws[XLSX.utils.encode_cell({ r, c: 5 })] = { v: '',           t: 's' }
-    // Date: store as Excel date number with format d/mm/yyyy
-    const excelDate = XLSX.SSF.parse_date_code ? undefined : undefined // use string fallback
     ws[XLSX.utils.encode_cell({ r, c: 6 })] = { v: formatDateDMY(row.date), t: 's' }
     ws[XLSX.utils.encode_cell({ r, c: 7 })] = { v: '',           t: 's' }
     ws[XLSX.utils.encode_cell({ r, c: 8 })] = { v: '',           t: 's' }
@@ -308,16 +306,16 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
   }
 
   function generate() {
-    if (selectedWeeks.size === 0) { toast('Select at least one week', 'warning'); return }
+    if (selectedWeeks.size === 0) { toast('Select at least one week', 'info'); return }
     setGenerating(true)
     try {
       const weekList = Array.from(selectedWeeks).sort()
       const rows = buildRows(weekList)
-      if (rows.length === 0) { toast('No allocation data found for selected weeks', 'warning'); setGenerating(false); return }
+      if (rows.length === 0) { toast('No allocation data found for selected weeks', 'info'); setGenerating(false); return }
 
       // Use the earliest week_start as the sheet reference
       const primaryWeek = weekList[0]
-      const wb = buildWorkbook(rows, primaryWeek, activeProject?.name || 'Project')
+      const wb = buildWorkbook(rows, primaryWeek)
 
       const suffix = weekList.length > 1
         ? `WE_${weekEndingFilename(weekList[0])}_to_${weekEndingFilename(weekList[weekList.length - 1])}`
