@@ -162,11 +162,12 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
         if (!custId || !member.personId) return
         // Only write if different from what's stored (avoid unnecessary writes)
         empUpdates.push(
-          supabase.from('persons')
-            .update({ nrg_employee_number: custId })
-            .eq('id', member.personId)
-            .is('nrg_employee_number', null)
-            .then()
+          Promise.resolve(
+            supabase.from('persons')
+              .update({ nrg_employee_number: custId })
+              .eq('id', member.personId)
+              .is('nrg_employee_number', null)
+          )
         )
       })
       if (empUpdates.length > 0) {
