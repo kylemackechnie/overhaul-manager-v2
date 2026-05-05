@@ -154,7 +154,8 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
   const [timesheets, setTimesheets]         = useState<TimesheetRow[]>([])
   const [tceLines, setTceLines]             = useState<NrgTceLine[]>([])
   const [personMeta, setPersonMeta]         = useState<Record<string,PersonMeta>>({})
-  const [selectedWeeks, setSelectedWeeks]   = useState<Set<string>>(new Set())
+  const [dateFrom, setDateFrom]             = useState('')
+  const [dateTo, setDateTo]                 = useState('')
   const [contractPrefix, setContractPrefix] = useState('')
 
   useEffect(() => { if (pid) load() }, [pid])
@@ -202,12 +203,6 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
     setLoading(false)
   }
 
-  const weeks = Array.from(new Set(timesheets.map(t => t.week_start))).sort().reverse()
-
-  function toggleWeek(w: string) {
-    setSelectedWeeks(prev => { const n = new Set(prev); n.has(w) ? n.delete(w) : n.add(w); return n })
-  }
-
   const tceByItemId: Record<string,{contract:string;wo:string}> = {}
   const tceByWo:     Record<string,{contract:string;wo:string}> = {}
   for (const l of tceLines) {
@@ -221,11 +216,12 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
     return { contract:'', woTask: a.wo||'' }
   }
 
-  function buildRows(weekStarts: string[]): ExportRow[] {
-    const weekSet = new Set(weekStarts)
+  function buildRows(from: string, to: string): ExportRow[] {
     const rows: ExportRow[] = []
     for (const ts of timesheets) {
-      if (!weekSet.has(ts.week_start)) continue
+      // Skip timesheets whose entire week is outside range
+      const weekEnd = (() => { const d = new Date(ts.week_start + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10) })()
+      if (weekEnd < from || ts.week_start > to) continue
       for (const cm of (ts.crew||[])) {
         const meta     = personMeta[cm.personId]
         const empNo    = meta?.nrg_employee_number || ''
@@ -234,15 +230,14 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
           ? [meta.first_name||'', meta.last_name||''].filter(Boolean).join(' ') || meta.full_name
           : cm.name
         for (const [dateStr, day] of Object.entries(cm.days)) {
+          // Filter individual days by the date range
+          if (dateStr < from || dateStr > to) continue
           if (!day || day.hours <= 0) continue
           const allocs = day.nrgWoAllocations || []
           if (allocs.length === 0) continue
           const dateSerial = toExcelSerial(dateStr)
           for (const alloc of allocs) {
             if (alloc.hours <= 0) continue
-            // Use payCode from TasTK import when present — this preserves the
-            // exact DT1.0/DT1.5/DT2.0 split from Timecloud. Fall back to
-            // deriving from dayType for manually-entered timesheets.
             const payCode = (alloc as {payCode?: string}).payCode || getPayCode(day.dayType)
             const position = contractPrefix ? `${contractPrefix}-${trade}-${payCode}` : `${trade}-${payCode}`
             const { contract, woTask } = resolveContractWo(alloc)
@@ -254,17 +249,18 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
     return rows.sort((a,b) => a.dateSerial - b.dateSerial || a.name.localeCompare(b.name))
   }
 
+  const hasRange = dateFrom && dateTo && dateFrom <= dateTo
+
   function generate() {
-    if (selectedWeeks.size === 0) { toast('Select at least one week', 'info'); return }
+    if (!hasRange) { toast('Select a valid date range', 'info'); return }
     setGenerating(true)
     try {
-      const weekList = Array.from(selectedWeeks).sort()
-      const rows = buildRows(weekList)
-      if (rows.length === 0) { toast('No allocation data found for selected weeks', 'info'); setGenerating(false); return }
+      const rows = buildRows(dateFrom, dateTo)
+      if (rows.length === 0) { toast('No allocation data found for selected date range', 'info'); setGenerating(false); return }
       const bytes = buildXlsx(rows)
-      const suffix = weekList.length > 1
-        ? `WE_${weekEndingFilename(weekList[0])}_to_${weekEndingFilename(weekList[weekList.length-1])}`
-        : `WE_${weekEndingFilename(weekList[0])}`
+      // Filename: from and to dates
+      const fmtFile = (d: string) => { const [y,m,dd] = d.split('-'); return `${dd}-${new Date(d+'T00:00:00Z').toLocaleDateString('en-AU',{month:'short',timeZone:'UTC'})}-${y}` }
+      const suffix = dateFrom === dateTo ? fmtFile(dateFrom) : `${fmtFile(dateFrom)}_to_${fmtFile(dateTo)}`
       downloadBytes(bytes, `NRG_Timesheet_${suffix}.xlsx`)
       toast(`Exported ${rows.length} rows`, 'success')
       onClose()
@@ -273,9 +269,11 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
   }
 
   const missingEmpNo = (() => {
+    if (!hasRange) return []
     const seen = new Set<string>(); const missing: string[] = []
     for (const ts of timesheets) {
-      if (selectedWeeks.size > 0 && !selectedWeeks.has(ts.week_start)) continue
+      const weekEnd = (() => { const d = new Date(ts.week_start + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0,10) })()
+      if (weekEnd < dateFrom || ts.week_start > dateTo) continue
       for (const cm of (ts.crew||[])) {
         if (!seen.has(cm.personId)) { seen.add(cm.personId); if (!personMeta[cm.personId]?.nrg_employee_number) missing.push(cm.name) }
       }
@@ -283,7 +281,7 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
     return missing
   })()
 
-  const previewCount = selectedWeeks.size > 0 ? buildRows(Array.from(selectedWeeks)).length : 0
+  const previewCount = hasRange ? buildRows(dateFrom, dateTo).length : 0
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:800 }}
@@ -315,30 +313,59 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
             </div>
 
             <div style={{ marginBottom:16 }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                <label style={{ fontSize:12, fontWeight:600 }}>Select Week(s)</label>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button className="btn btn-sm" style={{ fontSize:10 }} onClick={() => setSelectedWeeks(new Set(weeks))}>All</button>
-                  <button className="btn btn-sm" style={{ fontSize:10 }} onClick={() => setSelectedWeeks(new Set())}>None</button>
+              <label style={{ fontSize:12, fontWeight:600, display:'block', marginBottom:8 }}>Date Range</label>
+              <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>From</div>
+                  <input type="date" className="input" style={{ width:'100%', fontSize:13 }}
+                    value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                </div>
+                <div style={{ paddingTop:16, color:'var(--text3)', fontSize:13 }}>→</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>To</div>
+                  <input type="date" className="input" style={{ width:'100%', fontSize:13 }}
+                    value={dateTo} onChange={e => setDateTo(e.target.value)}
+                    min={dateFrom || undefined} />
                 </div>
               </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:240, overflow:'auto', border:'1px solid var(--border)', borderRadius:6, padding:'6px 8px' }}>
-                {weeks.length === 0 && <div style={{ color:'var(--text3)', fontSize:12, padding:'8px 0' }}>No NRG TCE timesheets found.</div>}
-                {weeks.map(w => {
-                  const tsCount   = timesheets.filter(t => t.week_start === w).length
-                  const crewCount = timesheets.filter(t => t.week_start === w).reduce((s,t) => s+(t.crew?.length||0), 0)
-                  return (
-                    <label key={w} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 4px', cursor:'pointer', borderRadius:4, background: selectedWeeks.has(w) ? 'var(--accent-bg)' : 'transparent' }}>
-                      <input type="checkbox" checked={selectedWeeks.has(w)} onChange={() => toggleWeek(w)}/>
-                      <span style={{ fontSize:13, fontWeight:500 }}>WE {weekEndingLabel(w)}</span>
-                      <span style={{ fontSize:11, color:'var(--text3)', marginLeft:'auto' }}>{tsCount} sheet{tsCount!==1?'s':''} · {crewCount} people</span>
-                    </label>
+              {dateFrom && dateTo && dateFrom > dateTo && (
+                <div style={{ fontSize:11, color:'var(--red)', marginTop:6 }}>End date must be on or after start date</div>
+              )}
+              {/* Quick-select buttons */}
+              <div style={{ display:'flex', gap:6, marginTop:8, flexWrap:'wrap' }}>
+                {(() => {
+                  const btn = (label: string, from: string, to: string) => (
+                    <button key={label} className="btn btn-sm" style={{ fontSize:10 }}
+                      onClick={() => { setDateFrom(from); setDateTo(to) }}>{label}</button>
                   )
-                })}
+                  const today = new Date()
+                  const iso = (d: Date) => d.toISOString().slice(0,10)
+                  // Most recent week
+                  const monOffset = (today.getDay() + 6) % 7
+                  const mon = new Date(today); mon.setDate(today.getDate() - monOffset)
+                  const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+                  // Previous week
+                  const prevMon = new Date(mon); prevMon.setDate(mon.getDate() - 7)
+                  const prevSun = new Date(prevMon); prevSun.setDate(prevMon.getDate() + 6)
+                  // This month
+                  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+                  const monthEnd   = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+                  // Available week ranges from timesheets
+                  const allWeeks = [...new Set(timesheets.map(t => t.week_start))].sort()
+                  const firstWeek = allWeeks[0]
+                  const lastWeek  = allWeeks[allWeeks.length - 1]
+                  const lastWeekEnd = lastWeek ? (() => { const d = new Date(lastWeek+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+6); return iso(d) })() : ''
+                  return [
+                    btn('This week',  iso(mon), iso(sun)),
+                    btn('Last week',  iso(prevMon), iso(prevSun)),
+                    btn('This month', iso(monthStart), iso(monthEnd)),
+                    ...(firstWeek && lastWeekEnd ? [btn('All data', firstWeek, lastWeekEnd)] : []),
+                  ]
+                })()}
               </div>
             </div>
 
-            {selectedWeeks.size > 0 && missingEmpNo.length > 0 && (
+            {hasRange && missingEmpNo.length > 0 && (
               <div style={{ background:'#fef9c3', border:'1px solid #fde047', borderRadius:6, padding:'10px 12px', marginBottom:12, fontSize:12 }}>
                 <div style={{ fontWeight:600, color:'#854d0e', marginBottom:4 }}>⚠ {missingEmpNo.length} person{missingEmpNo.length!==1?'s':''} missing NRG Employee Number</div>
                 <div style={{ color:'#92400e', lineHeight:1.5 }}>{missingEmpNo.join(', ')}</div>
@@ -346,9 +373,9 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
               </div>
             )}
 
-            {selectedWeeks.size > 0 && (
+            {hasRange && (
               <div style={{ background:'var(--bg3)', borderRadius:6, padding:'8px 12px', fontSize:12, color:'var(--text2)' }}>
-                {previewCount === 0 ? 'No allocation rows found — timesheets may not have TCE scope allocated.'
+                {previewCount === 0 ? 'No allocation rows found for this date range — check timesheets have TCE scope allocated.'
                   : <><strong>{previewCount}</strong> rows will be exported</>}
               </div>
             )}
@@ -357,7 +384,7 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
 
         <div style={{ padding:'12px 20px', borderTop:'1px solid var(--border)', flexShrink:0, display:'flex', justifyContent:'flex-end', gap:8 }}>
           <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={generating||loading||selectedWeeks.size===0} onClick={generate}>
+          <button className="btn btn-primary" disabled={generating||loading||!hasRange} onClick={generate}>
             {generating ? 'Generating…' : '⬇ Download XLSX'}
           </button>
         </div>
