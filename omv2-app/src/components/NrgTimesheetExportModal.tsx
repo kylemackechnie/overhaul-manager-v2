@@ -175,13 +175,28 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
     const firstSkilled = lines.find(l => l.source === 'skilled' && l.contract_scope?.trim())
     if (firstSkilled) setContractPrefix(firstSkilled.contract_scope.trim().replace(/^0+/,'').split('/')[0])
 
-    const personIds = new Set<string>()
-    for (const ts of tsList) for (const cm of (ts.crew||[])) if (cm.personId) personIds.add(cm.personId)
-    if (personIds.size > 0) {
+    // Collect all unique personIds from crew (these are resource IDs, not persons IDs)
+    const resourceIds = new Set<string>()
+    for (const ts of tsList) for (const cm of (ts.crew||[])) if (cm.personId) resourceIds.add(cm.personId)
+    if (resourceIds.size > 0) {
+      // Resolve resource IDs → person_id, then fetch persons records
+      const { data: resData } = await supabase
+        .from('resources')
+        .select('id,person_id')
+        .in('id', Array.from(resourceIds))
+      // Build map: resourceId → personId
+      const resourceToPersonId: Record<string, string> = {}
+      for (const r of (resData || [])) if (r.person_id) resourceToPersonId[r.id] = r.person_id
+      const personIds = [...new Set(Object.values(resourceToPersonId))]
       const { data } = await supabase.from('persons')
-        .select('id,full_name,first_name,last_name,nrg_employee_number').in('id', Array.from(personIds))
+        .select('id,full_name,first_name,last_name,nrg_employee_number').in('id', personIds)
+      // Build final map: resourceId → PersonMeta
+      const personById: Record<string, PersonMeta> = {}
+      for (const p of (data||[])) personById[p.id] = p as PersonMeta
       const map: Record<string,PersonMeta> = {}
-      for (const p of (data||[])) map[p.id] = p as PersonMeta
+      for (const [resId, persId] of Object.entries(resourceToPersonId)) map[resId] = personById[persId]
+      // Also index directly by personId in case some crew entries use person ID directly
+      for (const p of (data||[])) if (!map[p.id]) map[p.id] = p as PersonMeta
       setPersonMeta(map)
     }
     setLoading(false)
