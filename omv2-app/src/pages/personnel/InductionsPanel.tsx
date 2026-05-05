@@ -140,7 +140,7 @@ export function InductionsPanel() {
       const s = nameSimilarity(r.name, p.name)
       if (s > bestScore) { bestScore = s; best = p }
     })
-    return { resource: r, match: bestScore >= 0.6 ? best : null, score: bestScore }
+    return { resource: r, match: bestScore >= 0.8 ? best : null, score: bestScore }
   })
 
   // ── Status counting ───────────────────────────────────────────────────────
