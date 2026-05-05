@@ -49,16 +49,6 @@ function toExcelSerial(dateStr: string) {
   const [y, m, d] = dateStr.split('-').map(Number)
   return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
 }
-function weekEndingLabel(weekStart: string) {
-  const d = new Date(weekStart + 'T00:00:00Z')
-  d.setUTCDate(d.getUTCDate() + 6)
-  return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
-}
-function weekEndingFilename(weekStart: string) {
-  const d = new Date(weekStart + 'T00:00:00Z')
-  d.setUTCDate(d.getUTCDate() + 6)
-  return `${String(d.getUTCDate()).padStart(2,'0')}-${d.toLocaleDateString('en-AU',{month:'short',timeZone:'UTC'})}-${d.getUTCFullYear()}`
-}
 function xmlEsc(s: string) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')
 }
@@ -259,7 +249,7 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
       if (rows.length === 0) { toast('No allocation data found for selected date range', 'info'); setGenerating(false); return }
       const bytes = buildXlsx(rows)
       // Filename: from and to dates
-      const fmtFile = (d: string) => { const [y,m,dd] = d.split('-'); return `${dd}-${new Date(d+'T00:00:00Z').toLocaleDateString('en-AU',{month:'short',timeZone:'UTC'})}-${y}` }
+      const fmtFile = (d: string) => { const [y,_m,dd] = d.split('-'); return `${dd}-${new Date(d+'T00:00:00Z').toLocaleDateString('en-AU',{month:'short',timeZone:'UTC'})}-${y}` }
       const suffix = dateFrom === dateTo ? fmtFile(dateFrom) : `${fmtFile(dateFrom)}_to_${fmtFile(dateTo)}`
       downloadBytes(bytes, `NRG_Timesheet_${suffix}.xlsx`)
       toast(`Exported ${rows.length} rows`, 'success')
