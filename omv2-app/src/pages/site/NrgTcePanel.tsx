@@ -644,12 +644,16 @@ export function NrgTcePanel() {
                 <tfoot>
                   <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                     <td colSpan={Math.max(1, 1 + TCE_COLS.filter(c => isTceVisible(c.id) && ['item_id','source','description','work_order','contract_scope','unit','est_qty','act_hrs','tce_rate'].includes(c.id)).length)} style={{ padding: '8px 12px' }}>Total ({filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).length} lines)</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{(() => {
+                    {isTceVisible('tce_total') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalTce)}</td>}
+                    {isTceVisible('committed') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: '#1e40af' }}>{(() => {
+                      const tot = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + lineCommitted(l.item_id), 0)
+                      return tot > 0 ? fmt(tot) : '—'
+                    })()}</td>}
+                    {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{(() => {
                       const tot = filtered.filter(l => !isGroupHeader(l.item_id, l.line_type)).reduce((s, l) => s + lineActualCost(l), 0)
                       return tot > 0 ? fmt(tot) : '—'
-                    })()}</td>
-                    <td colSpan={4} />
+                    })()}</td>}
+                    <td colSpan={TCE_COLS.filter(c => isTceVisible(c.id) && !['item_id','source','description','work_order','contract_scope','unit','est_qty','act_hrs','tce_rate','tce_total','committed','actual_cost'].includes(c.id)).length || undefined} />
                   </tr>
                 </tfoot>
               </table>
