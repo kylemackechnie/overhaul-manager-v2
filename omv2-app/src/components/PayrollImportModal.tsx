@@ -120,13 +120,17 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
           const dayType = isMob ? 'travel' : ((existing.dayType as string) || 'weekday')
 
           // Build nrgWoAllocations: one entry per (scope, payCode) pair.
-          // This preserves the Timecloud split exactly — DT1.0/DT1.5/DT2.0 are
-          // separate entries so the NRG export can emit them as separate rows.
-          // Rows with no scope (blank op, not Mob) are skipped — they have no
-          // TCE item to attribute to.
+          // Preserves the Timecloud DT1.0/DT1.5/DT2.0 split exactly.
+          // Operation - Custom Code is either:
+          //   - A TCE item ID (contains dots, e.g. "2.02.5.1") → tceItemId
+          //   - A Work Order number (digits-digits, e.g. "28243985-47") → wo
+          //   - "Mob/Demob" or blank → skip
+          const isTceItemId = (op: string) => /\./.test(op)
           const rowsWithTce = rows.filter(r => r.op && r.op !== 'Mob/Demob')
           const nrgWoAllocations = rowsWithTce.length > 0
-            ? rowsWithTce.map(r => ({ tceItemId: r.op, hours: r.qty, payCode: r.payCode }))
+            ? rowsWithTce.map(r => isTceItemId(r.op)
+                ? { tceItemId: r.op, wo: '',   hours: r.qty, payCode: r.payCode }
+                : { tceItemId: null,  wo: r.op, hours: r.qty, payCode: r.payCode })
             : existing.nrgWoAllocations
 
           updatedDays[dateStr] = {
