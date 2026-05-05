@@ -56,20 +56,26 @@ export function PersonCard({ person, onClose }: PersonCardProps) {
     const deps = await getPersonDeployments(person.id) as Deployment[]
     setDeployments(deps)
 
-    // Load timesheet appearances
-    const resourceIds = deps.map(d => d.id)
-    if (resourceIds.length > 0) {
-      // Approximate: find weeks where this person appears (by name match across projects)
-      // Full implementation would join via personId on crew — placeholder for now
-    }
-
-    // Load app user if linked
+    // Load app user — try by app_user_id first, fall back to email match
+    let linkedAppUser = null
     if (person.app_user_id) {
       const { data } = await supabase.from('app_users')
         .select('id,email,role,active,last_login')
         .eq('id', person.app_user_id).single()
-      setAppUser(data)
+      linkedAppUser = data
+    } else if (person.email) {
+      // Try to find by email and auto-link if found
+      const { data } = await supabase.from('app_users')
+        .select('id,email,role,active,last_login')
+        .ilike('email', person.email).single()
+      if (data) {
+        linkedAppUser = data
+        // Write the link back so we don't need to do this again
+        await supabase.from('persons').update({ app_user_id: data.id }).eq('id', person.id)
+        person.app_user_id = data.id
+      }
     }
+    setAppUser(linkedAppUser)
     setLoading(false)
   }
 
