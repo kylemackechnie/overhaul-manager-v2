@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
@@ -293,6 +293,20 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null}[]))
     }
   }, [activeProject?.id])
+
+  // ── Auto-save ─────────────────────────────────────────────────────────────
+  // Debounce: save 1.5s after the last change to activeWeek.
+  // Skip on initial mount (when activeWeek first becomes non-null from a load).
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevWeekId    = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeWeek) { prevWeekId.current = null; return }
+    // Don't auto-save on the first render of a newly-loaded week
+    if (activeWeek.id !== prevWeekId.current) { prevWeekId.current = activeWeek.id; return }
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(() => { saveWeek(activeWeek) }, 1500)
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
+  }, [activeWeek])
 
   async function load() {
     setLoading(true)
@@ -1353,7 +1367,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` — ${r.role}` : ''}</option>)}
             </select>
             <button className="btn btn-sm" onClick={() => printTimesheet(activeWeek, activeProject?.name||'', rateCards, holidays)}>🖨 Print</button>
-            <button className="btn btn-primary" onClick={() => saveWeek(activeWeek)} disabled={!canWrite('personnel')}>💾 Save</button>
+            <span style={{ fontSize: '11px', color: 'var(--text3)', padding: '0 4px' }}>● Auto-saving</span>
           </div>
         </div>
       )}
