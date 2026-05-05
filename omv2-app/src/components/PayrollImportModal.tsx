@@ -165,7 +165,8 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
           supabase.from('persons')
             .update({ nrg_employee_number: custId })
             .eq('id', member.personId)
-            .is('nrg_employee_number', null)  // only set if not already populated
+            .is('nrg_employee_number', null)
+            .then()
         )
       })
       if (empUpdates.length > 0) {
