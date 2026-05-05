@@ -296,6 +296,7 @@ ${sectionHTML}
   if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
 
   return (
+    <>
     <div style={{ padding: '24px', maxWidth: '1600px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
@@ -531,5 +532,6 @@ ${sectionHTML}
       )}
     </div>
     {showExport && <NrgTimesheetExportModal onClose={() => setShowExport(false)} />}
+    </>
   )
 }
