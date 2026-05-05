@@ -415,8 +415,9 @@ export function NrgTcePanel() {
   )
 
   return (
-    <div style={{ padding: '24px' }}>
-      {/* Header */}
+    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
+      {/* Header — sticky so it stays visible while scrolling the table */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--bg)', paddingBottom: '8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>NRG TCE Register</h1>
@@ -485,18 +486,18 @@ export function NrgTcePanel() {
           <button className="btn btn-sm" onClick={() => { setSelected(new Set()); setBulkWbs(''); setBulkContract('') }}>Clear</button>
         </div>
       )}
+      </div>{/* end sticky header */}
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
         : filtered.length === 0 ? (
           <div className="empty-state"><div className="icon">📋</div><h3>No TCE lines</h3><p>Import from XLSX or add lines manually.</p></div>
         ) : (
-          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '1100px' }}>
-                <thead>
-                  <tr>
-                    <th ref={el => thRef(el, 0)} style={{ width: 28, textAlign: 'center' }}>
-                      <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />
+          <div className="card" style={{ padding: 0, overflow: 'auto', flex: 1 }}>
+            <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '1100px' }}>
+              <thead>
+                <tr>
+                  <th ref={el => thRef(el, 0)} style={{ width: 28, textAlign: 'center', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)' }}>
+                    <input type="checkbox" checked={allLeafSel} onChange={e => setSelected(e.target.checked ? new Set(leafIds) : new Set())} />
                     </th>
                     {TCE_COLS.map((col, i) => {
                       if (!isTceVisible(col.id)) return null
@@ -507,7 +508,7 @@ export function NrgTcePanel() {
                       }
                       return (
                         <th key={col.id} ref={el => thRef(el, i + 1)} className="resizable"
-                          style={{ width: cw[i + 1], textAlign: alignMap[col.id], cursor: sortable ? 'pointer' : undefined, userSelect: 'none' }}
+                          style={{ width: cw[i + 1], textAlign: alignMap[col.id], cursor: sortable ? 'pointer' : undefined, userSelect: 'none', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)' }}
                           onClick={sortable ? () => doTceSort(col.id) : undefined}>
                           {col.label}
                           {sortable && (
@@ -520,7 +521,7 @@ export function NrgTcePanel() {
                       )
                     })}
                     {showWeekly && weekKeys.map(wk => (
-                      <th key={wk} style={{ width: 80, textAlign: 'right', fontSize: '10px', color: 'var(--text3)' }}>
+                      <th key={wk} style={{ width: 80, textAlign: 'right', fontSize: '10px', color: 'var(--text3)', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)' }}>
                         {new Date(wk + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short' })}
                       </th>
                     ))}
@@ -657,7 +658,6 @@ export function NrgTcePanel() {
                   </tr>
                 </tfoot>
               </table>
-            </div>
           </div>
         )}
 
