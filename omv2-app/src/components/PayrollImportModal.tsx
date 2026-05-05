@@ -102,6 +102,11 @@ export function PayrollImportModal({ activeWeek, onUpdate, onClose }: PayrollImp
       let matched = 0; const unmatched: string[] = []; let daysWritten = 0
       const crew = (aw.crew || []) as CrewMember[]
 
+      if (crew.length === 0) {
+        setResult({ msg: '⚠ No crew members on this timesheet — add crew first, then re-import', ok: false })
+        setImporting(false); return
+      }
+
       const updatedCrew = crew.map(member => {
         let bestScore = 0; let bestMatch = ''
         Object.keys(personData).forEach(pName => {
