@@ -37,6 +37,8 @@ export function NrgActualsPanel() {
   // Pre-aggregated labour cost per tce_item_id from timesheet_cost_lines (project total).
   const [labourByItem, setLabourByItem] = useState<Record<string, { cost: number; sell: number }>>({})
   // Raw cost-line rows kept for the per-week aggregation in the "this week" column.
+  // Actual hours per tce_item_id from timesheet_cost_lines
+  const [hoursByItem, setHoursByItem] = useState<Record<string, number>>({})
   const [costLines, setCostLines] = useState<CostLineRow[]>([])
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
@@ -79,7 +81,7 @@ export function NrgActualsPanel() {
       // Read from the pre-calculated cost lines table (approved only).
       // Include work_date so we can aggregate by week for the "this week" column.
       supabase.from('timesheet_cost_lines')
-        .select('tce_item_id,work_order,work_date,cost_labour,sell_labour,cost_allowances,sell_allowances')
+        .select('tce_item_id,work_order,work_date,cost_labour,sell_labour,cost_allowances,sell_allowances,allocated_hours')
         .eq('project_id', pid)
         .eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status,period_from,period_to').eq('project_id', pid),
@@ -91,7 +93,7 @@ export function NrgActualsPanel() {
     // Aggregate labour cost by tce_item_id from the cost lines table — full project total
     const agg: Record<string, { cost: number; sell: number }> = {}
     // Also keep cost lines for per-week filtering
-    const clRows = (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; work_date: string | null; cost_labour: number; sell_labour: number; cost_allowances: number; sell_allowances: number }[]
+    const clRows = (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; work_date: string | null; cost_labour: number; sell_labour: number; cost_allowances: number; sell_allowances: number; allocated_hours: number }[]
     for (const row of clRows) {
       const key = row.tce_item_id || ''
       if (!key) continue
@@ -99,6 +101,15 @@ export function NrgActualsPanel() {
       agg[key].cost += (row.cost_labour || 0) + (row.cost_allowances || 0)
       agg[key].sell += (row.sell_labour || 0) + (row.sell_allowances || 0)
     }
+    // Aggregate actual hours by tce_item_id
+    const hoursAgg: Record<string, number> = {}
+    for (const row of clRows) {
+      const key = row.tce_item_id || ''
+      if (!key) continue
+      if (!hoursAgg[key]) hoursAgg[key] = 0
+      hoursAgg[key] += (row.allocated_hours || 0)
+    }
+    setHoursByItem(hoursAgg)
     setLabourByItem(agg)
     setCostLines(clRows)
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
@@ -222,20 +233,22 @@ export function NrgActualsPanel() {
     }
 
     const colHeaders = weekFilter
-      ? [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('TCE Value', true), TH('Actuals', true), TH('This Week', true), TH('Remaining', true), TH('% Used')]
-      : [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('TCE Value', true), TH('Actuals', true), TH('Remaining', true), TH('% Used')]
+      ? [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('Est. Hrs', true), TH('Act. Hrs', true), TH('TCE Value', true), TH('Actuals', true), TH('This Week', true), TH('Remaining', true), TH('% Used')]
+      : [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('Est. Hrs', true), TH('Act. Hrs', true), TH('TCE Value', true), TH('Actuals', true), TH('Remaining', true), TH('% Used')]
 
     const sectionHTML = Object.entries(bySource).map(([srcLabel, rows]) => {
       const srcTce = rows.reduce((s, x) => s + x.tce, 0)
       const srcAct = rows.reduce((s, x) => s + x.actuals, 0)
       const rowsHTML = rows.map(({ line, actuals, tce, pct, weekActuals }) => {
         const rem = tce - actuals
+        const estHrs = line.estimated_qty ? line.estimated_qty.toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'
+        const actHrs = line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'
         const cells = weekFilter
-          ? [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(weekActuals||0),true), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
-          : [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
+          ? [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(estHrs,true), TD(actHrs,true), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(weekActuals||0),true), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
+          : [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(estHrs,true), TD(actHrs,true), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
         return `<tr>${cells.join('')}</tr>`
       }).join('')
-      const footCols = weekFilter ? 7 : 6
+      const footCols = weekFilter ? 9 : 8
       return `<div style="margin-bottom:24px;page-break-inside:avoid">
         <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;padding:6px 0;border-bottom:2px solid #e2e8f0">${srcLabel} <span style="font-weight:400;font-size:10px;color:#64748b">— TCE: ${fmtP(srcTce)} · Actuals: ${fmtP(srcAct)} · Remaining: ${fmtP(srcTce-srcAct)}</span></div>
         <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
@@ -276,14 +289,17 @@ ${sectionHTML}
   }
 
   function exportCSV() {
-    const header = ['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'TCE Value', 'Actuals']
+    const header = ['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'Est. Hrs', 'Act. Hrs', 'TCE Value', 'Actuals']
     if (weekFilter) header.push(`Week ${weekStart}`)
     header.push('Remaining', '% Used')
     const rows: (string|number)[][] = [header]
     displayed.forEach(({ line, actuals, tce, pct, weekActuals }) => {
       const row: (string|number)[] = [
         line.item_id || '', line.source, line.description, line.work_order || '',
-        line.contract_scope || '', String(tce), String(actuals),
+        line.contract_scope || '',
+        String(line.estimated_qty || ''),
+        String(line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toFixed(1) : ''),
+        String(tce), String(actuals),
       ]
       if (weekFilter) row.push(String(weekActuals || 0))
       row.push(String(tce - actuals), pct !== null ? pct.toFixed(1) + '%' : '—')
@@ -409,6 +425,8 @@ ${sectionHTML}
                       <th style={{ width: '70px' }}>Source</th>
                       <th>Description</th>
                       <th style={{ width: '90px' }}>Work Order</th>
+                      <th style={{ textAlign: 'right', width: '72px' }}>Est. Hrs</th>
+                      <th style={{ textAlign: 'right', width: '72px' }}>Act. Hrs</th>
                       <th style={{ textAlign: 'right', width: '90px' }}>TCE</th>
                       <th style={{ textAlign: 'right', width: '90px' }}>Actuals</th>
                       {weekFilter && <th style={{ textAlign: 'right', width: '80px', background: '#eff6ff' }}>This Wk</th>}
@@ -436,6 +454,12 @@ ${sectionHTML}
                           </td>
                           <td style={{ fontWeight: 500, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>{line.description || '—'}</td>
                           <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>{line.work_order || '—'}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)', fontSize: '11px' }}>
+                            {line.estimated_qty ? line.estimated_qty.toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: line.item_id && hoursByItem[line.item_id] ? 'var(--text)' : 'var(--text3)' }}>
+                            {line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'}
+                          </td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(tce)}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : 'var(--text3)' }}>{fmt(actuals)}</td>
                           {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', background: '#eff6ff', color: weekActuals > 0 ? '#1e40af' : 'var(--text3)' }}>{fmt(weekActuals)}</td>}
@@ -458,6 +482,12 @@ ${sectionHTML}
                   <tfoot>
                     <tr style={{ background: 'var(--bg3)', fontWeight: 700 }}>
                       <td colSpan={4} style={{ padding: '8px 12px' }}>TOTAL ({displayed.length})</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--text3)', fontSize: '11px' }}>
+                        {displayed.reduce((s,x) => s + (x.line.estimated_qty || 0), 0).toLocaleString('en-AU', { maximumFractionDigits: 1 })}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', fontSize: '11px' }}>
+                        {displayed.reduce((s,x) => s + (x.line.item_id ? (hoursByItem[x.line.item_id] || 0) : 0), 0).toLocaleString('en-AU', { maximumFractionDigits: 1 })}
+                      </td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s,x)=>s+x.tce,0))}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s,x)=>s+x.actuals,0))}</td>
                       {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', background: '#dbeafe', color: '#1e40af' }}>{fmt(displayed.reduce((s,x)=>s+(x.weekActuals||0),0))}</td>}
