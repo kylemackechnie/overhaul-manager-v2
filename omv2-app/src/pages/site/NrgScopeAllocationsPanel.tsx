@@ -12,6 +12,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
+import { CreditNoteModal } from '../../components/CreditNoteModal'
+import type { SourceLine } from '../../engines/creditNoteEngine'
 
 interface NrgAlloc {
   tceItemId?: string | null
@@ -98,6 +100,8 @@ export function NrgScopeAllocationsPanel() {
 
   const [rows, setRows]         = useState<AllocRow[]>([])
   const [loading, setLoading]   = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [showCredit, setShowCredit] = useState(false)
 
   // Filters
   const [search, setSearch]         = useState('')
@@ -112,6 +116,7 @@ export function NrgScopeAllocationsPanel() {
 
   async function load() {
     setLoading(true)
+    setSelected(new Set())
 
     const [tsRes, tceRes] = await Promise.all([
       supabase.from('weekly_timesheets')
@@ -263,6 +268,19 @@ export function NrgScopeAllocationsPanel() {
   // Pay codes present
   const payCodes = [...new Set(rows.map(r => r.payCode))].sort()
 
+  const allSortedIndices = sorted.map((_, i) => i)
+  const allSelected = sorted.length > 0 && sorted.every((_, i) => selected.has(i))
+  const selectedRows = sorted.filter((_, i) => selected.has(i))
+  const selectedHours = selectedRows.reduce((s, r) => s + r.hours, 0)
+
+  function toggleRow(i: number) {
+    setSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(allSortedIndices))
+  }
+
   function exportCSV() {
     const header = ['Week Start', 'Date', 'Person', 'Emp #', 'Role', 'Pay Code', 'Scope Key', 'Scope Type', 'Contract', 'WO / Task', 'Description', 'Hours']
     const data = sorted.map(r => [r.weekStart, r.date, r.personName, r.empNo, r.role, r.payCode, r.scopeKey, r.scopeType, r.contract, r.woTask, r.description, r.hours])
@@ -310,6 +328,12 @@ export function NrgScopeAllocationsPanel() {
         </select>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {selected.size > 0 && (
+            <button className="btn btn-primary" style={{ background: '#dc2626', borderColor: '#dc2626' }}
+              onClick={() => setShowCredit(true)}>
+              Issue Credit — {selected.size} line{selected.size !== 1 ? 's' : ''} ({selectedHours.toFixed(1)}h)
+            </button>
+          )}
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={load}>↻ Refresh</button>
         </div>
@@ -336,6 +360,9 @@ export function NrgScopeAllocationsPanel() {
           <table style={{ fontSize: 12, minWidth: 1100, tableLayout: 'fixed' }}>
             <thead>
               <tr>
+                <th style={{ width: 36, padding: '7px 10px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                </th>
                 <TH col="date"        label="Date"         />
                 <TH col="weekStart"   label="Week"         />
                 <TH col="personName"  label="Person"       />
@@ -352,7 +379,10 @@ export function NrgScopeAllocationsPanel() {
               {sorted.map((r, i) => {
                 const pcStyle = PAY_CODE_STYLE[r.payCode] || { bg: 'var(--bg3)', color: 'var(--text2)' }
                 return (
-                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                  <tr key={i} style={{ background: selected.has(i) ? 'var(--accent-bg)' : i % 2 === 0 ? 'transparent' : 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 10px' }}>
+                      <input type="checkbox" checked={selected.has(i)} onChange={() => toggleRow(i)} />
+                    </td>
                     <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
                     <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)' }}>
                       WE {fmtDate((() => { const d = new Date(r.weekStart + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10) })())}
@@ -373,7 +403,7 @@ export function NrgScopeAllocationsPanel() {
                 )
               })}
               {sorted.length === 0 && (
-                <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>
+                <tr><td colSpan={11} style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>
                   {rows.length === 0 ? 'No TCE scope allocations found for this project.' : 'No rows match current filters.'}
                 </td></tr>
               )}
@@ -381,7 +411,7 @@ export function NrgScopeAllocationsPanel() {
             {sorted.length > 0 && (
               <tfoot>
                 <tr style={{ background: 'var(--bg3)', fontWeight: 700 }}>
-                  <td colSpan={9} style={{ padding: '7px 10px', fontSize: 12 }}>
+                  <td colSpan={10} style={{ padding: '7px 10px', fontSize: 12 }}>
                     Total — {sorted.length} rows · {uniquePeople} people
                   </td>
                   <td style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'var(--mono)' }}>
@@ -392,6 +422,15 @@ export function NrgScopeAllocationsPanel() {
             )}
           </table>
         </div>
+      )}
+
+      {showCredit && (
+        <CreditNoteModal
+          projectId={pid}
+          sourceLines={selectedRows as unknown as SourceLine[]}
+          onClose={() => setShowCredit(false)}
+          onApplied={() => { setShowCredit(false); setSelected(new Set()); load() }}
+        />
       )}
     </div>
   )
