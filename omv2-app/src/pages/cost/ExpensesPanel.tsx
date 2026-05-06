@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
@@ -5,7 +6,7 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Expense, ExpenseLine, Resource, WbsItem } from '../../types'
 import { downloadCSV } from '../../lib/csv'
-import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
+import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName, RECEIPT_BUCKET } from '../../lib/receiptStorage'
 
 const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Fixed Cost','Other']
 
@@ -48,6 +49,9 @@ export function ExpensesPanel() {
   const [bulkVal, setBulkVal] = useState('')
   const [dragOverId, setDragOverId] = useState<string|null>(null)
   const [uploadingId, setUploadingId] = useState<string|null>(null)
+  const [showBulkDownload, setShowBulkDownload] = useState(false)
+  const [bulkDlWeeks, setBulkDlWeeks] = useState<Set<string>>(new Set())
+  const [bulkDlLoading, setBulkDlLoading] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -399,6 +403,74 @@ export function ExpensesPanel() {
   }
 
 
+  }
+
+  // Returns the Monday of the week containing the given date string (YYYY-MM-DD)
+  function weekStart(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00')
+    const day = d.getDay() // 0=Sun
+    const diff = (day === 0 ? -6 : 1 - day)
+    d.setDate(d.getDate() + diff)
+    return d.toISOString().slice(0, 10)
+  }
+
+  function weekLabel(monday: string): string {
+    const start = new Date(monday + 'T00:00:00')
+    const end = new Date(monday + 'T00:00:00')
+    end.setDate(end.getDate() + 6)
+    const fmt = (d: Date) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' })
+    return `${fmt(start)} – ${fmt(end)}`
+  }
+
+  // Group expenses-with-receipts by week, sorted newest first
+  function getWeekGroups(): { key: string; label: string; count: number }[] {
+    const map = new Map<string, number>()
+    for (const e of expenses) {
+      if (!e.receipt_paths?.length || !e.date) continue
+      const key = weekStart(e.date)
+      map.set(key, (map.get(key) || 0) + e.receipt_paths.length)
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, count]) => ({ key, label: weekLabel(key), count }))
+  }
+
+  async function downloadReceiptsZip() {
+    if (!bulkDlWeeks.size) return
+    setBulkDlLoading(true)
+    try {
+      const zip = new JSZip()
+      const toDownload = expenses.filter(e =>
+        e.receipt_paths?.length && e.date && bulkDlWeeks.has(weekStart(e.date))
+      )
+      await Promise.all(toDownload.map(async e => {
+        const week = weekStart(e.date!)
+        const folder = `Week ${week} (${weekLabel(week)})`
+        for (const path of e.receipt_paths || []) {
+          const { data, error } = await supabase.storage.from(RECEIPT_BUCKET).download(path)
+          if (error || !data) continue
+          const name = fileName(path)
+          // prefix with expense ref or date+description to disambiguate files
+          const prefix = e.expense_ref || `${e.date}_${(e.description||'receipt').slice(0,30).replace(/[^a-zA-Z0-9_-]/g,'_')}`
+          zip.folder(folder)!.file(`${prefix}_${name}`, data)
+        }
+      }))
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `receipts_${activeProject?.name || 'project'}.zip`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      setShowBulkDownload(false)
+      setBulkDlWeeks(new Set())
+      toast('Receipts downloaded', 'success')
+    } catch {
+      toast('Download failed', 'error')
+    } finally {
+      setBulkDlLoading(false)
+    }
+  }
+
   function exportCSV() {
     downloadCSV(
       [
@@ -430,6 +502,7 @@ export function ExpensesPanel() {
         </div>
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+          <button className="btn btn-sm" onClick={() => { setBulkDlWeeks(new Set()); setShowBulkDownload(true) }}>📦 Receipts ZIP</button>
           <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ Add Expense</button>
         </div>
       </div>
@@ -783,6 +856,58 @@ export function ExpensesPanel() {
           </div>
         </div>
       )}
+
+      {/* Bulk Receipt Download Modal */}
+      {showBulkDownload && (() => {
+        const weekGroups = getWeekGroups()
+        const totalSelected = weekGroups.filter(w => bulkDlWeeks.has(w.key)).reduce((s, w) => s + w.count, 0)
+        return (
+          <div className="modal-overlay" onClick={() => setShowBulkDownload(false)}>
+            <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Download Receipts as ZIP</h2>
+                <button className="btn-close" onClick={() => setShowBulkDownload(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                {weekGroups.length === 0 ? (
+                  <p style={{ color: 'var(--text3)', fontSize: '13px' }}>No expenses with attached receipts found.</p>
+                ) : (
+                  <>
+                    <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                      Select the weeks to include. Each week becomes a folder in the ZIP.
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                      <button className="btn btn-sm" onClick={() => setBulkDlWeeks(new Set(weekGroups.map(w => w.key)))}>Select All</button>
+                      <button className="btn btn-sm" onClick={() => setBulkDlWeeks(new Set())}>Clear</button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {weekGroups.map(w => (
+                        <label key={w.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '6px', background: bulkDlWeeks.has(w.key) ? 'rgba(99,102,241,0.08)' : 'var(--bg2)', cursor: 'pointer', border: `1px solid ${bulkDlWeeks.has(w.key) ? 'var(--primary)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                          <input type="checkbox" checked={bulkDlWeeks.has(w.key)}
+                            onChange={e => setBulkDlWeeks(prev => {
+                              const next = new Set(prev)
+                              e.target.checked ? next.add(w.key) : next.delete(w.key)
+                              return next
+                            })} />
+                          <span style={{ flex: 1, fontSize: '13px', fontWeight: 500 }}>{w.label}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text3)' }}>{w.count} file{w.count !== 1 ? 's' : ''}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button className="btn" onClick={() => setShowBulkDownload(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={downloadReceiptsZip}
+                  disabled={bulkDlWeeks.size === 0 || bulkDlLoading}>
+                  {bulkDlLoading ? 'Downloading…' : `Download ${totalSelected} file${totalSelected !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
