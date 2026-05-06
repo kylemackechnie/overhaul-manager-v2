@@ -712,6 +712,24 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   // Live count for the banner — re-derived on every render (cheap; O(crew × days × allocs))
   const unresolvedCount = activeWeek ? findUnresolvedAllocs().length : 0
 
+  // TCE hour reconciliation mismatches: days where sum(nrgWoAllocations.hours) ≠ day.hours
+  const tceMismatches: { name: string; date: string; dayHours: number; allocHours: number }[] = []
+  if (activeWeek && scopeMode === 'nrg_tce') {
+    for (const member of activeWeek.crew) {
+      for (const [dateStr, day] of Object.entries(member.days)) {
+        const d = day as Record<string, unknown>
+        if (!d.hours || (d.hours as number) <= 0) continue
+        const allocs = ((d.nrgWoAllocations as NrgWoAlloc[]) || []).filter(a => a._tceMode || a.tceItemId || a.wo)
+        if (allocs.length === 0) continue
+        const allocTotal = allocs.reduce((s, a) => s + (a.hours || 0), 0)
+        if (Math.abs(allocTotal - (d.hours as number)) >= 0.05) {
+          tceMismatches.push({ name: member.name, date: dateStr, dayHours: d.hours as number, allocHours: parseFloat(allocTotal.toFixed(2)) })
+        }
+      }
+    }
+  }
+  const [showMismatchConfirm, setShowMismatchConfirm] = useState(false)
+
   function buildPreDays(r: Resource, weekStart: string): Record<string, DayEntry> {
     // Pre-fill standard hours from project settings and apply resource allowances.
     // LAHA/meal are applied to ALL days the person is on the project (mob window),
@@ -835,7 +853,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {activeWeek && <>
-            <button className="btn" onClick={() => { saveWeek(activeWeek); setActiveWeek(null) }} disabled={!canWrite('personnel')}>💾 Save & Close</button>
+            <button className="btn" onClick={() => {
+              if (tceMismatches.length > 0) { setShowMismatchConfirm(true) }
+              else { saveWeek(activeWeek); setActiveWeek(null) }
+            }} disabled={!canWrite('personnel')}>💾 Save & Close</button>
             <button className="btn btn-sm" onClick={async () => {
               await saveWeek(activeWeek)
               const nextWk = getNextMon(activeWeek.week_start)
@@ -995,6 +1016,36 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               </span>
               <button className="btn btn-sm" style={{ background: 'var(--orange)', color: '#fff' }}
                 onClick={openResolveModal}>Resolve allocations →</button>
+            </div>
+          )}
+
+          {/* TCE hour mismatch banner — shown when alloc hours ≠ day hours */}
+          {tceMismatches.length > 0 && (
+            <div style={{
+              background: 'rgba(220,38,38,0.06)', border: '2px solid rgba(220,38,38,0.5)',
+              borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: '8px',
+              fontSize: '12px', minWidth: '960px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '16px' }}>🚨</span>
+                <span style={{ fontWeight: 700, color: '#dc2626', fontSize: '13px' }}>
+                  TCE Hour Mismatch — {tceMismatches.length} day{tceMismatches.length !== 1 ? 's' : ''} where allocated hours ≠ shift hours
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {tceMismatches.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#7f1d1d', background: 'rgba(220,38,38,0.06)', borderRadius: 4, padding: '4px 8px' }}>
+                    <span style={{ fontWeight: 600, minWidth: 140 }}>{m.name}</span>
+                    <span style={{ color: '#991b1b' }}>{new Date(m.date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
+                    <span>Shift: <b>{m.dayHours}h</b></span>
+                    <span>TCE allocated: <b style={{ color: '#dc2626' }}>{m.allocHours}h</b></span>
+                    <span style={{ color: '#dc2626', fontWeight: 700 }}>Δ {Math.abs(m.dayHours - m.allocHours).toFixed(2)}h</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '8px', fontSize: '11px', color: '#991b1b' }}>
+                Re-import TasTK for affected days, or open the 🎯 TCE button on the day cell to adjust allocations manually.
+              </div>
             </div>
           )}
 
@@ -1773,6 +1824,46 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               <button className="btn" onClick={() => setResolveModal({ open: false, splits: [] })}>Cancel</button>
               <button className="btn btn-primary" onClick={saveResolveModal}
                 disabled={resolveModal.splits.length === 0}>Apply splits</button>
+            </div>
+          </div>
+        </div>
+      )}
+      )}
+
+      {/* TCE mismatch confirmation — blocks Save & Close until user acknowledges */}
+      {showMismatchConfirm && activeWeek && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ borderBottom: '2px solid #dc2626' }}>
+              <h3 style={{ color: '#dc2626' }}>🚨 TCE Hour Mismatches — Are you sure?</h3>
+              <button className="btn btn-sm" onClick={() => setShowMismatchConfirm(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '13px', marginBottom: '12px', color: 'var(--text2)', lineHeight: 1.6 }}>
+                The following days have TCE allocated hours that don't match the shift hours.
+                Saving with mismatches will cause incorrect NRG Actuals and timesheet export data.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+                {tceMismatches.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '10px', fontSize: '12px', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 6, padding: '8px 10px', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, minWidth: 130 }}>{m.name}</span>
+                    <span style={{ color: 'var(--text3)' }}>{new Date(m.date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
+                    <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', color: '#dc2626', fontWeight: 700 }}>
+                      {m.allocHours}h allocated ≠ {m.dayHours}h shift
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '10px 12px', fontSize: '12px', color: '#7f1d1d' }}>
+                <strong>Recommended:</strong> Cancel, fix the allocations using the 🎯 TCE button on each affected day cell, then save.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowMismatchConfirm(false)}>← Go back and fix</button>
+              <button className="btn" style={{ background: '#dc2626', color: '#fff', border: 'none' }}
+                onClick={() => { setShowMismatchConfirm(false); saveWeek(activeWeek); setActiveWeek(null) }}>
+                Save anyway (I understand)
+              </button>
             </div>
           </div>
         </div>
