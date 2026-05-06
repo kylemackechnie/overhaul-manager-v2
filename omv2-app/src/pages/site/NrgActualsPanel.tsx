@@ -128,6 +128,7 @@ export function NrgActualsPanel() {
           sell = 0  // gated — no spot rate
         } else {
           sell = row.sell_labour_eur * rate + (row.sell_allowances || 0)
+        }
       } else {
         sell = (row.sell_labour || 0) + (row.sell_allowances || 0)
       }
