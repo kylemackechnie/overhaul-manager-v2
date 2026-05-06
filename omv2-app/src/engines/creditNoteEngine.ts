@@ -130,7 +130,7 @@ export async function applyCreditNote(payload: CreditNotePayload): Promise<Credi
     if (payload.creditType === 'reallocate') {
       await applyReallocate(payload, tceLines, rateCards, resources, project, affectedTimesheetIds, warnings)
     } else if (payload.creditType === 'credit_only') {
-      await applyCreditOnly(payload, warnings)
+      await applyCreditOnly(payload, warnings, affectedTimesheetIds)
     } else if (payload.creditType === 'adjust_timesheet') {
       await applyAdjustTimesheet(payload, tceLines, rateCards, resources, project, affectedTimesheetIds, warnings)
     }
@@ -238,16 +238,25 @@ async function applyReallocate(
 async function applyCreditOnly(
   payload: CreditNotePayload,
   warnings: string[],
+  affectedTimesheetIds: Set<string>,
 ) {
   if (!payload.creditHoursPerLine) throw new Error('Credit hours per line missing')
 
+  // creditHoursPerLine keys may be strings or numbers depending on JSON serialisation
+  const hoursForLine = (i: number): number => {
+    const byNum = (payload.creditHoursPerLine as Record<string | number, number>)[i]
+    const byStr = (payload.creditHoursPerLine as Record<string | number, number>)[String(i)]
+    const v = byNum ?? byStr
+    return v !== undefined ? Number(v) : payload.sourceLines[i].hours
+  }
+
   for (let i = 0; i < payload.sourceLines.length; i++) {
-    const src   = payload.sourceLines[i]
-    const creditHours = payload.creditHoursPerLine[i] ?? src.hours
+    const src         = payload.sourceLines[i]
+    const creditHours = hoursForLine(i)
 
     if (creditHours <= 0) continue
 
-    // Find matching cost lines: same timesheet + same work_date + same person
+    // Find matching cost lines
     let clQuery = supabase
       .from('timesheet_cost_lines')
       .select('id,tce_item_id,work_order,allocated_hours,sell_labour,cost_labour,sell_allowances,cost_allowances')
@@ -269,25 +278,39 @@ async function applyCreditOnly(
       continue
     }
 
-    for (const cl of matchedLines) {
-      const originalHours = Number(cl.allocated_hours) || 0
-      if (originalHours <= 0) continue
-      // Scale sell values proportionally; cost values unchanged
-      const ratio = Math.min(1, creditHours / originalHours)
-      const newSellLabour = Number(cl.sell_labour) * (1 - ratio)
-      const newSellAllowances = Number(cl.sell_allowances) * (1 - ratio)
-      const newAllocHours = Number(cl.allocated_hours) * (1 - ratio)
+    // Total allocated hours across all matched cost lines for this scope
+    const totalAllocHours = matchedLines.reduce((s, cl) => s + (Number(cl.allocated_hours) || 0), 0)
+    if (totalAllocHours <= 0) { warnings.push(`Zero allocated hours on cost lines for ${src.personName} ${src.date}`); continue }
 
-      const { error: updErr } = await supabase
+    for (const cl of matchedLines) {
+      const clHours = Number(cl.allocated_hours) || 0
+      if (clHours <= 0) continue
+
+      // Portion of the credit that applies to this cost line (weighted by its share of total)
+      const lineCreditHours = Math.min(clHours, creditHours * (clHours / totalAllocHours))
+      const ratio = lineCreditHours / clHours
+
+      const newAllocHours     = parseFloat((clHours * (1 - ratio)).toFixed(4))
+      const newSellLabour     = parseFloat((Number(cl.sell_labour)     * (1 - ratio)).toFixed(4))
+      const newSellAllowances = parseFloat((Number(cl.sell_allowances) * (1 - ratio)).toFixed(4))
+
+      const { data: updData, error: updErr } = await supabase
         .from('timesheet_cost_lines')
         .update({
-          allocated_hours: parseFloat(newAllocHours.toFixed(4)),
-          sell_labour:     parseFloat(newSellLabour.toFixed(4)),
-          sell_allowances: parseFloat(newSellAllowances.toFixed(4)),
+          allocated_hours: newAllocHours,
+          sell_labour:     newSellLabour,
+          sell_allowances: newSellAllowances,
         })
         .eq('id', cl.id)
+        .select('id')
+
       if (updErr) throw new Error(`Cost line update failed: ${updErr.message}`)
+      if (!updData || updData.length === 0) {
+        warnings.push(`Cost line ${cl.id} not updated — RLS may have blocked it or row not found`)
+      }
     }
+
+    affectedTimesheetIds.add(src.tsId)
   }
 }
 
@@ -304,11 +327,18 @@ async function applyAdjustTimesheet(
 ) {
   if (!payload.creditHoursPerLine) throw new Error('Credit hours per line missing')
 
+  const hoursForLine = (i: number): number => {
+    const byNum = (payload.creditHoursPerLine as Record<string | number, number>)[i]
+    const byStr = (payload.creditHoursPerLine as Record<string | number, number>)[String(i)]
+    const v = byNum ?? byStr
+    return v !== undefined ? Number(v) : payload.sourceLines[i].hours
+  }
+
   // Group source lines by timesheet so we batch all changes per ts
   const byTs: Record<string, { src: SourceLine; creditHours: number }[]> = {}
   for (let i = 0; i < payload.sourceLines.length; i++) {
     const src         = payload.sourceLines[i]
-    const creditHours = payload.creditHoursPerLine[i] ?? src.hours
+    const creditHours = hoursForLine(i)
     if (creditHours <= 0) continue
     if (!byTs[src.tsId]) byTs[src.tsId] = []
     byTs[src.tsId].push({ src, creditHours })

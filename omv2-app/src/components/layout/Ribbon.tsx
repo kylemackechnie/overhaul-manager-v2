@@ -197,6 +197,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '🧾', label: 'Invoicing', panel: 'nrg-invoicing' },
         { icon: '✅', label: 'Approvals', panel: 'nrg-approvals' },
         { icon: '📃', label: 'Allocations', panel: 'nrg-scope-allocations' },
+        { icon: '📝', label: 'Credit Notes', panel: 'nrg-credit-notes' },
         { icon: '🏆', label: 'KPI Model', panel: 'nrg-kpi' },
       ]},
     ],
