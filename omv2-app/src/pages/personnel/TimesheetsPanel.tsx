@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { writeTimesheetCostLines, calcPersonTotals } from '../../engines/timesheetCostEngine'
-import { splitHours } from '../../engines/costEngine'
+import { splitHours, calcHoursCost } from '../../engines/costEngine'
 import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
@@ -204,6 +204,106 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
   const win = window.open('', '_blank', 'width=1200,height=800')
   if (win) { win.document.write(html); win.document.close() }
 }
+
+function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCards: RateCard[], regime: string) {
+  const monday = new Date(week.week_start + 'T12:00:00')
+  const days = Array.from({length:7}, (_,i) => { const d = new Date(monday); d.setDate(monday.getDate()+i); return d })
+  const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+  const rcByRole: Record<string,RateCard> = {}
+  rateCards.forEach(r => { rcByRole[r.role.toLowerCase()] = r })
+  const fmtDate = (d: Date) => d.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' })
+  const fmtMoney = (n: number) => n > 0 ? `$${n.toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '—'
+  const fmtHrs = (n: number) => n > 0 ? `${n.toFixed(1)}h` : '—'
+  const endDate = new Date(monday); endDate.setDate(monday.getDate()+6)
+  const genDate = new Date().toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' })
+  void fmtDate; void endDate
+
+  const RATE_TYPES = [
+    { key: 'dnt',   label: 'DS Normal Time',   color: '#0ea5e9' },
+    { key: 'dt15',  label: 'DS Time & Half',    color: '#f97316' },
+    { key: 'ddt',   label: 'DS Double Time',    color: '#8b5cf6' },
+    { key: 'ddt15', label: 'DS Public Holiday', color: '#ef4444' },
+  ]
+  const CELL = 'padding:5px 8px;border:1px solid #e2e8f0;text-align:right;vertical-align:top;'
+  const CELL_L = 'padding:5px 10px;border:1px solid #e2e8f0;vertical-align:top;'
+  const HDR = 'padding:6px 8px;border:1px solid #cbd5e1;background:#f8fafc;font-size:9px;text-transform:uppercase;letter-spacing:0.04em;text-align:right;'
+  const HDR_L = 'padding:6px 10px;border:1px solid #cbd5e1;background:#f8fafc;font-size:9px;text-transform:uppercase;letter-spacing:0.04em;text-align:left;'
+
+  const personBlocks = (week.crew || []).map(m => {
+    const rc = rcByRole[(m.role||'').toLowerCase()]
+    if (!rc) return ''
+    const rcAny = rc as unknown as Record<string,unknown>
+    const rates = (rcAny.rates as {sell:Record<string,number>}|undefined)?.sell || {}
+    const isMgmt = String(rcAny.category) === 'management' || String(rcAny.category) === 'seag'
+
+    const dayBreaks = days.map(d => {
+      const ds = d.toISOString().slice(0,10)
+      const cell = (m.days||{})[ds] as {hours?:number;dayType?:string;shiftType?:string;laha?:boolean;meal?:boolean;fsa?:boolean;camp?:boolean}|undefined
+      if (!cell?.hours) return { split:{} as Record<string,number>, sell:{} as Record<string,number>, hours:0, totalSell:0, allowances:[] as {label:string;sell:number}[] }
+      const adjH = (m.mealBreakAdj && !isMgmt) ? 0.5 : 0
+      const effH = cell.hours + adjH
+      const sp = splitHours(effH, cell.dayType||'weekday', cell.shiftType||'day', rc.regime) as unknown as Record<string,number>
+      const sellMap: Record<string,number> = {}
+      for (const rt of RATE_TYPES) { sellMap[rt.key] = (sp[rt.key]||0) * (parseFloat(String(rates[rt.key]||0))||0) }
+      const totalSell = Object.values(sellMap).reduce((s,v) => s+v, 0)
+      const allowances: {label:string;sell:number}[] = []
+      if (cell.laha) allowances.push({ label: isMgmt?'FSA':'LAHA', sell: parseFloat(String(isMgmt?rcAny.fsa_sell:rcAny.laha_sell))||0 })
+      if (cell.meal) allowances.push({ label:'Meal', sell: parseFloat(String(rcAny.meal_sell))||0 })
+      if (cell.fsa && !cell.laha) allowances.push({ label:'FSA', sell: parseFloat(String(rcAny.fsa_sell))||0 })
+      if (cell.camp) allowances.push({ label:'Camp', sell: parseFloat(String(rcAny.camp_sell||rcAny.fsa_sell))||0 })
+      return { split:sp, sell:sellMap, hours:effH, totalSell, allowances }
+    })
+
+    const weekTotalHrs  = dayBreaks.reduce((s,d) => s+d.hours, 0)
+    const weekTotalSell = dayBreaks.reduce((s,d) => s+d.totalSell, 0)
+    const weekAllowances = dayBreaks.reduce((s,d) => s+d.allowances.reduce((a,al) => a+al.sell, 0), 0)
+    const weekGrandTotal = weekTotalSell + weekAllowances
+
+    const rateRows = RATE_TYPES.map(rt => {
+      const weekHrs  = dayBreaks.reduce((s,d) => s+(d.split[rt.key]||0), 0)
+      const weekSell = dayBreaks.reduce((s,d) => s+(d.sell[rt.key]||0), 0)
+      if (!weekHrs) return ''
+      const cells = dayBreaks.map(d => {
+        const h = d.split[rt.key]||0, sv = d.sell[rt.key]||0
+        return h ? `<td style="${CELL}"><span style="font-weight:600">${fmtHrs(h)}</span><br/><span style="font-size:9px;color:#555">${fmtMoney(sv)}</span></td>`
+                 : `<td style="${CELL}color:#ccc">—</td>`
+      }).join('')
+      return `<tr><td style="${CELL_L}color:${rt.color};font-weight:500">${rt.label}</td>${cells}<td style="${CELL}font-weight:700">${fmtHrs(weekHrs)}<br/><span style="font-size:9px;color:#374151">${fmtMoney(weekSell)}</span></td></tr>`
+    }).filter(Boolean).join('')
+
+    const hrsRow = `<tr style="background:#f8fafc"><td style="${CELL_L}font-weight:600">Hours Total</td>${dayBreaks.map(d => d.hours ? `<td style="${CELL}font-weight:700">${fmtHrs(d.hours)}<br/><span style="font-size:9px">${fmtMoney(d.totalSell)}</span></td>` : `<td style="${CELL}color:#ccc">—</td>`).join('')}<td style="${CELL}font-weight:700">${fmtHrs(weekTotalHrs)}<br/><span style="font-size:9px">${fmtMoney(weekTotalSell)}</span></td></tr>`
+
+    const allowRow = weekAllowances > 0 ? `<tr><td style="${CELL_L}color:#6b7280">Allowances</td>${dayBreaks.map(d => d.allowances.length ? `<td style="${CELL}font-size:10px">${d.allowances.map(a => `${a.label} ${fmtMoney(a.sell)}`).join('<br/>')}</td>` : `<td style="${CELL}color:#ccc">—</td>`).join('')}<td style="${CELL}color:#6b7280">${fmtMoney(weekAllowances)}</td></tr>` : ''
+
+    const totRow = `<tr style="background:#f1f5f9"><td style="${CELL_L}font-weight:700;text-transform:uppercase;font-size:10px">TOTAL</td>${dayBreaks.map(d => { const t = d.totalSell + d.allowances.reduce((s,a)=>s+a.sell,0); return t>0?`<td style="${CELL}color:#6b7280;font-size:11px">A$${t.toFixed(2)}</td>`:`<td style="${CELL}color:#ccc">—</td>` }).join('')}<td style="${CELL}font-weight:700;font-size:12px">A$${weekGrandTotal.toFixed(2)}</td></tr>`
+
+    const dayHdrs = days.map((d,i) => `<th style="${HDR}">${dayLabels[i]}<br/><span style="font-weight:400">${d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</span></th>`).join('')
+
+    return `<div style="margin-bottom:32px;page-break-inside:avoid">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:8px">
+        <div><span style="font-size:15px;font-weight:700">${m.name}</span><span style="font-size:12px;color:#6b7280;margin-left:8px">${m.role}</span></div>
+        <div style="font-size:14px;font-weight:700;color:#059669">A$${weekGrandTotal.toFixed(2)} total</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr><th style="${HDR_L}width:140px">Rate Type</th>${dayHdrs}<th style="${HDR}width:90px">Week Total</th></tr></thead>
+        <tbody>${rateRows}${hrsRow}${allowRow}${totRow}</tbody>
+      </table></div>`
+  }).filter(Boolean).join('')
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Trades Cost Breakdown — ${week.week_start}</title>
+  <style>body{font-family:-apple-system,Arial,sans-serif;font-size:11px;padding:28px;color:#111;max-width:1200px;margin:0 auto}@media print{@page{size:A3 landscape;margin:10mm}button{display:none!important}body{padding:10px;max-width:none}}</style>
+  </head><body>
+  <button onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:6px 16px;background:#0f766e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🖨 Print</button>
+  <h1 style="font-size:20px;font-weight:800;margin:0 0 4px">Trades Timesheet — Customer Cost Breakdown</h1>
+  <div style="font-size:11px;color:#6b7280;margin-bottom:28px">${projectName} · Week of ${week.week_start} · ${regime||'Under 12hrs'} · Generated ${genDate}</div>
+  ${personBlocks}
+  <div style="margin-top:24px;font-size:9px;color:#999;border-top:1px solid #e2e8f0;padding-top:8px">Generated by Overhaul Manager · ${new Date().toLocaleString('en-AU')} · CONFIDENTIAL</div>
+  <script>setTimeout(()=>window.print(),600)<\/script></body></html>`
+
+  const win = window.open('', '_blank', 'width=1400,height=900')
+  if (win) { win.document.write(html); win.document.close() }
+}
+
 
 // Spec shape for nrgWoAllocations[] entries in day cells
 // These three shapes coexist in the same array:
@@ -1419,6 +1519,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` — ${r.role}` : ''}</option>)}
             </select>
             <button className="btn btn-sm" onClick={() => printTimesheet(activeWeek, activeProject?.name||'', rateCards, holidays)}>🖨 Print</button>
+            <button className="btn btn-sm" onClick={() => printCostBreakdown(activeWeek, activeProject?.name||'', rateCards, activeWeek.regime||'')}>💰 Cost Breakdown</button>
             <span style={{ fontSize: '11px', color: 'var(--text3)', padding: '0 4px' }}>● Auto-saving</span>
           </div>
         </div>
