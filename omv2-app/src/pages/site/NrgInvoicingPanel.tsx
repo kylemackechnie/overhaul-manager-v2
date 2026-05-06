@@ -79,7 +79,7 @@ export function NrgInvoicingPanel() {
       supabase.from('timesheet_cost_lines')
         .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,cost_allowances,sell_allowances,allocated_hours')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,invoice_date,amount,status,invoice_number,description').eq('project_id', pid).neq('status','rejected'),
+      supabase.from('invoices').select('tce_item_id,invoice_date,amount,status,invoice_number').eq('project_id', pid).neq('status','rejected'),
       supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category').eq('project_id', pid),
     ])
     setTceLines(fetchedTceLines)
@@ -556,7 +556,7 @@ export function NrgInvoicingPanel() {
                         {periodInvs.map((i, idx) => (
                           <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)' }}>{(i.invoice_number as string) || '—'}</td>
-                            <td style={{ padding: '5px 10px', fontSize: 11 }}>{(i.description as string) || '—'}</td>
+                            <td style={{ padding: '5px 10px', fontSize: 11 }}>{(i.invoice_number as string) || '—'}</td>
                             <td style={{ padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text2)' }}>{fmtDate(i.invoice_date as string)}</td>
                             <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(Number(i.amount) || 0)}</td>
                           </tr>
