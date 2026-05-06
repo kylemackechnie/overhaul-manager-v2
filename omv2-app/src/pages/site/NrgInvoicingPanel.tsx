@@ -449,7 +449,6 @@ export function NrgInvoicingPanel() {
           </div>
         </div>
       )}
-      )}
 
       {/* ── Cell Drill-down Modal ── */}
       {drillCell && (() => {
