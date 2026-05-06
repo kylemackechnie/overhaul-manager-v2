@@ -402,8 +402,12 @@ export function ExpensesPanel() {
   function exportCSV() {
     downloadCSV(
       [
-        ['Date', 'Category', 'Description', 'Cost ex GST', 'Sell', 'Currency', 'Notes'],
-        ...expenses.map(e => [e.date||'', e.category||'', e.description||'', e.cost_ex_gst||0, e.sell_price||0, e.currency||'AUD', e.notes||''])
+        ['Date', 'Category', 'Description', 'Cost ex GST', 'Sell', 'Currency', 'TCE Scope', 'Notes'],
+        ...expenses.map(e => {
+          const tceLine = tceLines.find(l => l.item_id === e.tce_item_id)
+          const tceLabel = tceLine ? `${tceLine.item_id} — ${tceLine.description}` : (e.tce_item_id || '')
+          return [e.date||'', e.category||'', e.description||'', e.cost_ex_gst||0, e.sell_price||0, e.currency||'AUD', tceLabel, e.notes||'']
+        })
       ],
       'expenses_' + (activeProject?.name || 'project')
     )
