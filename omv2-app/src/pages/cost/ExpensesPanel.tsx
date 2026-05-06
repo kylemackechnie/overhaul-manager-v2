@@ -403,7 +403,6 @@ export function ExpensesPanel() {
   }
 
 
-  }
 
   // Returns the Monday of the week containing the given date string (YYYY-MM-DD)
   function weekStart(dateStr: string): string {
@@ -490,6 +489,8 @@ export function ExpensesPanel() {
   const totalCost = expenses.reduce((s, e) => s + (e.cost_ex_gst || 0), 0)
   const totalSell = expenses.reduce((s, e) => s + (e.sell_price || 0), 0)
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const bulkWeekGroups = getWeekGroups()
+  const bulkTotalSelected = bulkWeekGroups.filter(w => bulkDlWeeks.has(w.key)).reduce((s, w) => s + w.count, 0)
 
   return (
     <div style={{ padding: '24px', maxWidth: '1100px' }}>
@@ -589,7 +590,7 @@ export function ExpensesPanel() {
                         {(e.receipt_paths||[]).map(p => (
                           <span key={p} style={{display:'inline-flex',alignItems:'center',gap:'2px',fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg3)',border:'1px solid var(--border)',cursor:'pointer',color:'var(--text2)'}}
                             title={fileName(p)} onClick={()=>openReceipt(p)}>
-                            {fileIcon(p)} {fileName(p).slice(0,12)}{fileName(p).length>12?'…':''}
+                            {fileIcon(p)} {fileName(p).slice(0,12)}{fileName(p).length>12?'...':''}
                             <span style={{marginLeft:'2px',color:'var(--text3)',cursor:'pointer'}}
                               onClick={ev=>{ev.stopPropagation();removeReceipt(e,p)}}>×</span>
                           </span>
@@ -858,56 +859,52 @@ export function ExpensesPanel() {
       )}
 
       {/* Bulk Receipt Download Modal */}
-      {showBulkDownload && (() => {
-        const weekGroups = getWeekGroups()
-        const totalSelected = weekGroups.filter(w => bulkDlWeeks.has(w.key)).reduce((s, w) => s + w.count, 0)
-        return (
-          <div className="modal-overlay" onClick={() => setShowBulkDownload(false)}>
-            <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>Download Receipts as ZIP</h2>
-                <button className="btn-close" onClick={() => setShowBulkDownload(false)}>×</button>
-              </div>
-              <div className="modal-body">
-                {weekGroups.length === 0 ? (
-                  <p style={{ color: 'var(--text3)', fontSize: '13px' }}>No expenses with attached receipts found.</p>
-                ) : (
-                  <>
-                    <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
-                      Select the weeks to include. Each week becomes a folder in the ZIP.
-                    </p>
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                      <button className="btn btn-sm" onClick={() => setBulkDlWeeks(new Set(weekGroups.map(w => w.key)))}>Select All</button>
-                      <button className="btn btn-sm" onClick={() => setBulkDlWeeks(new Set())}>Clear</button>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {weekGroups.map(w => (
-                        <label key={w.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '6px', background: bulkDlWeeks.has(w.key) ? 'rgba(99,102,241,0.08)' : 'var(--bg2)', cursor: 'pointer', border: `1px solid ${bulkDlWeeks.has(w.key) ? 'var(--primary)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
-                          <input type="checkbox" checked={bulkDlWeeks.has(w.key)}
-                            onChange={e => setBulkDlWeeks(prev => {
-                              const next = new Set(prev)
-                              e.target.checked ? next.add(w.key) : next.delete(w.key)
-                              return next
-                            })} />
-                          <span style={{ flex: 1, fontSize: '13px', fontWeight: 500 }}>{w.label}</span>
-                          <span style={{ fontSize: '11px', color: 'var(--text3)' }}>{w.count} file{w.count !== 1 ? 's' : ''}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button className="btn" onClick={() => setShowBulkDownload(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={downloadReceiptsZip}
-                  disabled={bulkDlWeeks.size === 0 || bulkDlLoading}>
-                  {bulkDlLoading ? 'Downloading…' : `Download ${totalSelected} file${totalSelected !== 1 ? 's' : ''}`}
-                </button>
-              </div>
+      {showBulkDownload && (
+        <div className="modal-overlay" onClick={() => setShowBulkDownload(false)}>
+          <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Download Receipts as ZIP</h2>
+              <button className="btn-close" onClick={() => setShowBulkDownload(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {bulkWeekGroups.length === 0 ? (
+                <p style={{ color: 'var(--text3)', fontSize: '13px' }}>No expenses with attached receipts found.</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                    Select the weeks to include. Each week becomes a folder in the ZIP.
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    <button className="btn btn-sm" onClick={() => setBulkDlWeeks(new Set(bulkWeekGroups.map(w => w.key)))}>Select All</button>
+                    <button className="btn btn-sm" onClick={() => setBulkDlWeeks(new Set())}>Clear</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {bulkWeekGroups.map(w => (
+                      <label key={w.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '6px', background: bulkDlWeeks.has(w.key) ? 'rgba(99,102,241,0.08)' : 'var(--bg2)', cursor: 'pointer', border: `1px solid ${bulkDlWeeks.has(w.key) ? 'var(--primary)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                        <input type="checkbox" checked={bulkDlWeeks.has(w.key)}
+                          onChange={ev => setBulkDlWeeks(prev => {
+                            const next = new Set(prev)
+                            ev.target.checked ? next.add(w.key) : next.delete(w.key)
+                            return next
+                          })} />
+                        <span style={{ flex: 1, fontSize: '13px', fontWeight: 500 }}>{w.label}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>{w.count} file{w.count !== 1 ? 's' : ''}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowBulkDownload(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={downloadReceiptsZip}
+                disabled={bulkDlWeeks.size === 0 || bulkDlLoading}>
+                {bulkDlLoading ? 'Downloading...' : `Download ${bulkTotalSelected} file${bulkTotalSelected !== 1 ? 's' : ''}`}
+              </button>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
     </div>
   )
 }
