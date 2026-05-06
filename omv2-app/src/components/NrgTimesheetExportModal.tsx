@@ -195,9 +195,23 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
 
   const tceByItemId: Record<string,{contract:string;wo:string}> = {}
   const tceByWo:     Record<string,{contract:string;wo:string}> = {}
+  // Only skilled lines appear in the TAStK export
+  const skilledItemIds = new Set<string>()
+  const skilledWos     = new Set<string>()
   for (const l of tceLines) {
     if (l.item_id)    tceByItemId[l.item_id]    = { contract: l.contract_scope||'', wo: l.work_order||'' }
     if (l.work_order) tceByWo[l.work_order]      = { contract: l.contract_scope||'', wo: l.work_order }
+    if (l.source === 'skilled') {
+      if (l.item_id)    skilledItemIds.add(l.item_id)
+      if (l.work_order) skilledWos.add(l.work_order)
+    }
+  }
+
+  function isSkilled(a: NrgAlloc): boolean {
+    if (a.tceItemId && skilledItemIds.has(a.tceItemId)) return true
+    if (a.wo && skilledWos.has(a.wo)) return true
+    // WO-only allocs (no tceItemId resolved yet): check if any skilled line has this WO
+    return false
   }
 
   function resolveContractWo(a: NrgAlloc) {
@@ -223,7 +237,7 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
           // Filter individual days by the date range
           if (dateStr < from || dateStr > to) continue
           if (!day || day.hours <= 0) continue
-          const allocs = day.nrgWoAllocations || []
+          const allocs = (day.nrgWoAllocations || []).filter(a => isSkilled(a))
           if (allocs.length === 0) continue
           const dateSerial = toExcelSerial(dateStr)
           for (const alloc of allocs) {
