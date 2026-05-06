@@ -339,6 +339,52 @@ export function ExpensesPanel() {
     setSelected(new Set()); load()
   }
 
+  async function bulkDuplicate() {
+    if (!selected.size) return
+    const ids = [...selected]
+    const srcExpenses = expenses.filter(e => ids.includes(e.id))
+
+    // Get current max ref number once
+    const { data: refData } = await supabase.from('expenses').select('expense_ref')
+      .eq('project_id', activeProject!.id).not('expense_ref', 'is', null)
+    const existingNums = (refData || [])
+      .map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
+      .filter(n => n > 0)
+    let nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1
+
+    for (const src of srcExpenses) {
+      // Build new ref: auto-numbered, same slug as source
+      const slug = src.expense_ref
+        ? src.expense_ref.replace(/^EXP-\d+_?/, '')
+        : buildRefSlug(src.category, src.vendor, src.description)
+      const newRef = `EXP-${String(nextNum).padStart(4, '0')}${slug ? '_' + slug : ''}`
+      nextNum++
+
+      const { error } = await supabase.from('expenses').insert({
+        project_id:   activeProject!.id,
+        resource_id:  src.resource_id,
+        category:     src.category,
+        description:  src.description,
+        vendor:       src.vendor,
+        date:         src.date,
+        amount:       src.amount,
+        cost_ex_gst:  src.cost_ex_gst,
+        sell_price:   src.sell_price,
+        currency:     src.currency,
+        gm_pct:       src.gm_pct,
+        chargeable:   src.chargeable || src.sell_price !== 0,
+        tce_item_id:  src.tce_item_id,
+        wbs:          src.wbs,
+        notes:        src.notes,
+        expense_ref:  newRef,
+        // receipt_paths deliberately omitted — attachments not duplicated
+      })
+      if (error) { toast(`Duplicate failed: ${error.message}`, 'error'); return }
+    }
+    toast(`${srcExpenses.length} receipt${srcExpenses.length !== 1 ? 's' : ''} duplicated`, 'success')
+    setSelected(new Set()); load()
+  }
+
   async function bulkChargeable(val: boolean) {
     if (!selected.size) return
     const updates = [...selected].map(id => {
@@ -394,6 +440,7 @@ export function ExpensesPanel() {
           <button className="btn btn-sm" onClick={()=>{setBulkVal(String(activeProject?.default_gm||15));setBulkModal('gm')}}>📊 Set GM%</button>
           <button className="btn btn-sm" onClick={()=>bulkChargeable(true)}>✓ Chargeable</button>
           <button className="btn btn-sm" onClick={()=>bulkChargeable(false)}>✗ Non-chargeable</button>
+          <button className="btn btn-sm" onClick={bulkDuplicate}>⧉ Duplicate</button>
           <button className="btn btn-sm" style={{color:'var(--red)'}} onClick={bulkDelete}>🗑 Delete</button>
           <button className="btn btn-sm" style={{marginLeft:'auto'}} onClick={()=>setSelected(new Set())}>Clear</button>
         </div>
