@@ -229,7 +229,7 @@ export function NrgInvoicingPanel() {
         // seag week — gated on spot rate
         const rate = spotRateByWeek[we]
         if (rate == null) continue  // no rate = excluded
-        total += vals.sellEur * rate + (vals.sell - vals.sellEur)  // EUR portion converted + AUD allowances
+        total += vals.sellEur * rate  // EUR labour converted at spot rate
       } else {
         total += vals.sell
       }
@@ -581,7 +581,7 @@ export function NrgInvoicingPanel() {
                         {labourWeeks.map(([we, vals]) => {
                           const pending = vals.sellEur > 0 && vals.rate == null
                           const audSell = vals.sellEur > 0
-                            ? (vals.rate != null ? vals.sellEur * vals.rate + (vals.sell - vals.sellEur) : null)
+                            ? (vals.rate != null ? vals.sellEur * vals.rate : null)
                             : vals.sell
                           return (
                           <tr key={we} style={{ borderBottom: '1px solid var(--border)', background: pending ? '#fff7f7' : undefined }}>
@@ -617,7 +617,7 @@ export function NrgInvoicingPanel() {
                             {labourWeeks.some(([,v]) => v.sellEur > 0 && v.rate == null)
                               ? <span style={{color:'#dc2626'}}>partial — rate(s) pending</span>
                               : fmt(labourWeeks.reduce((s,[,v]) => {
-                                  if (v.sellEur > 0 && v.rate != null) return s + v.sellEur * v.rate + (v.sell - v.sellEur)
+                                  if (v.sellEur > 0 && v.rate != null) return s + v.sellEur * v.rate
                                   return s + v.sell
                                 }, 0))
                             }
