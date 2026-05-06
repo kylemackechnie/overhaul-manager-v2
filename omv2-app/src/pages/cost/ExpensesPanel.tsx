@@ -7,7 +7,7 @@ import type { Expense, ExpenseLine, Resource, WbsItem } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
-const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Other']
+const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Other']
 
 type ExpenseForm = {
   resource_id: string; category: string; description: string; vendor: string; date: string
@@ -402,8 +402,8 @@ export function ExpensesPanel() {
   function exportCSV() {
     downloadCSV(
       [
-        ['Date', 'Category', 'Description', 'Amount', 'Cost ex GST', 'Sell', 'Currency', 'WBS', 'Notes'],
-        ...expenses.map(e => [e.date||'', e.category||'', e.description||'', e.amount||0, e.cost_ex_gst||0, e.sell_price||0, e.currency||'AUD', e.wbs||'', e.notes||''])
+        ['Date', 'Category', 'Description', 'Cost ex GST', 'Sell', 'Currency', 'Notes'],
+        ...expenses.map(e => [e.date||'', e.category||'', e.description||'', e.cost_ex_gst||0, e.sell_price||0, e.currency||'AUD', e.notes||''])
       ],
       'expenses_' + (activeProject?.name || 'project')
     )
