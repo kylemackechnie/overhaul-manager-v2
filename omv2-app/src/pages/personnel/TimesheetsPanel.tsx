@@ -276,7 +276,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
   const [bulkAddModal, setBulkAddModal] = useState(false)
   const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
-  const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number}[]>([])
+  const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number;payCode?:string}[]>([])
   const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null}[]>([])
   // Multi-match resolver — opens a modal listing every TasTK-imported alloc whose
   // WO maps to >1 TCE candidate item. User splits the hours, then save replaces
@@ -523,6 +523,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         hours: a.hours,
         wo: a.wo || '',
         tceItemId: a.tceItemId || null,
+        payCode: (a as NrgWoAlloc & {payCode?:string}).payCode,
       }))
     setTceAllocRows(tceRows.length ? tceRows : [])
     setTceAllocModal({ personId, date, hours, name })
@@ -543,10 +544,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       const tceFinal: NrgWoAlloc[] = tceAllocRows.filter(r => r.hours > 0 && r.key).map(r => {
         if (r.key.startsWith('wo:')) {
           const wo = r.key.slice(3)
-          return { wo, tceItemId: null, _tceMode: true as const, hours: r.hours, label: r.label }
+          return { wo, tceItemId: null, _tceMode: true as const, hours: r.hours, label: r.label, ...(r.payCode ? { payCode: r.payCode } : {}) }
         } else {
           const tceItemId = r.key.startsWith('tce:') ? r.key.slice(4) : r.key
-          return { wo: '', tceItemId, _tceMode: true as const, hours: r.hours, label: r.label }
+          return { wo: '', tceItemId, _tceMode: true as const, hours: r.hours, label: r.label, ...(r.payCode ? { payCode: r.payCode } : {}) }
         }
       })
       const dayEntry = (m.days?.[tceAllocModal.date] as Record<string,unknown>) || {}
