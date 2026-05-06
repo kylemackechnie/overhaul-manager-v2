@@ -453,33 +453,37 @@ export function NrgInvoicingPanel() {
       {/* ── Cell Drill-down Modal ── */}
       {drillCell && (() => {
         const { inv, cs, fromWE, toWE } = drillCell
-        const tceItemId = tceLines.find(l => l.contract_scope === cs || l.item_id === cs)?.item_id || null
-        const isLabour  = tceLines.find(l => l.contract_scope === cs || l.item_id === cs)?.source === 'skilled'
+        const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id||'')
+        const allIds = tceLines.filter(l => l.contract_scope === cs && !isGroupHeader(l.item_id)).map(l => l.item_id).filter(Boolean) as string[]
+        const isLabour = tceLines.some(l => l.contract_scope === cs && l.source === 'skilled')
         const isOverridden = inv.overrides?.[cs] !== undefined
         const calculatedAmount = calcPeriodAmount(inv, cs)
         const effectiveAmt = effectiveAmount(inv, cs)
 
-        // Labour: weekly buckets in period
-        const labourWeeks = tceItemId
-          ? Object.entries(costLinesByItemAndWeek[tceItemId] || {})
-              .filter(([we]) => we > fromWE && we <= toWE)
-              .sort(([a],[b]) => a.localeCompare(b))
-          : []
+        // Labour: aggregate weekly buckets across all item_ids in this scope
+        const labourWeekMap: Record<string, { sell: number }> = {}
+        for (const id of allIds) {
+          for (const [we, vals] of Object.entries(costLinesByItemAndWeek[id] || {})) {
+            if (we > fromWE && we <= toWE) {
+              if (!labourWeekMap[we]) labourWeekMap[we] = { sell: 0 }
+              labourWeekMap[we].sell += vals.sell
+            }
+          }
+        }
+        const labourWeeks = Object.entries(labourWeekMap).sort(([a],[b]) => a.localeCompare(b))
 
-        // Hours breakdown from raw cost lines
-        const hoursWeeks = tceItemId
-          ? rawCostLines
-              .filter(r => r.tce_item_id === tceItemId && r.week_ending > fromWE && r.week_ending <= toWE)
-              .reduce((acc, r) => { acc[r.week_ending] = (acc[r.week_ending] || 0) + r.allocated_hours; return acc }, {} as Record<string, number>)
-          : {}
+        // Hours from raw cost lines across all item_ids
+        const hoursWeeks = rawCostLines
+          .filter(r => r.tce_item_id && allIds.includes(r.tce_item_id) && r.week_ending > fromWE && r.week_ending <= toWE)
+          .reduce((acc, r) => { acc[r.week_ending] = (acc[r.week_ending] || 0) + r.allocated_hours; return acc }, {} as Record<string, number>)
 
-        // Non-labour: supplier invoices in period
+        // Non-labour: supplier invoices across all item_ids
         const periodInvs = supplierInvoices
-          .filter(i => i.tce_item_id === tceItemId && inPeriod(i.invoice_date as string, fromWE, toWE))
+          .filter(i => allIds.includes(i.tce_item_id as string) && inPeriod(i.invoice_date as string, fromWE, toWE))
 
-        // Non-labour: expenses in period
+        // Non-labour: expenses across all item_ids
         const periodExps = expenseItems
-          .filter(e => e.tce_item_id === tceItemId && inPeriod(e.date as string, fromWE, toWE))
+          .filter(e => allIds.includes(e.tce_item_id as string) && inPeriod(e.date as string, fromWE, toWE))
 
         const fmtDate = (d: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) : '—'
         const fmtWE   = (we: string) => `WE ${fmtDate(we)}`
