@@ -180,7 +180,7 @@ async function applyReallocate(
     const ts = await fetchTimesheetFull(src.tsId)
     if (!ts) { warnings.push(`Timesheet ${src.tsId} not found — skipped`); continue }
 
-    const updatedCrew = ts.crew.map((cm: Record<string, unknown>) => {
+    const updatedCrew = (ts.crew as unknown as Record<string, unknown>[]).map((cm) => {
       if (cm.personId !== src.personId) return cm
       const days = { ...(cm.days as Record<string, unknown>) }
       const day  = { ...(days[src.date] as Record<string, unknown> | undefined || {}) }
@@ -222,7 +222,7 @@ async function applyReallocate(
 
     // 2. Rewrite cost lines for this timesheet
     const updatedTs = { ...ts, crew: updatedCrew } as unknown as WeeklyTimesheet
-    const { error: clErr } = await writeTimesheetCostLines(updatedTs, payload.projectId, rateCards, tceLines as Parameters<typeof writeTimesheetCostLines>[3], resources, project)
+    const { error: clErr } = await writeTimesheetCostLines(updatedTs, payload.projectId, rateCards, tceLines as unknown as Parameters<typeof writeTimesheetCostLines>[3], resources, project)
     if (clErr) warnings.push(`Cost lines rewrite warning: ${clErr}`)
 
     affectedTimesheetIds.add(src.tsId)
@@ -247,21 +247,22 @@ async function applyCreditOnly(
 
     if (creditHours <= 0) continue
 
-    // Find matching cost lines: same timesheet + same tce_item_id/work_order + same work_date + same person
-    const { data: cls, error: clFetchErr } = await supabase
+    // Find matching cost lines: same timesheet + same work_date + same person
+    let clQuery = supabase
       .from('timesheet_cost_lines')
-      .select('id,allocated_hours,sell_labour,cost_labour,sell_allowances,cost_allowances')
+      .select('id,tce_item_id,work_order,allocated_hours,sell_labour,cost_labour,sell_allowances,cost_allowances')
       .eq('timesheet_id', src.tsId)
       .eq('work_date', src.date)
       .eq('person_id', src.personId)
-      [src.scopeType === 'tce' ? 'eq' : 'eq']('tce_item_id', src.scopeType === 'tce' ? src.scopeKey : null)
+
+    if (src.scopeType === 'tce') clQuery = clQuery.eq('tce_item_id', src.scopeKey)
+    else clQuery = clQuery.eq('work_order', src.scopeKey)
+
+    const { data: cls, error: clFetchErr } = await clQuery
 
     if (clFetchErr) { warnings.push(`Could not fetch cost lines for ${src.personName} ${src.date}: ${clFetchErr.message}`); continue }
 
-    const matchedLines = (cls || []).filter(cl => {
-      if (src.scopeType === 'tce') return cl.tce_item_id === src.scopeKey
-      return cl.work_order === src.scopeKey
-    })
+    const matchedLines = cls || []
 
     if (matchedLines.length === 0) {
       warnings.push(`No cost lines found for ${src.personName} ${src.date} ${src.scopeKey} — may already be credited`)
@@ -317,10 +318,10 @@ async function applyAdjustTimesheet(
     const ts = await fetchTimesheetFull(tsId)
     if (!ts) { warnings.push(`Timesheet ${tsId} not found — skipped`); continue }
 
-    let updatedCrew = ts.crew.map((cm: Record<string, unknown>) => cm)
+    let updatedCrew = (ts.crew as unknown as Record<string, unknown>[]).map(cm => cm)
 
     for (const { src, creditHours } of entries) {
-      updatedCrew = updatedCrew.map((cm: Record<string, unknown>) => {
+      updatedCrew = updatedCrew.map((cm) => {
         if (cm.personId !== src.personId) return cm
         const days = { ...(cm.days as Record<string, unknown>) }
         const day  = { ...(days[src.date] as Record<string, unknown> | undefined || {}) }
@@ -361,7 +362,7 @@ async function applyAdjustTimesheet(
 
     // Rewrite cost lines (recalculates both cost and sell)
     const updatedTs = { ...ts, crew: updatedCrew } as unknown as WeeklyTimesheet
-    const { error: clErr } = await writeTimesheetCostLines(updatedTs, payload.projectId, rateCards, tceLines as Parameters<typeof writeTimesheetCostLines>[3], resources, project)
+    const { error: clErr } = await writeTimesheetCostLines(updatedTs, payload.projectId, rateCards, tceLines as unknown as Parameters<typeof writeTimesheetCostLines>[3], resources, project)
     if (clErr) warnings.push(`Cost lines rewrite warning: ${clErr}`)
 
     affectedTimesheetIds.add(tsId)
