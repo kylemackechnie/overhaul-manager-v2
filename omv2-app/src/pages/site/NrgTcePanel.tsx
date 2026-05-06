@@ -168,6 +168,17 @@ export function NrgTcePanel() {
     )
   }
 
+  // Returns true if any underlying transactions exist for this line, even if they net to zero
+  function lineHasCosts(l: NrgTceLine): boolean {
+    const id = l.item_id
+    if (!id) return false
+    if (hoursByItem[id] && hoursByItem[id] > 0) return true
+    if (invoices.some(i => i.tce_item_id === id)) return true
+    if (expenses.some(e => e.tce_item_id === id)) return true
+    if (variations.some(v => v.tce_link === id)) return true
+    return false
+  }
+
   async function applyBulkWbs() {
     if (!bulkWbs || selected.size === 0) return
     const { error } = await supabase.from('nrg_tce_lines').update({ wbs_code: bulkWbs }).in('id', [...selected])
@@ -603,9 +614,12 @@ export function NrgTcePanel() {
                         </td>}
                         {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, cursor: lineActualCost(l) !== 0 ? 'pointer' : undefined }}
                           onClick={lineActualCost(l) !== 0 ? () => { setDrillLine(l); setDrillType('actual') } : undefined}
-                          title={lineActualCost(l) !== 0 ? 'Click to see breakdown' : undefined}>
+                          title={lineActualCost(l) !== 0 ? 'Click to see breakdown' : lineHasCosts(l) ? 'Costs present but net to $0' : undefined}>
                           {(() => { const actual = lineActualCost(l); const over = l.tce_total > 0 && actual > l.tce_total
-                            return actual !== 0 ? <span style={{ color: actual < 0 ? 'var(--accent)' : over ? 'var(--red)' : 'var(--green)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(actual)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
+                            if (actual !== 0) return <span style={{ color: actual < 0 ? 'var(--accent)' : over ? 'var(--red)' : 'var(--green)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(actual)}</span>
+                            if (lineHasCosts(l)) return <span style={{ color: '#d97706', fontSize: '11px' }}>$0</span>
+                            return <span style={{ color: 'var(--text3)' }}>—</span>
+                          })()}
                           })()}
                         </td>}
                         {isTceVisible('kpi') && <td>{l.kpi_included ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span> : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}</td>}
