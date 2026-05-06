@@ -8,7 +8,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
-import { nrgLineActual, nrgLineActualHours, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { nrgLineActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
@@ -57,6 +57,7 @@ export function NrgTcePanel() {
   const [lines, setLines] = useState<NrgTceLine[]>([])
   const [wbsList, setWbsList] = useState<{ id: string; code: string; name: string }[]>([])
   const [timesheets, setTimesheets] = useState<NrgTimesheet[]>([])
+  const [hoursByItem, setHoursByItem] = useState<Record<string, number>>({})
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
@@ -114,7 +115,7 @@ export function NrgTcePanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes, poRes] = await Promise.all([
+    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes, poRes, clRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('source').order('sort_order').order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
@@ -124,6 +125,7 @@ export function NrgTcePanel() {
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
+      supabase.from('timesheet_cost_lines').select('tce_item_id,allocated_hours').eq('project_id', pid).eq('timesheet_status', 'approved'),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
@@ -133,6 +135,14 @@ export function NrgTcePanel() {
     setExpenses((expRes.data || []) as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
     setRateCards((rcRes.data || []) as RateCard[])
+
+    // Aggregate actual hours by tce_item_id from cost lines (reflects credits applied)
+    const hoursAgg: Record<string, number> = {}
+    for (const cl of (clRes.data || []) as { tce_item_id: string | null; allocated_hours: number }[]) {
+      if (!cl.tce_item_id) continue
+      hoursAgg[cl.tce_item_id] = (hoursAgg[cl.tce_item_id] || 0) + (Number(cl.allocated_hours) || 0)
+    }
+    setHoursByItem(hoursAgg)
     setLoading(false)
   }
 
@@ -233,10 +243,7 @@ export function NrgTcePanel() {
       ['Item ID', 'Source', 'Description', 'Work Order', 'Contract Scope', 'Unit', 'Est Qty', 'Act Hrs', 'TCE Rate', 'TCE Total', 'Committed', 'Actual Cost', 'Remaining', '% Used', 'KPI', 'Type', 'WBS'],
     ]
     for (const l of leafLines) {
-      const actHrs = nrgLineActualHours(
-        { item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type },
-        timesheets
-      )
+      const actHrs = l.item_id ? (hoursByItem[l.item_id] || 0) : 0
       const actual   = lineActualCost(l)
       const committed = lineCommitted(l.item_id)
       const tce      = l.tce_total || 0
@@ -584,7 +591,7 @@ export function NrgTcePanel() {
                         {isTceVisible('unit') && <td style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.unit_type || '—'}</td>}
                         {isTceVisible('est_qty') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>}
                         {isTceVisible('act_hrs') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{(() => {
-                          const hrs = nrgLineActualHours({ item_id: l.item_id, source: l.source, work_order: l.work_order, line_type: l.line_type }, timesheets)
+                          const hrs = l.item_id ? (hoursByItem[l.item_id] || 0) : 0
                           return hrs > 0 ? hrs.toFixed(1) : '—'
                         })()}</td>}
                         {isTceVisible('tce_rate') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>}
