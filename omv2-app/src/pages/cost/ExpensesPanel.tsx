@@ -7,7 +7,7 @@ import type { Expense, ExpenseLine, Resource, WbsItem } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
-const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Other']
+const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Fixed Cost','Other']
 
 type ExpenseForm = {
   resource_id: string; category: string; description: string; vendor: string; date: string
