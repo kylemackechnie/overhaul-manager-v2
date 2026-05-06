@@ -457,8 +457,8 @@ export function ExpensesPanel() {
                     </td>
                     <td style={{ fontSize: '12px', color: 'var(--text3)' }}>{e.category || '—'}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(e.cost_ex_gst || 0)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : 'var(--text3)' }}>
-                      {e.sell_price > 0 ? fmt(e.sell_price) : '—'}
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : e.sell_price < 0 ? 'var(--red)' : 'var(--text3)' }}>
+                      {e.sell_price !== 0 ? fmt(e.sell_price) : '—'}
                     </td>
                     <td>
                       <div style={{display:'flex',gap:'4px',flexWrap:'wrap',alignItems:'center'}}>
