@@ -126,7 +126,7 @@ export function ExpensesPanel() {
       vendor: e.vendor || '', description: e.description, date: e.date || '',
       amount: e.amount, cost_ex_gst: e.cost_ex_gst, sell_price: e.sell_price,
       gm_pct: e.gm_pct, currency: e.currency, wbs: e.wbs, notes: e.notes,
-      chargeable: e.sell_price > 0, tce_item_id: e.tce_item_id || '',
+      chargeable: e.sell_price !== 0, tce_item_id: e.tce_item_id || '',
     })
     // Load existing lines for this expense
     const { data } = await supabase.from('expense_lines').select('*').eq('expense_id', e.id).order('sort_order')
@@ -139,12 +139,12 @@ export function ExpensesPanel() {
   // updateCost replaced by updateAmountInclGst / updateAmountExGst below
 
   function updateAmountInclGst(incl: number) {
-    const exGst = incl > 0 ? parseFloat((incl / 1.1).toFixed(2)) : 0
+    const exGst = incl !== 0 ? parseFloat((incl / 1.1).toFixed(2)) : 0
     setForm(f => ({ ...f, amount: incl, cost_ex_gst: exGst, sell_price: f.chargeable ? calcSell(exGst, f.gm_pct) : 0 }))
   }
 
   function updateAmountExGst(ex: number) {
-    const incl = ex > 0 ? parseFloat((ex * 1.1).toFixed(2)) : 0
+    const incl = ex !== 0 ? parseFloat((ex * 1.1).toFixed(2)) : 0
     setForm(f => ({ ...f, amount: incl, cost_ex_gst: ex, sell_price: f.chargeable ? calcSell(ex, f.gm_pct) : 0 }))
   }
 
@@ -230,7 +230,7 @@ export function ExpensesPanel() {
         const cost = field === 'cost_ex_gst' ? (value as number) : l.cost_ex_gst
         const ch = field === 'chargeable' ? (value as boolean) : l.chargeable
         const gm = field === 'gm_pct' ? (value as number) : l.gm_pct
-        updated.sell_price = ch && cost > 0 && gm > 0 && gm < 100 ? parseFloat((cost / (1 - gm/100)).toFixed(2)) : 0
+        updated.sell_price = ch && cost !== 0 && gm > 0 && gm < 100 ? parseFloat((cost / (1 - gm/100)).toFixed(2)) : (ch ? cost : 0)
         if (field === 'cost_ex_gst') updated.amount = parseFloat(((value as number) * 1.1).toFixed(2))
       }
       return updated
@@ -322,7 +322,7 @@ export function ExpensesPanel() {
       if (bulkModal === 'person') payload = { name: bulkVal }
       if (bulkModal === 'gm') {
         const gm = parseFloat(bulkVal) || 0
-        const sell = exp.cost_ex_gst > 0 && gm > 0 ? calcSell(exp.cost_ex_gst, gm) : 0
+        const sell = exp.cost_ex_gst !== 0 && gm > 0 ? calcSell(exp.cost_ex_gst, gm) : 0
         payload = { gm_pct: gm, sell_price: sell }
       }
       updates.push(Promise.resolve(supabase.from('expenses').update(payload).eq('id', id)))
@@ -344,7 +344,7 @@ export function ExpensesPanel() {
     const updates = [...selected].map(id => {
       const exp = expenses.find(e => e.id === id)
       if (!exp) return Promise.resolve()
-      const sell = val && exp.cost_ex_gst > 0 && exp.gm_pct > 0 ? calcSell(exp.cost_ex_gst, exp.gm_pct) : 0
+      const sell = val && exp.cost_ex_gst !== 0 && exp.gm_pct > 0 ? calcSell(exp.cost_ex_gst, exp.gm_pct) : 0
       return Promise.resolve(supabase.from('expenses').update({ sell_price: sell }).eq('id', id))
     })
     await Promise.all(updates)
@@ -569,11 +569,11 @@ export function ExpensesPanel() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Receipt Amount (inc GST) <span style={{fontSize:'10px',color:'var(--text3)'}}>auto-fills ex GST</span></label>
-                  <input type="number" className="input" value={form.amount || ''} onChange={e => updateAmountInclGst(parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                  <input type="number" className="input" value={form.amount || ''} onChange={e => updateAmountInclGst(e.target.value === '' ? 0 : parseFloat(e.target.value))} placeholder="0.00" />
                 </div>
                 <div className="fg">
                   <label>Cost (ex GST) <span style={{fontSize:'10px',color:'var(--text3)'}}>auto-fills inc GST</span></label>
-                  <input type="number" className="input" value={form.cost_ex_gst || ''} onChange={e => updateAmountExGst(parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                  <input type="number" className="input" value={form.cost_ex_gst || ''} onChange={e => updateAmountExGst(e.target.value === '' ? 0 : parseFloat(e.target.value))} placeholder="0.00" />
                 </div>
                 <div className="fg">
                   <label>Currency</label>
