@@ -129,8 +129,6 @@ function buildSentRows(
         for (const alloc of allocs) {
           if (alloc.hours <= 0) continue
           const payCode = alloc.payCode || getPayCode(day.dayType)
-          const position = contractPrefix ? `${contractPrefix}-${trade}-${payCode}` : `${trade}-${payCode}`
-          _ = position // used for reference
           let contract = '', woTask = ''
           if (alloc.tceItemId && tceByItemId[alloc.tceItemId]) {
             contract = tceByItemId[alloc.tceItemId].contract_scope
@@ -217,9 +215,6 @@ const STATUS_STYLE = {
   missing: { bg: '#fee2e2', color: '#991b1b', label: 'Not in approvals',   icon: '✗' },
   extra:   { bg: '#fef3c7', color: '#92400e', label: 'Extra in approvals', icon: '⚠' },
 }
-
-// Dummy to satisfy TS unused var check
-let _: unknown
 
 export function NrgApprovalsPanel() {
   const { activeProject } = useAppStore()
