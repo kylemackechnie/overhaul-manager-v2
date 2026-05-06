@@ -8,6 +8,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
+import { exportTceSkilledLabour } from '../../lib/exportTce'
 import { nrgLineActual, nrgInvoiceActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
@@ -70,6 +71,7 @@ export function NrgTcePanel() {
   const [drillType, setDrillType] = useState<'actual' | 'committed'>('actual')
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [exportingTce, setExportingTce] = useState(false)
   const [search, setSearch] = useState('')
   const [sourceFilter, _setSourceFilter] = useState((prefs.tce_source_filter as string) || 'all')
   const [hideUnused, _setHideUnused] = useState((prefs.tce_hide_unused as boolean) ?? false)
@@ -316,6 +318,18 @@ export function NrgTcePanel() {
     downloadCSV(rows, 'nrg_tce_' + (activeProject?.name || 'project'))
   }
 
+  async function handleExportTce() {
+    if (!activeProject) return
+    setExportingTce(true)
+    try {
+      await exportTceSkilledLabour(activeProject.id, activeProject.name || 'project', lines)
+    } catch (e) {
+      toast('Export failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    } finally {
+      setExportingTce(false)
+    }
+  }
+
   async function del(l: NrgTceLine) {
     if (!confirm(`Delete "${l.description}"?`)) return
     await supabase.from('nrg_tce_lines').delete().eq('id', l.id)
@@ -480,6 +494,9 @@ export function NrgTcePanel() {
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={() => downloadTemplate('nrg_tce')}>⬇ Template</button>
+          <button className="btn btn-sm" onClick={handleExportTce} disabled={exportingTce}>
+            {exportingTce ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📊'} Export TCE XLSX
+          </button>
           <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
             {importing ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📥'} Import XLSX
             <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportFile} />
