@@ -27,8 +27,10 @@ interface CostLineRow {
   work_date: string | null
   cost_labour: number
   sell_labour: number
+  sell_labour_eur: number
   cost_allowances: number
   sell_allowances: number
+  category: string
 }
 
 export function NrgActualsPanel() {
@@ -43,6 +45,7 @@ export function NrgActualsPanel() {
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
+  const [nrgInvoices, setNrgInvoices] = useState<{id:string;week_ending:string|null;eur_spot_rate:number|null}[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -77,29 +80,60 @@ export function NrgActualsPanel() {
       }
     }
 
-    const [clRes, invRes, expRes, varRes] = await Promise.all([
+    const [clRes, invRes, expRes, varRes, nrgInvRes] = await Promise.all([
       // Read from the pre-calculated cost lines table (approved only).
       // Include work_date so we can aggregate by week for the "this week" column.
       supabase.from('timesheet_cost_lines')
-        .select('tce_item_id,work_order,work_date,cost_labour,sell_labour,cost_allowances,sell_allowances,allocated_hours')
+        .select('tce_item_id,work_order,work_date,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid)
         .eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status,period_from,period_to').eq('project_id', pid),
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total,approved_date').eq('project_id', pid),
+      supabase.from('nrg_customer_invoices').select('id,week_ending,eur_spot_rate').eq('project_id', pid).order('week_ending'),
     ])
     setLines(tceLines)
 
     // Aggregate labour cost by tce_item_id from the cost lines table — full project total
     const agg: Record<string, { cost: number; sell: number }> = {}
     // Also keep cost lines for per-week filtering
-    const clRows = (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; work_date: string | null; cost_labour: number; sell_labour: number; cost_allowances: number; sell_allowances: number; allocated_hours: number }[]
+    const clRows = (clRes.data || []) as { tce_item_id: string | null; work_order: string | null; work_date: string | null; cost_labour: number; sell_labour: number; sell_labour_eur: number; cost_allowances: number; sell_allowances: number; allocated_hours: number; category: string }[]
+
+    // Build spot rate map: week_ending → rate (from covering nrg_customer_invoice)
+    const nrgInvsSorted = ((nrgInvRes.data || []) as {id:string;week_ending:string|null;eur_spot_rate:number|null}[])
+      .filter(i => i.week_ending).sort((a,b) => (a.week_ending||'').localeCompare(b.week_ending||''))
+    setNrgInvoices(nrgInvsSorted)
+
+    const spotRateForWeekActuals = (weekEnding: string): number | null => {
+      const covering = nrgInvsSorted.find(i => i.week_ending! >= weekEnding)
+      const r = covering?.eur_spot_rate
+      return (r != null && !isNaN(Number(r))) ? Number(r) : null
+    }
+
+    // Aggregate: for seag rows, apply spot rate if available; gate (exclude) if not
     for (const row of clRows) {
       const key = row.tce_item_id || ''
       if (!key) continue
       if (!agg[key]) agg[key] = { cost: 0, sell: 0 }
-      agg[key].cost += (row.cost_labour || 0) + (row.cost_allowances || 0)
-      agg[key].sell += (row.sell_labour || 0) + (row.sell_allowances || 0)
+      const cost = (row.cost_labour || 0) + (row.cost_allowances || 0)
+      let sell: number
+      if ((row.sell_labour_eur || 0) > 0 && row.work_date) {
+        // seag row — need spot rate for the week_ending of this row's week
+        // Derive week_ending from work_date (Sunday of the week)
+        const dt = new Date(row.work_date + 'T12:00:00')
+        dt.setUTCDate(dt.getUTCDate() + (7 - dt.getUTCDay()) % 7 || 7)  // advance to Sunday
+        const we = dt.toISOString().slice(0, 10)
+        const rate = spotRateForWeekActuals(we)
+        if (rate == null) {
+          sell = 0  // gated — no spot rate
+        } else {
+          sell = row.sell_labour_eur * rate + (row.sell_allowances || 0)
+        }
+      } else {
+        sell = (row.sell_labour || 0) + (row.sell_allowances || 0)
+      }
+      agg[key].cost += cost
+      agg[key].sell += sell
     }
     // Aggregate actual hours by tce_item_id
     const hoursAgg: Record<string, number> = {}
@@ -111,7 +145,7 @@ export function NrgActualsPanel() {
     }
     setHoursByItem(hoursAgg)
     setLabourByItem(agg)
-    setCostLines(clRows)
+    setCostLines(clRows as CostLineRow[])
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
@@ -307,6 +341,22 @@ ${sectionHTML}
 
   if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
 
+  // Compute ungated EUR for the banner (seag rows with no covering spot rate)
+  const actualsEurSummary = (() => {
+    let ungatedEur = 0
+    const ungatedWeeks = new Set<string>()
+    for (const row of costLines) {
+      if (!(row.sell_labour_eur > 0) || !row.work_date) continue
+      const dt = new Date(row.work_date + 'T12:00:00')
+      dt.setUTCDate(dt.getUTCDate() + (7 - dt.getUTCDay()) % 7 || 7)
+      const we = dt.toISOString().slice(0, 10)
+      const covering = nrgInvoices.find(i => i.week_ending! >= we)
+      const r = covering?.eur_spot_rate
+      if (r == null || isNaN(Number(r))) { ungatedEur += row.sell_labour_eur; ungatedWeeks.add(we) }
+    }
+    return { ungatedEur, ungatedWeekCount: ungatedWeeks.size }
+  })()
+
   return (
     <>
     <div style={{ padding: '24px', maxWidth: '1600px' }}>
@@ -325,6 +375,18 @@ ${sectionHTML}
           <button className="btn btn-sm" title="Recalculate cost lines from timesheets (run after re-saving timesheets)" onClick={load}>↻ Refresh</button>
         </div>
       </div>
+
+      {actualsEurSummary.ungatedEur > 0 && (
+        <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:'8px',padding:'10px 14px',marginBottom:'16px',display:'flex',alignItems:'center',gap:'10px'}}>
+          <span style={{fontSize:'18px'}}>🔴</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:'13px',color:'#991b1b'}}>EUR costs excluded — spot rate pending</div>
+            <div style={{fontSize:'12px',color:'#7f1d1d'}}>
+              €{actualsEurSummary.ungatedEur.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})} SE AG labour across {actualsEurSummary.ungatedWeekCount} week{actualsEurSummary.ungatedWeekCount!==1?'s':''} is excluded from actuals. Enter the EUR spot rate on the covering invoice in the Invoicing panel to include these costs.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: weekFilter ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>

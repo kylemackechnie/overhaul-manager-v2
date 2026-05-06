@@ -36,14 +36,14 @@ export function NrgInvoicingPanel() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [invModal, setInvModal] = useState<null|'new'|NrgCustomerInvoice>(null)
-  const [invForm, setInvForm] = useState({ label:'', invoice_number:'', week_ending:'', sent_date:'', notes:'' })
+  const [invForm, setInvForm] = useState({ label:'', invoice_number:'', week_ending:'', sent_date:'', notes:'', eur_spot_rate:'' })
   const [rulesModal, setRulesModal] = useState(false)
   const [rulesForm, setRulesForm] = useState<{group_name:string;triggers_str:string}[]>([])
   const [drillCell, setDrillCell] = useState<{inv:NrgCustomerInvoice;cs:string;fromWE:string;toWE:string}|null>(null)
   const [overrideInput, setOverrideInput] = useState('')
   // Cost lines from timesheet_cost_lines — single source of truth for labour actuals
-  const [costLinesByItemAndWeek, setCostLinesByItemAndWeek] = useState<Record<string,Record<string,{cost:number;sell:number}>>>({})
-  const [rawCostLines, setRawCostLines] = useState<{tce_item_id:string|null;week_ending:string;week_start:string;sell_labour:number;sell_allowances:number;allocated_hours:number}[]>([])
+  const [costLinesByItemAndWeek, setCostLinesByItemAndWeek] = useState<Record<string,Record<string,{cost:number;sell:number;sellEur:number}>>>({})
+  const [rawCostLines, setRawCostLines] = useState<{tce_item_id:string|null;week_ending:string;week_start:string;sell_labour:number;sell_labour_eur:number;sell_allowances:number;allocated_hours:number;category:string}[]>([])
   const [supplierInvoices, setSupplierInvoices] = useState<Record<string,unknown>[]>([])
   const [expenseItems, setExpenseItems] = useState<Record<string,unknown>[]>([])
 
@@ -77,7 +77,7 @@ export function NrgInvoicingPanel() {
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
       supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('timesheet_cost_lines')
-        .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,cost_allowances,sell_allowances,allocated_hours')
+        .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,invoice_date,amount,status,invoice_number').eq('project_id', pid).neq('status','rejected'),
       supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category').eq('project_id', pid),
@@ -85,15 +85,16 @@ export function NrgInvoicingPanel() {
     setTceLines(fetchedTceLines)
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
     // Aggregate cost lines: { tce_item_id -> { week_ending -> { cost, sell } } }
-    const byItemWeek: Record<string,Record<string,{cost:number;sell:number}>> = {}
+    const byItemWeek: Record<string,Record<string,{cost:number;sell:number;sellEur:number}>> = {}
     const rawCL: typeof rawCostLines = []
-    for (const r of (clRes.data||[]) as {tce_item_id:string|null;week_ending:string;week_start:string;cost_labour:number;sell_labour:number;cost_allowances:number;sell_allowances:number;allocated_hours:number}[]) {
+    for (const r of (clRes.data||[]) as {tce_item_id:string|null;week_ending:string;week_start:string;cost_labour:number;sell_labour:number;sell_labour_eur:number;cost_allowances:number;sell_allowances:number;allocated_hours:number;category:string}[]) {
       if (!r.tce_item_id) continue
       if (!byItemWeek[r.tce_item_id]) byItemWeek[r.tce_item_id] = {}
-      if (!byItemWeek[r.tce_item_id][r.week_ending]) byItemWeek[r.tce_item_id][r.week_ending] = {cost:0,sell:0}
+      if (!byItemWeek[r.tce_item_id][r.week_ending]) byItemWeek[r.tce_item_id][r.week_ending] = {cost:0,sell:0,sellEur:0}
       byItemWeek[r.tce_item_id][r.week_ending].cost += (r.cost_labour||0) + (r.cost_allowances||0)
       byItemWeek[r.tce_item_id][r.week_ending].sell += (r.sell_labour||0) + (r.sell_allowances||0)
-      rawCL.push({ tce_item_id: r.tce_item_id, week_ending: r.week_ending, week_start: r.week_start, sell_labour: r.sell_labour||0, sell_allowances: r.sell_allowances||0, allocated_hours: r.allocated_hours||0 })
+      byItemWeek[r.tce_item_id][r.week_ending].sellEur += (r.sell_labour_eur||0)
+      rawCL.push({ tce_item_id: r.tce_item_id, week_ending: r.week_ending, week_start: r.week_start, sell_labour: r.sell_labour||0, sell_labour_eur: r.sell_labour_eur||0, sell_allowances: r.sell_allowances||0, allocated_hours: r.allocated_hours||0, category: r.category||'' })
     }
     setCostLinesByItemAndWeek(byItemWeek)
     setRawCostLines(rawCL)
@@ -136,49 +137,6 @@ export function NrgInvoicingPanel() {
     return all[idx-1].week_ending || ''
   }
 
-  // Labour actuals read from timesheet_cost_lines (pre-calculated).
-  // Non-labour: supplier invoices + expenses dated in period.
-  // Labour: reads pre-calculated rows from costLinesByItemAndWeek (single source of truth).
-  // Non-labour: supplier invoices + expenses dated in period.
-  function lineActualInPeriod(line: NrgTceLine, fromWE: string, toWE: string): number {
-    if (!toWE) return 0
-    // Fixed Price scopes: the Actuals panel shows them at planned value once
-    // active (TCE only cares about sell). For period-bounded customer invoicing
-    // there's no rate-driven calc to do — these scopes typically bill on a
-    // milestone schedule the user enters manually. Returning 0 here keeps the
-    // automation honest; the user adds the line to the customer invoice with
-    // the contracted milestone amount when appropriate.
-    if (line.line_type === 'Fixed Price') return 0
-    const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
-
-    if (isLabour) {
-      const buckets = line.item_id ? (costLinesByItemAndWeek[line.item_id] || {}) : {}
-      let total = 0
-      for (const [we, vals] of Object.entries(buckets)) {
-        if (we > toWE) continue
-        if (fromWE && we <= fromWE) continue
-        total += vals.sell
-      }
-      return total
-    }
-
-    let total = 0
-    for (const inv of supplierInvoices) {
-      if (inv.tce_item_id !== line.item_id) continue
-      if (!inPeriod(inv.invoice_date as string, fromWE, toWE)) continue
-      total += Number(inv.amount) || 0
-    }
-    for (const exp of expenseItems) {
-      if (exp.tce_item_id !== line.item_id) continue
-      if (!inPeriod(exp.date as string, fromWE, toWE)) continue
-      const sell = Number(exp.sell_price)
-      const cost = Number(exp.cost_ex_gst)
-      // Use sell_price when set (chargeable); fall back to cost_ex_gst
-      total += (!isNaN(sell) && sell !== 0) ? sell : ((!isNaN(cost) && cost !== 0) ? cost : (Number(exp.amount) || 0))
-    }
-    return total
-  }
-
   // Sum period-bounded actuals for a contract scope
   function calcPeriodAmount(inv: NrgCustomerInvoice, cs: string): number {
     const from = prevWE(inv.id)
@@ -187,7 +145,7 @@ export function NrgInvoicingPanel() {
     const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id||'')
     return tceLines
       .filter(l => l.contract_scope === cs && !isGroupHeader(l.item_id))
-      .reduce((s, l) => s + lineActualInPeriod(l, from, to), 0)
+      .reduce((s, l) => s + lineActualInPeriodEurAware(l, from, to), 0)
   }
 
   function effectiveAmount(inv: NrgCustomerInvoice, cs: string): number {
@@ -202,6 +160,81 @@ export function NrgInvoicingPanel() {
 
   function isCalculated(inv: NrgCustomerInvoice, cs: string): boolean {
     return inv.overrides?.[cs] === undefined || inv.overrides?.[cs] === null
+  }
+
+  // ─── EUR spot rate helpers ─────────────────────────────────────────────────
+
+  /** Get the spot rate for the invoice that covers a given week_ending. */
+  function spotRateForInvoice(inv: NrgCustomerInvoice): number | null {
+    const r = (inv as NrgCustomerInvoice & {eur_spot_rate?:number|null}).eur_spot_rate
+    return (r != null && !isNaN(Number(r))) ? Number(r) : null
+  }
+
+  /** Map week_ending → spot rate from the covering invoice (the invoice whose
+   *  week_ending is >= the cost line's week_ending, nearest chronologically). */
+  const spotRateByWeek = (() => {
+    const map: Record<string, number | null> = {}
+    for (const cl of rawCostLines) {
+      if (cl.sell_labour_eur === 0) continue
+      if (map[cl.week_ending] !== undefined) continue
+      // Find the first invoice whose week_ending >= this cost line's week_ending
+      const covering = sortedInvoices.find(i => i.week_ending && i.week_ending >= cl.week_ending)
+      map[cl.week_ending] = covering ? spotRateForInvoice(covering) : null
+    }
+    return map
+  })()
+
+  /** Total EUR sell that has no spot rate (ungated), and total that does (gated) */
+  const eurSummary = (() => {
+    let ungatedEur = 0, ungatedWeeks = new Set<string>()
+    for (const cl of rawCostLines) {
+      if (cl.sell_labour_eur === 0) continue
+      const rate = spotRateByWeek[cl.week_ending]
+      if (rate == null) { ungatedEur += cl.sell_labour_eur; ungatedWeeks.add(cl.week_ending) }
+    }
+    return { ungatedEur, ungatedWeekCount: ungatedWeeks.size }
+  })()
+
+  /** Compute the period-gated EUR-aware sell for a labour TCE line in a period.
+   *  For seag weeks with no spot rate, contribution is 0 (gated).
+   *  For seag weeks with a spot rate, uses: sell_labour_eur × rate + allowances(AUD).
+   *  For non-seag labour, unchanged (uses sell_labour AUD directly). */
+  function lineActualInPeriodEurAware(line: NrgTceLine, fromWE: string, toWE: string): number {
+    if (!toWE) return 0
+    if (line.line_type === 'Fixed Price') return 0
+    const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
+    if (!isLabour) {
+      // Non-labour: unchanged
+      let total = 0
+      for (const inv of supplierInvoices) {
+        if (inv.tce_item_id !== line.item_id) continue
+        if (!inPeriod(inv.invoice_date as string, fromWE, toWE)) continue
+        total += Number(inv.amount) || 0
+      }
+      for (const exp of expenseItems) {
+        if (exp.tce_item_id !== line.item_id) continue
+        if (!inPeriod(exp.date as string, fromWE, toWE)) continue
+        const sell = Number(exp.sell_price), cost = Number(exp.cost_ex_gst)
+        total += (!isNaN(sell) && sell !== 0) ? sell : ((!isNaN(cost) && cost !== 0) ? cost : (Number(exp.amount) || 0))
+      }
+      return total
+    }
+    // Labour: sum week-by-week, applying spot rate for seag weeks
+    const buckets = line.item_id ? (costLinesByItemAndWeek[line.item_id] || {}) : {}
+    let total = 0
+    for (const [we, vals] of Object.entries(buckets)) {
+      if (we > toWE) continue
+      if (fromWE && we <= fromWE) continue
+      if (vals.sellEur > 0) {
+        // seag week — gated on spot rate
+        const rate = spotRateByWeek[we]
+        if (rate == null) continue  // no rate = excluded
+        total += vals.sellEur * rate + (vals.sell - vals.sellEur)  // EUR portion converted + AUD allowances
+      } else {
+        total += vals.sell
+      }
+    }
+    return total
   }
 
   function handleCellClick(inv: NrgCustomerInvoice, cs: string) {
@@ -226,12 +259,12 @@ export function NrgInvoicingPanel() {
   }
 
   function openNewInvoice() {
-    setInvForm({ label:`Invoice ${sortedInvoices.length+1}`, invoice_number:'', week_ending:'', sent_date:'', notes:'' })
+    setInvForm({ label:`Invoice ${sortedInvoices.length+1}`, invoice_number:'', week_ending:'', sent_date:'', notes:'', eur_spot_rate:'' })
     setInvModal('new')
   }
 
   function openEditInvoice(inv: NrgCustomerInvoice) {
-    setInvForm({ label:inv.label, invoice_number:inv.invoice_number, week_ending:inv.week_ending||'', sent_date:inv.sent_date||'', notes:inv.notes })
+    setInvForm({ label:inv.label, invoice_number:inv.invoice_number, week_ending:inv.week_ending||'', sent_date:inv.sent_date||'', notes:inv.notes, eur_spot_rate: (inv as NrgCustomerInvoice & {eur_spot_rate?:number|null}).eur_spot_rate != null ? String((inv as NrgCustomerInvoice & {eur_spot_rate?:number|null}).eur_spot_rate) : '' })
     setInvModal(inv)
   }
 
@@ -242,6 +275,7 @@ export function NrgInvoicingPanel() {
       invoice_number: invForm.invoice_number.trim(),
       week_ending: invForm.week_ending||null, sent_date: invForm.sent_date||null,
       notes: invForm.notes, overrides: invModal!=='new' ? (invModal as NrgCustomerInvoice).overrides : {},
+      eur_spot_rate: invForm.eur_spot_rate.trim() ? parseFloat(invForm.eur_spot_rate) : null,
     }
     const isNew = invModal === 'new'
     const { error } = isNew
@@ -317,22 +351,39 @@ export function NrgInvoicingPanel() {
         </div>
       </div>
 
+      {eurSummary.ungatedEur > 0 && (
+        <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:'8px',padding:'10px 14px',marginBottom:'16px',display:'flex',alignItems:'center',gap:'10px'}}>
+          <span style={{fontSize:'18px'}}>🔴</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:'13px',color:'#991b1b'}}>EUR costs pending spot rate</div>
+            <div style={{fontSize:'12px',color:'#7f1d1d'}}>
+              €{eurSummary.ungatedEur.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})} SE AG labour across {eurSummary.ungatedWeekCount} week{eurSummary.ungatedWeekCount!==1?'s':''} has no covering invoice spot rate. These costs are excluded from all totals until a spot rate is entered on the relevant invoice.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="card" style={{padding:0,overflow:'hidden'}}>
         <div style={{overflowX:'auto'}}>
           <table style={{fontSize:'12px',minWidth:'700px',borderCollapse:'collapse'}}>
             <thead>
               <tr style={{background:'var(--bg3)'}}>
                 <th style={{padding:'8px 12px',textAlign:'left',minWidth:'200px'}}>Contract Scope</th>
-                {sortedInvoices.map(inv=>(
+                {sortedInvoices.map(inv=>{
+                  const spot = spotRateForInvoice(inv)
+                  return (
                   <th key={inv.id} style={{padding:'8px 12px',textAlign:'right',minWidth:'110px'}}>
                     <div style={{fontWeight:700}}>{inv.label||'Invoice'}</div>
                     <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>{inv.week_ending?`WE ${inv.week_ending}`:'No period'}</div>
+                    {spot != null
+                      ? <div style={{fontSize:'9px',color:'#059669',fontWeight:600,marginTop:'1px'}}>€1 = ${spot.toFixed(4)}</div>
+                      : <div style={{fontSize:'9px',color:'#dc2626',fontWeight:600,marginTop:'1px'}}>No spot rate</div>}
                     <div style={{display:'flex',gap:'3px',justifyContent:'flex-end',marginTop:'3px'}}>
                       <button className="btn btn-sm" style={{fontSize:'9px',padding:'1px 4px'}} onClick={()=>openEditInvoice(inv)}>✏</button>
                       <button className="btn btn-sm" style={{fontSize:'9px',padding:'1px 4px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>
                     </div>
                   </th>
-                ))}
+                )})}
                 <th style={{padding:'8px 12px',textAlign:'right',minWidth:'100px',borderLeft:'2px solid var(--border)'}}>Progress Total</th>
               </tr>
             </thead>
@@ -414,6 +465,13 @@ export function NrgInvoicingPanel() {
               <div className="fg-row">
                 <div className="fg"><label>Week Ending <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>period boundary</span></label><input type="date" className="input" value={invForm.week_ending} onChange={e=>setInvForm(f=>({...f,week_ending:e.target.value}))} /></div>
                 <div className="fg"><label>Sent Date</label><input type="date" className="input" value={invForm.sent_date} onChange={e=>setInvForm(f=>({...f,sent_date:e.target.value}))} /></div>
+                <div className="fg">
+                  <label>EUR Spot Rate <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>€1 = $? AUD — gates SE AG labour in TCE &amp; actuals</span></label>
+                  <input type="number" step="0.0001" min="0" className="input" value={invForm.eur_spot_rate} onChange={e=>setInvForm(f=>({...f,eur_spot_rate:e.target.value}))} placeholder="e.g. 1.6450" />
+                  {invForm.eur_spot_rate && !isNaN(parseFloat(invForm.eur_spot_rate)) && (
+                    <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}}>€100.00 = ${(parseFloat(invForm.eur_spot_rate)*100).toFixed(2)} AUD</div>
+                  )}
+                </div>
               </div>
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={invForm.notes} onChange={e=>setInvForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
             </div>
@@ -460,17 +518,20 @@ export function NrgInvoicingPanel() {
         const calculatedAmount = calcPeriodAmount(inv, cs)
         const effectiveAmt = effectiveAmount(inv, cs)
 
-        // Labour: aggregate weekly buckets across all item_ids in this scope
-        const labourWeekMap: Record<string, { sell: number }> = {}
+        // Labour: aggregate weekly buckets across all item_ids in this scope, tracking EUR separately
+        const labourWeekMap: Record<string, { sell: number; sellEur: number; rate: number | null }> = {}
         for (const id of allIds) {
           for (const [we, vals] of Object.entries(costLinesByItemAndWeek[id] || {})) {
             if (we > fromWE && we <= toWE) {
-              if (!labourWeekMap[we]) labourWeekMap[we] = { sell: 0 }
+              if (!labourWeekMap[we]) labourWeekMap[we] = { sell: 0, sellEur: 0, rate: spotRateByWeek[we] ?? null }
               labourWeekMap[we].sell += vals.sell
+              labourWeekMap[we].sellEur += vals.sellEur
             }
           }
         }
         const labourWeeks = Object.entries(labourWeekMap).sort(([a],[b]) => a.localeCompare(b))
+        const hasEurWeeks = labourWeeks.some(([,v]) => v.sellEur > 0)
+        const fmtEur = (n: number) => '€' + n.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})
 
         // Hours from raw cost lines across all item_ids
         const hoursWeeks = rawCostLines
@@ -511,19 +572,36 @@ export function NrgInvoicingPanel() {
                         <tr>
                           <th style={{ padding: '5px 10px', textAlign: 'left', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Week</th>
                           <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Hours</th>
-                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Sell</th>
+                          {hasEurWeeks && <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>SE AG (EUR)</th>}
+                          {hasEurWeeks && <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Rate</th>}
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Sell (AUD)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {labourWeeks.map(([we, vals]) => (
-                          <tr key={we} style={{ borderBottom: '1px solid var(--border)' }}>
+                        {labourWeeks.map(([we, vals]) => {
+                          const pending = vals.sellEur > 0 && vals.rate == null
+                          const audSell = vals.sellEur > 0
+                            ? (vals.rate != null ? vals.sellEur * vals.rate + (vals.sell - vals.sellEur) : null)
+                            : vals.sell
+                          return (
+                          <tr key={we} style={{ borderBottom: '1px solid var(--border)', background: pending ? '#fff7f7' : undefined }}>
                             <td style={{ padding: '5px 10px' }}>{fmtWE(we)}</td>
                             <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
                               {(hoursWeeks[we] || 0).toFixed(1)}h
                             </td>
-                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(vals.sell)}</td>
+                            {hasEurWeeks && <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: vals.sellEur > 0 ? '#7c3aed' : 'var(--text3)' }}>
+                              {vals.sellEur > 0 ? fmtEur(vals.sellEur) : '—'}
+                            </td>}
+                            {hasEurWeeks && <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11 }}>
+                              {vals.sellEur > 0
+                                ? (vals.rate != null ? <span style={{color:'#059669'}}>{vals.rate.toFixed(4)}</span> : <span style={{color:'#dc2626',fontWeight:600}}>pending</span>)
+                                : '—'}
+                            </td>}
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: pending ? '#dc2626' : undefined }}>
+                              {audSell != null ? fmt(audSell) : <span style={{color:'#dc2626'}}>awaiting rate</span>}
+                            </td>
                           </tr>
-                        ))}
+                        )})}
                       </tbody>
                       <tfoot>
                         <tr style={{ background: 'var(--bg2)', fontWeight: 700 }}>
@@ -531,8 +609,18 @@ export function NrgInvoicingPanel() {
                           <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
                             {labourWeeks.reduce((s, [we]) => s + (hoursWeeks[we] || 0), 0).toFixed(1)}h
                           </td>
+                          {hasEurWeeks && <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed' }}>
+                            {fmtEur(labourWeeks.reduce((s,[,v]) => s + v.sellEur, 0))}
+                          </td>}
+                          {hasEurWeeks && <td/>}
                           <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)' }}>
-                            {fmt(labourWeeks.reduce((s,[,v]) => s + v.sell, 0))}
+                            {labourWeeks.some(([,v]) => v.sellEur > 0 && v.rate == null)
+                              ? <span style={{color:'#dc2626'}}>partial — rate(s) pending</span>
+                              : fmt(labourWeeks.reduce((s,[,v]) => {
+                                  if (v.sellEur > 0 && v.rate != null) return s + v.sellEur * v.rate + (v.sell - v.sellEur)
+                                  return s + v.sell
+                                }, 0))
+                            }
                           </td>
                         </tr>
                       </tfoot>

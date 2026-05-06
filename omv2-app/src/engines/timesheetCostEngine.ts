@@ -40,6 +40,9 @@ interface CostLineInsert {
   allocated_hours: number
   cost_labour: number
   sell_labour: number
+  /** Raw EUR sell for seag rows — used with invoice.eur_spot_rate at invoicing time.
+   *  0 for all non-seag rows. sell_labour stores project-rate AUD for internal costs. */
+  sell_labour_eur: number
   cost_allowances: number
   sell_allowances: number
   timesheet_status: string
@@ -136,7 +139,11 @@ export async function writeTimesheetCostLines(
     // lines table is single-currency for downstream summing.
     // Allowances stay AUD (LAHA/FSA/meal/camp are Australian award allowances).
     const rcCurrency = (rcAny.currency as string) || 'AUD'
-    const labourFx = rcCurrency !== 'AUD' && project ? fxRate(project, rcCurrency) : 1
+    const isEurCard = rcCurrency === 'EUR'
+    // sell_labour stores AUD (project-rate conversion) for internal cost tracking.
+    // sell_labour_eur stores the raw EUR amount for seag rows, used with
+    // invoice.eur_spot_rate at invoicing time. Non-seag rows always get 0.
+    const labourFx = isEurCard && project ? fxRate(project, rcCurrency) : 1
 
     // WBS resolution — same priority the HTML uses:
     //   1. crew[i].wbs (per-member override on this week)
@@ -182,12 +189,15 @@ export async function writeTimesheetCostLines(
       // whole day so the NT/T1.5/DT bands honour the day's total — splitting
       // alloc-by-alloc is wrong (e.g. 6h+4h ≠ 10h split when bands kick in).
       let dayLabourCost = 0, dayLabourSell = 0
+      let dayLabourSellEur = 0
       if (hasLabour) {
         const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
         const effH = dayHours + adjH
         const split = splitHours(effH, dayType, shiftType, rcRegime, calendarDayType)
         dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
         dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
+        // Raw EUR for seag — stored separately so invoicing can apply spot rate
+        if (isEurCard) dayLabourSellEur = calcHoursCost(split, rc, 'sell')
       }
 
       // ── Day-level allowances — apply on rest days too (LAHA pays regardless of hours) ──
@@ -228,6 +238,7 @@ export async function writeTimesheetCostLines(
           const ratio = allocHours / dayHours  // proportion of the day's labour
           const costLabour = dayLabourCost * ratio
           const sellLabour = dayLabourSell * ratio
+          const sellLabourEur = dayLabourSellEur * ratio
 
           // Resolve tce_item_id:
           //   1. Prefer the alloc's explicit tceItemId
@@ -257,6 +268,7 @@ export async function writeTimesheetCostLines(
             allocated_hours: allocHours,
             cost_labour: costLabour,
             sell_labour: sellLabour,
+            sell_labour_eur: sellLabourEur,
             cost_allowances: 0,
             sell_allowances: 0,
             timesheet_status: timesheet.status,
@@ -286,6 +298,7 @@ export async function writeTimesheetCostLines(
           allocated_hours: 0,
           cost_labour: 0,
           sell_labour: 0,
+          sell_labour_eur: 0,
           cost_allowances: dayCostAllow,
           sell_allowances: daySellAllow,
           timesheet_status: timesheet.status,
@@ -317,6 +330,7 @@ export async function writeTimesheetCostLines(
           allocated_hours: 0,
           cost_labour: 0,
           sell_labour: 0,
+          sell_labour_eur: 0,
           cost_allowances: dayCostTravel,
           sell_allowances: daySellTravel,
           timesheet_status: timesheet.status,
