@@ -1829,7 +1829,6 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           </div>
         </div>
       )}
-      )}
 
       {/* TCE mismatch confirmation — blocks Save & Close until user acknowledges */}
       {showMismatchConfirm && activeWeek && (
