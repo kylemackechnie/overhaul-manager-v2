@@ -62,6 +62,7 @@ import { NrgActualsPanel } from './pages/site/NrgActualsPanel'
 import { NrgKpiPanel } from './pages/site/NrgKpiPanel'
 import { NrgInvoicingPanel } from './pages/site/NrgInvoicingPanel'
 import { NrgApprovalsPanel } from './pages/site/NrgApprovalsPanel'
+import { NrgScopeAllocationsPanel } from './pages/site/NrgScopeAllocationsPanel'
 import { HardwareContractPanel } from './pages/site/HardwareContractPanel'
 import { HardwareDashboard } from './pages/hardware/HardwareDashboard'
 import { HardwareReportsPanel } from './pages/hardware/HardwareReportsPanel'
@@ -421,6 +422,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'nrg-invoicing':         return <NrgInvoicingPanel />
     case 'nrg-kpi':               return <NrgKpiPanel />
     case 'nrg-approvals':         return <NrgApprovalsPanel />
+      case 'nrg-scope-allocations': return <NrgScopeAllocationsPanel />
     case 'hardware-dashboard':    return <HardwareDashboard />
     case 'hardware-reports':      return <HardwareReportsPanel />
     case 'hardware-escalation':   return <HardwareEscalationPanel />
