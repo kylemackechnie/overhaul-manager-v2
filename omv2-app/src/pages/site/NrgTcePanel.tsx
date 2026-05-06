@@ -561,7 +561,7 @@ export function NrgTcePanel() {
                           })()}</td>}
                           {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '12px', color: '#4f46e5' }}>{(() => {
                             const groupActual = children.reduce((s, c) => s + lineActualCost(c), 0)
-                            return groupActual > 0 ? fmt(groupActual) : '—'
+                            return groupActual !== 0 ? fmt(groupActual) : '—'
                           })()}</td>}
                           {isTceVisible('kpi') && <td></td>}
                           {isTceVisible('line_type') && <td></td>}
@@ -601,11 +601,11 @@ export function NrgTcePanel() {
                           title={lineCommitted(l.item_id) > 0 ? 'Click to see POs' : undefined}>
                           {lineCommitted(l.item_id) > 0 ? <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(lineCommitted(l.item_id))}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}
                         </td>}
-                        {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, cursor: lineActualCost(l) > 0 ? 'pointer' : undefined }}
-                          onClick={lineActualCost(l) > 0 ? () => { setDrillLine(l); setDrillType('actual') } : undefined}
-                          title={lineActualCost(l) > 0 ? 'Click to see breakdown' : undefined}>
+                        {isTceVisible('actual_cost') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, cursor: lineActualCost(l) !== 0 ? 'pointer' : undefined }}
+                          onClick={lineActualCost(l) !== 0 ? () => { setDrillLine(l); setDrillType('actual') } : undefined}
+                          title={lineActualCost(l) !== 0 ? 'Click to see breakdown' : undefined}>
                           {(() => { const actual = lineActualCost(l); const over = l.tce_total > 0 && actual > l.tce_total
-                            return actual > 0 ? <span style={{ color: over ? 'var(--red)' : 'var(--green)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(actual)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
+                            return actual !== 0 ? <span style={{ color: actual < 0 ? 'var(--accent)' : over ? 'var(--red)' : 'var(--green)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{fmt(actual)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
                           })()}
                         </td>}
                         {isTceVisible('kpi') && <td>{l.kpi_included ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span> : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}</td>}

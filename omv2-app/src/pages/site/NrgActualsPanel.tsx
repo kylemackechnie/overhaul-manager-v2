@@ -198,7 +198,7 @@ export function NrgActualsPanel() {
   if (filter === 'over') displayed = displayed.filter(x => x.pct !== null && x.pct > 100)
   else if (filter === 'near') displayed = displayed.filter(x => x.pct !== null && x.pct > 80 && x.pct <= 100)
   else if (filter === 'no_actuals') displayed = displayed.filter(x => x.actuals === 0)
-  else if (filter === 'with_actuals') displayed = displayed.filter(x => x.actuals > 0)
+  else if (filter === 'with_actuals') displayed = displayed.filter(x => x.actuals !== 0)
 
   const totTce = withActuals.reduce((s, x) => s + x.tce, 0)
   const totAct = withActuals.reduce((s, x) => s + x.actuals, 0)
@@ -461,7 +461,7 @@ ${sectionHTML}
                             {line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'}
                           </td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(tce)}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : 'var(--text3)' }}>{fmt(actuals)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : actuals < 0 ? 'var(--red)' : 'var(--text3)' }}>{fmt(actuals)}</td>
                           {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', background: '#eff6ff', color: weekActuals > 0 ? '#1e40af' : 'var(--text3)' }}>{fmt(weekActuals)}</td>}
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: rem < 0 ? 'var(--red)' : 'var(--text2)' }}>{fmt(rem)}</td>
                           <td>
