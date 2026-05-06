@@ -8,7 +8,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
-import { nrgLineActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { nrgLineActual, nrgInvoiceActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled'] as const
@@ -58,6 +58,7 @@ export function NrgTcePanel() {
   const [wbsList, setWbsList] = useState<{ id: string; code: string; name: string }[]>([])
   const [timesheets, setTimesheets] = useState<NrgTimesheet[]>([])
   const [hoursByItem, setHoursByItem] = useState<Record<string, number>>({})
+  const [labourSellByItem, setLabourSellByItem] = useState<Record<string, number>>({})
   const [invoices, setInvoices] = useState<NrgInvoiceMin[]>([])
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
@@ -125,7 +126,7 @@ export function NrgTcePanel() {
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
-      supabase.from('timesheet_cost_lines').select('tce_item_id,allocated_hours').eq('project_id', pid).eq('timesheet_status', 'approved'),
+      supabase.from('timesheet_cost_lines').select('tce_item_id,allocated_hours,sell_labour,sell_allowances').eq('project_id', pid).eq('timesheet_status', 'approved'),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
@@ -136,13 +137,16 @@ export function NrgTcePanel() {
     setVariations((varRes.data || []) as NrgVariationMin[])
     setRateCards((rcRes.data || []) as RateCard[])
 
-    // Aggregate actual hours by tce_item_id from cost lines (reflects credits applied)
+    // Aggregate actual hours and sell by tce_item_id from cost lines (reflects credits applied)
     const hoursAgg: Record<string, number> = {}
-    for (const cl of (clRes.data || []) as { tce_item_id: string | null; allocated_hours: number }[]) {
+    const sellAgg: Record<string, number> = {}
+    for (const cl of (clRes.data || []) as { tce_item_id: string | null; allocated_hours: number; sell_labour: number; sell_allowances: number }[]) {
       if (!cl.tce_item_id) continue
       hoursAgg[cl.tce_item_id] = (hoursAgg[cl.tce_item_id] || 0) + (Number(cl.allocated_hours) || 0)
+      sellAgg[cl.tce_item_id] = (sellAgg[cl.tce_item_id] || 0) + (Number(cl.sell_labour) || 0) + (Number(cl.sell_allowances) || 0)
     }
     setHoursByItem(hoursAgg)
+    setLabourSellByItem(sellAgg)
     setLoading(false)
   }
 
@@ -158,6 +162,15 @@ export function NrgTcePanel() {
   }
 
   function lineActualCost(l: NrgTceLine): number {
+    if (l.line_type === 'Fixed Price') return l.tce_total || 0
+    const isLabour = l.line_type === 'Labour' || l.source === 'skilled'
+    if (isLabour && l.item_id) {
+      // Read from stored timesheet_cost_lines (same source as NRG Actuals + NRG Invoice)
+      // This avoids rate card drift from live recalculation
+      const labourSell = labourSellByItem[l.item_id] || 0
+      // Add any supplier invoices/expenses/variations also tagged to this labour line
+      return labourSell + nrgInvoiceActual(l.item_id, invoices, expenses, variations)
+    }
     return nrgLineActual(
       { item_id: l.item_id, source: l.source, work_order: l.work_order || '', line_type: l.line_type || '', tce_total: l.tce_total || 0 },
       timesheets, invoices, expenses, variations,
