@@ -1669,17 +1669,20 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       </optgroup>
                     )}
                   </select>
-                  {/* Pay code badge — from TasTK import, read-only */}
-                  {r.payCode ? (
-                    <span title="Pay rate from Timecloud import" style={{
-                      fontSize: '10px', fontWeight: 700, fontFamily: 'var(--mono)',
-                      padding: '2px 6px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
-                      background: r.payCode === 'DT1.0' ? '#dbeafe' : r.payCode === 'DT1.5' ? '#fef3c7' : '#fce7f3',
-                      color:      r.payCode === 'DT1.0' ? '#1e40af' : r.payCode === 'DT1.5' ? '#92400e' : '#9d174d',
-                    }}>{r.payCode}</span>
-                  ) : (
-                    <span style={{ fontSize: '10px', color: 'var(--text3)', flexShrink: 0, width: 44, textAlign: 'center' }} title="No pay code — will derive from day type on export">—</span>
-                  )}
+                  {/* Pay code dropdown — editable for all rows; pre-filled from TasTK, selectable for manual entries */}
+                  {(() => {
+                    const pc = r.payCode || ''
+                    const bg  = pc === 'DT1.0' ? '#dbeafe' : pc === 'DT1.5' ? '#fef3c7' : pc === 'DT2.0' ? '#fce7f3' : pc === 'NT2.0' ? '#f0fdf4' : 'var(--bg2)'
+                    const col = pc === 'DT1.0' ? '#1e40af' : pc === 'DT1.5' ? '#92400e' : pc === 'DT2.0' ? '#9d174d' : pc === 'NT2.0' ? '#166534' : 'var(--text3)'
+                    return (
+                      <select value={pc} title="Pay rate / regime (from Timecloud or select manually)"
+                        style={{ fontSize: '10px', fontWeight: pc ? 700 : 400, fontFamily: 'var(--mono)', padding: '2px 4px', borderRadius: 4, flexShrink: 0, border: `1px solid ${pc ? bg : 'var(--border2)'}`, background: bg, color: col, width: 68, cursor: 'pointer' }}
+                        onChange={e => setTceAllocRows(rows => rows.map((x, j) => j === i ? { ...x, payCode: e.target.value || undefined } : x))}>
+                        <option value="">rate</option>
+                        {['DT1.0','DT1.5','DT2.0','NT2.0'].map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    )
+                  })()}
                   <input type="number" className="input"
                     style={{ width: '72px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 700 }}
                     value={r.hours || ''} min={0} max={tceAllocModal.hours} step={0.5} placeholder="h"
@@ -1689,7 +1692,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 </div>
               ))}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                <button className="btn btn-sm" onClick={() => setTceAllocRows(rows => [...rows, { key: '', label: '', hours: 0 }])}>+ Add Scope</button>
+                <button className="btn btn-sm" onClick={() => setTceAllocRows(rows => [...rows, { key: '', label: '', hours: 0, payCode: undefined }])}>+ Add Scope</button>
                 {(() => {
                   const allocated = tceAllocRows.reduce((s,r) => s+(r.hours||0), 0)
                   const remaining = parseFloat((tceAllocModal.hours - allocated).toFixed(2))
