@@ -503,9 +503,9 @@ export function NrgInvoicingPanel() {
               </div>
 
               <div className="modal-body" style={{ padding: '16px 20px', maxHeight: '60vh', overflow: 'auto' }}>
-                {isLabour && labourWeeks.length > 0 && (
+                {labourWeeks.length > 0 && (
                   <>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Labour (approved timesheets)</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>{isLabour ? 'Labour (approved timesheets)' : 'Timesheet Costs (approved)'}</div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
                       <thead>
                         <tr>
