@@ -165,8 +165,10 @@ export function NrgInvoicingPanel() {
     for (const exp of expenseItems) {
       if (exp.tce_item_id !== line.item_id) continue
       if (!inPeriod(exp.date as string, fromWE, toWE)) continue
+      const sell = Number(exp.sell_price)
       const cost = Number(exp.cost_ex_gst)
-      total += (!isNaN(cost) && cost > 0) ? cost : (Number(exp.amount) || 0)
+      // Use sell_price when set (chargeable); fall back to cost_ex_gst
+      total += (!isNaN(sell) && sell !== 0) ? sell : ((!isNaN(cost) && cost !== 0) ? cost : (Number(exp.amount) || 0))
     }
     return total
   }
@@ -349,10 +351,10 @@ export function NrgInvoicingPanel() {
                           return (
                             <td key={inv.id} onClick={()=>handleCellClick(inv,cs)}
                               style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',cursor:'pointer',
-                                background:isOv?'#fefce8':isCalc&&amount>0?'rgba(220,252,231,0.4)':'transparent',
-                                color:amount>0?'var(--text)':'var(--text3)'}}>
+                                background:isOv?'#fefce8':isCalc&&amount!==0?'rgba(220,252,231,0.4)':'transparent',
+                                color:amount>0?'var(--text)':amount<0?'var(--red)':'var(--text3)'}}>
                               {isOv&&<span style={{fontSize:'9px',color:'#d97706',marginRight:'3px'}}>✎</span>}
-                              {isCalc&&amount>0&&<span style={{fontSize:'9px',color:'#15803d',marginRight:'3px'}}>⚡</span>}
+                              {isCalc&&amount!==0&&<span style={{fontSize:'9px',color:'#15803d',marginRight:'3px'}}>⚡</span>}
                               {fmt(amount)}
                             </td>
                           )
