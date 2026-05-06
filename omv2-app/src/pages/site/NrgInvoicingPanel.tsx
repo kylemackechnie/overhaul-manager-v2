@@ -319,7 +319,7 @@ export function NrgInvoicingPanel() {
                 {sortedInvoices.map(inv=>(
                   <th key={inv.id} style={{padding:'8px 12px',textAlign:'right',minWidth:'110px'}}>
                     <div style={{fontWeight:700}}>{inv.label||'Invoice'}</div>
-                    <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>{inv.week_ending?`WE ${inv.week_ending}`:'No period'}</div>
+                    <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>{inv.week_ending?`PE ${inv.week_ending}`:'No period'}</div>
                     <div style={{display:'flex',gap:'3px',justifyContent:'flex-end',marginTop:'3px'}}>
                       <button className="btn btn-sm" style={{fontSize:'9px',padding:'1px 4px'}} onClick={()=>openEditInvoice(inv)}>✏</button>
                       <button className="btn btn-sm" style={{fontSize:'9px',padding:'1px 4px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>
@@ -405,7 +405,32 @@ export function NrgInvoicingPanel() {
                 <div className="fg"><label>Invoice Number</label><input className="input" value={invForm.invoice_number} onChange={e=>setInvForm(f=>({...f,invoice_number:e.target.value}))} placeholder="INV-12345" /></div>
               </div>
               <div className="fg-row">
-                <div className="fg"><label>Week Ending <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>period boundary</span></label><input type="date" className="input" value={invForm.week_ending} onChange={e=>setInvForm(f=>({...f,week_ending:e.target.value}))} /></div>
+                <div className="fg"><label>Period Ending <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>boundary date for this invoice</span></label>
+                  <input type="date" className="input" value={invForm.week_ending} onChange={e=>setInvForm(f=>({...f,week_ending:e.target.value}))} />
+                  {/* Quick-select: next weekly/fortnightly Sunday from last invoice */}
+                  {(() => {
+                    const lastWE = sortedInvoices.length ? sortedInvoices[sortedInvoices.length-1].week_ending || '' : ''
+                    if (!lastWE) return null
+                    const base = new Date(lastWE + 'T00:00:00Z')
+                    const nextWeek = new Date(base); nextWeek.setUTCDate(base.getUTCDate() + 7)
+                    const nextFortnight = new Date(base); nextFortnight.setUTCDate(base.getUTCDate() + 14)
+                    const fmt2 = (d: Date) => d.toISOString().slice(0, 10)
+                    const lbl = (d: Date) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
+                    return (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center' }}>Quick:</span>
+                        <button type="button" className="btn btn-sm" style={{ fontSize: 10 }}
+                          onClick={() => setInvForm(f => ({ ...f, week_ending: fmt2(nextWeek), label: f.label || `WE ${lbl(nextWeek)}` }))}>
+                          +1 week ({lbl(nextWeek)})
+                        </button>
+                        <button type="button" className="btn btn-sm" style={{ fontSize: 10 }}
+                          onClick={() => setInvForm(f => ({ ...f, week_ending: fmt2(nextFortnight), label: f.label || `Fortnight ending ${lbl(nextFortnight)}` }))}>
+                          +2 weeks ({lbl(nextFortnight)})
+                        </button>
+                      </div>
+                    )
+                  })()}
+                </div>
                 <div className="fg"><label>Sent Date</label><input type="date" className="input" value={invForm.sent_date} onChange={e=>setInvForm(f=>({...f,sent_date:e.target.value}))} /></div>
               </div>
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={invForm.notes} onChange={e=>setInvForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
