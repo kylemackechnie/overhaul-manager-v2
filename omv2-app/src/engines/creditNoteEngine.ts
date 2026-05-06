@@ -471,10 +471,9 @@ export async function reverseCreditNote(creditNoteId: string, projectId: string)
 
         for (const cl of cls) {
           const clHours = Number(cl.allocated_hours) || 0
-          // Reverse: restore by adding back the credit. Use source hours to derive original.
-          const remainingSource = src.hours - creditHours   // what it was set to
-          const originalSource  = src.hours                  // what it should return to
-          const clShareOfSource = 1 / cls.length            // equal share if multiple
+          // Reverse: restore to original source hours
+          const originalSource  = src.hours
+          const clShareOfSource = 1 / cls.length
           const newAllocHours   = parseFloat((originalSource * clShareOfSource).toFixed(4))
           // Sell ratio: restore sell proportional to hour increase
           const sellRatio       = clHours > 0 ? newAllocHours / clHours : 1
