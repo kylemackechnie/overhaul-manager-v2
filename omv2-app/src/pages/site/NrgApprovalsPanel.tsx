@@ -89,15 +89,6 @@ function getPayCode(dayType: string): string {
   return 'DT1.0'
 }
 
-const ROLE_MAP: Record<string, string> = {
-  'Fitter': 'FITTER', 'Rigger': 'RIGGER', 'Crane Operator': 'CRANEOP',
-  'Trades Assistant': 'TRADEASSIST', 'Administrator - Site': 'ADMIN',
-  'Plant Supervisor': 'SUPERVISOR', 'Project Manager': 'PROJECTMGR',
-  'QA / Project Engineer': 'QAENGINEER', 'Safety Officer': 'SAFETYOFF',
-}
-function toTradeLabel(role: string) {
-  return ROLE_MAP[role] || role.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)
-}
 
 // ─── Derive sent rows from DB data (same logic as XLSX export) ────────────────
 
@@ -106,7 +97,6 @@ function buildSentRows(
   personMeta: Record<string, PersonMeta>,
   tceByItemId: Record<string, TceLine>,
   tceByWo: Record<string, TceLine>,
-  contractPrefix: string,
   dateFrom: string,
   dateTo: string,
 ): SentRow[] {
@@ -117,7 +107,6 @@ function buildSentRows(
     for (const cm of ts.crew) {
       const meta = personMeta[cm.personId]
       const empNo = meta?.nrg_employee_number || ''
-      const trade = toTradeLabel(cm.role)
       const fullName = meta
         ? [meta.first_name || '', meta.last_name || ''].filter(Boolean).join(' ') || meta.full_name
         : cm.name
@@ -291,7 +280,7 @@ export function NrgApprovalsPanel() {
   }
 
   // Recompute recon whenever date range or approvals change
-  const sentRows = buildSentRows(timesheets, personMeta, tceByItemId, tceByWo, contractPrefix, dateFrom, dateTo)
+  const sentRows = buildSentRows(timesheets, personMeta, tceByItemId, tceByWo, dateFrom, dateTo)
 
   useEffect(() => {
     if (apprRows.length > 0) setRecon(reconcile(sentRows, apprRows))
