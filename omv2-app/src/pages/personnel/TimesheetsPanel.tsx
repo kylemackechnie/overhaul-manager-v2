@@ -1669,6 +1669,17 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       </optgroup>
                     )}
                   </select>
+                  {/* Pay code badge — from TasTK import, read-only */}
+                  {r.payCode ? (
+                    <span title="Pay rate from Timecloud import" style={{
+                      fontSize: '10px', fontWeight: 700, fontFamily: 'var(--mono)',
+                      padding: '2px 6px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap',
+                      background: r.payCode === 'DT1.0' ? '#dbeafe' : r.payCode === 'DT1.5' ? '#fef3c7' : '#fce7f3',
+                      color:      r.payCode === 'DT1.0' ? '#1e40af' : r.payCode === 'DT1.5' ? '#92400e' : '#9d174d',
+                    }}>{r.payCode}</span>
+                  ) : (
+                    <span style={{ fontSize: '10px', color: 'var(--text3)', flexShrink: 0, width: 44, textAlign: 'center' }} title="No pay code — will derive from day type on export">—</span>
+                  )}
                   <input type="number" className="input"
                     style={{ width: '72px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 700 }}
                     value={r.hours || ''} min={0} max={tceAllocModal.hours} step={0.5} placeholder="h"
