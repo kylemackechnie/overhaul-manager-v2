@@ -188,11 +188,8 @@ export function NrgActualsPanel() {
       return { line: l, actuals, tce, pct, weekActuals }
     })
 
-  // Split: Fixed Price lines get their own table; rate-driven lines get the main table + filters
-  const rateRows = withActuals.filter(x => x.line.line_type !== 'Fixed Price')
-  const fpRows   = withActuals.filter(x => x.line.line_type === 'Fixed Price')
-
-  let displayed = rateRows
+  // All lines go into a single table (FP lines included when they have actuals)
+  let displayed = withActuals
   if (sourceFilter === 'overhead') displayed = displayed.filter(x => x.line.source === 'overhead')
   if (sourceFilter === 'skilled') displayed = displayed.filter(x => x.line.source === 'skilled')
   if (filter === 'over') displayed = displayed.filter(x => x.pct !== null && x.pct > 100)
@@ -203,7 +200,6 @@ export function NrgActualsPanel() {
   const totTce = withActuals.reduce((s, x) => s + x.tce, 0)
   const totAct = withActuals.reduce((s, x) => s + x.actuals, 0)
   const totPct = totTce > 0 ? (totAct / totTce) * 100 : null
-  const fpTotTce = fpRows.reduce((s, x) => s + x.tce, 0)
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
 
   function printReport() {
@@ -368,14 +364,14 @@ ${sectionHTML}
           <p>Import the NRG TCE spreadsheet on the TCE Register tab first.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
+        <div>
 
           {/* ── Left card: Rate-driven lines ─────────────────────────────── */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="card" style={{ padding: 0, overflow: 'auto', flex: 1 }}>
             {/* Card header */}
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: '13px' }}>Rate-Driven Lines</div>
+                <div style={{ fontWeight: 700, fontSize: '13px' }}>Actuals</div>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
                   {rateRows.length} lines · {fmt(rateRows.reduce((s,x)=>s+x.actuals,0))} of {fmt(rateRows.reduce((s,x)=>s+x.tce,0))} TCE
                 </div>
@@ -417,22 +413,21 @@ ${sectionHTML}
             {displayed.length === 0 ? (
               <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>✅ No lines match this filter</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '700px', width: '100%' }}>
+              <table style={{ fontSize: '12px', tableLayout: 'fixed', minWidth: '900px', width: '100%' }}>
                   <thead>
                     <tr>
-                      <th style={{ width: '80px' }}>Item ID</th>
-                      <th style={{ width: '70px' }}>Source</th>
-                      <th>Description</th>
-                      <th style={{ width: '90px' }}>Work Order</th>
-                      <th style={{ textAlign: 'right', width: '72px' }}>Est. Hrs</th>
-                      <th style={{ textAlign: 'right', width: '72px' }}>Act. Hrs</th>
-                      <th style={{ textAlign: 'right', width: '90px' }}>TCE</th>
-                      <th style={{ textAlign: 'right', width: '90px' }}>Actuals</th>
-                      {weekFilter && <th style={{ textAlign: 'right', width: '80px', background: '#eff6ff' }}>This Wk</th>}
-                      <th style={{ textAlign: 'right', width: '80px' }}>Rem.</th>
-                      <th style={{ width: '110px' }}>Progress</th>
-                      <th style={{ width: '85px' }}>Status</th>
+                      <th style={{ width: '80px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Item ID</th>
+                      <th style={{ width: '70px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Source</th>
+                      <th style={{ position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Description</th>
+                      <th style={{ width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Work Order</th>
+                      <th style={{ textAlign: 'right', width: '72px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Est. Hrs</th>
+                      <th style={{ textAlign: 'right', width: '72px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Act. Hrs</th>
+                      <th style={{ textAlign: 'right', width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>TCE</th>
+                      <th style={{ textAlign: 'right', width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Actuals</th>
+                      {weekFilter && <th style={{ textAlign: 'right', width: '80px', background: '#eff6ff', position: 'sticky', top: 0, zIndex: 10 }}>This Wk</th>}
+                      <th style={{ textAlign: 'right', width: '80px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Rem.</th>
+                      <th style={{ width: '110px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Progress</th>
+                      <th style={{ width: '85px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -446,10 +441,10 @@ ${sectionHTML}
                           <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
                           <td>
                             <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
-                              background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
-                              color: line.source === 'skilled' ? '#1e40af' : '#64748b',
+                              background: line.line_type === 'Fixed Price' ? '#ede9fe' : line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
+                              color: line.line_type === 'Fixed Price' ? '#6b21a8' : line.source === 'skilled' ? '#1e40af' : '#64748b',
                               fontWeight: 600, textTransform: 'uppercase' as const }}>
-                              {line.source}
+                              {line.line_type === 'Fixed Price' ? 'Fixed Price' : line.source}
                             </span>
                           </td>
                           <td style={{ fontWeight: 500, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>{line.description || '—'}</td>
@@ -498,65 +493,9 @@ ${sectionHTML}
                     </tr>
                   </tfoot>
                 </table>
-              </div>
             )}
           </div>
 
-          {/* ── Right card: Fixed Price lines ────────────────────────────── */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', borderTop: '3px solid #7c3aed' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'rgba(124,58,237,0.04)' }}>
-              <div style={{ fontWeight: 700, fontSize: '13px', color: '#6b21a8' }}>Fixed Price Items</div>
-              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
-                {fpRows.length} lines · {fmt(fpTotTce)} total contract value
-              </div>
-            </div>
-            {fpRows.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>No fixed price lines</div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ fontSize: '12px', tableLayout: 'fixed', width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '80px' }}>Item ID</th>
-                      <th>Description</th>
-                      <th style={{ width: '100px' }}>Contract</th>
-                      <th style={{ textAlign: 'right', width: '110px' }}>Contract Value</th>
-                      <th style={{ width: '80px' }}>Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fpRows.map(({ line, tce }) => (
-                      <tr key={line.id}>
-                        <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
-                        <td style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>{line.description || '—'}</td>
-                        <td>
-                          {line.contract_scope
-                            ? <span style={{ background: '#ede9fe', color: '#6b21a8', padding: '1px 4px', borderRadius: '3px', fontSize: '10px' }}>{line.contract_scope}</span>
-                            : <span style={{ color: 'var(--text3)' }}>—</span>}
-                        </td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#6b21a8' }}>{fmt(tce)}</td>
-                        <td>
-                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
-                            background: line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
-                            color: line.source === 'skilled' ? '#1e40af' : '#64748b',
-                            fontWeight: 600, textTransform: 'uppercase' as const }}>
-                            {line.source}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: 'rgba(124,58,237,0.06)', fontWeight: 700 }}>
-                      <td colSpan={3} style={{ padding: '8px 12px', color: '#6b21a8' }}>TOTAL ({fpRows.length})</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: '#6b21a8' }}>{fmt(fpTotTce)}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </div>
 
         </div>
       )}
