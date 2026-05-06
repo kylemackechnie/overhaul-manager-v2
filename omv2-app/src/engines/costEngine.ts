@@ -634,6 +634,7 @@ export interface NrgExpenseMin {
   tce_item_id: string | null
   cost_ex_gst: number
   amount: number
+  sell_price?: number | null
   date?: string | null
 }
 
@@ -702,7 +703,11 @@ export function nrgInvoiceActual(
 
   const expTotal = expenses
     .filter(e => e.tce_item_id === itemId)
-    .reduce((s, e) => s + (e.cost_ex_gst || e.amount || 0), 0)
+    .reduce((s, e) => {
+      // Use sell_price when set (chargeable expenses); fall back to cost_ex_gst for non-chargeable
+      const val = (e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst || e.amount || 0)
+      return s + val
+    }, 0)
 
   const vnTotal = nrgVariationActual(itemId, variations)
 
@@ -745,7 +750,10 @@ export function nrgInvoiceActualForWeek(
 
   const expTotal = expenses
     .filter(e => e.tce_item_id === itemId && e.date && e.date >= weekStart && e.date <= weekEnd)
-    .reduce((s, e) => s + (e.cost_ex_gst || e.amount || 0), 0)
+    .reduce((s, e) => {
+      const val = (e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst || e.amount || 0)
+      return s + val
+    }, 0)
 
   const vnTotal = variations
     .filter(v => v.tce_link === itemId && v.status === 'approved'

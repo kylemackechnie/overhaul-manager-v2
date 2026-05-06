@@ -85,7 +85,7 @@ export function NrgActualsPanel() {
         .eq('project_id', pid)
         .eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status,period_from,period_to').eq('project_id', pid),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,date').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total,approved_date').eq('project_id', pid),
     ])
     setLines(tceLines)
