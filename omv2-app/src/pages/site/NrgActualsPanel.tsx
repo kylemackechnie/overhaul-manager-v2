@@ -373,17 +373,17 @@ ${sectionHTML}
               <div>
                 <div style={{ fontWeight: 700, fontSize: '13px' }}>Actuals</div>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
-                  {rateRows.length} lines · {fmt(rateRows.reduce((s,x)=>s+x.actuals,0))} of {fmt(rateRows.reduce((s,x)=>s+x.tce,0))} TCE
+                  {withActuals.length} lines · {fmt(withActuals.reduce((s,x)=>s+x.actuals,0))} of {fmt(withActuals.reduce((s,x)=>s+x.tce,0))} TCE
                 </div>
               </div>
               {/* Filters */}
               <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
                 {[
-                  { key: 'all',          label: `All (${rateRows.length})` },
-                  { key: 'with_actuals', label: `Has Actuals (${rateRows.filter(x=>x.actuals>0).length})` },
-                  { key: 'over',         label: `Over TCE (${rateRows.filter(x=>x.pct!==null&&x.pct>100).length})` },
-                  { key: 'near',         label: `Near Limit (${rateRows.filter(x=>x.pct!==null&&x.pct>80&&x.pct<=100).length})` },
-                  { key: 'no_actuals',   label: `No Actuals (${rateRows.filter(x=>x.actuals===0).length})` },
+                  { key: 'all',          label: `All (${withActuals.length})` },
+                  { key: 'with_actuals', label: `Has Actuals (${withActuals.filter(x=>x.actuals>0).length})` },
+                  { key: 'over',         label: `Over TCE (${withActuals.filter(x=>x.pct!==null&&x.pct>100).length})` },
+                  { key: 'near',         label: `Near Limit (${withActuals.filter(x=>x.pct!==null&&x.pct>80&&x.pct<=100).length})` },
+                  { key: 'no_actuals',   label: `No Actuals (${withActuals.filter(x=>x.actuals===0).length})` },
                 ].map(f => (
                   <button key={f.key} className="btn btn-sm"
                     style={{ fontSize: '10px', padding: '2px 6px', background: filter===f.key?'var(--accent)':'', color: filter===f.key?'#fff':'' }}
