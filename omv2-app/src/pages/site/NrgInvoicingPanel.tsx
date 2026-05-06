@@ -39,8 +39,11 @@ export function NrgInvoicingPanel() {
   const [invForm, setInvForm] = useState({ label:'', invoice_number:'', week_ending:'', sent_date:'', notes:'' })
   const [rulesModal, setRulesModal] = useState(false)
   const [rulesForm, setRulesForm] = useState<{group_name:string;triggers_str:string}[]>([])
+  const [drillCell, setDrillCell] = useState<{inv:NrgCustomerInvoice;cs:string;fromWE:string;toWE:string}|null>(null)
+  const [overrideInput, setOverrideInput] = useState('')
   // Cost lines from timesheet_cost_lines — single source of truth for labour actuals
   const [costLinesByItemAndWeek, setCostLinesByItemAndWeek] = useState<Record<string,Record<string,{cost:number;sell:number}>>>({})
+  const [rawCostLines, setRawCostLines] = useState<{tce_item_id:string|null;week_ending:string;week_start:string;sell_labour:number;sell_allowances:number;allocated_hours:number}[]>([])
   const [supplierInvoices, setSupplierInvoices] = useState<Record<string,unknown>[]>([])
   const [expenseItems, setExpenseItems] = useState<Record<string,unknown>[]>([])
 
@@ -74,23 +77,26 @@ export function NrgInvoicingPanel() {
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
       supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('timesheet_cost_lines')
-        .select('tce_item_id,week_ending,cost_labour,sell_labour,cost_allowances,sell_allowances')
+        .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,cost_allowances,sell_allowances,allocated_hours')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,invoice_date,amount,status').eq('project_id', pid).neq('status','rejected'),
-      supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price').eq('project_id', pid),
+      supabase.from('invoices').select('tce_item_id,invoice_date,amount,status,invoice_number,description,vendor').eq('project_id', pid).neq('status','rejected'),
+      supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category').eq('project_id', pid),
     ])
     setTceLines(fetchedTceLines)
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
     // Aggregate cost lines: { tce_item_id -> { week_ending -> { cost, sell } } }
     const byItemWeek: Record<string,Record<string,{cost:number;sell:number}>> = {}
-    for (const r of (clRes.data||[]) as {tce_item_id:string|null;week_ending:string;cost_labour:number;sell_labour:number;cost_allowances:number;sell_allowances:number}[]) {
+    const rawCL: typeof rawCostLines = []
+    for (const r of (clRes.data||[]) as {tce_item_id:string|null;week_ending:string;week_start:string;cost_labour:number;sell_labour:number;cost_allowances:number;sell_allowances:number;allocated_hours:number}[]) {
       if (!r.tce_item_id) continue
       if (!byItemWeek[r.tce_item_id]) byItemWeek[r.tce_item_id] = {}
       if (!byItemWeek[r.tce_item_id][r.week_ending]) byItemWeek[r.tce_item_id][r.week_ending] = {cost:0,sell:0}
       byItemWeek[r.tce_item_id][r.week_ending].cost += (r.cost_labour||0) + (r.cost_allowances||0)
       byItemWeek[r.tce_item_id][r.week_ending].sell += (r.sell_labour||0) + (r.sell_allowances||0)
+      rawCL.push({ tce_item_id: r.tce_item_id, week_ending: r.week_ending, week_start: r.week_start, sell_labour: r.sell_labour||0, sell_allowances: r.sell_allowances||0, allocated_hours: r.allocated_hours||0 })
     }
     setCostLinesByItemAndWeek(byItemWeek)
+    setRawCostLines(rawCL)
     setSupplierInvoices((supInvRes.data||[]) as Record<string,unknown>[])
     setExpenseItems((expRes.data||[]) as Record<string,unknown>[])
     let rd = (rulesRes.data||[]) as NrgInvoiceGroupingRule[]
@@ -198,18 +204,19 @@ export function NrgInvoicingPanel() {
     return inv.overrides?.[cs] === undefined || inv.overrides?.[cs] === null
   }
 
-  async function handleCellClick(inv: NrgCustomerInvoice, cs: string) {
-    const cur = inv.overrides?.[cs]
-    const input = window.prompt(
-      `Override for ${cs} | ${inv.label||inv.week_ending||'Invoice'}\n(blank = calculated, "clear" = remove override)`,
-      cur !== undefined ? String(cur) : ''
-    )
-    if (input === null) return
+  function handleCellClick(inv: NrgCustomerInvoice, cs: string) {
+    const fromWE = prevWE(inv.id)
+    const toWE   = inv.week_ending || ''
+    setOverrideInput(inv.overrides?.[cs] !== undefined ? String(inv.overrides[cs]) : '')
+    setDrillCell({ inv, cs, fromWE, toWE })
+  }
+
+  async function applyOverride(inv: NrgCustomerInvoice, cs: string, value: string) {
     const newOv = { ...(inv.overrides||{}) }
-    if (input.trim().toLowerCase() === 'clear' || input.trim() === '') {
+    if (value.trim().toLowerCase() === 'clear' || value.trim() === '') {
       delete newOv[cs]
     } else {
-      const val = parseFloat(input.replace(/[^0-9.\-]/g,''))
+      const val = parseFloat(value.replace(/[^0-9.\-]/g,''))
       if (isNaN(val)) { toast('Invalid amount','error'); return }
       newOv[cs] = val
     }
@@ -442,6 +449,196 @@ export function NrgInvoicingPanel() {
           </div>
         </div>
       )}
+      )}
+
+      {/* ── Cell Drill-down Modal ── */}
+      {drillCell && (() => {
+        const { inv, cs, fromWE, toWE } = drillCell
+        const tceItemId = tceLines.find(l => l.contract_scope === cs || l.item_id === cs)?.item_id || null
+        const isLabour  = tceLines.find(l => l.contract_scope === cs || l.item_id === cs)?.source === 'skilled'
+        const isOverridden = inv.overrides?.[cs] !== undefined
+        const calculatedAmount = calcPeriodAmount(inv, cs)
+        const effectiveAmt = effectiveAmount(inv, cs)
+
+        // Labour: weekly buckets in period
+        const labourWeeks = tceItemId
+          ? Object.entries(costLinesByItemAndWeek[tceItemId] || {})
+              .filter(([we]) => we > fromWE && we <= toWE)
+              .sort(([a],[b]) => a.localeCompare(b))
+          : []
+
+        // Hours breakdown from raw cost lines
+        const hoursWeeks = tceItemId
+          ? rawCostLines
+              .filter(r => r.tce_item_id === tceItemId && r.week_ending > fromWE && r.week_ending <= toWE)
+              .reduce((acc, r) => { acc[r.week_ending] = (acc[r.week_ending] || 0) + r.allocated_hours; return acc }, {} as Record<string, number>)
+          : {}
+
+        // Non-labour: supplier invoices in period
+        const periodInvs = supplierInvoices
+          .filter(i => i.tce_item_id === tceItemId && inPeriod(i.invoice_date as string, fromWE, toWE))
+
+        // Non-labour: expenses in period
+        const periodExps = expenseItems
+          .filter(e => e.tce_item_id === tceItemId && inPeriod(e.date as string, fromWE, toWE))
+
+        const fmtDate = (d: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) : '—'
+        const fmtWE   = (we: string) => `WE ${fmtDate(we)}`
+
+        return (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setDrillCell(null)}>
+            <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h3 style={{ margin: 0 }}>Cost Breakdown</h3>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                    {inv.label || inv.week_ending} · <span style={{ fontFamily: 'var(--mono)' }}>{cs}</span>
+                    {fromWE && <span> · {fmtDate(fromWE)} → {fmtDate(toWE)}</span>}
+                  </div>
+                </div>
+                <button className="btn btn-sm" onClick={() => setDrillCell(null)}>✕</button>
+              </div>
+
+              <div className="modal-body" style={{ padding: '16px 20px', maxHeight: '60vh', overflow: 'auto' }}>
+                {isLabour && labourWeeks.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Labour (approved timesheets)</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '5px 10px', textAlign: 'left', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Week</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Hours</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Sell</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {labourWeeks.map(([we, vals]) => (
+                          <tr key={we} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '5px 10px' }}>{fmtWE(we)}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
+                              {(hoursWeeks[we] || 0).toFixed(1)}h
+                            </td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(vals.sell)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: 'var(--bg2)', fontWeight: 700 }}>
+                          <td style={{ padding: '5px 10px' }}>Total Labour</td>
+                          <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
+                            {labourWeeks.reduce((s, [we]) => s + (hoursWeeks[we] || 0), 0).toFixed(1)}h
+                          </td>
+                          <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)' }}>
+                            {fmt(labourWeeks.reduce((s,[,v]) => s + v.sell, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
+                )}
+
+                {periodInvs.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Supplier Invoices</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '5px 10px', textAlign: 'left', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Invoice #</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'left', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Description / Vendor</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Date</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {periodInvs.map((i, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)' }}>{(i.invoice_number as string) || '—'}</td>
+                            <td style={{ padding: '5px 10px', fontSize: 11 }}>{(i.description as string) || (i.vendor as string) || '—'}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text2)' }}>{fmtDate(i.invoice_date as string)}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(Number(i.amount) || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+
+                {periodExps.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Expenses</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 16 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '5px 10px', textAlign: 'left', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Ref / Category</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'left', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Description</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Date</th>
+                          <th style={{ padding: '5px 10px', textAlign: 'right', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>Sell</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {periodExps.map((e, idx) => {
+                          const sell = Number(e.sell_price) || Number(e.cost_ex_gst) || 0
+                          return (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)' }}>{(e.expense_ref as string) || (e.category as string) || '—'}</td>
+                              <td style={{ padding: '5px 10px', fontSize: 11 }}>{(e.description as string) || (e.vendor as string) || '—'}</td>
+                              <td style={{ padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text2)' }}>{fmtDate(e.date as string)}</td>
+                              <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: sell < 0 ? 'var(--red)' : undefined }}>{fmt(sell)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+
+                {labourWeeks.length === 0 && periodInvs.length === 0 && periodExps.length === 0 && (
+                  <div style={{ color: 'var(--text3)', fontSize: 13, padding: '12px 0', textAlign: 'center' }}>No cost data for this period.</div>
+                )}
+
+                {/* Total + override */}
+                <div style={{ borderTop: '2px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Calculated total</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 15 }}>{fmt(calculatedAmount)}</span>
+                  </div>
+                  {isOverridden && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, color: '#d97706' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>✎ Overridden to</span>
+                      <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 14 }}>{fmt(effectiveAmt)}</span>
+                    </div>
+                  )}
+                  <div style={{ background: 'var(--bg2)', borderRadius: 6, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 6 }}>MANUAL OVERRIDE <span style={{ fontWeight: 400 }}>(leave blank to use calculated)</span></div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input className="input" style={{ fontFamily: 'var(--mono)', maxWidth: 140 }}
+                        value={overrideInput}
+                        onChange={e => setOverrideInput(e.target.value)}
+                        placeholder={fmt(calculatedAmount)} />
+                      <button className="btn btn-sm" onClick={async () => {
+                        await applyOverride(inv, cs, overrideInput)
+                        setDrillCell(null)
+                        load()
+                      }}>Apply</button>
+                      {isOverridden && (
+                        <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={async () => {
+                          await applyOverride(inv, cs, 'clear')
+                          setDrillCell(null)
+                          load()
+                        }}>Clear override</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button className="btn" onClick={() => setDrillCell(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
