@@ -282,22 +282,18 @@ async function applyCreditOnly(
     const totalAllocHours = matchedLines.reduce((s, cl) => s + (Number(cl.allocated_hours) || 0), 0)
     if (totalAllocHours <= 0) { warnings.push(`Zero allocated hours on cost lines for ${src.personName} ${src.date}`); continue }
 
-    // Use source hours (from the timesheet alloc) as the reference for the credit ratio,
-    // not the cost line hours (which may differ due to how the engine splits hours).
-    // Direct subtraction: credit hours are removed proportionally from cost lines.
+    // Direct subtraction from SOURCE hours (the timesheet alloc), not cost line hours.
+    // Cost line hours may differ from source alloc hours due to engine rounding/splitting.
+    // Intent: source=1.5h, credit=0.5h → new effective hours = 1.0h
+    const sourceHours = src.hours
+    const remainingSourceHours = Math.max(0, sourceHours - creditHours)
 
     for (const cl of matchedLines) {
       const clHours = Number(cl.allocated_hours) || 0
-      if (clHours <= 0) continue
-
-      // This cost line's share of the source allocation
+      // Set new hours proportionally: this cost line's share of remaining source hours
       const clShareOfSource = totalAllocHours > 0 ? clHours / totalAllocHours : 1
-      // How many hours to remove from this cost line
-      const hoursToRemove = creditHours * clShareOfSource
-      // Direct subtraction: new hours = original - removed, not a ratio
-      const newAllocHours     = parseFloat(Math.max(0, clHours - hoursToRemove).toFixed(4))
-      // Scale sell proportionally to removed hours
-      const sellRatio         = clHours > 0 ? (clHours - hoursToRemove) / clHours : 0
+      const newAllocHours     = parseFloat((remainingSourceHours * clShareOfSource).toFixed(4))
+      const sellRatio         = clHours > 0 ? newAllocHours / clHours : 0
       const newSellLabour     = parseFloat((Number(cl.sell_labour)     * sellRatio).toFixed(4))
       const newSellAllowances = parseFloat((Number(cl.sell_allowances) * sellRatio).toFixed(4))
 
