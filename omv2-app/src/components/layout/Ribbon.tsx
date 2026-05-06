@@ -195,6 +195,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📈', label: 'OHF Forecast', panel: 'nrg-ohf' },
         { icon: '📊', label: 'Actuals', panel: 'nrg-actuals' },
         { icon: '🧾', label: 'Invoicing', panel: 'nrg-invoicing' },
+        { icon: '✅', label: 'Approvals', panel: 'nrg-approvals' },
         { icon: '🏆', label: 'KPI Model', panel: 'nrg-kpi' },
       ]},
     ],
