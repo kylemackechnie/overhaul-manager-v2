@@ -116,7 +116,7 @@ export function NrgTcePanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes, poRes, clRes] = await Promise.all([
+    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes, poRes, clRes, nrgInvRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('source').order('sort_order').order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
@@ -126,7 +126,8 @@ export function NrgTcePanel() {
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
-      supabase.from('timesheet_cost_lines').select('tce_item_id,allocated_hours,sell_labour,sell_allowances').eq('project_id', pid).eq('timesheet_status', 'approved'),
+      supabase.from('timesheet_cost_lines').select('tce_item_id,allocated_hours,sell_labour,sell_labour_eur,sell_allowances,work_date').eq('project_id', pid).eq('timesheet_status', 'approved'),
+      supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate').eq('project_id', pid).order('week_ending'),
     ])
     setLines((lRes.data || []) as NrgTceLine[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
@@ -137,13 +138,35 @@ export function NrgTcePanel() {
     setVariations((varRes.data || []) as NrgVariationMin[])
     setRateCards((rcRes.data || []) as RateCard[])
 
+    // Build spot rate map from nrg_customer_invoices (sorted ascending by week_ending)
+    const nrgInvsSorted = ((nrgInvRes.data || []) as {week_ending:string|null;eur_spot_rate:number|null}[])
+      .filter(i => i.week_ending).sort((a,b) => (a.week_ending||'').localeCompare(b.week_ending||''))
+
+    const spotRateForWeek = (workDate: string): number | null => {
+      // Derive week_ending (Sunday) from work_date
+      const dt = new Date(workDate + 'T12:00:00')
+      dt.setUTCDate(dt.getUTCDate() + (7 - dt.getUTCDay()) % 7 || 7)
+      const we = dt.toISOString().slice(0, 10)
+      const covering = nrgInvsSorted.find(i => i.week_ending! >= we)
+      const r = covering?.eur_spot_rate
+      return (r != null && !isNaN(Number(r))) ? Number(r) : null
+    }
+
     // Aggregate actual hours and sell by tce_item_id from cost lines (reflects credits applied)
     const hoursAgg: Record<string, number> = {}
     const sellAgg: Record<string, number> = {}
-    for (const cl of (clRes.data || []) as { tce_item_id: string | null; allocated_hours: number; sell_labour: number; sell_allowances: number }[]) {
+    for (const cl of (clRes.data || []) as { tce_item_id: string | null; allocated_hours: number; sell_labour: number; sell_labour_eur: number; sell_allowances: number; work_date: string | null }[]) {
       if (!cl.tce_item_id) continue
       hoursAgg[cl.tce_item_id] = (hoursAgg[cl.tce_item_id] || 0) + (Number(cl.allocated_hours) || 0)
-      sellAgg[cl.tce_item_id] = (sellAgg[cl.tce_item_id] || 0) + (Number(cl.sell_labour) || 0) + (Number(cl.sell_allowances) || 0)
+      const eurAmt = Number(cl.sell_labour_eur) || 0
+      let sell: number
+      if (eurAmt > 0 && cl.work_date) {
+        const rate = spotRateForWeek(cl.work_date)
+        sell = rate != null ? eurAmt * rate : 0  // gated if no spot rate
+      } else {
+        sell = (Number(cl.sell_labour) || 0)
+      }
+      sellAgg[cl.tce_item_id] = (sellAgg[cl.tce_item_id] || 0) + sell + (Number(cl.sell_allowances) || 0)
     }
     setHoursByItem(hoursAgg)
     setLabourSellByItem(sellAgg)
