@@ -620,7 +620,6 @@ export function NrgTcePanel() {
                             if (lineHasCosts(l)) return <span style={{ color: '#d97706', fontSize: '11px' }}>$0</span>
                             return <span style={{ color: 'var(--text3)' }}>—</span>
                           })()}
-                          })()}
                         </td>}
                         {isTceVisible('kpi') && <td>{l.kpi_included ? <span style={{ fontSize: '10px', background: '#d1fae5', color: '#065f46', padding: '1px 5px', borderRadius: '3px' }}>KPI</span> : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}</td>}
                         {isTceVisible('line_type') && <td>
