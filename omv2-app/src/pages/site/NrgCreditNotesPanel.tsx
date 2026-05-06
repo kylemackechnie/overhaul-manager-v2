@@ -53,7 +53,7 @@ function fmtDateTime(iso: string) {
 }
 
 export function NrgCreditNotesPanel() {
-  const { activeProject, currentUser } = useAppStore()
+  const { activeProject } = useAppStore()
   const pid = activeProject?.id || ''
 
   const [credits, setCredits] = useState<CreditNote[]>([])
