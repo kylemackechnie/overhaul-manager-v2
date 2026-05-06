@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import type { SourceLine } from '../../engines/creditNoteEngine'
+import { reverseCreditNote, type SourceLine } from '../../engines/creditNoteEngine'
 
 interface CreditNote {
   id: string
@@ -59,6 +59,21 @@ export function NrgCreditNotesPanel() {
   const [credits, setCredits] = useState<CreditNote[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<CreditNote | null>(null)
+  const [reversing, setReversing] = useState<string | null>(null)
+
+  async function handleReverse(cn: CreditNote) {
+    if (!window.confirm(`Reverse ${cn.reference}?\n\nThis will undo all cost line changes made by this credit note and delete the record. This cannot be undone.`)) return
+    setReversing(cn.id)
+    const result = await reverseCreditNote(cn.id, pid)
+    setReversing(null)
+    if (result.success) {
+      if (result.warnings?.length) alert(`Reversed with warnings:\n${result.warnings.join('\n')}`)
+      if (selected?.id === cn.id) setSelected(null)
+      load()
+    } else {
+      alert(`Reversal failed: ${result.error}`)
+    }
+  }
 
   useEffect(() => { if (pid) load() }, [pid])
 
@@ -252,7 +267,14 @@ export function NrgCreditNotesPanel() {
                       </td>
                       <td style={{ padding: '8px 12px', color: 'var(--text2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cn.reason}</td>
                       <td style={{ padding: '8px 12px' }}>
-                        <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={e => { e.stopPropagation(); printCreditNote(cn) }}>🖨 Print</button>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={e => { e.stopPropagation(); printCreditNote(cn) }}>🖨 Print</button>
+                          <button className="btn btn-sm" style={{ fontSize: 10, color: 'var(--red)' }}
+                            disabled={reversing === cn.id}
+                            onClick={e => { e.stopPropagation(); handleReverse(cn) }}>
+                            {reversing === cn.id ? '…' : '↩ Reverse'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -271,6 +293,11 @@ export function NrgCreditNotesPanel() {
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-sm" onClick={() => printCreditNote(selected)}>🖨 Print</button>
+                  <button className="btn btn-sm" style={{ color: 'var(--red)' }}
+                    disabled={reversing === selected.id}
+                    onClick={() => handleReverse(selected)}>
+                    {reversing === selected.id ? 'Reversing…' : '↩ Reverse'}
+                  </button>
                   <button className="btn btn-sm" onClick={() => setSelected(null)}>✕</button>
                 </div>
               </div>

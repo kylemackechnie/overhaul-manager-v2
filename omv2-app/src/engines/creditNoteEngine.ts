@@ -405,3 +405,184 @@ async function applyAdjustTimesheet(
     }
   }
 }
+
+// ─── Reversal ─────────────────────────────────────────────────────────────────
+
+export interface CreditNoteReversal {
+  success: boolean
+  error?: string
+  warnings?: string[]
+}
+
+/**
+ * reverseCreditNote — undoes the effects of an applied credit note, then deletes the record.
+ *
+ * credit_only:       adds credited hours back to cost lines (sell_labour, allocated_hours)
+ * adjust_timesheet:  restores hours in timesheet crew JSON, then rewrites cost lines
+ * reallocate:        re-runs writeTimesheetCostLines from the original timesheet state
+ *                    (the reallocate already modified the timesheet JSON, so reverting
+ *                    requires restoring the original nrgWoAllocations — we do this by
+ *                    swapping target allocs back to source allocs using the snapshot)
+ */
+export async function reverseCreditNote(creditNoteId: string, projectId: string): Promise<CreditNoteReversal> {
+  const warnings: string[] = []
+
+  // Load the credit note record
+  const { data: cn, error: cnErr } = await supabase
+    .from('nrg_credit_notes')
+    .select('*')
+    .eq('id', creditNoteId)
+    .single()
+
+  if (cnErr || !cn) return { success: false, error: 'Credit note not found' }
+
+  const sourceLines: SourceLine[] = cn.source_lines || []
+  const creditHoursPerLine: Record<string, number> = cn.credit_hours_per_line || {}
+  const creditType: string = cn.credit_type
+
+  const hoursForLine = (i: number): number => {
+    const v = creditHoursPerLine[i] ?? creditHoursPerLine[String(i)]
+    return v !== undefined ? Number(v) : sourceLines[i]?.hours || 0
+  }
+
+  try {
+    if (creditType === 'credit_only') {
+      // Add credited hours back to cost lines
+      for (let i = 0; i < sourceLines.length; i++) {
+        const src         = sourceLines[i]
+        const creditHours = hoursForLine(i)
+        if (creditHours <= 0) continue
+
+        let clQuery = supabase
+          .from('timesheet_cost_lines')
+          .select('id,tce_item_id,work_order,allocated_hours,sell_labour,sell_allowances')
+          .eq('timesheet_id', src.tsId)
+          .eq('work_date', src.date)
+          .eq('person_id', src.personId)
+
+        if (src.scopeType === 'tce') clQuery = clQuery.eq('tce_item_id', src.scopeKey)
+        else clQuery = clQuery.eq('work_order', src.scopeKey)
+
+        const { data: cls } = await clQuery
+        if (!cls || cls.length === 0) {
+          warnings.push(`No cost lines found for ${src.personName} ${src.date} — skipped`)
+          continue
+        }
+
+        for (const cl of cls) {
+          const clHours = Number(cl.allocated_hours) || 0
+          // Reverse: restore by adding back the credit. Use source hours to derive original.
+          const remainingSource = src.hours - creditHours   // what it was set to
+          const originalSource  = src.hours                  // what it should return to
+          const clShareOfSource = 1 / cls.length            // equal share if multiple
+          const newAllocHours   = parseFloat((originalSource * clShareOfSource).toFixed(4))
+          // Sell ratio: restore sell proportional to hour increase
+          const sellRatio       = clHours > 0 ? newAllocHours / clHours : 1
+          const newSellLabour   = parseFloat((Number(cl.sell_labour)     * sellRatio).toFixed(4))
+          const newSellAllowances = parseFloat((Number(cl.sell_allowances) * sellRatio).toFixed(4))
+
+          const { data: upd, error: updErr } = await supabase
+            .from('timesheet_cost_lines')
+            .update({ allocated_hours: newAllocHours, sell_labour: newSellLabour, sell_allowances: newSellAllowances })
+            .eq('id', cl.id)
+            .select('id')
+          if (updErr) throw new Error(`Reversal update failed: ${updErr.message}`)
+          if (!upd || upd.length === 0) warnings.push(`Cost line ${cl.id} not updated during reversal`)
+        }
+      }
+    } else if (creditType === 'adjust_timesheet' || creditType === 'reallocate') {
+      // For adjust and reallocate, re-run writeTimesheetCostLines after restoring the timesheet JSON
+      const [rateCards, tceLines, resources, project] = await Promise.all([
+        fetchRateCards(projectId),
+        fetchTceLines(projectId),
+        fetchResources(projectId),
+        fetchProject(projectId),
+      ])
+
+      const tsIds = [...new Set(sourceLines.map(l => l.tsId))]
+      for (const tsId of tsIds) {
+        const ts = await fetchTimesheetFull(tsId)
+        if (!ts) { warnings.push(`Timesheet ${tsId} not found`); continue }
+
+        if (creditType === 'adjust_timesheet') {
+          // Restore hours in crew JSON by adding back credited hours
+          const linesForTs = sourceLines.map((s, i) => ({ src: s, creditHours: hoursForLine(i) }))
+            .filter(({ src }) => src.tsId === tsId)
+
+          let restoredCrew = (ts.crew as unknown as Record<string, unknown>[]).map(cm => cm)
+          for (const { src, creditHours } of linesForTs) {
+            restoredCrew = restoredCrew.map(cm => {
+              if (cm.personId !== src.personId) return cm
+              const days = { ...(cm.days as Record<string, unknown>) }
+              const day  = { ...(days[src.date] as Record<string, unknown> | undefined || {}) }
+              const allocs = [...((day.nrgWoAllocations as Record<string, unknown>[]) || [])]
+              const currentDayHours = Number(day.hours) || 0
+
+              // Find the (possibly-reduced) alloc and restore it
+              const idx = allocs.findIndex(a => {
+                const matchesTce = src.scopeType === 'tce' && a.tceItemId === src.scopeKey
+                const matchesWo  = src.scopeType === 'wo'  && a.wo === src.scopeKey
+                return matchesTce || matchesWo
+              })
+              if (idx === -1) {
+                // Alloc was fully removed — add it back
+                allocs.push({ wo: src.woTask || '', tceItemId: src.scopeType === 'tce' ? src.scopeKey : null, _tceMode: true, hours: src.hours, label: src.description, payCode: src.payCode })
+              } else {
+                // Alloc was reduced — restore to original hours
+                allocs[idx] = { ...allocs[idx], hours: src.hours }
+              }
+              const newDayHours = parseFloat((currentDayHours + creditHours).toFixed(4))
+              days[src.date] = { ...day, hours: newDayHours, nrgWoAllocations: allocs }
+              return { ...cm, days }
+            })
+          }
+
+          await supabase.from('weekly_timesheets').update({ crew: restoredCrew }).eq('id', tsId)
+          const updatedTs = { ...ts, crew: restoredCrew } as unknown as WeeklyTimesheet
+          const { error: clErr } = await writeTimesheetCostLines(updatedTs, projectId, rateCards, tceLines as unknown as Parameters<typeof writeTimesheetCostLines>[3], resources, project)
+          if (clErr) warnings.push(`Cost lines reversal warning: ${clErr}`)
+
+        } else if (creditType === 'reallocate') {
+          // For reallocate: the timesheet JSON was already modified (targets written in).
+          // Reverse by finding the target allocs and replacing them back with the source allocs.
+          const reallocationTargets = cn.reallocation_targets || []
+          const linesForTs = sourceLines.map((s, i) => ({ src: s, targets: reallocationTargets.find((rt: {sourceLineIndex: number}) => rt.sourceLineIndex === i)?.targets || [] }))
+            .filter(({ src }) => src.tsId === tsId)
+
+          let restoredCrew = (ts.crew as unknown as Record<string, unknown>[]).map(cm => cm)
+          for (const { src, targets } of linesForTs) {
+            restoredCrew = restoredCrew.map(cm => {
+              if (cm.personId !== src.personId) return cm
+              const days = { ...(cm.days as Record<string, unknown>) }
+              const day  = { ...(days[src.date] as Record<string, unknown> | undefined || {}) }
+              let allocs = [...((day.nrgWoAllocations as Record<string, unknown>[]) || [])]
+
+              // Remove target allocs
+              for (const t of targets) {
+                const ti = allocs.findIndex(a => (a.wo === t.wo || a.tceItemId === t.tceItemId) && Math.abs((a.hours as number) - t.hours) < 0.01)
+                if (ti !== -1) allocs.splice(ti, 1)
+              }
+              // Add source alloc back
+              allocs.push({ wo: src.woTask || '', tceItemId: src.scopeType === 'tce' ? src.scopeKey : null, _tceMode: true, hours: src.hours, label: src.description, payCode: src.payCode })
+              days[src.date] = { ...day, nrgWoAllocations: allocs }
+              return { ...cm, days }
+            })
+          }
+
+          await supabase.from('weekly_timesheets').update({ crew: restoredCrew }).eq('id', tsId)
+          const updatedTs = { ...ts, crew: restoredCrew } as unknown as WeeklyTimesheet
+          const { error: clErr } = await writeTimesheetCostLines(updatedTs, projectId, rateCards, tceLines as unknown as Parameters<typeof writeTimesheetCostLines>[3], resources, project)
+          if (clErr) warnings.push(`Cost lines reversal warning: ${clErr}`)
+        }
+      }
+    }
+
+    // Delete the credit note record
+    const { error: delErr } = await supabase.from('nrg_credit_notes').delete().eq('id', creditNoteId)
+    if (delErr) throw new Error(`Failed to delete credit note record: ${delErr.message}`)
+
+    return { success: true, warnings }
+  } catch (err) {
+    return { success: false, error: (err as Error).message, warnings }
+  }
+}
