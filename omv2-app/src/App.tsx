@@ -253,7 +253,7 @@ export default function App() {
       ? ['Resuming session...', 'Refreshing authentication...', 'Still working — this can take up to 30 seconds on a slow network']
       : ['', 'Connecting...', 'Connection slow — please wait']
     return (
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', gap:'12px' }}>
+      <div className="app-boot-loading">
         <span className="spinner" style={{ width:'32px', height:'32px' }} />
         {messages[loadingPhase] && (
           <span style={{ fontSize:'13px', color:'var(--text3)', maxWidth:'320px', textAlign:'center' }}>

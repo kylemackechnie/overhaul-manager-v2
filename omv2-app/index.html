@@ -26,7 +26,75 @@
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-mount fallback. Visible until React mounts and replaces #root.
+           If you see this on iOS Home Screen launch, body is rendering but
+           React/JS hasn't loaded yet. If you don't see it, the HTML or CSS
+           failed to load (cache miss / SW issue). -->
+      <div id="boot-screen" style="
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: #f1f5f9; color: #475569;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+        gap: 12px;
+      ">
+        <div style="
+          width: 36px; height: 36px;
+          border: 3px solid #e2e8f0; border-top-color: #00898a;
+          border-radius: 50%;
+          animation: bs-spin 0.7s linear infinite;
+        "></div>
+        <div style="font-size: 14px; font-weight: 500;">Overhaul Manager</div>
+        <div id="boot-status" style="font-size: 12px; color: #94a3b8;">Loading...</div>
+      </div>
+      <style>
+        @keyframes bs-spin { to { transform: rotate(360deg); } }
+      </style>
+    </div>
+    <script>
+      // Pre-mount diagnostics. Surfaces JS errors that happen before React
+      // can show them — critical for diagnosing PWA standalone launches where
+      // there's no console visible to the user.
+      (function() {
+        var status = document.getElementById('boot-status');
+        function setStatus(msg) { if (status) status.textContent = msg; }
+        // After 8s with no React mount, show diagnostic info
+        var diagTimer = setTimeout(function() {
+          var root = document.getElementById('root');
+          if (root && root.querySelector('#boot-screen')) {
+            // React hasn't replaced #root yet
+            setStatus('Slow load — tap to view diagnostics');
+            root.style.cursor = 'pointer';
+            root.onclick = function() {
+              var info = [
+                'URL: ' + location.href,
+                'Standalone: ' + (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone),
+                'UA: ' + navigator.userAgent,
+                'Online: ' + navigator.onLine,
+                'localStorage: ' + (function() { try { localStorage.setItem('_t','1'); localStorage.removeItem('_t'); return 'ok'; } catch(e) { return 'BLOCKED: ' + e.message; } })(),
+                'cookies: ' + (navigator.cookieEnabled ? 'ok' : 'BLOCKED'),
+              ].join('\n');
+              alert(info);
+            };
+          }
+        }, 8000);
+        // Catch JS errors before React can paint them
+        window.addEventListener('error', function(e) {
+          clearTimeout(diagTimer);
+          var root = document.getElementById('root');
+          if (!root) return;
+          root.innerHTML = '<div style="padding:24px;font-family:-apple-system,sans-serif;color:#dc2626;font-size:13px;line-height:1.5;"><strong>App failed to start</strong><br><br>' + (e.message || 'Unknown error') + '<br><br>at: ' + (e.filename || '?') + ':' + (e.lineno || '?') + '<br><br><button onclick="location.reload()" style="margin-top:8px;padding:8px 16px;background:#00898a;color:#fff;border:0;border-radius:6px;font-size:13px;">Reload</button></div>';
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+          clearTimeout(diagTimer);
+          var root = document.getElementById('root');
+          if (!root) return;
+          var msg = (e.reason && e.reason.message) || String(e.reason || 'Unknown promise rejection');
+          root.innerHTML = '<div style="padding:24px;font-family:-apple-system,sans-serif;color:#dc2626;font-size:13px;line-height:1.5;"><strong>App failed to start (promise)</strong><br><br>' + msg + '<br><br><button onclick="location.reload()" style="margin-top:8px;padding:8px 16px;background:#00898a;color:#fff;border:0;border-radius:6px;font-size:13px;">Reload</button></div>';
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
