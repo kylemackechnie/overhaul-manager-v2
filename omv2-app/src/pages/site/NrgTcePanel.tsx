@@ -72,6 +72,10 @@ export function NrgTcePanel() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [exportingTce, setExportingTce] = useState(false)
+  const [showTceWeekPicker, setShowTceWeekPicker] = useState(false)
+  const [tceInvoiceWeeks, setTceInvoiceWeeks] = useState<{id:string;label:string;week_ending:string}[]>([])
+  const [tceSelectedWeeks, setTceSelectedWeeks] = useState<Set<string>>(new Set())
+  const [tceWeeksLoading, setTceWeeksLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [sourceFilter, _setSourceFilter] = useState((prefs.tce_source_filter as string) || 'all')
   const [hideUnused, _setHideUnused] = useState((prefs.tce_hide_unused as boolean) ?? false)
@@ -318,11 +322,30 @@ export function NrgTcePanel() {
     downloadCSV(rows, 'nrg_tce_' + (activeProject?.name || 'project'))
   }
 
-  async function handleExportTce() {
+  async function openTceExport() {
     if (!activeProject) return
+    setTceWeeksLoading(true)
+    setShowTceWeekPicker(true)
+    setTceSelectedWeeks(new Set())
+    const { data } = await supabase
+      .from('nrg_customer_invoices')
+      .select('id,label,week_ending')
+      .eq('project_id', activeProject.id)
+      .order('week_ending')
+    setTceInvoiceWeeks((data || []).filter(i => i.week_ending) as {id:string;label:string;week_ending:string}[])
+    setTceWeeksLoading(false)
+  }
+
+  async function doExportTce() {
+    if (!activeProject || tceSelectedWeeks.size === 0) return
+    // Ordered list of selected week_endings in chronological order (as picked)
+    const orderedWeeks = tceInvoiceWeeks
+      .filter(i => tceSelectedWeeks.has(i.id))
+      .map(i => i.week_ending)
     setExportingTce(true)
+    setShowTceWeekPicker(false)
     try {
-      await exportTceSkilledLabour(activeProject.id, activeProject.name || 'project', lines)
+      await exportTceSkilledLabour(activeProject.id, activeProject.name || 'project', lines, orderedWeeks)
     } catch (e) {
       toast('Export failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     } finally {
@@ -494,7 +517,7 @@ export function NrgTcePanel() {
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={() => downloadTemplate('nrg_tce')}>⬇ Template</button>
-          <button className="btn btn-sm" onClick={handleExportTce} disabled={exportingTce}>
+          <button className="btn btn-sm" onClick={openTceExport} disabled={exportingTce}>
             {exportingTce ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📊'} Export TCE XLSX
           </button>
           <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
@@ -1010,6 +1033,64 @@ export function NrgTcePanel() {
                   </tr></tfoot>
                 </table>
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TCE Export — week picker modal */}
+      {showTceWeekPicker && (
+        <div className="modal-overlay" onClick={() => setShowTceWeekPicker(false)}>
+          <div className="modal" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Export TCE XLSX — Select Weeks</h2>
+              <button className="btn-close" onClick={() => setShowTceWeekPicker(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {tceWeeksLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}><span className="spinner" /></div>
+              ) : tceInvoiceWeeks.length === 0 ? (
+                <p style={{ color: 'var(--text3)', fontSize: '13px' }}>No invoices found. Add invoices in the Invoicing panel first.</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                    Select the invoice weeks to include. Week 1 in the export = first ticked, Week 2 = second, etc.
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    <button className="btn btn-sm" onClick={() => setTceSelectedWeeks(new Set(tceInvoiceWeeks.map(i => i.id)))}>Select All</button>
+                    <button className="btn btn-sm" onClick={() => setTceSelectedWeeks(new Set())}>Clear</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {tceInvoiceWeeks.map((inv, idx) => {
+                      const checked = tceSelectedWeeks.has(inv.id)
+                      const weekNum = checked
+                        ? [...tceInvoiceWeeks].filter(i => tceSelectedWeeks.has(i.id)).findIndex(i => i.id === inv.id) + 1
+                        : null
+                      return (
+                        <label key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '6px', background: checked ? 'rgba(99,102,241,0.08)' : 'var(--bg2)', cursor: 'pointer', border: `1px solid ${checked ? 'var(--primary)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                          <input type="checkbox" checked={checked}
+                            onChange={ev => setTceSelectedWeeks(prev => {
+                              const next = new Set(prev)
+                              ev.target.checked ? next.add(inv.id) : next.delete(inv.id)
+                              return next
+                            })} />
+                          {weekNum != null && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, background: 'var(--primary)', color: '#fff', borderRadius: '3px', padding: '1px 5px', minWidth: '48px', textAlign: 'center', flexShrink: 0 }}>Week {weekNum}</span>
+                          )}
+                          <span style={{ flex: 1, fontSize: '13px', fontWeight: 500 }}>{inv.label || `Invoice ${idx + 1}`}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>WE {inv.week_ending}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowTceWeekPicker(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={doExportTce} disabled={tceSelectedWeeks.size === 0 || exportingTce}>
+                Export {tceSelectedWeeks.size > 0 ? `(${tceSelectedWeeks.size} week${tceSelectedWeeks.size !== 1 ? 's' : ''})` : ''}
+              </button>
             </div>
           </div>
         </div>

@@ -93,6 +93,7 @@ export async function exportTceSkilledLabour(
   projectId: string,
   projectName: string,
   lines: NrgTceLine[],
+  orderedWeeks: string[],  // week_ending dates in the order the user selected (Week 1 = [0], etc.)
 ) {
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const [clRes, varRes, nrgInvRes, templateResp] = await Promise.all([
@@ -123,11 +124,8 @@ export async function exportTceSkilledLabour(
     return spotRateByWE[we] ?? null
   }
 
-  // ── Week slots anchored to invoice week_endings (chronological order) ─────
-  // Invoice 1 → Week 1 column, Invoice 2 → Week 2, etc. up to 11.
-  // Cost lines whose week_ending doesn't exactly match an invoice week_ending
-  // are ignored — weeks must always end on Sunday and align with invoices.
-  const weekEndings = nrgInvSorted.map(i => i.week_ending!).slice(0, 11)
+  // ── Week slots: user-selected ordered list, capped at 11 ─────────────────
+  const weekEndings = orderedWeeks.slice(0, 11)
 
   // ── Aggregate cost lines by item × invoice week_ending ───────────────────
   const byItemWeek: Record<string, Record<string, { hours: number; sell: number }>> = {}
