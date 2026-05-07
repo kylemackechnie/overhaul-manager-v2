@@ -202,8 +202,11 @@ export function AccommodationPanel() {
   function exportCSV() {
     downloadCSV(
       [
-        ['Property', 'Room', 'Vendor', 'Check In', 'Check Out', 'Nights', 'Cost', 'Sell', 'WBS', 'Notes'],
-        ...accomList.map(a => [a.property||'', a.room||'', a.vendor||'', a.check_in||'', a.check_out||'', a.nights||0, a.total_cost||0, a.customer_total||0, '', a.notes||''])
+        ['Property', 'Room', 'Vendor', 'Check In', 'Check Out', 'Nights', 'Occupants', 'Cost', 'Sell', 'WBS', 'Notes'],
+        ...accomList.map(a => {
+          const occupantNames = (a.occupants as string[] || []).map(id => resMap[id] || id).join('; ')
+          return [a.property||'', a.room||'', a.vendor||'', a.check_in||'', a.check_out||'', a.nights||0, occupantNames, a.total_cost||0, a.customer_total||0, '', a.notes||'']
+        })
       ],
       'accommodation_' + (activeProject?.name || 'project')
     )
