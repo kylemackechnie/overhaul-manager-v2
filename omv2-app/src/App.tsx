@@ -356,7 +356,7 @@ function PanelRouter({ panel }: { panel: string }) {
   switch (panel) {
     case 'dashboard':             return <DashboardPanel />
     case 'help':                  return <HelpPanel />
-    case 'tooling-tour':          return <HelpPanel />
+    case 'tooling-tour':          return p('🗺️', 'Tour View', 'Track SE Rental tooling movements between sites')
     case 'calendar':              return <CalendarPanel />
     case 'gantt':                 return <GanttPanel />
     case 'project-settings':      return <ProjectSettingsPanel />

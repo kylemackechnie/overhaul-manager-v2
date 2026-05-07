@@ -1,101 +1,230 @@
-import { useAppStore } from '../store/appStore'
+import { useState, useMemo, useEffect } from 'react'
+import { marked } from 'marked'
+import { ALL_ARTICLES, getCategories, type Article } from '../help/articles/_index'
 
-const SECTIONS = [
-  {
-    title: '🚀 Getting Started',
-    items: [
-      ['Create a project', 'Click the project picker (top left) → New Project. Set the project name, start date, and base currency in Project Settings.'],
-      ['Add your team', 'Go to Personnel → Resources. Add each person with their role, company, and mob in/out dates. Assign a rate card to calculate costs.'],
-      ['Set up WBS codes', 'Go to Cost → WBS. Add your WBS structure and optionally import from MIKA (OPSA/SPASS CSV export).'],
-      ['Enter rate cards', 'Go to Personnel → Rate Cards. Create cards for Trades, Management, and SE AG with hourly rates for each shift bucket.'],
-    ]
-  },
-  {
-    title: '⏱ Timesheets',
-    items: [
-      ['Creating a week', 'Timesheets → (Trades/Mgmt/SE AG) → + New Week. Select the week start date and add crew members.'],
-      ['Entering hours', 'Click a cell and type the hours. The day type (weekday/Saturday/Sunday) and shift (day/night) affect which rate buckets apply.'],
-      ['WO allocations', 'If the project has Work Orders, a 📋 button appears in each cell. Click it to split hours across WOs.'],
-      ['Allowances', 'Click 🏷 Allowances to bulk-apply LAHA and meal defaults from the resource list. Or tick boxes per cell.'],
-      ['Approving', 'Click ✓ Approve on any week in the list, or open the week and change status from the dropdown.'],
-    ]
-  },
-  {
-    title: '💰 Cost Tracking',
-    items: [
-      ['Variations', 'Cost → Variations. Each variation has a number (auto-incremented), title, status, and line items with cost/sell amounts.'],
-      ['Purchase Orders', 'Cost → POs. Link invoices to POs to track spend against approved amounts.'],
-      ['Invoices', 'Cost → Invoices. Link to POs and optionally to NRG TCE lines for actuals tracking.'],
-      ['Forecast', 'Cost → Forecast. Shows day-by-day cost built from resources, hire, tooling, and accommodation. Use ⚙ Configure to toggle categories. Use 📸 Baseline to snapshot and track drift.'],
-      ['SAP Reconciliation', 'Cost → SAP Recon. Upload a SAP XLSX export to match against project invoices.'],
-    ]
-  },
-  {
-    title: '🔧 Tooling (SE Rental)',
-    items: [
-      ['TV Register', 'Tooling → TV Register. Add TVs to this project from the global list. Set charge dates and rates in Costings.'],
-      ['WOSIT Import', 'Site → Import WOSIT/TV/Kollo. Upload the Excel export from Kanlog/SE to import spare parts, TV data and Kollo manifests.'],
-      ['Parts receiving', 'Site → Parts. Use the Receiving tab to mark parts as received as TVs arrive on site.'],
-    ]
-  },
-  {
-    title: '🏗 NRG Gladstone',
-    items: [
-      ['TCE Register', 'NRG → TCE Register. Import from TasTK XLSX or add lines manually. Group headers (e.g. 1.2.3) collapse/expand. Bulk-assign WBS codes with checkboxes.'],
-      ['Overhead Forecast', 'NRG → Overhead Forecast. Configure weekly billing amounts per contract scope. Links to invoicing.'],
-      ['WO Actuals', 'NRG → WO Actuals. Shows hours allocated to each Work Order from timesheet entries.'],
-      ['KPI Model', 'NRG → KPI Model. Shows TCE consumption vs actuals grouped by contract scope.'],
-    ]
-  },
-  {
-    title: '💡 Tips',
-    items: [
-      ['Keyboard shortcut N', 'Press N on Variations, Invoices, POs, Work Orders, and Resources panels to open a new item.'],
-      ['Inline date editing', 'Click mob in/out dates on the Resources panel to edit inline without opening a modal.'],
-      ['Global search', 'Use Cmd+K (or the search button) to search across resources, parts, WOs, invoices, variations, and POs.'],
-      ['FX rates', 'Set exchange rates in Project Settings → Exchange Rates. Used in forecast, cost dashboard, and hire calculations.'],
-      ['Ribbon tabs', 'Clicking a ribbon tab navigates to its first panel automatically.'],
-    ]
-  },
-]
+type HelpTab = 'reference' | 'walkthroughs' | 'whats-new'
+
+// Configure marked once at module load. Synchronous mode keeps render simple.
+marked.setOptions({ gfm: true, breaks: false })
 
 export function HelpPanel() {
-  const { setActivePanel } = useAppStore()
+  const [tab, setTab] = useState<HelpTab>('reference')
+  const [selectedSlug, setSelectedSlug] = useState<string>(ALL_ARTICLES[0]?.slug ?? '')
+  const [search, setSearch] = useState('')
+
+  const categories = useMemo(() => getCategories(), [])
+  const selected = useMemo(() => ALL_ARTICLES.find(a => a.slug === selectedSlug), [selectedSlug])
+
+  // Filter sidebar by search query (matches title or category)
+  const filteredCategories = useMemo(() => {
+    if (!search.trim()) return categories
+    const q = search.toLowerCase()
+    return categories
+      .map(c => ({
+        ...c,
+        articles: c.articles.filter(a =>
+          a.title.toLowerCase().includes(q) ||
+          a.category.toLowerCase().includes(q) ||
+          a.body.toLowerCase().includes(q)
+        ),
+      }))
+      .filter(c => c.articles.length > 0)
+  }, [categories, search])
+
+  // If a search filters out the currently selected article, jump to first match
+  useEffect(() => {
+    if (!search.trim()) return
+    const stillVisible = filteredCategories.some(c => c.articles.some(a => a.slug === selectedSlug))
+    if (!stillVisible && filteredCategories[0]?.articles[0]) {
+      setSelectedSlug(filteredCategories[0].articles[0].slug)
+    }
+  }, [search, filteredCategories, selectedSlug])
 
   return (
-    <div style={{ padding: '24px', maxWidth: '900px' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 700 }}>Help & Guide</h1>
-        <p style={{ fontSize: '13px', color: 'var(--text3)', marginTop: '4px' }}>How to use the Overhaul Manager</p>
-      </div>
-
-      {SECTIONS.map(section => (
-        <div key={section.title} style={{ marginBottom: '24px' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px', paddingBottom: '6px', borderBottom: '2px solid var(--border)' }}>
-            {section.title}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {section.items.map(([title, desc]) => (
-              <div key={title} style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '12px', padding: '10px 12px', background: 'var(--bg3)', borderRadius: '6px', fontSize: '13px' }}>
-                <div style={{ fontWeight: 600 }}>{title}</div>
-                <div style={{ color: 'var(--text2)' }}>{desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <div style={{ padding: '16px', background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.2)', borderRadius: '8px', fontSize: '13px' }}>
-        <div style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--accent)' }}>📬 Need more help?</div>
-        <p style={{ color: 'var(--text2)', margin: 0 }}>
-          The Overhaul Manager is a bespoke tool built by Kyle Mackechnie for turbine outage project management.
-          For questions or to report issues, use the thumbs down button on any Claude response to send feedback.
+    <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: 700, margin: 0 }}>Help & Guide</h1>
+        <p style={{ fontSize: '13px', color: 'var(--text3)', marginTop: '4px', marginBottom: 0 }}>
+          Reference, walkthroughs, and what's new in the Overhaul Manager
         </p>
-        <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button className="btn btn-sm" onClick={() => setActivePanel('dashboard')}>← Project Dashboard</button>
-          <button className="btn btn-sm" onClick={() => setActivePanel('project-settings')}>⚙ Project Settings</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '16px' }}>
+        <HelpTabButton label="📖 Reference" active={tab === 'reference'} onClick={() => setTab('reference')} />
+        <HelpTabButton label="🎯 Walkthroughs" active={tab === 'walkthroughs'} onClick={() => setTab('walkthroughs')} />
+        <HelpTabButton label="📰 What's New" active={tab === 'whats-new'} onClick={() => setTab('whats-new')} />
+      </div>
+
+      {tab === 'reference' && (
+        <ReferenceTab
+          search={search}
+          onSearchChange={setSearch}
+          categories={filteredCategories}
+          selected={selected}
+          selectedSlug={selectedSlug}
+          onSelectSlug={setSelectedSlug}
+        />
+      )}
+
+      {tab === 'walkthroughs' && <WalkthroughsTabPlaceholder />}
+      {tab === 'whats-new' && <WhatsNewTabPlaceholder />}
+    </div>
+  )
+}
+
+function HelpTabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '8px 16px',
+        background: active ? 'var(--bg3)' : 'transparent',
+        border: 'none',
+        borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+        color: active ? 'var(--text)' : 'var(--text2)',
+        cursor: 'pointer',
+        fontSize: '13px',
+        fontWeight: active ? 600 : 500,
+        marginBottom: '-1px',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+interface ReferenceTabProps {
+  search: string
+  onSearchChange: (s: string) => void
+  categories: { name: string; articles: Article[] }[]
+  selected: Article | undefined
+  selectedSlug: string
+  onSelectSlug: (slug: string) => void
+}
+
+function ReferenceTab({ search, onSearchChange, categories, selected, selectedSlug, onSelectSlug }: ReferenceTabProps) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '20px', flex: 1, minHeight: 0 }}>
+      {/* Sidebar */}
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <input
+          type="text"
+          placeholder="🔍 Search articles..."
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+          style={{
+            padding: '6px 10px', fontSize: '12px', marginBottom: '12px',
+            border: '1px solid var(--border)', borderRadius: '4px',
+            background: 'var(--bg)', color: 'var(--text)',
+          }}
+        />
+        <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
+          {categories.length === 0 && (
+            <div style={{ fontSize: '12px', color: 'var(--text3)', padding: '12px', textAlign: 'center' }}>
+              No articles match "{search}"
+            </div>
+          )}
+          {categories.map(cat => (
+            <div key={cat.name} style={{ marginBottom: '12px' }}>
+              <div style={{
+                fontSize: '11px', fontWeight: 700, color: 'var(--text3)',
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+                padding: '4px 8px', marginBottom: '2px',
+              }}>
+                {cat.name}
+              </div>
+              {cat.articles.map(a => (
+                <button
+                  key={a.slug}
+                  onClick={() => onSelectSlug(a.slug)}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '6px 10px', fontSize: '13px',
+                    background: selectedSlug === a.slug ? 'var(--accent-light)' : 'transparent',
+                    color: selectedSlug === a.slug ? 'var(--accent)' : 'var(--text2)',
+                    border: 'none', borderRadius: '4px', cursor: 'pointer',
+                    fontWeight: selectedSlug === a.slug ? 600 : 400,
+                  }}
+                >
+                  {a.title}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
+
+      {/* Article body */}
+      <div style={{ overflowY: 'auto', minHeight: 0, paddingRight: '8px' }}>
+        {selected ? <ArticleView article={selected} /> : <EmptyArticleState />}
+      </div>
+    </div>
+  )
+}
+
+function ArticleView({ article }: { article: Article }) {
+  const html = useMemo(() => marked.parse(article.body) as string, [article.body])
+  return (
+    <div className="help-article" style={{ maxWidth: '720px' }}>
+      <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+        {article.category}
+      </div>
+      <div
+        // Markdown is author-controlled (lives in our repo, never user input).
+        // Safe to dangerouslySetInnerHTML here — same trust model as any other source code.
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {article.relatedTour && (
+        <div style={{
+          marginTop: '24px', padding: '12px 16px',
+          background: 'var(--accent-light)', border: '1px solid var(--accent)',
+          borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '12px',
+        }}>
+          <div style={{ fontSize: '13px' }}>
+            <div style={{ fontWeight: 600, color: 'var(--accent)' }}>Interactive walkthrough available</div>
+            <div style={{ color: 'var(--text2)', fontSize: '12px', marginTop: '2px' }}>
+              Step through this workflow with on-screen guidance
+            </div>
+          </div>
+          <button
+            className="btn btn-primary"
+            disabled
+            title="Walkthrough engine arriving in next commit"
+          >
+            ▶ Run walkthrough
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmptyArticleState() {
+  return (
+    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
+      Select an article from the sidebar.
+    </div>
+  )
+}
+
+function WalkthroughsTabPlaceholder() {
+  return (
+    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
+      <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎯</div>
+      <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text2)' }}>Walkthroughs coming soon</div>
+      <div>Interactive guided tours will appear here.</div>
+    </div>
+  )
+}
+
+function WhatsNewTabPlaceholder() {
+  return (
+    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
+      <div style={{ fontSize: '32px', marginBottom: '12px' }}>📰</div>
+      <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text2)' }}>What's New coming soon</div>
+      <div>Release notes and tips will appear here.</div>
     </div>
   )
 }
