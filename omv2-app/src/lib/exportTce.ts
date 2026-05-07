@@ -111,18 +111,29 @@ export async function exportTceSkilledLabour(
     .filter(i => i.week_ending).sort((a,b) => a.week_ending!.localeCompare(b.week_ending!))
   const templateBuf = await templateResp.arrayBuffer()
 
-  // ── Spot rate lookup ──────────────────────────────────────────────────────
+  // ── Spot rate lookup — exact match by week_ending ────────────────────────
+  // week_ending must always be a Sunday; anything else is a data error.
+  // Keyed by week_ending string for O(1) exact lookup.
+  const spotRateByWE: Record<string, number | null> = {}
+  for (const i of nrgInvSorted) {
+    const r = i.eur_spot_rate
+    spotRateByWE[i.week_ending!] = r != null && !isNaN(Number(r)) ? Number(r) : null
+  }
   function spotRate(we: string): number | null {
-    const cov = nrgInvSorted.find(i => i.week_ending! >= we)
-    const r = cov?.eur_spot_rate
-    return r != null && !isNaN(Number(r)) ? Number(r) : null
+    return spotRateByWE[we] ?? null
   }
 
-  // ── Aggregate cost lines ──────────────────────────────────────────────────
-  const weekEndings = [...new Set(costLines.map(r => r.week_ending))].sort().slice(0, 11)
+  // ── Week slots anchored to invoice week_endings (chronological order) ─────
+  // Invoice 1 → Week 1 column, Invoice 2 → Week 2, etc. up to 11.
+  // Cost lines whose week_ending doesn't exactly match an invoice week_ending
+  // are ignored — weeks must always end on Sunday and align with invoices.
+  const weekEndings = nrgInvSorted.map(i => i.week_ending!).slice(0, 11)
+
+  // ── Aggregate cost lines by item × invoice week_ending ───────────────────
   const byItemWeek: Record<string, Record<string, { hours: number; sell: number }>> = {}
+  const weSet = new Set(weekEndings)
   for (const r of costLines) {
-    if (!r.tce_item_id || !weekEndings.includes(r.week_ending)) continue
+    if (!r.tce_item_id || !weSet.has(r.week_ending)) continue
     const b = byItemWeek[r.tce_item_id] ??= {}
     const w = b[r.week_ending] ??= { hours: 0, sell: 0 }
     w.hours += r.allocated_hours || 0
