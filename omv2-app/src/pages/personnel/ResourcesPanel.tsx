@@ -600,7 +600,7 @@ export function ResourcesPanel() {
               <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
-                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'82px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap'}}>
+                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'82px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap',position:'sticky',left:0,zIndex:3,background:'var(--bg2)',borderRight:'1px solid var(--border)'}}>
                     <input type="checkbox"
                       style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                       checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
@@ -644,7 +644,7 @@ export function ResourcesPanel() {
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
                       {/* Pinned left col — checkbox + edit + delete */}
-                      <td style={{padding:'5px 6px',whiteSpace:'nowrap'}}>
+                      <td style={{padding:'5px 6px',whiteSpace:'nowrap',position:'sticky',left:0,zIndex:2,background:selected.has(r.id)?'rgba(15,118,110,.05)':'var(--bg)',borderRight:'1px solid var(--border)'}}>
                         <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
                           <input type="checkbox" checked={selected.has(r.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                             onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(r.id) : next.delete(r.id); return next })} />
