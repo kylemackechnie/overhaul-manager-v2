@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { usePermissions } from '../../lib/permissions'
+import { usePermissions, useTimesheetPermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { writeTimesheetCostLines, calcPersonTotals } from '../../engines/timesheetCostEngine'
 import { splitHours } from '../../engines/costEngine'
@@ -336,6 +336,7 @@ interface ResolveSplit {
 export function TimesheetsPanel({ type }: { type: TsType }) {
   const { activeProject } = useAppStore()
   const { canWrite } = usePermissions()
+  const tsPerms = useTimesheetPermissions(activeProject ?? null)
   const [sheets, setSheets] = useState<WeeklyTimesheet[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [rateCards, setRateCards] = useState<RateCard[]>([])
@@ -403,6 +404,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     if (!activeWeek) { prevWeekId.current = null; return }
     // Don't auto-save on the first render of a newly-loaded week
     if (activeWeek.id !== prevWeekId.current) { prevWeekId.current = activeWeek.id; return }
+    // Don't auto-save approved timesheets — they are locked; only explicit PM actions can update them
+    if (activeWeek.status === 'approved') return
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => { saveWeek(activeWeek) }, 1500)
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
@@ -577,6 +580,49 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     await supabase.from('weekly_timesheets').delete().eq('id', s.id)
     if (activeWeek?.id === s.id) setActiveWeek(null)
     toast('Deleted', 'info'); load()
+  }
+
+  async function approveTimesheet(s: WeeklyTimesheet) {
+    if (!tsPerms.canApprove) return toast('Only the Project Manager can approve timesheets', 'error')
+    const { currentUser } = useAppStore.getState()
+    const updates = { status: 'approved', approved_by: currentUser?.id ?? null, approved_at: new Date().toISOString() }
+    const { error } = await supabase.from('weekly_timesheets').update(updates).eq('id', s.id)
+    if (error) { toast(error.message, 'error'); return }
+    // Write cost lines immediately on approval
+    try {
+      await writeTimesheetCostLines({ ...s, ...updates } as WeeklyTimesheet, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays)
+    } catch { /* non-critical */ }
+    toast('Timesheet approved and locked', 'success')
+    load()
+    if (activeWeek?.id === s.id) setActiveWeek(null)
+  }
+
+  async function submitTimesheet(s: WeeklyTimesheet) {
+    if (!tsPerms.canSubmit) return toast('Only the Project Manager or Administrator can submit timesheets', 'error')
+    const { error } = await supabase.from('weekly_timesheets').update({ status: 'submitted' }).eq('id', s.id)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Timesheet submitted for approval', 'success')
+    load()
+    if (activeWeek?.id === s.id) setActiveWeek({ ...s, status: 'submitted' })
+  }
+
+  async function unlockTimesheet(s: WeeklyTimesheet) {
+    if (!tsPerms.canUnlock) return toast('Only the Project Manager can unlock timesheets', 'error')
+    const reason = prompt('Reason for unlocking this timesheet (required):')
+    if (!reason || !reason.trim()) { toast('Unlock cancelled — reason is required', 'info'); return }
+    const { currentUser } = useAppStore.getState()
+    const updates = {
+      status: 'draft',
+      approved_by: null, approved_at: null,
+      unlocked_by: currentUser?.id ?? null,
+      unlocked_at: new Date().toISOString(),
+      unlock_reason: reason.trim(),
+    }
+    const { error } = await supabase.from('weekly_timesheets').update(updates).eq('id', s.id)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Timesheet unlocked and returned to draft', 'success')
+    load()
+    if (activeWeek?.id === s.id) setActiveWeek({ ...s, ...updates } as WeeklyTimesheet)
   }
 
   function setDay(personId: string, date: string, field: string, value: unknown) {
@@ -1032,14 +1078,17 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     </div>}
                     <span className="badge" style={sc}>{s.status}</span>
                     <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
-                      {s.status !== 'approved' && <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Quick approve" onClick={async()=>{
-                        await supabase.from('weekly_timesheets').update({status:'approved'}).eq('id',s.id)
-                        // Re-write cost lines with updated status
-                        try { await writeTimesheetCostLines({...s, status:'approved'}, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays) } catch { /* non-critical */ }
-                        load()
-                      }}>✓ Approve</button>}
+                      {s.status === 'draft' && tsPerms.canSubmit && (
+                        <button className="btn btn-sm" style={{color:'var(--mod-hr)',fontSize:'10px'}} title="Submit for approval" onClick={() => submitTimesheet(s)}>↑ Submit</button>
+                      )}
+                      {(s.status === 'draft' || s.status === 'submitted') && tsPerms.canApprove && (
+                        <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'10px'}} title="Approve timesheet" onClick={() => approveTimesheet(s)}>✓ Approve</button>
+                      )}
+                      {s.status === 'approved' && tsPerms.canUnlock && (
+                        <button className="btn btn-sm" style={{color:'var(--orange,#f97316)',fontSize:'10px'}} title="Unlock timesheet" onClick={() => unlockTimesheet(s)}>🔓 Unlock</button>
+                      )}
                       <button className="btn btn-sm" title="Duplicate week" onClick={() => duplicateWeek(s)}>⧉</button>
-                      <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => del(s)}>✕</button>
+                      {s.status !== 'approved' && <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => del(s)}>✕</button>}
                     </div>
                   </div>
                 </div>
@@ -1061,10 +1110,32 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               </span>
               <span className="badge" style={STATUS_COLORS[activeWeek.status] || STATUS_COLORS.draft}>{activeWeek.status}</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Status:</span>
-                <select className="input" style={{ width: '120px', fontSize: '12px', padding: '3px 6px' }} value={activeWeek.status} onChange={e => setActiveWeek({ ...activeWeek, status: e.target.value as 'draft' | 'submitted' | 'approved' })}>
-                  {STATUS_FLOW.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                </select>
+                {activeWeek.status === 'approved' ? (
+                  <>
+                    <span style={{fontSize:'11px',color:'var(--green)',fontWeight:600}}>🔒 Locked — read only</span>
+                    {tsPerms.canUnlock && (
+                      <button className="btn btn-sm" style={{color:'var(--orange,#f97316)',fontSize:'11px'}} onClick={() => unlockTimesheet(activeWeek)}>🔓 Unlock</button>
+                    )}
+                    {tsPerms.canApprove && (
+                      <span style={{fontSize:'10px',color:'var(--text3)'}}>Approved by PM</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {activeWeek.status === 'draft' && tsPerms.canSubmit && (
+                      <button className="btn btn-sm" style={{color:'var(--mod-hr)',fontSize:'11px'}} onClick={() => submitTimesheet(activeWeek)}>↑ Submit for Approval</button>
+                    )}
+                    {(activeWeek.status === 'draft' || activeWeek.status === 'submitted') && tsPerms.canApprove && (
+                      <button className="btn btn-sm" style={{color:'var(--green)',fontSize:'11px'}} onClick={() => approveTimesheet(activeWeek)}>✓ Approve</button>
+                    )}
+                    <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Status:</span>
+                    <select className="input" style={{ width: '120px', fontSize: '12px', padding: '3px 6px' }} value={activeWeek.status}
+                      onChange={e => tsPerms.canEdit ? setActiveWeek({ ...activeWeek, status: e.target.value as 'draft' | 'submitted' | 'approved' }) : undefined}
+                      disabled={!tsPerms.canEdit}>
+                      {STATUS_FLOW.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                    </select>
+                  </>
+                )}
                 {/* Scope tracking: per-week mode for WO or NRG TCE allocation */}
                 <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Scope:</span>
                 <select className="input" style={{ width: '140px', fontSize: '12px', padding: '3px 6px' }}

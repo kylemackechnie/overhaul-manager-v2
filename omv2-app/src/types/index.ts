@@ -158,6 +158,8 @@ export interface Project {
   induction_upload_time: string | null
   co2_config: Co2Config
   sap_reconciliation: SapReconState
+  pm_user_id: string | null
+  pa_user_id: string | null
   nrg_config: { kpiTarget: unknown | null; ohfLineIds: string[] }
   report_log: ReportLogEntry[]
   wosit_lines: WositLine[]
@@ -268,6 +270,11 @@ export interface WeeklyTimesheet {
   week_start: string
   regime: 'lt12' | 'ge12'
   status: 'draft' | 'submitted' | 'approved'
+  approved_by: string | null
+  approved_at: string | null
+  unlocked_by: string | null
+  unlocked_at: string | null
+  unlock_reason: string | null
   wbs: string
   notes: string
   vendor: string | null

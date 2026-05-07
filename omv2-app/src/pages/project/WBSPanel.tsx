@@ -57,7 +57,8 @@ export function WBSPanel() {
       supabase.from('public_holidays').select('date').eq('project_id', pid),
       supabase.from('timesheet_cost_lines')
         .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
-        .eq('project_id', pid),
+        .eq('project_id', pid)
+        .eq('timesheet_status', 'approved'),
     ])
 
     const agg = aggregateAllCostsByWbs({

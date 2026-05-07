@@ -85,6 +85,31 @@ export function usePermissions() {
   return { canRead, canWrite, isAdmin, isViewer }
 }
 
+/**
+ * useTimesheetPermissions — project-scoped PM/PA role checks for timesheet approval workflow.
+ *
+ * isPM:       current user is the project's assigned PM, or a system admin
+ * isPA:       current user is the project's assigned PA, or a system admin
+ * canEdit:    can create/edit draft and submitted timesheets (PM or PA)
+ * canSubmit:  can mark a draft as submitted (PM or PA)
+ * canApprove: can approve timesheets (PM only)
+ * canUnlock:  can unlock an approved timesheet back to draft (PM only)
+ */
+export function useTimesheetPermissions(project: import('../types').Project | null) {
+  const { currentUser } = useAppStore()
+  const isAdmin = currentUser?.role === 'admin'
+
+  const isPM  = isAdmin || (!!currentUser && !!project && project.pm_user_id === currentUser.id)
+  const isPA  = isAdmin || (!!currentUser && !!project && project.pa_user_id === currentUser.id)
+
+  const canEdit    = isPM || isPA
+  const canSubmit  = isPM || isPA
+  const canApprove = isPM
+  const canUnlock  = isPM
+
+  return { isPM, isPA, canEdit, canSubmit, canApprove, canUnlock, isAdmin }
+}
+
 /** AccessDenied placeholder — rendered when canRead() is false */
 export function AccessDenied({ module }: { module: string }) {
   return (

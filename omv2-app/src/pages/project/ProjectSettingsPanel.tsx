@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { useTimesheetPermissions } from '../../lib/permissions'
 
 const DAYS = ['mon','tue','wed','thu','fri','sat','sun']
 const DAY_LABELS: Record<string,string> = { mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun' }
@@ -26,6 +27,10 @@ export function ProjectSettingsPanel() {
   })
   const [saving, setSaving] = useState(false)
   const [sites, setSites] = useState<{id:string,name:string}[]>([])
+  const [appUsers, setAppUsers] = useState<{id:string,name:string,email:string}[]>([])
+  const [pmUserId, setPmUserId] = useState<string>('')
+  const [paUserId, setPaUserId] = useState<string>('')
+  const tsPerms = useTimesheetPermissions(activeProject ?? null)
 
   // Shift patterns for wet hire calendars (keyed by DOW 0-6)
   type WetHirePattern = { name: string; days: Record<number, Record<string,boolean>> }
@@ -135,6 +140,10 @@ export function ProjectSettingsPanel() {
   useEffect(() => {
     if (!activeProject) return
     supabase.from('sites').select('id,name').order('name').then(({data}) => setSites((data||[]) as {id:string,name:string}[]))
+    supabase.from('app_users').select('id,name,email').eq('active', true).order('name')
+      .then(({data}) => setAppUsers((data||[]) as {id:string,name:string,email:string}[]))
+    setPmUserId(activeProject.pm_user_id || '')
+    setPaUserId(activeProject.pa_user_id || '')
     setForm({
       name: activeProject.name || '',
       wbs: activeProject.wbs || '',
@@ -178,6 +187,8 @@ export function ProjectSettingsPanel() {
       currency_rates: form.currency_rates,
       scope_tracking: form.scope_tracking,
       std_hours: { day: form.std_hours_day, night: form.std_hours_night },
+      pm_user_id: pmUserId || null,
+      pa_user_id: paUserId || null,
     }
     const { data, error } = await supabase.from('projects').update(payload)
       .eq('id', activeProject!.id).select('*,site:sites(id,name)').single()
@@ -287,6 +298,52 @@ export function ProjectSettingsPanel() {
           </div>
         </div>
       </div>
+
+      {/* Project Roles — PM/PA assignment */}
+      {(tsPerms.isAdmin || tsPerms.isPM) && (
+        <div className="card" style={{marginBottom:'16px'}}>
+          {section('Project Roles')}
+          <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>
+            The Project Manager can approve and unlock timesheets. The Project Administrator can enter and submit timesheets for PM approval.
+            {!tsPerms.isAdmin && ' (Only a system admin can change the Project Manager.)'}
+          </p>
+          <div className="fg-row">
+            {tsPerms.isAdmin ? (
+              <div className="fg">
+                <label>Project Manager</label>
+                <select className="input" value={pmUserId} onChange={e => setPmUserId(e.target.value)}>
+                  <option value="">— Not assigned —</option>
+                  {appUsers.map(u => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="fg">
+                <label>Project Manager</label>
+                <div className="input" style={{background:'var(--bg3)',color:'var(--text3)',cursor:'default'}}>
+                  {appUsers.find(u => u.id === pmUserId)?.name || '—'}
+                  <span style={{fontSize:'11px',marginLeft:'6px',color:'var(--text3)'}}>(admin only)</span>
+                </div>
+              </div>
+            )}
+            <div className="fg">
+              <label>Project Administrator</label>
+              <select className="input" value={paUserId} onChange={e => setPaUserId(e.target.value)}>
+                <option value="">— Not assigned —</option>
+                {appUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {!pmUserId && (
+            <div style={{marginTop:'10px',padding:'8px 12px',background:'var(--orange-bg,#fff7ed)',border:'1px solid var(--orange,#f97316)',borderRadius:'6px',fontSize:'12px',color:'var(--orange,#c2410c)'}}>
+              ⚠ No Project Manager assigned — timesheets cannot be approved until a PM is set.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Commercial */}
       <div className="card" style={{marginBottom:'16px'}}>
