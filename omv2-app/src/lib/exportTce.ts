@@ -1,105 +1,92 @@
 /**
- * exportTce.ts
+ * exportTce.ts — fills the NRG Skilled Labour TCE template via direct ZIP/XML
+ * manipulation. SheetJS CE loses styles on write, so we load the .xlsx as a
+ * ZIP, keep rows 1–2 verbatim, inject new data rows reusing the exact style
+ * indices from the original template, append to sharedStrings.xml, and
+ * regenerate the ZIP. All header formatting, merges, and column widths are
+ * preserved exactly.
  *
- * Fills the NRG Skilled Labour TCE template (public/tce_skilled_labour_template.xlsx)
- * with live OMV2 data and triggers a browser download.
- *
- * Template structure (sheet: "Skilled Labour"):
- *   Row 1: section group headers (merged, styled)
- *   Row 2: column sub-headers (bold, 126pt tall)
- *   Rows 3+: data — H-type rows (orange fill, bold) then F/O/V detail rows
- *
- * Column mapping:
- *   A  Service Order Number/Release   → contract_scope
- *   B  Work Order                     → work_order
- *   C  Scope No.                      → item_id
- *   D  Activity description           → description
- *   E  Scope Type                     → line_type (H/F/O/V)
- *   F  Task responsibility            → details.task_responsibility
- *   G  Variable Scope Measurement     → (blank)
- *   H  Comment                        → notes
- *   I  (hidden spacer)                → (blank)
- *   J  Estimated Hours (TCE)          → estimated_qty  / SUM formula for H rows
- *   K  Gang rate $/hr                 → tce_rate
- *   L  Estimated Total Cost           → tce_total / SUM formula for H rows
- *   M  Notes (TCE)                    → (blank)
- *   N  Adjusted Est Hours             → (blank)
- *   O  Adj Gang rate                  → (blank)
- *   P  Adj Estimated Total Cost       → (blank)
- *   Q  Adj Notes                      → (blank)
- *   R  (spacer)                       → (blank)
- *   S–AN  Week 1–11 Actual Hours + Cost → from timesheet_cost_lines (sorted week_ending)
- *   AO Variation Hours                → from variations
- *   AP Variation Amount               → from variations
- *   AQ Total Actual Hours             → =SUM(S,U,W,...,AM)
- *   AR Total Actual Cost              → =SUM(T,V,X,...,AN)+AP
- *   AS Total Actual Gang Rate         → =AR/AQ
- *   AT % Hours Complete               → =AQ/J
- *   AU % Cost Used                    → =AR/L
- *   AV Task Complete                  → (blank)
- *   AW Forecast Cost                  → (blank)
+ * Style indices (extracted from template row 3 = H-row, row 4 = detail row):
+ *   Col  H   Det   |  Col  H   Det   |  Col  H   Det
+ *   A    14  33    |  J    20  39    |  S    26  43
+ *   B    15  34    |  K    20  42    |  T    27  42
+ *   C    16  35    |  L    22  42    |  U…AN  (week pairs: 26/27, 43/42)
+ *   D    17  36    |  M    23  39    |  AO   27  42
+ *   E    18  37    |  N    20  39    |  AP   27  42
+ *   F    19  38    |  O    23  39    |  AQ   28  44
+ *   G    20  39    |  P    24  42    |  AR   27  42
+ *   H    19  40    |  Q    23  39    |  AS   27  42
+ *   I    21  41    |  R    25  39    |  AT   29  45
+ *                                    |  AU   30  46
+ *                                    |  AV   30  46
+ *                                    |  AW   31  47
+ * Row-level s: H-rows s="32", detail rows s="48"
  */
 
-import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 import { supabase } from './supabase'
 import type { NrgTceLine } from '../types'
 
-// Col indices (0-based) for the 11 week pairs: S=18,T=19 … AM=38,AN=39
-const WEEK_COLS: [number, number][] = [
-  [18, 19], [20, 21], [22, 23], [24, 25], [26, 27], [28, 29],
-  [30, 31], [32, 33], [34, 35], [36, 37], [38, 39],
+const H_STYLES: Record<string, number> = {
+  A:14,B:15,C:16,D:17,E:18,F:19,G:20,H:19,I:21,
+  J:20,K:20,L:22,M:23,N:20,O:23,P:24,Q:23,R:25,
+  S:26,T:27,U:26,V:27,W:26,X:27,Y:26,Z:27,
+  AA:26,AB:27,AC:26,AD:27,AE:26,AF:27,AG:26,AH:27,
+  AI:26,AJ:27,AK:26,AL:27,AM:26,AN:27,
+  AO:27,AP:27,AQ:28,AR:27,AS:27,AT:29,AU:30,AV:30,AW:31,
+}
+const D_STYLES: Record<string, number> = {
+  A:33,B:34,C:35,D:36,E:37,F:38,G:39,H:40,I:41,
+  J:39,K:42,L:42,M:39,N:39,O:39,P:42,Q:39,R:39,
+  S:43,T:42,U:43,V:42,W:43,X:42,Y:43,Z:42,
+  AA:43,AB:42,AC:43,AD:42,AE:43,AF:42,AG:43,AH:42,
+  AI:43,AJ:42,AK:43,AL:42,AM:43,AN:42,
+  AO:42,AP:42,AQ:44,AR:42,AS:42,AT:45,AU:46,AV:46,AW:47,
+}
+
+const ALL_COLS = [
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R',
+  'S','T','U','V','W','X','Y','Z','AA','AB','AC','AD','AE','AF','AG','AH',
+  'AI','AJ','AK','AL','AM','AN','AO','AP','AQ','AR','AS','AT','AU','AV','AW',
 ]
-const COL_VAR_HRS   = 40 // AO
-const COL_VAR_AMT   = 41 // AP
-const COL_TOT_HRS   = 42 // AQ
-const COL_TOT_COST  = 43 // AR
-const COL_GANG_RATE = 44 // AS
-const COL_PCT_HRS   = 45 // AT
-const COL_PCT_COST  = 46 // AU
+const WEEK_PAIRS: [string, string][] = [
+  ['S','T'],['U','V'],['W','X'],['Y','Z'],['AA','AB'],['AC','AD'],
+  ['AE','AF'],['AG','AH'],['AI','AJ'],['AK','AL'],['AM','AN'],
+]
 
-/** Orange fill used on H-type (group header) rows */
-const ORANGE_FILL = { patternType: 'solid', fgColor: { rgb: 'FFCC99' }, bgColor: { indexed: 64 } }
-/** Accounting format matching the template's dollar columns */
-const FMT_DOLLAR = '_-"$"* #,##0.00_-;\\-"$"* #,##0.00_-;_-"$"* "-"??_-;_-@_-'
-const FMT_HOURS  = '0.00'
-const FMT_PCT    = '0.00%'
+type CellType = 's' | 'n' | 'f' | ''
+interface CellDef { type: CellType; value: string | number | null; formula?: string }
 
-/** Convert 0-based column index to Excel letter(s) */
-function colLetter(c: number): string {
-  let s = ''
-  let n = c + 1
-  while (n > 0) {
-    const rem = (n - 1) % 26
-    s = String.fromCharCode(65 + rem) + s
-    n = Math.floor((n - 1) / 26)
+function xmlEsc(s: string): string {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;')
+}
+
+function buildCell(col: string, row: number, isH: boolean, cd: CellDef): string {
+  const s = isH ? H_STYLES[col] : D_STYLES[col]
+  const ref = `${col}${row}`
+  if (cd.type === '' || cd.value === null || cd.value === undefined) {
+    return `<c r="${ref}" s="${s}"/>`
   }
-  return s
+  if (cd.type === 's') return `<c r="${ref}" s="${s}" t="s"><v>${cd.value}</v></c>`
+  if (cd.type === 'f' && cd.formula) {
+    return `<c r="${ref}" s="${s}"><f>${xmlEsc(cd.formula)}</f><v>${typeof cd.value==='number'?cd.value:0}</v></c>`
+  }
+  return `<c r="${ref}" s="${s}"><v>${cd.value}</v></c>`
 }
 
-function cellAddr(col: number, row: number): string {
-  return colLetter(col) + row
-}
-
-/** Build a SUM formula string for non-contiguous row ranges (col letter fixed, rows vary) */
-function sumFormula(col: string, ranges: [number, number][]): string {
-  return '=SUM(' + ranges.map(([r1, r2]) => r1 === r2 ? `${col}${r1}` : `${col}${r1}:${col}${r2}`).join(',') + ')'
+function buildRow(rowNum: number, isH: boolean, cells: Record<string, CellDef>): string {
+  const rowS = isH ? 32 : 48
+  const parts = ALL_COLS.map(col =>
+    buildCell(col, rowNum, isH, cells[col] ?? { type: '', value: null })
+  )
+  return `<row r="${rowNum}" spans="1:49" s="${rowS}" customFormat="1" ht="12.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
 }
 
 interface CostRow {
-  tce_item_id: string | null
-  week_ending: string
-  allocated_hours: number
-  sell_labour: number
-  sell_labour_eur: number
-  sell_allowances: number
-  cost_labour: number
-  cost_allowances: number
-}
-
-interface VariationRow {
-  tce_link: string
-  sell_total: number
-  status: string
+  tce_item_id: string | null; week_ending: string
+  allocated_hours: number; sell_labour: number
+  sell_labour_eur: number; sell_allowances: number
 }
 
 export async function exportTceSkilledLabour(
@@ -107,325 +94,197 @@ export async function exportTceSkilledLabour(
   projectName: string,
   lines: NrgTceLine[],
 ) {
-  // ── 1. Fetch cost lines, variations, and nrg invoices ──────────────────
-  const [clRes, varRes, nrgInvRes] = await Promise.all([
-    supabase
-      .from('timesheet_cost_lines')
-      .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances,cost_labour,cost_allowances')
-      .eq('project_id', projectId)
-      .eq('timesheet_status', 'approved'),
-    supabase
-      .from('variations')
-      .select('tce_link,sell_total,status')
-      .eq('project_id', projectId)
-      .in('status', ['approved', 'submitted']),
-    supabase
-      .from('nrg_customer_invoices')
-      .select('week_ending,eur_spot_rate')
-      .eq('project_id', projectId)
-      .order('week_ending'),
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+  const [clRes, varRes, nrgInvRes, templateResp] = await Promise.all([
+    supabase.from('timesheet_cost_lines')
+      .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances')
+      .eq('project_id', projectId).eq('timesheet_status', 'approved'),
+    supabase.from('variations').select('tce_link,sell_total')
+      .eq('project_id', projectId).in('status', ['approved','submitted']),
+    supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
+      .eq('project_id', projectId).order('week_ending'),
+    fetch('/tce_skilled_labour_template.xlsx'),
   ])
 
   const costLines = (clRes.data || []) as CostRow[]
-  const variations = (varRes.data || []) as VariationRow[]
+  const nrgInvSorted = ((nrgInvRes.data || []) as {week_ending:string|null;eur_spot_rate:number|null}[])
+    .filter(i => i.week_ending).sort((a,b) => a.week_ending!.localeCompare(b.week_ending!))
+  const templateBuf = await templateResp.arrayBuffer()
 
-  // ── 2. Spot rate lookup (week_ending → rate) ────────────────────────────
-  const nrgInvSorted = ((nrgInvRes.data || []) as { week_ending: string | null; eur_spot_rate: number | null }[])
-    .filter(i => i.week_ending)
-    .sort((a, b) => (a.week_ending!).localeCompare(b.week_ending!))
-
-  function spotRateForWorkDate(workDate: string): number | null {
-    // week_ending from work_date: advance to Sunday
-    const dt = new Date(workDate + 'T12:00:00')
-    dt.setUTCDate(dt.getUTCDate() + (7 - dt.getUTCDay()) % 7 || 7)
-    const we = dt.toISOString().slice(0, 10)
-    const covering = nrgInvSorted.find(i => i.week_ending! >= we)
-    const r = covering?.eur_spot_rate
+  // ── Spot rate lookup ──────────────────────────────────────────────────────
+  function spotRate(we: string): number | null {
+    const cov = nrgInvSorted.find(i => i.week_ending! >= we)
+    const r = cov?.eur_spot_rate
     return r != null && !isNaN(Number(r)) ? Number(r) : null
   }
 
-  // ── 3. Aggregate cost lines by item_id × week_ending ───────────────────
-  // Sorted unique week endings (chronological) — up to 11
-  const weekEndingsAll = [...new Set(costLines.map(r => r.week_ending))].sort()
-  const weekEndings = weekEndingsAll.slice(0, 11) // template supports 11 weeks
-
-  // { item_id → { week_ending → { hours, sell } } }
+  // ── Aggregate cost lines ──────────────────────────────────────────────────
+  const weekEndings = [...new Set(costLines.map(r => r.week_ending))].sort().slice(0, 11)
   const byItemWeek: Record<string, Record<string, { hours: number; sell: number }>> = {}
   for (const r of costLines) {
-    if (!r.tce_item_id) continue
-    if (!byItemWeek[r.tce_item_id]) byItemWeek[r.tce_item_id] = {}
-    const we = r.week_ending
-    if (!byItemWeek[r.tce_item_id][we]) byItemWeek[r.tce_item_id][we] = { hours: 0, sell: 0 }
-    byItemWeek[r.tce_item_id][we].hours += r.allocated_hours || 0
-    // For sell: use spot rate for EUR rows, direct sell_labour for others
-    const eurAmt = r.sell_labour_eur || 0
-    let sell: number
-    if (eurAmt > 0) {
-      const rate = spotRateForWorkDate(we) // approximation: use week_ending as work date
-      sell = rate != null ? eurAmt * rate : r.sell_labour || 0
-    } else {
-      sell = (r.sell_labour || 0)
+    if (!r.tce_item_id || !weekEndings.includes(r.week_ending)) continue
+    const b = byItemWeek[r.tce_item_id] ??= {}
+    const w = b[r.week_ending] ??= { hours: 0, sell: 0 }
+    w.hours += r.allocated_hours || 0
+    const eur = r.sell_labour_eur || 0
+    w.sell += eur > 0
+      ? (spotRate(r.week_ending) ?? 1) * eur + (r.sell_allowances || 0)
+      : (r.sell_labour || 0) + (r.sell_allowances || 0)
+  }
+
+  const varByItem: Record<string, number> = {}
+  for (const v of (varRes.data || []) as {tce_link:string;sell_total:number}[]) {
+    if (v.tce_link) varByItem[v.tce_link] = (varByItem[v.tce_link] || 0) + (v.sell_total || 0)
+  }
+
+  // ── Load template ZIP ─────────────────────────────────────────────────────
+  const zip = await JSZip.loadAsync(templateBuf)
+  const sheetXml = await zip.file('xl/worksheets/sheet1.xml')!.async('string')
+  const ssXml    = await zip.file('xl/sharedStrings.xml')!.async('string')
+
+  // ── Shared strings ────────────────────────────────────────────────────────
+  const existingSiCount = (ssXml.match(/<si>/g) || []).length
+  const newSi: string[] = []
+  const strCache: Record<string, number> = {}
+  function strIdx(s: string): number {
+    if (s in strCache) return strCache[s]
+    const idx = existingSiCount + newSi.length
+    const space = s !== s.trim() ? ' xml:space="preserve"' : ''
+    newSi.push(`<si><t${space}>${xmlEsc(s)}</t></si>`)
+    strCache[s] = idx
+    return idx
+  }
+
+  // ── Group TCE lines ───────────────────────────────────────────────────────
+  const skilled = lines.filter(l => l.source === 'skilled')
+  const isH = (l: NrgTceLine) =>
+    l.line_type === 'H' || /^\d+\.\d+\.\d+$/.test(l.item_id || '')
+
+  interface Group { hdr: NrgTceLine; dets: NrgTceLine[] }
+  const groups: Group[] = []
+  let cur: Group | null = null
+  for (const l of skilled) {
+    if (isH(l)) { if (cur) groups.push(cur); cur = { hdr: l, dets: [] } }
+    else if (cur) cur.dets.push(l)
+  }
+  if (cur) groups.push(cur)
+
+  // ── Build rows ────────────────────────────────────────────────────────────
+  const newRows: string[] = []
+  let rowNum = 3
+
+  for (const { hdr, dets } of groups) {
+    const hRow = rowNum++
+    const detRows = dets.map(() => rowNum++)
+
+    // H-row cells
+    const hc: Record<string, CellDef> = {
+      A: { type:'s', value: strIdx(hdr.contract_scope || '') },
+      B: { type:'s', value: strIdx(hdr.work_order || '') },
+      C: { type:'s', value: strIdx(hdr.item_id || '') },
+      D: { type:'s', value: strIdx(hdr.description || '') },
+      E: { type:'s', value: strIdx(hdr.line_type || '') },
+      F: { type:'s', value: strIdx((hdr.details as Record<string,unknown>)?.task_responsibility as string || '') },
+      G: { type:'', value:null }, H: { type:'s', value: strIdx(hdr.notes || '') },
+      I: { type:'', value:null },
     }
-    sell += (r.sell_allowances || 0)
-    byItemWeek[r.tce_item_id][we].sell += sell
-  }
-
-  // Aggregate variations by tce_link (item_id)
-  const varByItem: Record<string, { hours: number; amount: number }> = {}
-  for (const v of variations) {
-    if (!v.tce_link) continue
-    if (!varByItem[v.tce_link]) varByItem[v.tce_link] = { hours: 0, amount: 0 }
-    varByItem[v.tce_link].amount += v.sell_total || 0
-  }
-
-  // ── 4. Load template ────────────────────────────────────────────────────
-  const resp = await fetch('/tce_skilled_labour_template.xlsx')
-  const buf = await resp.arrayBuffer()
-  const wb = XLSX.read(buf, { type: 'array', cellStyles: true, cellNF: true, cellFormula: true })
-  const ws = wb.Sheets['Skilled Labour']
-
-  // ── 5. Delete all existing data rows (row 3+) ───────────────────────────
-  // We do this by removing all cell keys with row >= 3
-  for (const key of Object.keys(ws)) {
-    if (key.startsWith('!')) continue
-    const match = key.match(/\d+$/)
-    if (match && parseInt(match[0]) >= 3) delete ws[key]
-  }
-
-  // ── 6. Build row data ───────────────────────────────────────────────────
-  // Group header rows (line_type === 'H' or item_id matches X.Y.Z pattern without .N suffix)
-  const isGroupHeader = (l: NrgTceLine) =>
-    l.line_type === 'H' || (!!l.item_id && /^\d+\.\d+\.\d+$/.test(l.item_id))
-
-  // Only skilled labour lines
-  const skilledLines = lines.filter(l => l.source === 'skilled')
-
-  // For H rows we need to know which detail rows follow them (for SUM ranges)
-  // We'll do two passes: first build row layout, then write cells
-
-  interface RowSpec {
-    line: NrgTceLine
-    excelRow: number
-    isHeader: boolean
-  }
-  const rowSpecs: RowSpec[] = []
-  let excelRow = 3
-  for (const line of skilledLines) {
-    rowSpecs.push({ line, excelRow, isHeader: isGroupHeader(line) })
-    excelRow++
-  }
-
-  // ── 7. Write rows into worksheet ────────────────────────────────────────
-  // Helper: set a cell with value + style + format
-  function setCell(
-    addr: string,
-    value: string | number | null,
-    fmt: string,
-    style: Record<string, unknown>,
-    cellType?: string,
-    formula?: string,
-  ) {
-    const t = formula ? 'n' : (value === null || value === undefined ? 'z' : typeof value === 'number' ? 'n' : 's')
-    const cell: Record<string, unknown> = { t: cellType || t, z: fmt, s: style }
-    if (formula) {
-      cell.f = formula
-      cell.v = value ?? 0
-    } else if (value !== null && value !== undefined) {
-      cell.v = value
-    }
-    ws[addr] = cell
-  }
-
-  // Pass 1: group detail rows under their headers
-  const grouped: { header: RowSpec; details: RowSpec[] }[] = []
-  let currentGroup: { header: RowSpec; details: RowSpec[] } | null = null
-  for (const spec of rowSpecs) {
-    if (spec.isHeader) {
-      if (currentGroup) grouped.push(currentGroup)
-      currentGroup = { header: spec, details: [] }
+    // J and L: SUM of detail rows if any, else direct value
+    if (detRows.length > 0) {
+      const jRange = detRows.length === 1 ? `J${detRows[0]}` : `J${detRows[0]}:J${detRows[detRows.length-1]}`
+      const lRange = detRows.length === 1 ? `L${detRows[0]}` : `L${detRows[0]}:L${detRows[detRows.length-1]}`
+      hc['J'] = { type:'f', value:0, formula:`SUM(${jRange})` }
+      hc['L'] = { type:'f', value:0, formula:`SUM(${lRange})` }
     } else {
-      if (currentGroup) currentGroup.details.push(spec)
-      else {
-        // Detail without a header — treat as standalone
-        grouped.push({ header: spec, details: [] })
+      hc['J'] = { type:'n', value: hdr.estimated_qty || 0 }
+      hc['L'] = { type:'n', value: hdr.tce_total || 0 }
+    }
+    hc['K'] = { type:'n', value: hdr.tce_rate || 0 }
+    // M–R and week/total cols blank on H rows
+    for (const c of ['M','N','O','P','Q','R','AO','AP','AQ','AR','AS','AT','AU','AV','AW'])
+      hc[c] = { type:'', value:null }
+    for (const [wh, wc] of WEEK_PAIRS) { hc[wh] = { type:'', value:null }; hc[wc] = { type:'', value:null } }
+
+    newRows.push(buildRow(hRow, true, hc))
+
+    // Detail rows
+    for (let i = 0; i < dets.length; i++) {
+      const d = dets[i]
+      const dr = detRows[i]
+      const dc: Record<string, CellDef> = {
+        A: { type:'s', value: strIdx(d.contract_scope || '') },
+        C: { type:'s', value: strIdx(d.item_id || '') },
+        D: { type:'s', value: strIdx(d.description || '') },
+        E: { type:'s', value: strIdx(d.line_type || '') },
+        F: { type:'s', value: strIdx((d.details as Record<string,unknown>)?.task_responsibility as string || '') },
+        G: { type:'', value:null },
+        H: { type:'s', value: strIdx(d.notes || '') },
+        I: { type:'', value:null },
+        J: { type:'n', value: d.estimated_qty || 0 },
+        K: { type:'n', value: d.tce_rate || 0 },
+        L: { type:'n', value: d.tce_total || 0 },
       }
-    }
-  }
-  if (currentGroup) grouped.push(currentGroup)
+      // B: numeric if work_order is a number, else string
+      const wo = d.work_order || ''
+      const woNum = wo ? Number(wo) : NaN
+      dc['B'] = !wo ? { type:'', value:null }
+        : isNaN(woNum) ? { type:'s', value: strIdx(wo) }
+        : { type:'n', value: woNum }
+      for (const c of ['M','N','O','P','Q','R']) dc[c] = { type:'', value:null }
 
-  const allRows: RowSpec[] = []
-  for (const g of grouped) {
-    allRows.push(g.header)
-    allRows.push(...g.details)
-  }
-
-  // Write rows
-  for (const g of grouped) {
-    const hSpec = g.header
-    const dSpecs = g.details
-    const hRow = hSpec.excelRow
-    const l = hSpec.line
-    const isH = hSpec.isHeader
-
-    // Orange style for H rows, plain for details
-    const fill = isH ? ORANGE_FILL : { patternType: 'none' }
-    const boldStyle = { ...fill, bold: true }
-    const plainStyle = fill
-
-    // SUM ranges for J and L on H rows
-    let jFormula: string | undefined
-    let lFormula: string | undefined
-    if (isH && dSpecs.length > 0) {
-      const rows = dSpecs.map(d => d.excelRow)
-      const ranges: [number, number][] = []
-      let start = rows[0], end = rows[0]
-      for (let i = 1; i < rows.length; i++) {
-        if (rows[i] === end + 1) end = rows[i]
-        else { ranges.push([start, end]); start = rows[i]; end = rows[i] }
-      }
-      ranges.push([start, end])
-      jFormula = sumFormula('J', ranges).slice(1) // remove leading =
-      lFormula = sumFormula('L', ranges).slice(1)
-    }
-
-    const taskResp = (l.details as Record<string, unknown>)?.task_responsibility as string || ''
-
-    // Write columns A–H
-    setCell(cellAddr(0, hRow), l.contract_scope || '', 'General', boldStyle)
-    setCell(cellAddr(1, hRow), l.work_order || '', 'General', boldStyle)
-    setCell(cellAddr(2, hRow), l.item_id || '', 'General', boldStyle)
-    setCell(cellAddr(3, hRow), l.description || '', 'General', boldStyle)
-    setCell(cellAddr(4, hRow), l.line_type || '', 'General', boldStyle)
-    setCell(cellAddr(5, hRow), taskResp, 'General', plainStyle)
-    setCell(cellAddr(6, hRow), '', 'General', plainStyle)
-    setCell(cellAddr(7, hRow), l.notes || '', 'General', plainStyle)
-
-    // Col I (index 8) — hidden spacer, leave empty
-    // Cols J, K, L — TCE estimates
-    if (isH && jFormula) {
-      setCell(cellAddr(9, hRow), null, 'General', boldStyle, 'n', jFormula)
-    } else {
-      setCell(cellAddr(9, hRow), isH ? null : (l.estimated_qty || 0), 'General', isH ? boldStyle : plainStyle)
-    }
-    setCell(cellAddr(10, hRow), l.tce_rate || 0, FMT_DOLLAR, isH ? boldStyle : plainStyle)
-    if (isH && lFormula) {
-      setCell(cellAddr(11, hRow), null, FMT_DOLLAR, boldStyle, 'n', lFormula)
-    } else {
-      setCell(cellAddr(11, hRow), l.tce_total || 0, FMT_DOLLAR, isH ? boldStyle : plainStyle)
-    }
-
-    // Cols M–R: blank (adjusted TCE section — not our data)
-    for (let c = 12; c <= 17; c++) {
-      setCell(cellAddr(c, hRow), null, 'General', plainStyle)
-    }
-
-    // Week columns S–AN (indices 18–39): only for detail rows; H rows get blanks
-    if (!isH && l.item_id) {
-      const weeksData = byItemWeek[l.item_id] || {}
       let totHrs = 0, totSell = 0
-      for (let wi = 0; wi < WEEK_COLS.length; wi++) {
-        const [hrsCol, costCol] = WEEK_COLS[wi]
+      for (let wi = 0; wi < WEEK_PAIRS.length; wi++) {
+        const [wh, wc] = WEEK_PAIRS[wi]
         const we = weekEndings[wi]
-        const data = we ? (weeksData[we] || { hours: 0, sell: 0 }) : { hours: 0, sell: 0 }
-        const hrs = data.hours || 0
-        const sell = data.sell || 0
-        setCell(cellAddr(hrsCol, hRow), hrs || null, FMT_HOURS, plainStyle)
-        setCell(cellAddr(costCol, hRow), sell || null, FMT_DOLLAR, plainStyle)
-        if (we) { totHrs += hrs; totSell += sell }
+        const data = we && d.item_id ? (byItemWeek[d.item_id]?.[we] || { hours:0, sell:0 }) : { hours:0, sell:0 }
+        dc[wh] = { type: data.hours ? 'n' : '', value: data.hours || null }
+        dc[wc] = { type: data.sell  ? 'n' : '', value: data.sell  || null }
+        totHrs += data.hours || 0; totSell += data.sell || 0
       }
 
-      // Variation cols AO, AP
-      const varData = varByItem[l.item_id] || { hours: 0, amount: 0 }
-      setCell(cellAddr(COL_VAR_HRS, hRow), varData.hours || null, FMT_HOURS, plainStyle)
-      setCell(cellAddr(COL_VAR_AMT, hRow), varData.amount || null, FMT_DOLLAR, plainStyle)
+      const varAmt = d.item_id ? (varByItem[d.item_id] || 0) : 0
+      dc['AO'] = { type:'', value:null }
+      dc['AP'] = { type: varAmt ? 'n' : '', value: varAmt || null }
+      const finalHrs = totHrs, finalCost = totSell + varAmt
+      dc['AQ'] = { type: finalHrs  ? 'n' : '', value: finalHrs  || null }
+      dc['AR'] = { type: finalCost ? 'n' : '', value: finalCost || null }
+      dc['AS'] = finalHrs > 0 ? { type:'n', value: finalCost / finalHrs } : { type:'', value:null }
+      dc['AT'] = (d.estimated_qty || 0) > 0 ? { type:'n', value: finalHrs / d.estimated_qty } : { type:'', value:null }
+      dc['AU'] = (d.tce_total || 0) > 0    ? { type:'n', value: finalCost / d.tce_total }      : { type:'', value:null }
+      dc['AV'] = { type:'', value:null }; dc['AW'] = { type:'', value:null }
 
-      // Totals AQ, AR, AS, AT, AU
-      const totalHrs = totHrs + (varData.hours || 0)
-      const totalCost = totSell + (varData.amount || 0)
-      setCell(cellAddr(COL_TOT_HRS, hRow), totalHrs || null, FMT_HOURS, plainStyle)
-      setCell(cellAddr(COL_TOT_COST, hRow), totalCost || null, FMT_DOLLAR, plainStyle)
-      // Gang rate = cost / hours
-      if (totalHrs > 0) {
-        setCell(cellAddr(COL_GANG_RATE, hRow), totalCost / totalHrs, FMT_DOLLAR, plainStyle)
-      }
-      // % Hours = total hrs / estimated_qty
-      const estQty = l.estimated_qty || 0
-      if (estQty > 0) {
-        setCell(cellAddr(COL_PCT_HRS, hRow), totalHrs / estQty, FMT_PCT, plainStyle)
-      }
-      // % Cost = total cost / tce_total
-      const tceTotal = l.tce_total || 0
-      if (tceTotal > 0) {
-        setCell(cellAddr(COL_PCT_COST, hRow), totalCost / tceTotal, FMT_PCT, plainStyle)
-      }
-    } else {
-      // H row or no item_id: blank week/total cols
-      for (let c = 18; c <= 46; c++) {
-        setCell(cellAddr(c, hRow), null, 'General', isH ? boldStyle : plainStyle)
-      }
-    }
-
-    // Now write detail rows
-    for (const dSpec of dSpecs) {
-      const dr = dSpec.excelRow
-      const dl = dSpec.line
-      const df = { patternType: 'none' }
-      const taskR = (dl.details as Record<string, unknown>)?.task_responsibility as string || ''
-
-      setCell(cellAddr(0, dr), dl.contract_scope || '', 'General', df)
-      setCell(cellAddr(1, dr), dl.work_order || '', 'General', df)
-      setCell(cellAddr(2, dr), dl.item_id || '', 'General', df)
-      setCell(cellAddr(3, dr), dl.description || '', 'General', df)
-      setCell(cellAddr(4, dr), dl.line_type || '', 'General', df)
-      setCell(cellAddr(5, dr), taskR, 'General', df)
-      setCell(cellAddr(6, dr), '', 'General', df)
-      setCell(cellAddr(7, dr), dl.notes || '', 'General', df)
-      setCell(cellAddr(9, dr), dl.estimated_qty || 0, 'General', df)
-      setCell(cellAddr(10, dr), dl.tce_rate || 0, FMT_DOLLAR, df)
-      setCell(cellAddr(11, dr), dl.tce_total || 0, FMT_DOLLAR, df)
-      for (let c = 12; c <= 17; c++) setCell(cellAddr(c, dr), null, 'General', df)
-
-      // Week actuals
-      if (dl.item_id) {
-        const weeksData = byItemWeek[dl.item_id] || {}
-        let totHrs = 0, totSell = 0
-        for (let wi = 0; wi < WEEK_COLS.length; wi++) {
-          const [hrsCol, costCol] = WEEK_COLS[wi]
-          const we = weekEndings[wi]
-          const data = we ? (weeksData[we] || { hours: 0, sell: 0 }) : { hours: 0, sell: 0 }
-          setCell(cellAddr(hrsCol, dr), data.hours || null, FMT_HOURS, df)
-          setCell(cellAddr(costCol, dr), data.sell || null, FMT_DOLLAR, df)
-          if (we) { totHrs += data.hours || 0; totSell += data.sell || 0 }
-        }
-        const varData = varByItem[dl.item_id] || { hours: 0, amount: 0 }
-        setCell(cellAddr(COL_VAR_HRS, dr), varData.hours || null, FMT_HOURS, df)
-        setCell(cellAddr(COL_VAR_AMT, dr), varData.amount || null, FMT_DOLLAR, df)
-        const totalHrs = totHrs + (varData.hours || 0)
-        const totalCost = totSell + (varData.amount || 0)
-        setCell(cellAddr(COL_TOT_HRS, dr), totalHrs || null, FMT_HOURS, df)
-        setCell(cellAddr(COL_TOT_COST, dr), totalCost || null, FMT_DOLLAR, df)
-        if (totalHrs > 0) setCell(cellAddr(COL_GANG_RATE, dr), totalCost / totalHrs, FMT_DOLLAR, df)
-        const estQty = dl.estimated_qty || 0
-        if (estQty > 0) setCell(cellAddr(COL_PCT_HRS, dr), totalHrs / estQty, FMT_PCT, df)
-        const tceTotal = dl.tce_total || 0
-        if (tceTotal > 0) setCell(cellAddr(COL_PCT_COST, dr), totalCost / tceTotal, FMT_PCT, df)
-      } else {
-        for (let c = 18; c <= 46; c++) setCell(cellAddr(c, dr), null, 'General', df)
-      }
+      newRows.push(buildRow(dr, false, dc))
     }
   }
 
-  // ── 8. Update sheet range ───────────────────────────────────────────────
-  const lastRow = rowSpecs.length > 0 ? rowSpecs[rowSpecs.length - 1].excelRow : 2
-  ws['!ref'] = `A1:AW${lastRow}`
+  // ── Splice sheet XML ──────────────────────────────────────────────────────
+  const row1 = sheetXml.match(/<row r="1"[^>]*>.*?<\/row>/s)?.[0] || ''
+  const row2 = sheetXml.match(/<row r="2"[^>]*>.*?<\/row>/s)?.[0] || ''
+  const lastRow = rowNum - 1
 
-  // ── 9. Write and download ───────────────────────────────────────────────
-  const outBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true })
-  const blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
+  const updatedSheet = sheetXml
+    .replace(/<sheetData>.*?<\/sheetData>/s,
+      `<sheetData>${row1}${row2}${newRows.join('')}</sheetData>`)
+    .replace(/ref="A1:AW\d+"/, `ref="A1:AW${lastRow}"`)
+
+  // ── Update sharedStrings ──────────────────────────────────────────────────
+  const total = existingSiCount + newSi.length
+  const updatedSs = ssXml
+    .replace(/count="\d+"/, `count="${total}"`)
+    .replace(/uniqueCount="\d+"/, `uniqueCount="${total}"`)
+    .replace(/<\/sst>/, newSi.join('') + '</sst>')
+
+  zip.file('xl/worksheets/sheet1.xml', updatedSheet)
+  zip.file('xl/sharedStrings.xml', updatedSs)
+  zip.remove('xl/calcChain.xml')  // avoid stale formula cache warnings in Excel
+
+  // ── Download ──────────────────────────────────────────────────────────────
+  const outBuf = await zip.generateAsync({ type:'arraybuffer', compression:'DEFLATE' })
+  const blob = new Blob([outBuf], {
+    type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
   const a = document.createElement('a')
-  a.href = url
-  a.download = `TCE_Skilled_Labour_${projectName.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`
+  a.href = URL.createObjectURL(blob)
+  a.download = `TCE_Skilled_Labour_${projectName.replace(/[^a-zA-Z0-9_-]/g,'_')}.xlsx`
   a.click()
-  URL.revokeObjectURL(url)
+  URL.revokeObjectURL(a.href)
 }
