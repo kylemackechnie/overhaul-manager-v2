@@ -158,7 +158,7 @@ export async function exportTceSkilledLabour(
   // ── Group TCE lines ───────────────────────────────────────────────────────
   const skilled = lines.filter(l => l.source === 'skilled')
   const isH = (l: NrgTceLine) =>
-    l.line_type === 'H' || /^\d+\.\d+\.\d+$/.test(l.item_id || '')
+    l.line_type === 'H' || l.line_type === 'group' || /^\d+\.\d+\.\d+$/.test(l.item_id || '')
 
   interface Group { hdr: NrgTceLine; dets: NrgTceLine[] }
   const groups: Group[] = []
@@ -183,7 +183,7 @@ export async function exportTceSkilledLabour(
       B: { type:'s', value: strIdx(hdr.work_order || '') },
       C: { type:'s', value: strIdx(hdr.item_id || '') },
       D: { type:'s', value: strIdx(hdr.description || '') },
-      E: { type:'s', value: strIdx(hdr.line_type || '') },
+      E: { type:'s', value: strIdx(hdr.line_type === 'group' ? 'H' : hdr.line_type || '') },
       F: { type:'s', value: strIdx((hdr.details as Record<string,unknown>)?.task_responsibility as string || '') },
       G: { type:'', value:null }, H: { type:'s', value: strIdx(hdr.notes || '') },
       I: { type:'', value:null },
