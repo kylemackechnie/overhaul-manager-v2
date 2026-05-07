@@ -930,44 +930,43 @@ export function NrgTcePanel() {
                 const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
                 if (isLabour) {
-                  // Labour: show per-timesheet-week breakdown
-                  type LabourRow = { weekStart: string; person: string; role: string; hours: number; cost: number }
+                  // Labour: show per-day breakdown with actual work date
+                  type LabourRow = { workDate: string; person: string; role: string; hours: number; cost: number }
                   const rows: LabourRow[] = []
                   for (const ts of timesheets) {
                     if (ts.status !== 'approved') continue
                     if (ts.scope_tracking !== 'tce' && ts.scope_tracking !== 'nrg_tce') continue
                     for (const member of ts.crew) {
-                      let memberHours = 0; let memberCost = 0
                       const rc = rateCards.find(r => r.role.toLowerCase() === member.role.toLowerCase())
-                      for (const [, day] of Object.entries(member.days)) {
+                      for (const [dateKey, day] of Object.entries(member.days)) {
                         if (!day.hours || day.hours <= 0) continue
                         const match = (day.nrgWoAllocations || []).find((a: NrgWoAlloc) =>
                           a.tceItemId === drillLine.item_id ||
                           (drillLine.work_order && a.wo === drillLine.work_order)
                         )
-                        if (!match) continue
-                        memberHours += match.hours || 0
+                        if (!match || !match.hours) continue
+                        let dayCost = 0
                         if (rc) {
                           const adjH = ((member as unknown as {mealBreakAdj?:boolean}).mealBreakAdj && match.hours > 0) ? 0.5 : 0
                           const effH = (match.hours || 0) + adjH
                           const split = splitHours(effH, day.dayType || 'weekday', day.shiftType as 'day'|'night', rc.regime)
-                          memberCost += calcHoursCost(split, rc, 'sell')
+                          dayCost = calcHoursCost(split, rc, 'sell')
                         }
+                        rows.push({ workDate: dateKey, person: member.name, role: member.role, hours: match.hours, cost: dayCost })
                       }
-                      if (memberHours > 0) rows.push({ weekStart: ts.week_start, person: member.name, role: member.role, hours: memberHours, cost: memberCost })
                     }
                   }
                   if (!rows.length) return <div style={{ color:'var(--text3)', fontSize:'13px' }}>No approved timesheet allocations found.</div>
                   return <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
                     <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
-                      {['Week','Person','Role','Hours','Cost'].map(h => (
+                      {['Date','Person','Role','Hours','Cost'].map(h => (
                         <th key={h} style={{ textAlign: h === 'Hours' || h === 'Cost' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
                       ))}
                     </tr></thead>
                     <tbody>
-                      {rows.sort((a,b) => a.weekStart.localeCompare(b.weekStart) || a.person.localeCompare(b.person)).map((r,i) => (
+                      {rows.sort((a,b) => a.workDate.localeCompare(b.workDate) || a.person.localeCompare(b.person)).map((r,i) => (
                         <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
-                          <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{new Date(r.weekStart+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
+                          <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{new Date(r.workDate+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
                           <td style={{ padding:'7px 8px', fontWeight:500 }}>{r.person}</td>
                           <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{r.role}</td>
                           <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)' }}>{r.hours.toFixed(1)}h</td>
