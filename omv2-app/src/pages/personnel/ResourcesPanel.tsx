@@ -32,7 +32,6 @@ const RES_COLS = [
   { id: 'room',      label: 'Room',         default: 120, group: 'Logistics' },
   { id: 'wbs',       label: 'WBS',          default: 100, group: 'Assignment' },
   { id: 'po',        label: 'PO',           default: 80,  group: 'Assignment' },
-  { id: 'actions',   label: '',             default: 80,  group: 'Assignment' },
 ] as const
 
 type ResColId = typeof RES_COLS[number]['id']
@@ -90,8 +89,8 @@ export function ResourcesPanel() {
   const { widths: rw, onResizeStart: rOnResize, thRef: rThRef } =
     useResizableColumns('resources', RES_COLS.map(c => ({ id: c.id, default: c.default })))
 
-  // Total width = checkbox col (32px) + sum of visible column widths
-  const totalResWidth = 32 + RES_COLS.reduce((s, c, i) => s + (isVisible(c.id) ? rw[i] : 0), 0)
+  // Total width = pinned col (82px: checkbox + More + ✕) + sum of visible column widths
+  const totalResWidth = 82 + RES_COLS.reduce((s, c, i) => s + (isVisible(c.id) ? rw[i] : 0), 0)
 
   const { canWrite } = usePermissions()
   const [resources, setResources] = useState<Resource[]>([])
@@ -601,7 +600,7 @@ export function ResourcesPanel() {
               <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
-                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:rw[0],textAlign:'center',padding:'8px 6px'}}>
+                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'82px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap'}}>
                     <input type="checkbox"
                       style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                       checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
@@ -611,7 +610,6 @@ export function ResourcesPanel() {
                         else setSelected(new Set())
                       }}
                     />
-                    <div className="col-resizer" {...rOnResize(0)} />
                   </th>
                   {RES_COLS.map((col, i) => {
                     if (!isVisible(col.id)) return null
@@ -645,10 +643,14 @@ export function ResourcesPanel() {
                   const po = r.linked_po_id ? pos.find(p => p.id === r.linked_po_id) : null
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
-                      {/* Checkbox — always visible */}
-                      <td style={{textAlign:'center',padding:'5px 6px'}}>
-                        <input type="checkbox" checked={selected.has(r.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
-                          onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(r.id) : next.delete(r.id); return next })} />
+                      {/* Pinned left col — checkbox + edit + delete */}
+                      <td style={{padding:'5px 6px',whiteSpace:'nowrap'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                          <input type="checkbox" checked={selected.has(r.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
+                            onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(r.id) : next.delete(r.id); return next })} />
+                          <button className="btn btn-sm" onClick={()=>openEdit(r)} style={{padding:'1px 6px',fontSize:'11px'}}>More</button>
+                          <button className="btn btn-sm" style={{color:'var(--red)',padding:'1px 4px',fontSize:'11px'}} onClick={()=>del(r)}>✕</button>
+                        </div>
                       </td>
                       {/* Visibility-gated cells — rendered in RES_COLS order */}
                       {isVisible('status') && <td><span className="badge" style={ss}>{ss.label}</span></td>}
@@ -740,10 +742,6 @@ export function ResourcesPanel() {
                             ? <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#d1fae5',color:'#065f46',fontWeight:700}}>{po.po_number||'PO'}</span>
                             : <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b',fontWeight:700}}>⚠ No PO</span>
                         ) : <span style={{color:'var(--text3)'}}>—</span>}
-                      </td>}
-                      {isVisible('actions') && <td style={{whiteSpace:'nowrap'}}>
-                        <button className="btn btn-sm" onClick={()=>openEdit(r)}>More</button>
-                        <button className="btn btn-sm" style={{marginLeft:'4px',color:'var(--red)'}} onClick={()=>del(r)}>✕</button>
                       </td>}
                     </tr>
                   )
