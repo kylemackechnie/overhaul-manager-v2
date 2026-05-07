@@ -940,19 +940,24 @@ export function NrgTcePanel() {
                       const rc = rateCards.find(r => r.role.toLowerCase() === member.role.toLowerCase())
                       for (const [dateKey, day] of Object.entries(member.days)) {
                         if (!day.hours || day.hours <= 0) continue
-                        const match = (day.nrgWoAllocations || []).find((a: NrgWoAlloc) =>
+                        // Collect ALL matching allocations for this day (DT1.0 + DT1.5 + DT2.0 etc.)
+                        const matches = (day.nrgWoAllocations || []).filter((a: NrgWoAlloc) =>
                           a.tceItemId === drillLine.item_id ||
                           (drillLine.work_order && a.wo === drillLine.work_order)
                         )
-                        if (!match || !match.hours) continue
+                        if (!matches.length) continue
+                        const totalHours = matches.reduce((s: number, a: NrgWoAlloc) => s + (a.hours || 0), 0)
                         let dayCost = 0
                         if (rc) {
-                          const adjH = ((member as unknown as {mealBreakAdj?:boolean}).mealBreakAdj && match.hours > 0) ? 0.5 : 0
-                          const effH = (match.hours || 0) + adjH
-                          const split = splitHours(effH, day.dayType || 'weekday', day.shiftType as 'day'|'night', rc.regime)
-                          dayCost = calcHoursCost(split, rc, 'sell')
+                          // Cost each allocation segment at its correct pay code multiplier
+                          for (const m of matches) {
+                            const adjH = ((member as unknown as {mealBreakAdj?:boolean}).mealBreakAdj && m.hours > 0) ? 0.5 : 0
+                            const effH = (m.hours || 0) + adjH
+                            const split = splitHours(effH, day.dayType || 'weekday', day.shiftType as 'day'|'night', rc.regime)
+                            dayCost += calcHoursCost(split, rc, 'sell')
+                          }
                         }
-                        rows.push({ workDate: dateKey, person: member.name, role: member.role, hours: match.hours, cost: dayCost })
+                        if (totalHours > 0) rows.push({ workDate: dateKey, person: member.name, role: member.role, hours: totalHours, cost: dayCost })
                       }
                     }
                   }
