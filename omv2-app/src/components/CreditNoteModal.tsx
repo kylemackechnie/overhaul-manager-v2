@@ -287,9 +287,22 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
               </div>
             </div>
 
-            {hasApproved && (
+            {hasApproved && creditType === 'adjust_timesheet' && (
+              <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#7f1d1d' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>🔒 Cannot adjust — timesheet is approved and locked</div>
+                <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+                  One or more source timesheets are <strong>approved</strong>. The "Adjust Timesheet" option directly modifies timesheet rows and cannot be applied while the timesheet is locked.
+                  <br /><br />
+                  A <strong>Project Manager</strong> must unlock the timesheet first (Personnel → Timesheets → 🔓 Unlock), then you can apply the adjustment and re-approve.
+                  <br /><br />
+                  Alternatively, use <strong>Credit Note Only</strong> to reduce billable hours without touching the timesheet.
+                </div>
+              </div>
+            )}
+
+            {hasApproved && creditType !== 'adjust_timesheet' && (
               <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#78350f' }}>
-                ⚠ One or more source timesheets are <strong>approved</strong>. Applying this credit will modify the cost lines but will not change the timesheet approval status — you may want to review and re-approve afterward.
+                ⚠ One or more source timesheets are <strong>approved</strong>. This credit will update cost lines only — the timesheet approval status is unchanged.
               </div>
             )}
 
@@ -316,16 +329,22 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
                   desc: 'Moves hours from the selected scope(s) to different scope(s). Total hours unchanged. Use when hours were allocated to the wrong work order.' },
                 { type: 'adjust_timesheet' as CreditType, label: 'Adjust Timesheet', icon: '✂',
                   desc: 'Removes hours from the timesheet entirely — affects internal cost, TCE actuals, and invoicing. Use when the person was not actually on site.' },
-              ] as const).map(opt => (
-                <label key={opt.type} onClick={() => setCreditType(opt.type)}
-                  style={{ display: 'flex', gap: 12, padding: '12px 14px', borderRadius: 8, border: `2px solid ${creditType === opt.type ? 'var(--accent)' : 'var(--border)'}`, background: creditType === opt.type ? 'var(--accent-bg)' : 'var(--bg)', cursor: 'pointer', marginBottom: 8 }}>
-                  <div style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{opt.icon}</div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: creditType === opt.type ? 'var(--accent)' : 'var(--text)', marginBottom: 3 }}>{opt.label}</div>
+              ] as const).map(opt => {
+                const isBlocked = opt.type === 'adjust_timesheet' && hasApproved
+                return (
+                <label key={opt.type} onClick={() => !isBlocked && setCreditType(opt.type)}
+                  style={{ display: 'flex', gap: 12, padding: '12px 14px', borderRadius: 8, border: `2px solid ${creditType === opt.type ? 'var(--accent)' : isBlocked ? '#fca5a5' : 'var(--border)'}`, background: isBlocked ? '#fef2f2' : creditType === opt.type ? 'var(--accent-bg)' : 'var(--bg)', cursor: isBlocked ? 'not-allowed' : 'pointer', marginBottom: 8, opacity: isBlocked ? 0.75 : 1 }}>
+                  <div style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{isBlocked ? '🔒' : opt.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: isBlocked ? '#7f1d1d' : creditType === opt.type ? 'var(--accent)' : 'var(--text)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {opt.label}
+                      {isBlocked && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#fee2e2', color: '#7f1d1d' }}>LOCKED — PM unlock required</span>}
+                    </div>
                     <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.5 }}>{opt.desc}</div>
                   </div>
                 </label>
-              ))}
+                )
+              })}
             </div>
           </>)}
 
@@ -485,7 +504,8 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
               {step === 1 ? 'Cancel' : '← Back'}
             </button>
             {step === 1 && (
-              <button className="btn btn-primary" disabled={!reason.trim() || !reference.trim()}
+              <button className="btn btn-primary"
+                disabled={!reason.trim() || !reference.trim() || (hasApproved && creditType === 'adjust_timesheet')}
                 onClick={() => setStep(2)}>
                 Next →
               </button>
