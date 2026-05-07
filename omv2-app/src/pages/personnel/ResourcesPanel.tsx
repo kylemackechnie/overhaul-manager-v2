@@ -8,6 +8,8 @@ import { useAppStore } from '../../store/appStore'
 import { useResizableColumns } from '../../hooks/useResizableColumns'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { ResourcesMobile } from '../mobile/ResourcesMobile'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
 
 // ── Column registry ───────────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ export function ResourcesPanel() {
   const totalResWidth = 82 + RES_COLS.reduce((s, c, i) => s + (isVisible(c.id) ? rw[i] : 0), 0)
 
   const { canWrite } = usePermissions()
+  const isMobile = useIsMobile()
   const [resources, setResources] = useState<Resource[]>([])
   const [rcs, setRcs] = useState<RateCard[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
@@ -513,7 +516,22 @@ export function ResourcesPanel() {
 
 
   return (
-    <div style={{padding:'24px',maxWidth:'100%'}}>
+    <div style={isMobile ? {padding:0,maxWidth:'100%'} : {padding:'24px',maxWidth:'100%'}}>
+    {isMobile ? (
+      <ResourcesMobile
+        resources={resources}
+        loading={loading}
+        search={search}
+        onSearchChange={setSearch}
+        catFilter={catFilter}
+        onCatFilterChange={setCatFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        onAddNew={openNew}
+        onEdit={openEdit}
+        canWrite={canWrite('personnel')}
+      />
+    ) : (<>
     <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px',flexWrap:'wrap'}}>
         {/* Title block */}
         <div style={{display:'flex',flexDirection:'column',gap:'1px',flexShrink:0}}>
@@ -866,6 +884,7 @@ export function ResourcesPanel() {
           )}
         </>
       )}
+    </>)}
 
       {/* Modal */}
       {modal && (

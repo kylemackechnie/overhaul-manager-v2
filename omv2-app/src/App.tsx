@@ -10,6 +10,7 @@ import { Ribbon } from './components/layout/Ribbon'
 import { ProjectPicker } from './components/layout/ProjectPicker'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { ToastContainer } from './components/ui/Toast'
+import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
 import { HelpPanel } from './pages/HelpPanel'
 import { DashboardPanel } from './pages/dashboard/DashboardPanel'
 import { PlaceholderPanel } from './pages/PlaceholderPanel'
@@ -105,6 +106,9 @@ import { PartsReceivingPanel } from './pages/site/PartsReceivingPanel'
 import { PartsIssuePanel } from './pages/site/PartsIssuePanel'
 import { PartsReportsPanel } from './pages/site/PartsReportsPanel'
 import { PartsSearchPanel } from './pages/site/PartsSearchPanel'
+import { MobileShell } from './components/mobile/MobileShell'
+import { MobileDesktopOnly } from './components/mobile/MobilePanelHeader'
+import { useIsMobile } from './hooks/useIsMobile'
 import type { Session } from '@supabase/supabase-js'
 import type { Project } from './types'
 
@@ -125,6 +129,7 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [cmdOpen, setCmdOpen] = useState(false)
   const [restoringProject, setRestoringProject] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const t0 = performance.now()
@@ -258,9 +263,46 @@ export default function App() {
       </div>
     )
   }
-  if (!session) return <><LoginPage /><ToastContainer /></>
+  if (!session) return <><LoginPage /><ToastContainer /><PWAUpdatePrompt /></>
 
-  return (
+  // Mobile shell — runs on screens ≤900px. Same Supabase session, same PanelRouter.
+  // Panels not in MOBILE_OPTIMISED_PANELS show a hard-block "Open on desktop" screen.
+  return isMobile ? (
+    <>
+      {pickerOpen && (
+        <ProjectPicker onClose={() => {
+          setPickerOpen(false)
+          if (!activeProject) setPickerOpen(true)
+        }} />
+      )}
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+      <MobileShell
+        onOpenPicker={() => setPickerOpen(true)}
+        onOpenSearch={() => setCmdOpen(true)}
+      >
+        {(['profile', 'user-management', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults'].includes(activePanel)) ? (
+          <MobilePanelRouter panel={activePanel} />
+        ) : !activeProject ? (
+          restoringProject ? (
+            <div className="mobile-loading"><span className="spinner" /> Restoring project…</div>
+          ) : (
+            <div className="mobile-empty">
+              <div className="mobile-empty-icon">⚙️</div>
+              <h3>Select a project</h3>
+              <p>Tap the project pill at the top to choose a project.</p>
+              <button className="btn btn-primary" style={{ marginTop:'16px' }} onClick={() => setPickerOpen(true)}>
+                Open Project Picker
+              </button>
+            </div>
+          )
+        ) : (
+          <MobilePanelRouter panel={activePanel} />
+        )}
+      </MobileShell>
+      <ToastContainer />
+      <PWAUpdatePrompt />
+    </>
+  ) : (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
 
       {/* Full-screen project picker overlay */}
@@ -311,6 +353,7 @@ export default function App() {
       </div>
 
       <ToastContainer />
+      <PWAUpdatePrompt />
     </div>
   )
 }
@@ -453,4 +496,64 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'migration':             return <MigrationPanel />
     default:                      return p('🚧', panel, 'Coming soon')
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MOBILE PANEL ROUTER
+// Wraps PanelRouter and hard-blocks panels that haven't been built for mobile.
+// As mobile-optimised panels are added in future sessions, append their
+// panel keys to MOBILE_OPTIMISED below.
+// ════════════════════════════════════════════════════════════════════════
+
+/** Panels that have a mobile-optimised render (or are simple enough to work as-is) */
+const MOBILE_OPTIMISED: Set<string> = new Set([
+  // Always-allow: navigation/admin/profile
+  'dashboard',
+  'profile',
+  'help',
+  'project-settings',
+  // Personnel — built this session
+  'hr-resources',
+  // Future panels — add here when mobile branch is built:
+  // 'hr-cars', 'hr-accommodation', 'hr-timesheets-trades',
+  // 'parts-list', 'parts-issue', 'parts-receiving',
+  // 'hire-dry', 'hire-wet', 'hire-local',
+])
+
+/** Friendly names for the desktop-only block screen */
+const PANEL_FRIENDLY_NAMES: Record<string, string> = {
+  'cost-forecast':    'Forecast',
+  'cost-mika':        'MIKA',
+  'cost-scurve':      'S-Curve',
+  'cost-report':      'Cost Report',
+  'sap-recon':        'SAP Reconciliation',
+  'cost-customer-report': 'Customer Report',
+  'pre-planning-report': 'Pre-Planning Report',
+  'reports-db':       'Reports Database',
+  'subcon-rfq-doc':   'RFQ Document Builder',
+  'subcon-rfq':       'Subcon Cost Model',
+  'nrg-tce':          'NRG TCE Register',
+  'nrg-ohf':          'NRG Overhead Forecast',
+  'nrg-actuals':      'NRG Actuals',
+  'nrg-invoicing':    'NRG Invoicing',
+  'nrg-kpi':          'NRG KPI Model',
+  'gantt':            'Gantt Chart',
+  'wbs-list':         'WBS List',
+  'cost-dashboard':   'Cost Dashboard',
+  'hr-utilisation':   'Utilisation',
+  'hr-ratecards':     'Rate Cards',
+  'hardware-import':  'Hardware Import',
+  'hardware-contract':'Hardware Contracts',
+  'tooling-tvs':      'TV Register',
+  'tooling-kollos':   'Kollos',
+  'tooling-costings': 'Tooling Costings',
+}
+
+function MobilePanelRouter({ panel }: { panel: string }) {
+  // Permission check still applies — uses same helper as desktop
+  if (MOBILE_OPTIMISED.has(panel)) {
+    return <PanelRouter panel={panel} />
+  }
+  const friendly = PANEL_FRIENDLY_NAMES[panel] || panel
+  return <MobileDesktopOnly panelName={friendly} />
 }
