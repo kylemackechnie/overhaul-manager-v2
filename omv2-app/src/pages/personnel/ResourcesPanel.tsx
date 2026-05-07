@@ -587,7 +587,7 @@ export function ResourcesPanel() {
         </div>
       )}
 
-      {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
+      {loading ? (<div className="loading-center"><span className="spinner"/> Loading...</div>)
       : filtered.length === 0 ? (
         <div className="empty-state">
           <div className="icon">👤</div>
