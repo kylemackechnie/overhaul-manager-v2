@@ -583,7 +583,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   }
 
   async function approveTimesheet(s: WeeklyTimesheet) {
-    if (!tsPerms.canApprove) return toast('Only the Project Manager can approve timesheets', 'error')
+    if (!tsPerms.canApprove) return toast('Only a Project Manager or Administrator can approve timesheets', 'error')
     const { currentUser } = useAppStore.getState()
     const updates = { status: 'approved', approved_by: currentUser?.id ?? null, approved_at: new Date().toISOString() }
     const { error } = await supabase.from('weekly_timesheets').update(updates).eq('id', s.id)
@@ -607,7 +607,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   }
 
   async function unlockTimesheet(s: WeeklyTimesheet) {
-    if (!tsPerms.canUnlock) return toast('Only the Project Manager can unlock timesheets', 'error')
+    if (!tsPerms.canUnlock) return toast('Only a Project Manager or Administrator can unlock timesheets', 'error')
     const reason = prompt('Reason for unlocking this timesheet (required):')
     if (!reason || !reason.trim()) { toast('Unlock cancelled — reason is required', 'info'); return }
     const { currentUser } = useAppStore.getState()
@@ -1117,7 +1117,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       <button className="btn btn-sm" style={{color:'var(--orange,#f97316)',fontSize:'11px'}} onClick={() => unlockTimesheet(activeWeek)}>🔓 Unlock</button>
                     )}
                     {tsPerms.canApprove && (
-                      <span style={{fontSize:'10px',color:'var(--text3)'}}>Approved by PM</span>
+                      <span style={{fontSize:'10px',color:'var(--text3)'}}>Approved by PM / PA</span>
                     )}
                   </>
                 ) : (

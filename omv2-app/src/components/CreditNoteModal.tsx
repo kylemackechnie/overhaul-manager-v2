@@ -293,7 +293,7 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
                 <div style={{ fontSize: 11, lineHeight: 1.5 }}>
                   One or more source timesheets are <strong>approved</strong>. The "Adjust Timesheet" option directly modifies timesheet rows and cannot be applied while the timesheet is locked.
                   <br /><br />
-                  A <strong>Project Manager</strong> must unlock the timesheet first (Personnel → Timesheets → 🔓 Unlock), then you can apply the adjustment and re-approve.
+                  A <strong>Project Manager or Administrator</strong> must unlock the timesheet first (Personnel → Timesheets → 🔓 Unlock), then you can apply the adjustment and re-approve.
                   <br /><br />
                   Alternatively, use <strong>Credit Note Only</strong> to reduce billable hours without touching the timesheet.
                 </div>

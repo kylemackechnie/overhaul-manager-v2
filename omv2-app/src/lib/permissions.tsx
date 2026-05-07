@@ -104,8 +104,8 @@ export function useTimesheetPermissions(project: import('../types').Project | nu
 
   const canEdit    = isPM || isPA
   const canSubmit  = isPM || isPA
-  const canApprove = isPM
-  const canUnlock  = isPM
+  const canApprove = isPM || isPA
+  const canUnlock  = isPM || isPA
 
   return { isPM, isPA, canEdit, canSubmit, canApprove, canUnlock, isAdmin }
 }
