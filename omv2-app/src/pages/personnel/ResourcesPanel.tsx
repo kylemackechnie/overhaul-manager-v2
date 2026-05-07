@@ -568,6 +568,7 @@ export function ResourcesPanel() {
           <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')} style={{height:'28px',padding:'0 10px',fontSize:'12px'}}>+ Add person</button>
         </div>
       </div>
+      {showImport && (
         <div className="card" style={{marginBottom:'16px'}}>
           <div style={{fontWeight:600,fontSize:'13px',marginBottom:'6px'}}>Bulk Import from CSV</div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'8px'}}>
