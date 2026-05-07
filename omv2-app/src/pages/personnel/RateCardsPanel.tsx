@@ -199,10 +199,11 @@ export function RateCardsPanel() {
             <thead>
               <tr>
                 <th>Role</th><th>Category</th><th>Vendor</th>
-                <th style={{textAlign:'right'}}>Day NT</th>
-                <th style={{textAlign:'right'}}>Night NT</th>
-                <th style={{textAlign:'right'}}>LAHA/FSA</th>
-                <th style={{textAlign:'right'}}>Meal</th>
+                {(['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const).map(b => (
+                  <th key={b} style={{textAlign:'right',fontSize:'10px'}}>{BUCKET_LABELS[b]}</th>
+                ))}
+                <th style={{textAlign:'right',fontSize:'10px'}}>LAHA/FSA</th>
+                <th style={{textAlign:'right',fontSize:'10px'}}>Meal</th>
                 <th></th>
               </tr>
             </thead>
