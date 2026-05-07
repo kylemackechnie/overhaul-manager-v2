@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { PartsReceiveMobile } from '../mobile/PartsReceiveMobile'
 
 interface WositLine {
   id: string
@@ -26,6 +28,12 @@ interface Match {
 type Step = 1 | 2 | 3
 
 export function PartsReceivingPanel() {
+  const isMobile = useIsMobile()
+  if (isMobile) return <PartsReceiveMobile />
+  return <PartsReceivingPanelDesktop />
+}
+
+function PartsReceivingPanelDesktop() {
   const { activeProject } = useAppStore()
   const [lines, setLines] = useState<WositLine[]>([])
   const [loading, setLoading] = useState(true)

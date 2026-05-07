@@ -512,11 +512,14 @@ const MOBILE_OPTIMISED: Set<string> = new Set([
   'profile',
   'help',
   'project-settings',
-  // Personnel — built this session
+  // Personnel
   'hr-resources',
+  // Site / Parts (Session 2)
+  'parts-issue',
+  'parts-receiving',
   // Future panels — add here when mobile branch is built:
   // 'hr-cars', 'hr-accommodation', 'hr-timesheets-trades',
-  // 'parts-list', 'parts-issue', 'parts-receiving',
+  // 'parts-list',
   // 'hire-dry', 'hire-wet', 'hire-local',
 ])
 

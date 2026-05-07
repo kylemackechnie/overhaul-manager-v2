@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { PartsIssueMobile } from '../mobile/PartsIssueMobile'
 
 interface SparePart {
   id: string; part_number: string; description: string
@@ -15,6 +17,13 @@ interface IssueLine {
 }
 
 export function PartsIssuePanel() {
+  const isMobile = useIsMobile()
+  if (isMobile) return <PartsIssueMobile />
+
+  return <PartsIssuePanelDesktop />
+}
+
+function PartsIssuePanelDesktop() {
   const { activeProject } = useAppStore()
   const [parts,   setParts]   = useState<SparePart[]>([])
   const [wos,     setWos]     = useState<WO[]>([])
