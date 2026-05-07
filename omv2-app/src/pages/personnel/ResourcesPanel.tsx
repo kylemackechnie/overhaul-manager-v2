@@ -568,7 +568,6 @@ export function ResourcesPanel() {
           <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')} style={{height:'28px',padding:'0 10px',fontSize:'12px'}}>+ Add person</button>
         </div>
       </div>
-    </div>{/* end outer padding wrapper */}
 
       {showImport && (
         <div className="card" style={{marginBottom:'16px'}}>
@@ -1126,5 +1125,6 @@ export function ResourcesPanel() {
       )}
 
       {cardPerson && <PersonCard person={cardPerson} onClose={closeCard} />}
+    </div>
   )
 }
