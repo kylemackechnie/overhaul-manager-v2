@@ -168,6 +168,7 @@ export async function writeTimesheetCostLines(
           tceItemId?: string
           wo?: string
           hours: number
+          payCode?: string
           _tceMode?: boolean
         }>
       }
@@ -226,19 +227,41 @@ export async function writeTimesheetCostLines(
       // Nothing to write — skip the day
       if (!hasLabour && dayCostAllow === 0 && daySellAllow === 0 && dayCostTravel === 0) continue
 
-      // ── Labour rows: split across allocations proportionally by hours ──
-      // Labour rows always carry allowances=0 — allowances now go to a dedicated
-      // row tagged to the allowance TCE item (per-person override or timesheet
-      // default), not whichever scope item happened to be first in the day.
+      // ── Labour rows: split across allocations ────────────────────────────
+      // Internal cost always uses the calendar-day splitHours approach (payroll).
+      // TCE sell uses the alloc's payCode when present — this matches the TasTK
+      // export and honours the user's explicit pay-code selection on each scope.
+      // payCode → rate card key mapping:
+      //   DT1.0 → dnt (normal time)   DT1.5 → dt15 (time-and-a-half)
+      //   DT2.0 → ddt (double-time)   DT2.5 → ddt15 (double-time-and-a-half)
+      //   NDT1.0 → nnt (night NT)     NDT1.5 → ndt (night OT)
+      const PAY_CODE_TO_KEY: Record<string, string> = {
+        'DT1.0': 'dnt', 'DT1.5': 'dt15', 'DT2.0': 'ddt', 'DT2.5': 'ddt15',
+        'NDT1.0': 'nnt', 'NDT1.5': 'ndt', 'NDT2.0': 'ndt15',
+      }
+      const rcRates = (rcAny.rates as { cost: Record<string,number>; sell: Record<string,number> } | null)
+
       if (hasLabour) {
         for (const alloc of tceAllocs) {
           const allocHours = Number(alloc.hours) || 0
           if (!allocHours) continue
 
-          const ratio = allocHours / dayHours  // proportion of the day's labour
+          // Internal cost: always proportional from the day's splitHours total
+          const ratio = allocHours / dayHours
           const costLabour = dayLabourCost * ratio
-          const sellLabour = dayLabourSell * ratio
-          const sellLabourEur = dayLabourSellEur * ratio
+
+          // TCE sell: use payCode rate directly if available, else fall back to ratio
+          let sellLabour: number
+          let sellLabourEur: number
+          const rateKey = alloc.payCode ? PAY_CODE_TO_KEY[alloc.payCode] : undefined
+          if (rateKey && rcRates) {
+            const rSell = rcRates.sell[rateKey] || 0
+            sellLabour    = allocHours * rSell * labourFx
+            sellLabourEur = isEurCard ? allocHours * rSell : 0
+          } else {
+            sellLabour    = dayLabourSell * ratio
+            sellLabourEur = dayLabourSellEur * ratio
+          }
 
           // Resolve tce_item_id:
           //   1. Prefer the alloc's explicit tceItemId
