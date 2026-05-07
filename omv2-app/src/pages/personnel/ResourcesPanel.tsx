@@ -584,7 +584,7 @@ export function ResourcesPanel() {
           )}
           {/* Resource table — scrollbar mirrored to top */}
           <div className="card" style={{padding:0,marginBottom:'16px'}}>
-            <div style={{overflowX:'auto'}} onScroll={e => {
+            <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'calc(100vh - 280px)'}} onScroll={e => {
               const el = e.currentTarget
               const mirror = el.parentElement?.querySelector('.scroll-mirror') as HTMLElement | null
               if (mirror) mirror.scrollLeft = el.scrollLeft
@@ -600,7 +600,7 @@ export function ResourcesPanel() {
               <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
-                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'82px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap',position:'sticky',left:0,zIndex:3,background:'var(--bg2)',borderRight:'1px solid var(--border)'}}>
+                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'82px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap',position:'sticky',left:0,top:0,zIndex:4,background:'var(--bg2)',borderRight:'1px solid var(--border)'}}>
                     <input type="checkbox"
                       style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                       checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
@@ -625,7 +625,7 @@ export function ResourcesPanel() {
                       : null
                     return (
                       <th key={col.id} ref={el=>rThRef(el,i)} className="resizable"
-                        style={{width:rw[i], cursor: sortKey ? 'pointer' : undefined, userSelect:'none'}}
+                        style={{width:rw[i], cursor: sortKey ? 'pointer' : undefined, userSelect:'none', position:'sticky', top:0, zIndex:10, background:'var(--bg2)'}}
                         onClick={sortKey ? () => doSort(sortKey as SortCol) : undefined}>
                         {col.label}{sortKey ? <span style={{color:'var(--accent)',fontSize:'10px',marginLeft:'2px'}}>{arrow(sortKey as SortCol)}</span> : null}
                         <div className="col-resizer" {...rOnResize(i)} />
