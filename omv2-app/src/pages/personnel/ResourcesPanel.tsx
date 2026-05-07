@@ -514,22 +514,60 @@ export function ResourcesPanel() {
 
   return (
     <div style={{padding:'24px',maxWidth:'100%'}}>
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px',flexWrap:'wrap',gap:'8px'}}>
-        <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>Resources</h1>
-          <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{resources.length} people on this project</p>
+    <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px',flexWrap:'wrap'}}>
+        {/* Title block */}
+        <div style={{display:'flex',flexDirection:'column',gap:'1px',flexShrink:0}}>
+          <span style={{fontSize:'14px',fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}}>Resources</span>
+          <span style={{fontSize:'11px',color:'var(--text3)',whiteSpace:'nowrap'}}>{resources.length} people</span>
         </div>
-        <div style={{display:'flex',gap:'8px'}}>
-          <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
-          <button className="btn btn-sm" onClick={() => setShowImport(s => !s)}>📥 Import CSV</button>
-          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ''}</button>
-          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')}>+ Add Person</button>
+
+        <div style={{width:'0.5px',height:'28px',background:'var(--border)',flexShrink:0}} />
+
+        {/* Search */}
+        <div style={{position:'relative',flex:'0 0 180px'}}>
+          <span style={{position:'absolute',left:'7px',top:'50%',transform:'translateY(-50%)',fontSize:'13px',color:'var(--text3)',pointerEvents:'none'}}>⌕</span>
+          <input className="input" style={{width:'100%',paddingLeft:'24px',height:'28px',fontSize:'12px'}}
+            placeholder="Search name, role, company…" value={search} onChange={e=>setSearch(e.target.value)} />
+        </div>
+
+        {/* Category pills */}
+        <div style={{display:'flex',gap:'4px',alignItems:'center',flexWrap:'wrap'}}>
+          {(['all',...CATEGORIES] as string[]).map(cat => {
+            const label = cat === 'all' ? 'All' : cat === 'management' ? 'Mgmt' : cat === 'subcontractor' ? 'Subcon' : cat === 'seag' ? 'SE AG' : cat.charAt(0).toUpperCase()+cat.slice(1)
+            const count = cat === 'all' ? resources.length : catCounts[cat] || 0
+            const active = catFilter === cat
+            return (
+              <button key={cat} onClick={() => setCatFilter(cat)}
+                style={{padding:'3px 8px',fontSize:'11px',borderRadius:'20px',border:`0.5px solid ${active?'var(--accent)':'var(--border)'}`,background:active?'var(--accent)':'transparent',color:active?'#fff':'var(--text2)',cursor:'pointer',whiteSpace:'nowrap',lineHeight:'1.4'}}>
+                {label} <span style={{opacity:0.75}}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Status filter */}
+        <select className="input" style={{height:'28px',fontSize:'11px',padding:'2px 6px',width:'auto'}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+          <option value="all">All statuses</option>
+          {Object.entries(STATUS_STYLE).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+
+        <div style={{flex:1}} />
+
+        {/* Actions */}
+        <div style={{display:'flex',gap:'4px',alignItems:'center',flexShrink:0}}>
+          <button className="btn btn-sm" onClick={exportCSV} title="Export CSV" style={{height:'28px',padding:'0 8px'}}>
+            <span style={{fontSize:'13px'}}>↓</span>
+          </button>
+          <button className="btn btn-sm" onClick={() => setShowImport(s => !s)} title="Import CSV" style={{height:'28px',padding:'0 8px'}}>
+            <span style={{fontSize:'13px'}}>↑</span>
+          </button>
+          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title={`Column visibility${hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ''}`} style={{height:'28px',padding:'0 8px',position:'relative'}}>
+            <span style={{fontSize:'13px'}}>⊞</span>
+            {hiddenCols.size > 0 && <span style={{position:'absolute',top:'-4px',right:'-4px',background:'var(--accent)',color:'#fff',borderRadius:'50%',width:'14px',height:'14px',fontSize:'9px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>{hiddenCols.size}</span>}
+          </button>
+          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')} style={{height:'28px',padding:'0 10px',fontSize:'12px'}}>+ Add person</button>
         </div>
       </div>
-
-      {/* Filters */}
-      {showImport && (
         <div className="card" style={{marginBottom:'16px'}}>
           <div style={{fontWeight:600,fontSize:'13px',marginBottom:'6px'}}>Bulk Import from CSV</div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'8px'}}>
@@ -548,21 +586,6 @@ export function ResourcesPanel() {
           </div>
         </div>
       )}
-
-      <div style={{display:'flex',gap:'8px',marginBottom:'12px',flexWrap:'wrap',alignItems:'center'}}>
-        <input className="input" style={{maxWidth:'220px'}} placeholder="Search name, role, company..." value={search} onChange={e=>setSearch(e.target.value)} />
-        {(['all',...CATEGORIES] as string[]).map(cat => (
-          <button key={cat} className="btn btn-sm"
-            style={{background:catFilter===cat?'var(--accent)':'',color:catFilter===cat?'#fff':''}}
-            onClick={() => setCatFilter(cat)}>
-            {cat==='all'?`All (${resources.length})`:`${cat.charAt(0).toUpperCase()+cat.slice(1)} (${catCounts[cat]||0})`}
-          </button>
-        ))}
-        <select className="input" style={{width:'130px',fontSize:'12px'}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-          <option value="all">All statuses</option>
-          {Object.entries(STATUS_STYLE).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-      </div>
 
       {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
       : filtered.length === 0 ? (
