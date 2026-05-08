@@ -61,7 +61,7 @@ const BTN_LABEL: Record<string,string> = {
 const STATUS_ORDER_NUM: Record<string,number> = { received:0, checked:1, disputed:2, approved:3, paid:4 }
 
 const fmt = (v: number|null|undefined, sym = '$') => v ? sym + Number(v).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'
-const fmtK = (v: number) => '$' + Math.round(v).toLocaleString()
+const fmtK = (v: number) => '$' + v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (s?: string|null) => s ? s.split('-').reverse().join('/') : '—'
 const fmtDateTime = (iso?: string|null) => {
   if (!iso) return '—'

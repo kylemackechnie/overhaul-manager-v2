@@ -143,7 +143,7 @@ export function HardwareEscalationPanel() {
                       {y.yoy_change != null ? `${y.yoy_change > 0 ? '+' : ''}${y.yoy_change.toFixed(2)}%` : '—'}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--accent)' }}>
-                      {baselineTransfer > 0 ? `€${escalatedValue.toLocaleString('en-AU', { maximumFractionDigits: 0 })}` : '—'}
+                      {baselineTransfer > 0 ? `€${escalatedValue.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                     </td>
                     <td style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>{y.source}</td>
                     <td style={{ fontSize: '11px', color: 'var(--text3)' }}>{y.notes || '—'}</td>
@@ -163,14 +163,14 @@ export function HardwareEscalationPanel() {
         <div className="card" style={{ padding: '14px 16px' }}>
           <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '10px' }}>Price Projection</div>
           <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
-            Baseline transfer value from {lines.length} contract lines: <strong style={{ fontFamily: 'var(--mono)' }}>€{baselineTransfer.toLocaleString('en-AU', { maximumFractionDigits: 0 })}</strong>
+            Baseline transfer value from {lines.length} contract lines: <strong style={{ fontFamily: 'var(--mono)' }}>€{baselineTransfer.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '8px' }}>
             {years.map(y => (
               <div key={y.year} style={{ padding: '10px 12px', background: 'var(--bg3)', borderRadius: '6px', borderTop: '3px solid var(--accent)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '3px' }}>{y.year}</div>
                 <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '16px', color: 'var(--accent)' }}>
-                  €{applyEscalationFactor(baselineTransfer, y.factor).toLocaleString('en-AU', { maximumFractionDigits: 0 })}
+                  €{applyEscalationFactor(baselineTransfer, y.factor).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <div style={{ fontSize: '10px', color: 'var(--text3)' }}>× {y.factor.toFixed(4)}</div>
               </div>

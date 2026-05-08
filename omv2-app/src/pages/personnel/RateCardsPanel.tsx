@@ -237,8 +237,8 @@ export function RateCardsPanel() {
                         {s>0?<><div>{sym}{s.toFixed(2)}</div>{gm!==null&&<div style={{fontSize:'9px',color:'var(--green)'}}>{gm.toFixed(0)}%</div>}</>:'—'}
                       </td>
                     })}
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>{isMgmtCat(rc.category)?`$${(rc.fsa_sell||0).toFixed(0)}`:`$${(rc.laha_sell||0).toFixed(0)}`}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>${(rc.meal_sell||0).toFixed(0)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>{isMgmtCat(rc.category)?`$${(rc.fsa_sell||0).toFixed(2)}`:`$${(rc.laha_sell||0).toFixed(2)}`}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>${(rc.meal_sell||0).toFixed(2)}</td>
                     <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                       <button className="btn btn-sm" onClick={() => openEdit(rc)}>Edit</button>
                       <button className="btn btn-sm" style={{marginLeft:'4px'}} title="Duplicate" onClick={() => duplicate(rc)}>⧉</button>

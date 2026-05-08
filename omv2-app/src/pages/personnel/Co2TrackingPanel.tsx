@@ -130,7 +130,7 @@ export function Co2TrackingPanel() {
             <div className="kpi-lbl">Total CO₂e</div>
           </div>
           <div className="kpi-card">
-            <div className="kpi-val">{totalKg.toFixed(0)} kg</div>
+            <div className="kpi-val">{totalKg.toFixed(2)} kg</div>
             <div className="kpi-lbl">Total kg CO₂</div>
           </div>
           <div className="kpi-card">
@@ -167,7 +167,7 @@ export function Co2TrackingPanel() {
         </div>
         {form.category && DEFAULT_FACTORS[form.category] && (
           <p style={{fontSize:'11px',color:'var(--text3)',marginTop:'6px'}}>
-            Estimated: {(form.quantity * DEFAULT_FACTORS[form.category].factor).toFixed(1)} kg CO₂e
+            Estimated: {(form.quantity * DEFAULT_FACTORS[form.category].factor).toFixed(2)} kg CO₂e
             (factor: {DEFAULT_FACTORS[form.category].factor} kg/{DEFAULT_FACTORS[form.category].unit})
           </p>
         )}

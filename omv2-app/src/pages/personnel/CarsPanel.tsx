@@ -180,7 +180,7 @@ export function CarsPanel() {
     toast('Deleted', 'info'); load()
   }
 
-  const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   function exportCSV() {
     downloadCSV(

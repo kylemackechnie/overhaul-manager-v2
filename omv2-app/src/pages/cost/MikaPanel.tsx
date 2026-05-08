@@ -39,7 +39,7 @@ function parseCurrency(s: string | undefined): number {
   return parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0
 }
 
-const fmt = (n: number) => n === 0 ? '—' : '$' + Math.round(n).toLocaleString('en-AU')
+const fmt = (n: number) => n === 0 ? '—' : '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtPct = (n: number) => n === 0 ? '—' : n + '%'
 
 export function MikaPanel() {

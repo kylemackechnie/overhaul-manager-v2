@@ -275,7 +275,7 @@ export function VariationsPanel() {
         <td>${v.customer_ref || '—'}</td>
         <td class="num">${fmt2(v.cost_total || 0)}</td>
         <td class="num" style="color:#10b981;font-weight:600">${fmt2(v.sell_total || 0)}</td>
-        <td class="num" style="color:${gm>=15?'#10b981':gm>=10?'#f59e0b':'#ef4444'}">${v.sell_total ? gm.toFixed(1)+'%' : '—'}</td>
+        <td class="num" style="color:${gm>=15?'#10b981':gm>=10?'#f59e0b':'#ef4444'}">${v.sell_total ? gm.toFixed(2)+'%' : '—'}</td>
       </tr>`
     }).join('')
     const totCost = variations.reduce((s,v) => s + (v.cost_total || 0), 0)
@@ -294,7 +294,7 @@ export function VariationsPanel() {
     <p>Printed ${new Date().toLocaleDateString('en-AU')} · ${variations.length} variations</p>
     <table><thead><tr><th>VN #</th><th>Title</th><th>Status</th><th>Raised</th><th>Client Ref</th><th style="text-align:right">Cost</th><th style="text-align:right">Sell</th><th style="text-align:right">GM%</th></tr></thead>
     <tbody>${rows}
-    <tr class="total"><td colspan="5">TOTAL (${variations.length})</td><td class="num">${fmt2(totCost)}</td><td class="num">${fmt2(totSell)}</td><td class="num">${totSell?totGm.toFixed(1)+'%':'—'}</td></tr>
+    <tr class="total"><td colspan="5">TOTAL (${variations.length})</td><td class="num">${fmt2(totCost)}</td><td class="num">${fmt2(totSell)}</td><td class="num">${totSell?totGm.toFixed(2)+'%':'—'}</td></tr>
     </tbody></table><script>setTimeout(()=>window.print(),300)<\/script></body></html>`
     const w = window.open('', '_blank')
     if (w) { w.document.write(html); w.document.close() }

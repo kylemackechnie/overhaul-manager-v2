@@ -314,7 +314,7 @@ export function CostReportPanel() {
         r.code, r.name,
         ...COLUMNS.map(c => Math.round(r[c.key] as number)),
         Math.round(r.total), Math.round(r.totalSell),
-        r.margin != null ? r.margin.toFixed(1) : '',
+        r.margin != null ? r.margin.toFixed(2) : '',
       ]
       lines.push(cells.join(','))
     })
@@ -322,7 +322,7 @@ export function CostReportPanel() {
       '', 'TOTAL',
       ...COLUMNS.map(c => Math.round(rows.reduce((s, r) => s + (r[c.key] as number), 0))),
       Math.round(grandTotal), Math.round(grandSell),
-      grandMargin != null ? grandMargin.toFixed(1) : '',
+      grandMargin != null ? grandMargin.toFixed(2) : '',
     ].join(','))
     const blob = new Blob([lines.join('\n')], { type:'text/csv' })
     const a = document.createElement('a')

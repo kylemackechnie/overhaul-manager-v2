@@ -331,7 +331,7 @@ export function NrgScopeAllocationsPanel() {
           {selected.size > 0 && (
             <button className="btn btn-primary" style={{ background: '#dc2626', borderColor: '#dc2626' }}
               onClick={() => setShowCredit(true)}>
-              Issue Credit — {selected.size} line{selected.size !== 1 ? 's' : ''} ({selectedHours.toFixed(1)}h)
+              Issue Credit — {selected.size} line{selected.size !== 1 ? 's' : ''} ({selectedHours.toFixed(2)}h)
             </button>
           )}
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>

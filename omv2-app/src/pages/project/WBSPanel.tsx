@@ -215,7 +215,7 @@ export function WBSPanel() {
   const filtered = items.filter(i =>
     !search || i.code.toLowerCase().includes(search.toLowerCase()) || (i.name || '').toLowerCase().includes(search.toLowerCase())
   )
-  const fmt = (n: number | null | undefined) => n ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
+  const fmt = (n: number | null | undefined) => n ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
   return (
     <div style={{ padding: '24px', maxWidth: '960px' }}>

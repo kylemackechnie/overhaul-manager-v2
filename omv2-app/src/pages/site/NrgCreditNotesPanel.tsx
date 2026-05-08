@@ -172,8 +172,8 @@ export function NrgCreditNotesPanel() {
         <tbody>${linesHTML}</tbody>
         <tfoot><tr style="background:#f8fafc;font-weight:700">
           <td colspan="5" style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-size:10px">Total</td>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${cn.source_lines.reduce((s, l) => s + l.hours, 0).toFixed(1)}</td>
-          <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace;color:#dc2626">${totalCreditHours.toFixed(1)}</td>
+          <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${cn.source_lines.reduce((s, l) => s + l.hours, 0).toFixed(2)}</td>
+          <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace;color:#dc2626">${totalCreditHours.toFixed(2)}</td>
         </tfoot>
       </table>
       ${reallocHTML}
@@ -210,7 +210,7 @@ export function NrgCreditNotesPanel() {
         <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexShrink: 0 }}>
           {[
             { label: 'Total issued', value: String(credits.length) },
-            { label: 'Hours credited', value: `${totalCreditedHours.toFixed(1)}h` },
+            { label: 'Hours credited', value: `${totalCreditedHours.toFixed(2)}h` },
             { label: 'Reallocs', value: String(credits.filter(c => c.credit_type === 'reallocate').length) },
             { label: 'Credit only', value: String(credits.filter(c => c.credit_type === 'credit_only').length) },
             { label: 'Timesheet adj.', value: String(credits.filter(c => c.credit_type === 'adjust_timesheet').length) },
@@ -263,7 +263,7 @@ export function NrgCreditNotesPanel() {
                       <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: 'var(--text2)' }}>{fmtDateTime(cn.created_at)}</td>
                       <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{cn.source_lines.length}</td>
                       <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)', color: creditedHours ? '#dc2626' : 'var(--text3)', fontWeight: creditedHours ? 700 : 400 }}>
-                        {creditedHours !== null ? `${creditedHours.toFixed(1)}h` : '—'}
+                        {creditedHours !== null ? `${creditedHours.toFixed(2)}h` : '—'}
                       </td>
                       <td style={{ padding: '8px 12px', color: 'var(--text2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cn.reason}</td>
                       <td style={{ padding: '8px 12px' }}>
@@ -331,7 +331,7 @@ export function NrgCreditNotesPanel() {
                         <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)', padding: '1px 5px', borderRadius: 3, background: pc.bg, color: pc.color }}>{l.payCode}</span>
                         <span style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>{l.woTask || l.scopeKey}</span>
                         <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontWeight: 700, color: '#dc2626' }}>
-                          {Number(ch).toFixed(1)}h credited
+                          {Number(ch).toFixed(2)}h credited
                         </span>
                       </div>
                       {l.description && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{l.description}</div>}

@@ -144,7 +144,7 @@ export function CostDashboardPanel() {
   }
   const grandCost = Object.values(catCosts).reduce((s,v)=>s+v,0)
   const grandSell = Object.values(catSells).reduce((s,v)=>s+v,0)
-  const fmtH = (n:number) => n.toFixed(1)+'h'
+  const fmtH = (n:number) => n.toFixed(2)+'h'
 
   return (
     <div style={{padding:'24px',maxWidth:'1100px'}}>

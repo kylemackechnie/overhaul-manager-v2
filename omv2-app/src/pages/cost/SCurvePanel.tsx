@@ -6,7 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 interface SCurvePoint { week: string; forecast: number; cumulativeForecast: number; cumulativeActual: number }
 
-const fmtK = (n: number) => n >= 1000000 ? `$${(n/1000000).toFixed(1)}M` : n >= 1000 ? `$${(n/1000).toFixed(0)}k` : `$${n.toFixed(0)}`
+const fmtK = (n: number) => n >= 1000000 ? `$${(n/1000000).toFixed(2)}M` : n >= 1000 ? `$${(n/1000).toFixed(2)}k` : `$${n.toFixed(2)}`
 const fmtFull = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits:0, maximumFractionDigits:0 })
 
 export function SCurvePanel() {

@@ -135,7 +135,7 @@ export function BackOfficePanel() {
         <div>
           <h1 style={{fontSize:'18px',fontWeight:700}}>Back Office & SE Support</h1>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
-            {tab==='bo' ? `${entries.length} entries · ${totalHrs.toFixed(1)} hrs · Cost ${fmt(totalCost)}` : `${seEntries.length} entries · Cost ${fmt(seTotalAmt)} · Sell ${fmt(seTotalSell)}`}
+            {tab==='bo' ? `${entries.length} entries · ${totalHrs.toFixed(2)} hrs · Cost ${fmt(totalCost)}` : `${seEntries.length} entries · Cost ${fmt(seTotalAmt)} · Sell ${fmt(seTotalSell)}`}
           </p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
@@ -181,7 +181,7 @@ export function BackOfficePanel() {
                     <td style={{fontFamily:'var(--mono)',fontSize:'12px'}}>{e.date}</td>
                     <td style={{fontWeight:500}}>{e.name}</td>
                     <td style={{fontSize:'12px',color:'var(--text2)'}}>{e.role||'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{(e.hours||0).toFixed(1)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{(e.hours||0).toFixed(2)}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px'}}>{fmt(e.cost||0)}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'12px',color:'var(--green)'}}>{e.sell>0?fmt(e.sell):'—'}</td>
                     <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{e.wbs||'—'}</td>
@@ -194,7 +194,7 @@ export function BackOfficePanel() {
               </tbody>
               <tfoot><tr style={{background:'var(--bg3)',fontWeight:600}}>
                 <td colSpan={3} style={{padding:'8px 12px',fontSize:'12px'}}>Total ({filtered.length})</td>
-                <td style={{textAlign:'right',fontFamily:'var(--mono)',padding:'8px 12px'}}>{totalHrs.toFixed(1)}</td>
+                <td style={{textAlign:'right',fontFamily:'var(--mono)',padding:'8px 12px'}}>{totalHrs.toFixed(2)}</td>
                 <td style={{textAlign:'right',fontFamily:'var(--mono)',padding:'8px 12px'}}>{fmt(totalCost)}</td>
                 <td style={{textAlign:'right',fontFamily:'var(--mono)',padding:'8px 12px',color:'var(--green)'}}>{totalSell>0?fmt(totalSell):'—'}</td>
                 <td colSpan={2}/>

@@ -277,9 +277,9 @@ export function GlobalRateDefaultsPanel() {
                       </> : '—'}
                     </td>
                     <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>
-                      {isMgmtCat(rc.category) ? `$${(rc.fsa_sell||0).toFixed(0)}` : `$${(rc.laha_sell||0).toFixed(0)}`}
+                      {isMgmtCat(rc.category) ? `$${(rc.fsa_sell||0).toFixed(2)}` : `$${(rc.laha_sell||0).toFixed(2)}`}
                     </td>
-                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>${(rc.meal_sell||0).toFixed(0)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--mono)',fontSize:'11px'}}>${(rc.meal_sell||0).toFixed(2)}</td>
                     {isAdmin && (
                       <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                         <button className="btn btn-sm" onClick={() => openEdit(rc)}>Edit</button>

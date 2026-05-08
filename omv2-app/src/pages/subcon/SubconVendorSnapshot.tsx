@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 
-const fmt = (n: number) => n > 0 ? '$' + Math.round(n).toLocaleString('en-AU') : '—'
+const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
 interface VendorRow {
   vendor: string

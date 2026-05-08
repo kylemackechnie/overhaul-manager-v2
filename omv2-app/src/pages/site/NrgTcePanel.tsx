@@ -307,7 +307,7 @@ export function NrgTcePanel() {
         l.work_order || '', l.contract_scope || '',
         l.unit_type || '',
         l.estimated_qty || 0,
-        actHrs > 0 ? actHrs.toFixed(1) : 0,
+        actHrs > 0 ? actHrs.toFixed(2) : 0,
         l.tce_rate || 0,
         tce,
         committed,
@@ -679,7 +679,7 @@ export function NrgTcePanel() {
                         {isTceVisible('est_qty') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.estimated_qty ? l.estimated_qty.toLocaleString() : '—'}</td>}
                         {isTceVisible('act_hrs') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{(() => {
                           const hrs = l.item_id ? (hoursByItem[l.item_id] || 0) : 0
-                          return hrs > 0 ? hrs.toFixed(1) : '—'
+                          return hrs > 0 ? hrs.toFixed(2) : '—'
                         })()}</td>}
                         {isTceVisible('tce_rate') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{l.tce_rate ? '$' + Number(l.tce_rate).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>}
                         {isTceVisible('tce_total') && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{l.tce_total ? fmt(l.tce_total) : '—'}</td>}
@@ -726,7 +726,7 @@ export function NrgTcePanel() {
                           }, 0)
                           return (
                             <td key={wk} style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '10px', color: wkHrs > 0 ? '#be185d' : 'var(--text3)' }}>
-                              {wkHrs > 0 ? wkHrs.toFixed(1) + 'h' : '—'}
+                              {wkHrs > 0 ? wkHrs.toFixed(2) + 'h' : '—'}
                             </td>
                           )
                         })}
@@ -974,14 +974,14 @@ export function NrgTcePanel() {
                           <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{new Date(r.workDate+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
                           <td style={{ padding:'7px 8px', fontWeight:500 }}>{r.person}</td>
                           <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{r.role}</td>
-                          <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)' }}>{r.hours.toFixed(1)}h</td>
+                          <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)' }}>{r.hours.toFixed(2)}h</td>
                           <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'var(--green)' }}>{fmt2(r.cost)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
                       <td colSpan={3} style={{ padding:'8px' }}>Total</td>
-                      <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)' }}>{rows.reduce((s,r)=>s+r.hours,0).toFixed(1)}h</td>
+                      <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)' }}>{rows.reduce((s,r)=>s+r.hours,0).toFixed(2)}h</td>
                       <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>{fmt2(rows.reduce((s,r)=>s+r.cost,0))}</td>
                     </tr></tfoot>
                   </table>

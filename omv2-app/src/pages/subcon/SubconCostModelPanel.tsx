@@ -7,7 +7,7 @@ import type { RfqDocument, RfqResponse, PublicHoliday, ShiftPattern } from '../.
 
 type Pattern = CostModelShiftPattern | NamedShiftPattern
 
-const fmt  = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
+const fmt  = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtD = (s: string | null) => s ? s.split('-').reverse().join('/') : '—'
 const fmtPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%'
@@ -545,7 +545,7 @@ function CostModelOutput({ result, doc, startDate, endDate, pattern }: { result:
                           })
                           const minT = Math.min(...allTotals.filter(c => c > 0))
                           const isBest = total > 0 && total === minT && allTotals.filter(c => c > 0).length > 1
-                          return <td key={t} style={{ ...TD_STYLE, fontSize: '9px', color: isBest ? 'var(--green)' : 'var(--text3)' }} title={laha > 0 ? `+$${laha.toFixed(0)} LAHA` : ''}>{total > 0 ? fmt(total) : '—'}</td>
+                          return <td key={t} style={{ ...TD_STYLE, fontSize: '9px', color: isBest ? 'var(--green)' : 'var(--text3)' }} title={laha > 0 ? `+$${laha.toFixed(2)} LAHA` : ''}>{total > 0 ? fmt(total) : '—'}</td>
                         })
                       })}
                     </tr>,
@@ -650,7 +650,7 @@ function VendorRateSnapshot({ vendor: v, doc, startDate, pattern }: { vendor: Pe
                   <td style={{ ...cStyle, color: 'var(--text3)' }}>{na}</td>
                   <td style={{ ...cStyle, color: 'var(--text3)' }}>{na}</td>
                   <td style={{ ...cStyle, color: 'var(--text3)' }}>{na}</td>
-                  <td style={{ ...cStyle, fontWeight: 600 }}>{rb.lahaPerDay > 0 ? '$' + rb.lahaPerDay.toFixed(0) : na}</td>
+                  <td style={{ ...cStyle, fontWeight: 600 }}>{rb.lahaPerDay > 0 ? '$' + rb.lahaPerDay.toFixed(2) : na}</td>
                 </tr>
               )
             })}
@@ -706,7 +706,7 @@ function VendorRateSnapshot({ vendor: v, doc, startDate, pattern }: { vendor: Pe
                       weekTotal += lahaDay
                       return (
                         <td key={di} style={{ ...cStyle, color: 'var(--text3)' }} title="Rest day">
-                          {lahaDay > 0 ? <span style={{ fontSize: '8px' }}>LAHA<br />${lahaDay.toFixed(0)}</span> : '—'}
+                          {lahaDay > 0 ? <span style={{ fontSize: '8px' }}>LAHA<br />${lahaDay.toFixed(2)}</span> : '—'}
                         </td>
                       )
                     }
@@ -714,9 +714,9 @@ function VendorRateSnapshot({ vendor: v, doc, startDate, pattern }: { vendor: Pe
                     const shiftCost = isNight ? rb.sunCost /* use sun as NS proxy */ : (dayType === 'saturday' ? rb.satCost : dayType === 'sunday' ? rb.sunCost : rb.wdCost)
                     weekTotal += shiftCost + lahaDay
                     return (
-                      <td key={di} style={cStyle} title={`Labour: $${shiftCost.toFixed(0)} | LAHA: $${lahaDay.toFixed(0)}`}>
+                      <td key={di} style={cStyle} title={`Labour: $${shiftCost.toFixed(2)} | LAHA: $${lahaDay.toFixed(2)}`}>
                         <span style={{ display: 'block' }}>${Math.round(shiftCost).toLocaleString()}</span>
-                        {lahaDay > 0 && <span style={{ display: 'block', color: 'var(--text3)', fontSize: '8px' }}>+${lahaDay.toFixed(0)} LAHA</span>}
+                        {lahaDay > 0 && <span style={{ display: 'block', color: 'var(--text3)', fontSize: '8px' }}>+${lahaDay.toFixed(2)} LAHA</span>}
                       </td>
                     )
                   })
@@ -793,7 +793,7 @@ function DayByDayTable({ result, doc, startDate, endDate }: { result: CostModelR
                 const dayType: 'weekday' | 'saturday' | 'sunday' | 'publicHoliday' = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'weekday'
                 const cost: Record<string, number> = { weekday: rb.wdCost, saturday: rb.satCost, sunday: rb.sunCost, publicHoliday: rb.phCost }
                 const c = (cost[dayType] || 0) * rb.headcount
-                return <td key={li} style={{ padding: '3px 6px', border: '1px solid var(--border2)', textAlign: 'right', fontSize: '9px' }}>{c > 0 ? '$' + Math.round(c).toLocaleString() : '—'}</td>
+                return <td key={li} style={{ padding: '3px 6px', border: '1px solid var(--border2)', textAlign: 'right', fontSize: '9px' }}>{c > 0 ? '$' + c.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>
               })}
             </tr>
           ))}

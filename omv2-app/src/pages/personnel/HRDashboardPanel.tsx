@@ -4,8 +4,8 @@ import { useAppStore } from '../../store/appStore'
 import type { RateCard } from '../../types'
 
 const COLOR = 'var(--mod-hr)'
-const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
-const fmtH = (n: number) => n.toFixed(1) + 'h'
+const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtH = (n: number) => n.toFixed(2) + 'h'
 
 interface WeekData { week_start: string; type: string; crew: { role?: string; days?: Record<string, { hours?: number; dayType?: string; shiftType?: string }> }[] }
 

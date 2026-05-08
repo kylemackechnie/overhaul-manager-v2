@@ -37,7 +37,7 @@ export function ToolingReportsPanel() {
 
   const totalCostEur = costings.reduce((s, c) => s + (c.cost_eur || 0), 0)
   const totalSellEur = costings.reduce((s, c) => s + (c.sell_eur || 0), 0)
-  const fmtEur = (n: number) => '€' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+  const fmtEur = (n: number) => '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   function daysBetween(a: string | null, b: string | null) {
     if (!a || !b) return null

@@ -86,7 +86,7 @@ export function HSEHoursPanel() {
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>HSE Hours</h1>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
-            {filtered.length} entries · {totalHours.toFixed(1)} hours
+            {filtered.length} entries · {totalHours.toFixed(2)} hours
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -146,7 +146,7 @@ export function HSEHoursPanel() {
             <tfoot>
               <tr style={{ background: 'var(--bg3)', fontWeight: 700 }}>
                 <td colSpan={3} style={{ padding: '8px 12px' }}>Total ({filtered.length})</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{totalHours.toFixed(1)}h</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{totalHours.toFixed(2)}h</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>

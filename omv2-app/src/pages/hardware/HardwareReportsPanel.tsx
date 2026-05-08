@@ -30,7 +30,7 @@ export function HardwareReportsPanel() {
   const allLines = contracts.flatMap(c => (c.line_items || []).map(l => ({ ...l, vendor: c.vendor, currency: c.currency })))
   const totalTransfer = allLines.reduce((s, l) => s + (l.transfer_price * l.qty || 0), 0)
   const totalCustomer = allLines.reduce((s, l) => s + (l.customer_price * l.qty || 0), 0)
-  const fmtAmt = (n: number, cur = 'EUR') => (cur === 'EUR' ? '€' : '$') + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+  const fmtAmt = (n: number, cur = 'EUR') => (cur === 'EUR' ? '€' : '$') + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 
   function printGermanOrder() {

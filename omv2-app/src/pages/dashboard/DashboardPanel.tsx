@@ -23,8 +23,8 @@ import type { DashboardTileConfig } from '../../types'
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const todayStr = new Date().toISOString().slice(0, 10)
-const fmt = (n: number) => 'A$' + Math.round(n).toLocaleString('en-AU')
-const fmtH = (n: number) => Math.round(n).toLocaleString() + 'h'
+const fmt = (n: number) => 'A$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtH = (n: number) => n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'h'
 
 function daysUntil(date: string | null | undefined) {
   if (!date) return null

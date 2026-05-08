@@ -25,7 +25,7 @@ const fmt = (v: number, cur = 'AUD') => {
   const sym = cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : cur === 'USD' ? 'US$' : '$'
   if (!v) return '—'
   if (Math.abs(v) >= 1e6) return sym + (v/1e6).toFixed(2) + 'M'
-  if (Math.abs(v) >= 1000) return sym + (v/1000).toFixed(1) + 'k'
+  if (Math.abs(v) >= 1000) return sym + (v/1000).toFixed(2) + 'k'
   return sym + v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 const pct = (v: number, total: number) => total > 0 ? Math.round(v/total*100) + '%' : '0%'
@@ -275,8 +275,8 @@ export function POsPanel() {
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:'10px',marginBottom:'16px'}}>
         {[
           { label:'Active POs', value: activeCount || '—', color:'var(--accent)' },
-          { label:'Committed (AUD)', value: committedAUD ? '$' + Math.round(committedAUD).toLocaleString() : '—', color:'#1e40af' },
-          { label:'Total Invoiced', value: totalInvoicedAUD ? '$' + Math.round(totalInvoicedAUD).toLocaleString() : '—', color:'#059669' },
+          { label:'Committed (AUD)', value: committedAUD ? '$' + committedAUD.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—', color:'#1e40af' },
+          { label:'Total Invoiced', value: totalInvoicedAUD ? '$' + totalInvoicedAUD.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—', color:'#059669' },
           { label:'Draft / Quoted', value: draftCount || '—', color:'#d97706' },
           { label:'Closed', value: closedCount || '—', color:'#6b7280' },
         ].map(k => (

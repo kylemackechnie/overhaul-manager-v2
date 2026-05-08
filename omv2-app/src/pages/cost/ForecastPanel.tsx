@@ -40,18 +40,18 @@ const HOUR_CATS: { key: 'trades'|'mgmt'|'seag'; label: string }[] = [
 // ── Formatters ──
 const fmt = (v: number): string => {
   if (Math.abs(v) < 0.5) return '$0'
-  return '$' + Math.round(v).toLocaleString('en-AU')
+  return '$' + v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 const fmtEur = (v: number): string => {
   if (Math.abs(v) < 0.5) return '€0'
-  return '€' + Math.round(v).toLocaleString('en-AU')
+  return '€' + v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 const fmtCat = (v: number, cat: CatKey): string => EUR_CATS.has(cat) ? fmtEur(v) : fmt(v)
-const fmtFull = (v: number) => '$' + v.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+const fmtFull = (v: number) => '$' + v.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtGm = (cost: number, sell: number): string => {
   if (sell <= 0.5) return '—'
   const gm = ((sell - cost) / sell) * 100
-  return gm.toFixed(1) + '%'
+  return gm.toFixed(2) + '%'
 }
 
 function isWeekend(d: string): boolean {
@@ -398,7 +398,7 @@ export function ForecastPanel() {
           <div className="kpi-lbl">Total Sell ({(activeProject?.currency as string) || 'AUD'})</div>
         </div>
         <div className="kpi-card" style={{ borderTopColor: kpis.gm >= 15 ? 'var(--green)' : kpis.gm >= 10 ? 'var(--amber)' : 'var(--red)' }}>
-          <div className="kpi-val" style={{ color: kpis.gm >= 15 ? 'var(--green)' : kpis.gm >= 10 ? 'var(--amber)' : 'var(--red)' }}>{kpis.gm.toFixed(1)}%</div>
+          <div className="kpi-val" style={{ color: kpis.gm >= 15 ? 'var(--green)' : kpis.gm >= 10 ? 'var(--amber)' : 'var(--red)' }}>{kpis.gm.toFixed(2)}%</div>
           <div className="kpi-lbl">Blended GM%</div>
         </div>
         <div className="kpi-card">

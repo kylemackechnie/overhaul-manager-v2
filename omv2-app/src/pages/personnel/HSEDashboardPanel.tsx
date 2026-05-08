@@ -70,7 +70,7 @@ export function HSEDashboardPanel() {
       <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Activity</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
         {[
-          { label: 'Total HSE Hours', value: stats.hseHours.toFixed(1) + 'h', color: COLOR, panel: 'hse-hours' },
+          { label: 'Total HSE Hours', value: stats.hseHours.toFixed(2) + 'h', color: COLOR, panel: 'hse-hours' },
           { label: 'Toolbox Talks', value: stats.toolboxTalks, color: '#0284c7', panel: 'hse-hours' },
           { label: 'Safety Observations', value: stats.observations, color: '#7c3aed', panel: 'hse-hours' },
           { label: 'Incident Investigations', value: stats.incidents, color: stats.incidents > 0 ? 'var(--red)' : 'var(--text3)', panel: 'hse-hours' },

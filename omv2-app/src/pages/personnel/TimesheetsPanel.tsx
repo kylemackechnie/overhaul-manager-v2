@@ -156,7 +156,7 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
       totalSell += sell
       return `<td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center">
         <div style="font-weight:700">${effH.toFixed(1)}h</div>
-        ${sell>0?`<div style="font-size:9px;color:#059669">${week.type==='seag'?'€':'$'}${sell.toFixed(0)}</div>`:''}
+        ${sell>0?`<div style="font-size:9px;color:#059669">${week.type==='seag'?'€':'$'}${sell.toFixed(2)}</div>`:''}
       </td>`
     }).join('')
 
@@ -213,7 +213,7 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
   rateCards.forEach(r => { rcByRole[r.role.toLowerCase()] = r })
   const fmtDate = (d: Date) => d.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' })
   const fmtMoney = (n: number) => n > 0 ? `$${n.toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '—'
-  const fmtHrs = (n: number) => n > 0 ? `${n.toFixed(1)}h` : '—'
+  const fmtHrs = (n: number) => n > 0 ? `${n.toFixed(2)}h` : '—'
   const endDate = new Date(monday); endDate.setDate(monday.getDate()+6)
   const genDate = new Date().toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' })
   void fmtDate; void endDate
@@ -459,7 +459,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   function saveWoAlloc() {
     if (!woAllocModal || !activeWeek) return
     const total = woAllocRows.reduce((s, r) => s + (r.hours || 0), 0)
-    if (total > woAllocModal.hours + 0.01) { toast(`Total (${total.toFixed(1)}h) exceeds shift hours (${woAllocModal.hours}h)`, 'error'); return }
+    if (total > woAllocModal.hours + 0.01) { toast(`Total (${total.toFixed(2)}h) exceeds shift hours (${woAllocModal.hours}h)`, 'error'); return }
     const updated = activeWeek.crew.map(m => {
       if (m.personId !== woAllocModal.personId) return m
       const existing: Record<string, unknown> = (m.days?.[woAllocModal.date] as Record<string,unknown>) || {}
@@ -828,7 +828,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     for (const s of resolveModal.splits) {
       const sum = s.split.reduce((a, b) => a + (b || 0), 0)
       if (Math.abs(sum - s.totalHours) > 0.01) {
-        toast(`${s.personName} ${s.date} WO ${s.wo}: split (${sum.toFixed(1)}h) ≠ total (${s.totalHours.toFixed(1)}h)`, 'error')
+        toast(`${s.personName} ${s.date} WO ${s.wo}: split (${sum.toFixed(2)}h) ≠ total (${s.totalHours.toFixed(2)}h)`, 'error')
         return
       }
     }
@@ -954,11 +954,11 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const eurToAud = getEurToBase(activeProject)
   const fmt = (n: number) => {
     if (!(n > 0)) return '—'
-    if (isSeagWeek) return '€' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
-    return '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+    if (isSeagWeek) return '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
   // AUD-equivalent display for SE AG (used in week list subtitle)
-  const fmtAudEquiv = (n: number) => n > 0 ? ' ≈$' + Math.round(n * eurToAud).toLocaleString('en-AU') : ''
+  const fmtAudEquiv = (n: number) => n > 0 ? ' ≈$' + (n * eurToAud).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
 
   function weekTotals(s: WeeklyTimesheet) {
     let hours = 0, sell = 0, cost = 0
@@ -980,7 +980,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           const de = m.days[d] as Record<string,unknown> | undefined
           return (de?.hours as number) || 0
         }),
-        t.hours.toFixed(1),
+        t.hours.toFixed(2),
         t.sell.toFixed(2),
       ])
     })
@@ -1041,7 +1041,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 {[
                   { label: 'Weeks', value: sheets.length, color: TYPE_COLOR[type] },
                   { label: 'Approved', value: `${approved}/${sheets.length}`, color: 'var(--green)' },
-                  { label: 'Total Hours', value: totals.hours.toFixed(1) + 'h', color: TYPE_COLOR[type] },
+                  { label: 'Total Hours', value: totals.hours.toFixed(2) + 'h', color: TYPE_COLOR[type] },
                   { label: isSeagWeek ? 'Total Sell (EUR)' : 'Total Sell', value: totals.sell > 0 ? fmt(totals.sell) : '—', color: 'var(--green)' },
                 ].map(t => (
                   <div key={t.label} className="card" style={{ padding: '12px', borderTop: `3px solid ${t.color}` }}>
@@ -1432,7 +1432,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                           style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 600, padding: '2px 4px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: cellHrs > 0 ? 'var(--text)' : 'var(--text3)', textAlign: 'center' }}
                           onChange={e => setDay(member.personId, d, 'hours', parseFloat(e.target.value) || 0)} />
                         {/* EBA adjustment display */}
-                        {adjH > 0 && <div style={{ fontSize: '9px', color: TYPE_COLOR[type], textAlign: 'center', marginTop: '1px' }}>{dispHrs.toFixed(1)}h (adj)</div>}
+                        {adjH > 0 && <div style={{ fontSize: '9px', color: TYPE_COLOR[type], textAlign: 'center', marginTop: '1px' }}>{dispHrs.toFixed(2)}h (adj)</div>}
                         <select value={dayType} style={{ width: '100%', fontSize: '9px', padding: '1px 2px', border: '1px solid var(--border2)', borderRadius: '2px', background: 'var(--bg3)', color: 'var(--text3)', marginTop: '2px' }}
                           onChange={e => {
                             const newType = e.target.value
@@ -1453,7 +1453,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                         {splitEntries.length > 0 && (
                           <div style={{ marginTop: '2px', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
                             {splitEntries.map(([k, v]) => (
-                              <span key={k} style={{ color: SPLIT_COLORS[k], fontSize: '9px' }}>{SPLIT_LABELS[k]}:{v.toFixed(1)}</span>
+                              <span key={k} style={{ color: SPLIT_COLORS[k], fontSize: '9px' }}>{SPLIT_LABELS[k]}:{v.toFixed(2)}</span>
                             ))}
                           </div>
                         )}
@@ -1530,7 +1530,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                                   {!reconciled && (
                                     <div title={`TCE total ${tceTotal.toFixed(2)}h ≠ day hours ${dayTotal.toFixed(2)}h — reimport TasTK or adjust allocations`}
                                       style={{ fontSize: '8px', color: '#d97706', lineHeight: 1.2, textAlign: 'center', cursor: 'help' }}>
-                                      ⚠ {tceTotal.toFixed(1)}h≠{dayTotal.toFixed(1)}h
+                                      ⚠ {tceTotal.toFixed(2)}h≠{dayTotal.toFixed(2)}h
                                     </div>
                                   )}
                                   {reconciled && scopeLabel && (
@@ -1563,7 +1563,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           {activeWeek.crew.length > 0 && (() => {
             let tHrs = 0, tSell = 0, tCost = 0
             activeWeek.crew.forEach(m => { const t = calcPersonTotals(m, getRC(m.role)); tHrs += t.hours; tSell += t.sell; tCost += t.cost })
-            const margin = tSell > 0 ? ((tSell - tCost) / tSell * 100).toFixed(1) : null
+            const margin = tSell > 0 ? ((tSell - tCost) / tSell * 100).toFixed(2) : null
             return (
               <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px', background: 'var(--bg3)', border: '1px solid var(--border)', borderTop: '2px solid var(--border2)', borderRadius: '0 0 6px 6px', padding: '8px 10px', minWidth: '960px' }}>
                 <div style={{ fontWeight: 700, fontSize: '12px' }}>Week Total — {activeWeek.crew.length} people</div>
@@ -1724,7 +1724,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>ALLOCATED</div><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: '#7c3aed' }}>{total.toFixed(1)}h</div></div>
                     <div><div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{over ? 'OVER' : 'REMAINING'}</div>
                       <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: over ? 'var(--red)' : diff > 0.01 ? 'var(--amber)' : 'var(--green)' }}>
-                        {over ? `+${Math.abs(diff).toFixed(1)}h` : diff.toFixed(1)+'h'}
+                        {over ? `+${Math.abs(diff).toFixed(2)}h` : diff.toFixed(2)+'h'}
                       </div>
                     </div>
                   </div>
@@ -1893,7 +1893,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     <div>
                       <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)', marginBottom: '2px' }}>{over ? 'OVER' : 'REMAINING'}</div>
                       <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: over ? 'var(--red)' : diff > 0.01 ? 'var(--amber)' : 'var(--green)' }}>
-                        {over ? `+${Math.abs(diff).toFixed(1)}h` : `${diff.toFixed(1)}h`}
+                        {over ? `+${Math.abs(diff).toFixed(2)}h` : `${diff.toFixed(2)}h`}
                       </div>
                     </div>
                     {!over && diff <= 0.01 && total > 0 && (
@@ -1954,7 +1954,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             <span style={{ marginLeft: '8px', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>WO {s.wo}</span>
                           </div>
                           <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: balanced ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-                            {sum.toFixed(1)}h / {s.totalHours.toFixed(1)}h
+                            {sum.toFixed(2)}h / {s.totalHours.toFixed(2)}h
                           </div>
                         </div>
                         {s.candidates.map((c, ci) => (

@@ -98,7 +98,7 @@ export function WOActualsPanel() {
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Work Order Actuals</h1>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
-            Hours allocated from timesheets · {summaries.length} WOs · {totalActual.toFixed(1)}h total
+            Hours allocated from timesheets · {summaries.length} WOs · {totalActual.toFixed(2)}h total
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -110,7 +110,7 @@ export function WOActualsPanel() {
       {/* Summary tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
         {[
-          { label: 'Total Actual Hours', value: totalActual.toFixed(1) + 'h', color: '#7c3aed' },
+          { label: 'Total Actual Hours', value: totalActual.toFixed(2) + 'h', color: '#7c3aed' },
           { label: 'Budget Hours', value: totalBudget > 0 ? totalBudget.toFixed(0) + 'h' : '—', color: 'var(--text2)' },
           { label: '% Budget Used', value: totalBudget > 0 ? pct.toFixed(1) + '%' : '—', color: pct > 100 ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--green)' },
           { label: 'WOs with Actuals', value: summaries.filter(w => w.total_hours > 0).length, color: '#7c3aed' },
@@ -161,7 +161,7 @@ export function WOActualsPanel() {
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{w.budget_hours ? w.budget_hours.toFixed(0) : '—'}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: w.total_hours > 0 ? 600 : 400, color: '#7c3aed' }}>
-                      {w.total_hours > 0 ? w.total_hours.toFixed(1) : '—'}
+                      {w.total_hours > 0 ? w.total_hours.toFixed(2) : '—'}
                     </td>
                     <td>
                       {prog ? (
@@ -181,7 +181,7 @@ export function WOActualsPanel() {
                       <td style={{ fontSize: '11px', color: 'var(--text3)', paddingLeft: '20px' }}>└ {name}</td>
                       <td />
                       <td />
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{hrs.toFixed(1)}h</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{hrs.toFixed(2)}h</td>
                       <td />
                     </tr>
                   ))}
@@ -192,7 +192,7 @@ export function WOActualsPanel() {
               <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
                 <td colSpan={4} style={{ padding: '8px 12px' }}>Total</td>
                 <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--text3)' }}>{totalBudget > 0 ? totalBudget.toFixed(0) : '—'}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: '#7c3aed' }}>{totalActual.toFixed(1)}h</td>
+                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: '#7c3aed' }}>{totalActual.toFixed(2)}h</td>
                 <td />
               </tr>
             </tfoot>

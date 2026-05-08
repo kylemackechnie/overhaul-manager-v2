@@ -35,8 +35,8 @@ type CostingRow = ToolingCosting & {
   splits: Split[]
 }
 
-const fmtEur = (n: number) => '€' + Math.round(n).toLocaleString('en-AU')
-const fmtAud = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
+const fmtEur = (n: number) => '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtAud = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 function daysBetween(start: string, end: string) {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)

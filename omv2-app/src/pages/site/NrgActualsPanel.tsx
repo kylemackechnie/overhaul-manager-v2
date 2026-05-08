@@ -234,7 +234,7 @@ export function NrgActualsPanel() {
   const totTce = withActuals.reduce((s, x) => s + x.tce, 0)
   const totAct = withActuals.reduce((s, x) => s + x.actuals, 0)
   const totPct = totTce > 0 ? (totAct / totTce) * 100 : null
-  const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+  const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   function printReport() {
     const projName = activeProject?.name || 'Project'
@@ -242,7 +242,7 @@ export function NrgActualsPanel() {
     const weekLabel = weekFilter
       ? (() => { const dt = new Date(weekFilter + 'T00:00:00'); const sun = new Date(dt); sun.setUTCDate(dt.getUTCDate()+6); return dt.toLocaleDateString('en-AU',{day:'2-digit',month:'short'}) + ' – ' + sun.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) })()
       : 'Project to Date'
-    const fmtP = (n: number) => '$' + Math.round(n).toLocaleString('en-AU')
+    const fmtP = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
     const TH = (s: string, right = false) =>
       `<th style="background:#f1f5f9;border:1px solid #cbd5e1;padding:5px 8px;font-size:9px;text-transform:uppercase;text-align:${right?'right':'left'};color:#475569;font-weight:700">${s}</th>`
@@ -328,7 +328,7 @@ ${sectionHTML}
         line.item_id || '', line.source, line.description, line.work_order || '',
         line.contract_scope || '',
         String(line.estimated_qty || ''),
-        String(line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toFixed(1) : ''),
+        String(line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toFixed(2) : ''),
         String(tce), String(actuals),
       ]
       if (weekFilter) row.push(String(weekActuals || 0))

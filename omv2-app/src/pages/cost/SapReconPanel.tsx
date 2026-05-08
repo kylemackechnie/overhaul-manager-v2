@@ -19,7 +19,7 @@ type Tab = 'person' | 'category' | 'wbs' | 'raw'
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) => '$' + Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtH = (n: number) => n.toFixed(1)
+const fmtH = (n: number) => n.toFixed(2)
 
 function normName(s: string) {
   return s.toLowerCase().replace(/[^a-z]/g, '').trim()
@@ -400,7 +400,7 @@ export function SapReconPanel() {
                           <td style={{ fontSize: '12px' }}>{cat || '(Unknown)'}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: 600 }}>{fmt(val)}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>
-                            {catTotal > 0 ? (val / catTotal * 100).toFixed(1) + '%' : '—'}
+                            {catTotal > 0 ? (val / catTotal * 100).toFixed(2) + '%' : '—'}
                           </td>
                         </tr>
                       ))}

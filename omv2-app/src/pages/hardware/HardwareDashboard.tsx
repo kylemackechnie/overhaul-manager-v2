@@ -25,7 +25,7 @@ export function HardwareDashboard() {
     setLoading(false)
   }
 
-  const fmt = (n: number) => n > 0 ? n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
+  const fmt = (n: number) => n > 0 ? n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
   if (loading) return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /></div></div>
 
   return (

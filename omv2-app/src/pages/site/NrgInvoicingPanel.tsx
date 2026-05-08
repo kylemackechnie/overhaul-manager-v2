@@ -14,7 +14,7 @@ import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
 import type { RateCard, WeeklyTimesheet } from '../../types'
 import type { NrgTceLine, NrgCustomerInvoice, NrgInvoiceGroupingRule } from '../../types'
 
-const fmt = (n: number) => n === 0 ? '—' : '$' + Math.round(n).toLocaleString('en-AU')
+const fmt = (n: number) => n === 0 ? '—' : '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const DEFAULT_RULES = [
   { group_name: 'TasTK — Overheads & Skilled Labour', triggers: ['000001','000003','000004','/00001','/00003','/00004'], sort_order: 0 },
@@ -587,7 +587,7 @@ export function NrgInvoicingPanel() {
                           <tr key={we} style={{ borderBottom: '1px solid var(--border)', background: pending ? '#fff7f7' : undefined }}>
                             <td style={{ padding: '5px 10px' }}>{fmtWE(we)}</td>
                             <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
-                              {(hoursWeeks[we] || 0).toFixed(1)}h
+                              {(hoursWeeks[we] || 0).toFixed(2)}h
                             </td>
                             {hasEurWeeks && <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: vals.sellEur > 0 ? '#7c3aed' : 'var(--text3)' }}>
                               {vals.sellEur > 0 ? fmtEur(vals.sellEur) : '—'}
@@ -607,7 +607,7 @@ export function NrgInvoicingPanel() {
                         <tr style={{ background: 'var(--bg2)', fontWeight: 700 }}>
                           <td style={{ padding: '5px 10px' }}>Total Labour</td>
                           <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
-                            {labourWeeks.reduce((s, [we]) => s + (hoursWeeks[we] || 0), 0).toFixed(1)}h
+                            {labourWeeks.reduce((s, [we]) => s + (hoursWeeks[we] || 0), 0).toFixed(2)}h
                           </td>
                           {hasEurWeeks && <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed' }}>
                             {fmtEur(labourWeeks.reduce((s,[,v]) => s + v.sellEur, 0))}

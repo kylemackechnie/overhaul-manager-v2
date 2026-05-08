@@ -149,16 +149,16 @@ function computePreview(rates: RfqResponseLabourRates, shiftType: RfqLabourRow['
   const ph = computeFor('public_holiday', sunShiftHrs)
 
   // Breakdown for weekday
-  const wdNT = Math.min(shiftHrs, ntHrs).toFixed(1)
-  const wdT15 = Math.min(Math.max(0, shiftHrs - ntHrs), ot1Hrs).toFixed(1)
-  const wdDT = Math.max(0, shiftHrs - ntHrs - ot1Hrs).toFixed(1)
+  const wdNT = Math.min(shiftHrs, ntHrs).toFixed(2)
+  const wdT15 = Math.min(Math.max(0, shiftHrs - ntHrs), ot1Hrs).toFixed(2)
+  const wdDT = Math.max(0, shiftHrs - ntHrs - ot1Hrs).toFixed(2)
   const parts: string[] = []
   if (+wdNT) parts.push(`${wdNT}h NT @ $${dnt}`)
   if (+wdT15) parts.push(`${wdT15}h T1.5 @ $${dt15}`)
   if (+wdDT) parts.push(`${wdDT}h DT @ $${ddt}`)
   if (isDual && nnt) {
-    const nNT = Math.min(nshiftHrs, nntHrs).toFixed(1)
-    const nDT = Math.max(0, nshiftHrs - nntHrs).toFixed(1)
+    const nNT = Math.min(nshiftHrs, nntHrs).toFixed(2)
+    const nDT = Math.max(0, nshiftHrs - nntHrs).toFixed(2)
     if (+nNT) parts.push(`Night: ${nNT}h N-NT @ $${nnt}`)
     if (+nDT) parts.push(`${nDT}h N-DT @ $${ndt}`)
   }

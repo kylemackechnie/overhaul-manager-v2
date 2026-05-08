@@ -5,7 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { parseHardwareContract } from '../../lib/hardwareContractImport'
 import type { ContractImportResult } from '../../lib/hardwareContractImport'
 
-const fmt = (n: number) => '€' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+const fmt = (n: number) => '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function HardwareImportPanel() {
   const { activeProject, setActivePanel } = useAppStore()

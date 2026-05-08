@@ -26,7 +26,7 @@ const NRG_OHF_SUBTYPES = [
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
-  return '$' + Math.round(n).toLocaleString('en-AU')
+  return '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function vc(fc: number, tce: number): string {
@@ -358,7 +358,7 @@ export function NrgOhfPanel() {
                     <td style={{ textAlign: 'right', fontSize: '11px', fontWeight: 700 }}>{sFc ? fmt(sFc) : '—'}</td>
                     <td style={{ textAlign: 'right', fontSize: '11px', fontWeight: 700, color: vc(sFc, sTce) }}>{sFc ? fmt(sVar) : '—'}</td>
                     <td style={{ textAlign: 'right', fontSize: '11px', color: vc(sFc, sTce) }}>
-                      {sTce > 0 && sFc ? (sVar / sTce * 100).toFixed(1) + '%' : '—'}
+                      {sTce > 0 && sFc ? (sVar / sTce * 100).toFixed(2) + '%' : '—'}
                     </td>
                   </tr>,
                   ...lines.map(l => {
@@ -455,7 +455,7 @@ export function NrgOhfPanel() {
                 <td style={{ textAlign: 'right', color: vc(grandFc, grandTce) }}>{grandFc ? fmt(grandFc) : '—'}</td>
                 <td style={{ textAlign: 'right', color: vc(grandFc, grandTce) }}>{grandFc ? fmt(grandVar) : '—'}</td>
                 <td style={{ textAlign: 'right', color: vc(grandFc, grandTce) }}>
-                  {grandTce > 0 && grandFc ? (grandVar / grandTce * 100).toFixed(1) + '%' : '—'}
+                  {grandTce > 0 && grandFc ? (grandVar / grandTce * 100).toFixed(2) + '%' : '—'}
                 </td>
               </tr>
             </tfoot>

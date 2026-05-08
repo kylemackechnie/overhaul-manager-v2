@@ -87,7 +87,7 @@ export function WOProgressPanel() {
           { label: 'In Progress', value: inProg, color: '#d97706' },
           { label: 'Complete', value: complete, color: 'var(--green)' },
           { label: 'Budget Hours', value: totalBudget.toFixed(0) + 'h', color: COLOR },
-          { label: 'Actual Hours', value: totalActual.toFixed(1) + 'h', color: totalActual > totalBudget ? 'var(--red)' : 'var(--green)' },
+          { label: 'Actual Hours', value: totalActual.toFixed(2) + 'h', color: totalActual > totalBudget ? 'var(--red)' : 'var(--green)' },
         ].map(t => (
           <div key={t.label} className="card" style={{ padding: '12px', borderTop: `3px solid ${t.color}` }}>
             <div style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'var(--mono)', color: t.color }}>{t.value}</div>
@@ -101,7 +101,7 @@ export function WOProgressPanel() {
         <div className="card" style={{ padding: '12px 16px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
             <span style={{ fontWeight: 600 }}>Overall Progress</span>
-            <span style={{ fontFamily: 'var(--mono)', color: COLOR }}>{totalActual.toFixed(1)}h of {totalBudget.toFixed(0)}h — {totalBudget > 0 ? Math.round(totalActual / totalBudget * 100) : 0}%</span>
+            <span style={{ fontFamily: 'var(--mono)', color: COLOR }}>{totalActual.toFixed(2)}h of {totalBudget.toFixed(0)}h — {totalBudget > 0 ? Math.round(totalActual / totalBudget * 100) : 0}%</span>
           </div>
           <div style={{ background: 'var(--border2)', borderRadius: '5px', height: '10px', overflow: 'hidden', marginBottom: '6px' }}>
             <div style={{ height: '100%', width: Math.min(100, totalBudget > 0 ? totalActual / totalBudget * 100 : 0) + '%', background: totalActual > totalBudget ? 'var(--red)' : COLOR, borderRadius: '5px', transition: 'width .4s' }} />
@@ -149,9 +149,9 @@ export function WOProgressPanel() {
                       <td style={{ color: 'var(--text2)' }}>{w.description}</td>
                       <td><span className="badge" style={ss}>{STATUS_LABEL[w.status] || w.status}</span></td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{budget > 0 ? budget.toFixed(0) + 'h' : '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--mod-hr)' }}>{actual > 0 ? actual.toFixed(1) + 'h' : '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--mod-hr)' }}>{actual > 0 ? actual.toFixed(2) + 'h' : '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance > 0 ? 'var(--amber)' : variance < 0 ? 'var(--green)' : 'var(--text3)' }}>
-                        {variance !== 0 && budget > 0 ? (variance > 0 ? '+' : '') + variance.toFixed(1) + 'h' : '—'}
+                        {variance !== 0 && budget > 0 ? (variance > 0 ? '+' : '') + variance.toFixed(2) + 'h' : '—'}
                       </td>
                       <td>
                         {budget > 0 ? (

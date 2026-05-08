@@ -287,7 +287,7 @@ export function CustomerReportPanel() {
         const totalDisplay = p.isSeag
           ? (allAUD ? fmtV(p.sell * eurToAud + p.allowances) : `${fmtEUR(p.sell)} + ${fmtV(p.allowances)}`)
           : fmtV(p.sell + p.allowances)
-        return `<tr>${TD(p.name, false, true)}${TD(p.role)}${TD(p.type)}${TD(p.hours.toFixed(1), true)}${TD(`${sellDisplay} <span style="font-size:8px;color:#94a3b8">${sellLabel}</span>`, true)}${TD(allowDisplay, true)}${TD(totalDisplay, true, true)}</tr>`
+        return `<tr>${TD(p.name, false, true)}${TD(p.role)}${TD(p.type)}${TD(p.hours.toFixed(2), true)}${TD(`${sellDisplay} <span style="font-size:8px;color:#94a3b8">${sellLabel}</span>`, true)}${TD(allowDisplay, true)}${TD(totalDisplay, true, true)}</tr>`
       }).join('')
 
       // Labour subtotal label
@@ -349,7 +349,7 @@ export function CustomerReportPanel() {
     // 5. Back Office Hours
     if (boPeople.length) {
       const rows = boPeople.sort((a, b) => b.sell - a.sell).map(p =>
-        `<tr>${TD(p.name, false, true)}${TD(p.role)}${TD(p.hours.toFixed(1), true)}${TD(fmtV(p.sell), true, true)}</tr>`
+        `<tr>${TD(p.name, false, true)}${TD(p.role)}${TD(p.hours.toFixed(2), true)}${TD(fmtV(p.sell), true, true)}</tr>`
       ).join('')
       sections.push(section(5, 'Back Office Hours', 'Engineering, planning and project support hours.',
         [TH('Name'), TH('Role'), TH('Hours', true), TH('Total ($)', true)].join(''),

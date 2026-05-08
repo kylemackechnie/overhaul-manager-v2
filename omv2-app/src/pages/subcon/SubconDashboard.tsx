@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 
 const COLOR = '#7c3aed'
-const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
+const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
 interface RfqStat { id: string; stage: string; title: string }
 interface POStat { id: string; vendor: string; po_value: number | null; status: string; quote_source: { type?: string } | null }

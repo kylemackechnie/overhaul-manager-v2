@@ -12,7 +12,7 @@ interface HireItem {
 
 type ReportType = 'summary' | 'monthly' | 'vendor' | 'customer'
 
-const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtPct = (n: number) => n.toFixed(1) + '%'
 
 function daysBetween(a: string | null, b: string | null): number {
@@ -60,7 +60,7 @@ export function HireReportsPanel() {
       })
       rows.push(['Vendor', 'Items', 'Total Cost', 'Total Sell', 'GM%'])
       Object.entries(byVendor).forEach(([v, d]) => {
-        const gm = d.sell > 0 ? ((d.sell - d.cost) / d.sell * 100).toFixed(1) : '—'
+        const gm = d.sell > 0 ? ((d.sell - d.cost) / d.sell * 100).toFixed(2) : '—'
         rows.push([v, d.items.join('; '), d.cost, d.sell, gm])
       })
     }

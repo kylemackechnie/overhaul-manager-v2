@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 
 const COLOR = '#f97316'
-const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
+const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
 interface HireItem { hire_type: string; name: string; vendor: string; hire_cost: number; customer_total: number; start_date: string | null; end_date: string | null }
 

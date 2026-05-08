@@ -231,9 +231,9 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
         <tbody>${linesHTML}</tbody>
         <tfoot><tr style="background:#f8fafc;font-weight:700">
           <td colspan="5" style="text-align:right;font-size:10px">Total</td>
-          <td style="text-align:right;font-family:monospace">${totalHours.toFixed(1)}</td>
+          <td style="text-align:right;font-family:monospace">${totalHours.toFixed(2)}</td>
           <td style="text-align:right;font-family:monospace;color:#dc2626">
-            ${creditType !== 'reallocate' ? Object.values(creditHours).reduce((s, h) => s + h, 0).toFixed(1) : totalHours.toFixed(1)}
+            ${creditType !== 'reallocate' ? Object.values(creditHours).reduce((s, h) => s + h, 0).toFixed(2) : totalHours.toFixed(2)}
           </td>
         </tr></tfoot>
       </table>
@@ -258,7 +258,7 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
           <div>
             <h3 style={{ margin: 0 }}>Issue Credit Note</h3>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-              {sourceLines.length} line{sourceLines.length !== 1 ? 's' : ''} · {uniquePeople} person{uniquePeople !== 1 ? 's' : ''} · {totalHours.toFixed(1)}h total
+              {sourceLines.length} line{sourceLines.length !== 1 ? 's' : ''} · {uniquePeople} person{uniquePeople !== 1 ? 's' : ''} · {totalHours.toFixed(2)}h total
             </div>
           </div>
           <button className="btn btn-sm" onClick={onClose}>✕</button>
@@ -388,7 +388,7 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
                 </div>
                 <div style={{ marginTop: 10, textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>
                   Total to credit: <strong style={{ fontFamily: 'var(--mono)', color: 'var(--red)' }}>
-                    {Object.values(creditHours).reduce((s, h) => s + (h || 0), 0).toFixed(1)}h
+                    {Object.values(creditHours).reduce((s, h) => s + (h || 0), 0).toFixed(2)}h
                   </strong>
                 </div>
               </div>

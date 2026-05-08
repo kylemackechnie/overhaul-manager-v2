@@ -71,7 +71,7 @@ export function NrgKpiPanel() {
   const totalActuals = leafLines.reduce((s, l) => s + (actualsById[l.item_id || ""] || 0), 0)
   const totalPct = totalTce > 0 ? totalActuals / totalTce * 100 : 0
 
-  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 }) : '—'
+  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
   const fmtPct = (n: number) => n.toFixed(1) + '%'
 
   function exportCSV() {

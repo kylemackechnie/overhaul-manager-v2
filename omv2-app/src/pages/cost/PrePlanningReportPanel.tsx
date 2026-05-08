@@ -56,7 +56,7 @@ export function PrePlanningReportPanel() {
     const wbsRows = wbsList.map(w => `<tr>
       <td style="font-family:monospace;font-size:9px;color:#64748b">${w.code}</td>
       <td>${w.name}</td>
-      ${showCosts ? `<td style="text-align:right;font-family:monospace">${w.pm100 ? '$' + Math.round(w.pm100).toLocaleString() : '—'}</td>` : ''}
+      ${showCosts ? `<td style="text-align:right;font-family:monospace">${w.pm100 ? '$' + w.pm100.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td>` : ''}
     </tr>`).join('')
 
     const pm100Total = wbsList.reduce((s, w) => s + (w.pm100 || 0), 0)
@@ -113,7 +113,7 @@ ${sections.procurement && showCosts ? `<div class="section">
   <div class="section-title">Procurement Summary</div>
   <div class="kpi-row">
     <div class="kpi-box"><div class="kpi-val" style="color:#0284c7">${poCount}</div><div class="kpi-lbl">Purchase Orders</div></div>
-    <div class="kpi-box"><div class="kpi-val" style="color:#059669">$${Math.round(invoiceTotal).toLocaleString()}</div><div class="kpi-lbl">Invoiced to Date</div></div>
+    <div class="kpi-box"><div class="kpi-val" style="color:#059669">${invoiceTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="kpi-lbl">Invoiced to Date</div></div>
     <div class="kpi-box"><div class="kpi-val" style="color:#d97706">${varCount}</div><div class="kpi-lbl">Variations</div></div>
   </div>
 </div>` : ''}

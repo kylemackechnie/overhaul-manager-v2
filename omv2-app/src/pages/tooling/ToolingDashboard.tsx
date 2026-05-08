@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/appStore'
 import { calcRentalCost } from '../../lib/calculations'
 
 const COLOR = '#0891b2'
-const fmtEUR = (n: number) => n > 0 ? '€' + Math.round(n).toLocaleString('en-AU') : '—'
+const fmtEUR = (n: number) => n > 0 ? '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
 interface TV { tv_no: string; header_name: string | null; department_id: string | null; replacement_value_eur: number | null }
 interface Costing {
@@ -105,7 +105,7 @@ export function ToolingDashboard() {
           { label: 'Kollos / Packages', value: kolloCount, color: '#7c3aed', panel: 'tooling-kollos' },
           { label: 'Total TV Days', value: tvDays > 0 ? tvDays + 'd' : '—', color: COLOR, panel: 'tooling-costings' },
           { label: 'Awaiting Dates', value: awaitingDates, color: awaitingDates > 0 ? 'var(--amber)' : 'var(--green)', panel: 'tooling-costings' },
-          { label: 'Gross Margin', value: gm > 0 ? gm.toFixed(1) + '%' : '—', color: gm >= 15 ? 'var(--green)' : gm > 0 ? 'var(--amber)' : 'var(--text3)', panel: 'tooling-costings' },
+          { label: 'Gross Margin', value: gm > 0 ? gm.toFixed(2) + '%' : '—', color: gm >= 15 ? 'var(--green)' : gm > 0 ? 'var(--amber)' : 'var(--text3)', panel: 'tooling-costings' },
         ].map(t => (
           <div key={t.label} className="card" style={{ padding: '14px', borderTop: `3px solid ${t.color}`, cursor: 'pointer' }} onClick={() => setActivePanel(t.panel)}>
             <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)', color: t.color }}>{t.value}</div>

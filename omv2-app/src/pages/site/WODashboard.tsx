@@ -50,7 +50,7 @@ export function WODashboard() {
           { label: 'Total WOs', value: wos.length },
           { label: 'In Progress', value: inProgress },
           { label: 'Planned Hours', value: totalPlanned.toFixed(0) + 'h' },
-          { label: 'Actual Hours', value: totalActual.toFixed(1) + 'h' },
+          { label: 'Actual Hours', value: totalActual.toFixed(2) + 'h' },
         ].map(t => (
           <div key={t.label} className="card" style={{ padding: '16px', borderTop: `3px solid ${COLOR}` }}>
             <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--mono)', color: COLOR }}>{t.value}</div>
@@ -74,10 +74,10 @@ export function WODashboard() {
                     <td style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: COLOR }}>{w.wo_number}</td>
                     <td style={{ color: 'var(--text2)' }}>{w.description}</td>
                     <td><span className="badge" style={ss}>{w.status.replace('_', ' ')}</span></td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{planned.toFixed(1)}h</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--mod-hr)' }}>{actual.toFixed(1)}h</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{planned.toFixed(2)}h</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--mod-hr)' }}>{actual.toFixed(2)}h</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: variance > 0 ? 'var(--amber)' : variance < 0 ? 'var(--green)' : 'var(--text3)' }}>
-                      {variance === 0 ? '—' : (variance > 0 ? '+' : '') + variance.toFixed(1) + 'h'}
+                      {variance === 0 ? '—' : (variance > 0 ? '+' : '') + variance.toFixed(2) + 'h'}
                     </td>
                     <td style={{ minWidth: '100px' }}>
                       <div style={{ background: 'var(--border2)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>

@@ -382,7 +382,7 @@ export function NrgApprovalsPanel() {
           {[
             { label: 'Total rows',             value: String(recon.length), color: 'var(--text)',  sub: '' },
             { label: 'Approved',               value: String(counts.matched), color: '#065f46', sub: fmtCurrency(totalApproved) },
-            { label: 'Not in approvals',        value: String(counts.missing), color: '#991b1b', sub: `${totalMissing.toFixed(1)}h unaccounted` },
+            { label: 'Not in approvals',        value: String(counts.missing), color: '#991b1b', sub: `${totalMissing.toFixed(2)}h unaccounted` },
             { label: 'Extras in approvals',    value: String(counts.extra),   color: '#92400e', sub: 'NRG added / modified' },
           ].map(k => (
             <div key={k.label} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '12px 14px' }}>

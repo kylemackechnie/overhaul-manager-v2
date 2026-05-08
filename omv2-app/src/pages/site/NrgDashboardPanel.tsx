@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 
 const NRG = '#ea580c'
-const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { maximumFractionDigits: 0 })
+const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const pctColor = (p: number) => p > 100 ? 'var(--red)' : p > 85 ? 'var(--amber)' : 'var(--green)'
 
 export function NrgDashboardPanel() {
