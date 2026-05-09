@@ -97,8 +97,10 @@ export async function writeTimesheetCostLines(
     itemIdsByWO[wo].push(l.item_id)
   }
   const wbsByResourceId: Record<string, string> = {}
+  const poIdByResourceId: Record<string, string | null> = {}
   for (const r of resources) {
     if (r.wbs) wbsByResourceId[r.id] = r.wbs
+    poIdByResourceId[r.id] = (r as ResourceLite & { linked_po_id?: string | null }).linked_po_id ?? null
   }
 
   // Only write for TCE-scoped timesheets. Accept the legacy 'tce' value as
@@ -295,6 +297,7 @@ export async function writeTimesheetCostLines(
             cost_allowances: 0,
             sell_allowances: 0,
             timesheet_status: timesheet.status,
+            po_id: member.personId ? (poIdByResourceId[member.personId] ?? null) : null,
           })
         }
       }
@@ -325,6 +328,7 @@ export async function writeTimesheetCostLines(
           cost_allowances: dayCostAllow,
           sell_allowances: daySellAllow,
           timesheet_status: timesheet.status,
+          po_id: member.personId ? (poIdByResourceId[member.personId] ?? null) : null,
         })
       }
 
@@ -357,6 +361,7 @@ export async function writeTimesheetCostLines(
           cost_allowances: dayCostTravel,
           sell_allowances: daySellTravel,
           timesheet_status: timesheet.status,
+          po_id: member.personId ? (poIdByResourceId[member.personId] ?? null) : null,
         })
       }
     }

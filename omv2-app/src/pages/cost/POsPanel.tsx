@@ -53,7 +53,7 @@ type CarRow  = { id: string; linked_po_id: string|null; total_cost: number }
 type AcRow   = { id: string; linked_po_id: string|null; total_cost: number }
 
 export function POsPanel() {
-  const { activeProject, setActivePanel, pendingPoId, setPendingPoId } = useAppStore()
+  const { activeProject, setActivePanel, pendingPoId, setPendingPoId, setActivePOManagerId } = useAppStore()
   const { canWrite } = usePermissions()
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [invoices, setInvoices] = useState<InvRow[]>([])
@@ -321,7 +321,7 @@ export function POsPanel() {
                 </div>
                 <div style={{fontSize:'11px',color:meta.color}}>{meta.desc}</div>
               </div>
-              {items.map(po => <PORow key={po.id} po={po} meta={meta} poValue={poValue} poForecast={poForecast} poInvoiced={poInvoiced} invoices={invoices.filter(i=>i.po_id===po.id)} expanded={expanded} setExpanded={setExpanded} openEdit={openEdit} advanceStatus={advanceStatus} setActivePanel={setActivePanel} onUpload={handleReceiptUpload} onRemove={removePoReceipt} onOpen={openPoReceipt} uploadingId={uploadingId} dragOverId={dragOverId} setDragOverId={setDragOverId} />)}
+              {items.map(po => <PORow key={po.id} po={po} meta={meta} poValue={poValue} poForecast={poForecast} poInvoiced={poInvoiced} invoices={invoices.filter(i=>i.po_id===po.id)} expanded={expanded} setExpanded={setExpanded} openEdit={openEdit} advanceStatus={advanceStatus} setActivePanel={setActivePanel} setActivePOManagerId={setActivePOManagerId} onUpload={handleReceiptUpload} onRemove={removePoReceipt} onOpen={openPoReceipt} uploadingId={uploadingId} dragOverId={dragOverId} setDragOverId={setDragOverId} />)}
             </div>
           )
         })
@@ -459,7 +459,7 @@ export function POsPanel() {
 }
 
 // ── PO Row component ──────────────────────────────────────────────────────────
-function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, setExpanded, openEdit, advanceStatus, setActivePanel, onUpload, onRemove, onOpen, uploadingId, dragOverId, setDragOverId }: {
+function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, setExpanded, openEdit, advanceStatus, setActivePanel, setActivePOManagerId, onUpload, onRemove, onOpen, uploadingId, dragOverId, setDragOverId }: {
   po: PurchaseOrder; meta: typeof PO_STATUS[string]
   poValue: (po: PurchaseOrder) => number
   poForecast: (id: string) => number | null
@@ -469,6 +469,7 @@ function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, 
   openEdit: (po: PurchaseOrder) => void
   advanceStatus: (po: PurchaseOrder) => void
   setActivePanel: (panel: string) => void
+  setActivePOManagerId: (id: string) => void
   onUpload: (po: PurchaseOrder, file: File) => void
   onRemove: (po: PurchaseOrder, path: string) => void
   onOpen: (path: string) => void
@@ -546,6 +547,7 @@ function PORow({ po, meta, poValue, poForecast, poInvoiced, invoices, expanded, 
                 🧾 Invoices {invCount > 0 ? `(${invCount})` : ''}
               </button>
               <button className="btn btn-sm" style={{fontSize:'11px'}} onClick={()=>openEdit(po)}>Edit</button>
+              <button className="btn btn-sm" style={{fontSize:'11px',color:'var(--accent)'}} onClick={()=>{setActivePOManagerId(po.id);setActivePanel('po-manager')}}>📊 Manager</button>
             </div>
             {/* Receipt attachments */}
             <div style={{display:'flex',gap:'4px',flexWrap:'wrap',justifyContent:'flex-end'}}>

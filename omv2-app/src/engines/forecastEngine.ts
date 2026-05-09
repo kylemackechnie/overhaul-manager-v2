@@ -1,6 +1,26 @@
 import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment } from '../types'
 import { calcRentalCost } from '../lib/calculations'
 
+export interface PoBucketPerson {
+  resourceId: string
+  name: string
+  role: string
+  mobIn: string
+  mobOut: string
+  totalCost: number
+  totalHours: number
+}
+
+export interface PoBucket {
+  labour:    { cost: number; hours: number; people: PoBucketPerson[] }
+  dryHire:   { cost: number; items: string[] }  // item names
+  wetHire:   { cost: number; items: string[] }
+  localHire: { cost: number; items: string[] }
+  cars:      { cost: number }
+  accom:     { cost: number }
+  total:     number
+}
+
 export interface DayPerson {
   name: string
   role: string
@@ -32,6 +52,7 @@ export interface DayBucket {
 
 export interface ForecastData {
   byDay: Record<string, DayBucket>
+  byPo:  Record<string, PoBucket>   // keyed by po_id; 'unlinked' for anything with no PO
   days: string[]
   totalCost: number
   totalSell: number
@@ -166,7 +187,21 @@ export function buildForecast(
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
+  const byPo:  Record<string, PoBucket>  = {}
   const holidays = new Set(publicHolidays.map(h => h.date))
+
+  function ensurePo(poId: string): PoBucket {
+    if (!byPo[poId]) byPo[poId] = {
+      labour:    { cost: 0, hours: 0, people: [] },
+      dryHire:   { cost: 0, items: [] },
+      wetHire:   { cost: 0, items: [] },
+      localHire: { cost: 0, items: [] },
+      cars:      { cost: 0 },
+      accom:     { cost: 0 },
+      total:     0,
+    }
+    return byPo[poId]
+  }
 
   function ensure(d: string): DayBucket {
     if (!byDay[d]) byDay[d] = emptyDay()
@@ -265,7 +300,52 @@ export function buildForecast(
           isMob: d === r.mob_in,
           isDemob: d === (r.mob_out || r.mob_in),
         })
+
+        // ── PO accumulation — cost rates only (not sell) ──
+        const poKey = (r as Resource & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+        ensurePo(poKey).labour.cost += labCost
+        ensurePo(poKey).labour.hours += hours
       }
+    }
+    // ── PoBucketPerson summary (one entry per resource, after all days) ──
+    const poKey = (r as Resource & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+    const poBucket = ensurePo(poKey)
+    const existing = poBucket.labour.people.find(p => p.resourceId === r.id)
+    if (!existing) {
+      const totalCostForResource = days.reduce((sum, d) => {
+        const dow = dayOfWeek(d)
+        const dayType = getDayType(d, holidays)
+        const shift = r.shift || 'day'
+        const rcCost = (rc.rates as { cost: Record<string,number> })?.cost || {}
+        const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
+        let c = 0
+        if (shift === 'day' || shift === 'both') {
+          const h = stdHours.day?.[dow] ?? 0
+          if (h > 0) c += costForSplit(splitHours(h, dayType, 'day', rcRegime), rcCost)
+        }
+        if (shift === 'night' || shift === 'both') {
+          const h = stdHours.night?.[dow] ?? 0
+          if (h > 0) c += costForSplit(splitHours(h, dayType, 'night', rcRegime), rcCost)
+        }
+        return sum + c
+      }, 0)
+      const totalHoursForResource = days.reduce((sum, d) => {
+        const dow = dayOfWeek(d)
+        const shift = r.shift || 'day'
+        let h = 0
+        if (shift === 'day' || shift === 'both') h += stdHours.day?.[dow] ?? 0
+        if (shift === 'night' || shift === 'both') h += stdHours.night?.[dow] ?? 0
+        return sum + h
+      }, 0)
+      poBucket.labour.people.push({
+        resourceId: r.id,
+        name: r.name,
+        role: r.role || '',
+        mobIn: r.mob_in!,
+        mobOut: (r as Resource & { mob_out?: string }).mob_out || r.mob_in!,
+        totalCost: totalCostForResource,
+        totalHours: totalHoursForResource,
+      })
     }
   }
 
@@ -309,6 +389,12 @@ export function buildForecast(
         day[catKey].cost += perDayCost
         day[catKey].sell += perDaySell
       }
+      // ── PO accumulation ──
+      const poKey = (item as HireItem & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+      const pb = ensurePo(poKey)
+      pb[catKey].cost += totalCost
+      const itemName = (item as HireItem & { name?: string }).name || (item as HireItem & { description?: string }).description || 'Hire item'
+      if (!pb[catKey].items.includes(itemName)) pb[catKey].items.push(itemName)
     }
   }
 
@@ -339,6 +425,9 @@ export function buildForecast(
       day.cars.cost += perDayCost
       day.cars.sell += perDaySell
     }
+    // ── PO accumulation ──
+    const poKey = (c as Car & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+    ensurePo(poKey).cars.cost += c.total_cost || 0
   }
 
   const accomWarnings: ForecastData['accomWarnings'] = []
@@ -370,6 +459,9 @@ export function buildForecast(
       day.accom.cost += perNightCost
       day.accom.sell += perNightSell
     }
+    // ── PO accumulation ──
+    const poKey = (a as Accommodation & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+    ensurePo(poKey).accom.cost += a.total_cost || 0
 
     // Flag occupants whose mob dates fall outside the booking window
     if (aX.occupant_ids?.length && (a.check_in || a.check_out)) {
@@ -491,7 +583,12 @@ export function buildForecast(
     }
   }
 
-  return { byDay, days, totalCost, totalSell, accomWarnings }
+  // Compute byPo totals
+  for (const pb of Object.values(byPo)) {
+    pb.total = pb.labour.cost + pb.dryHire.cost + pb.wetHire.cost + pb.localHire.cost + pb.cars.cost + pb.accom.cost
+  }
+
+  return { byDay, byPo, days, totalCost, totalSell, accomWarnings }
 }
 
 // Aggregate by week key (YYYY-WNN)

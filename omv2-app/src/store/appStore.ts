@@ -31,6 +31,8 @@ interface AppStore {
   // Cross-panel navigation intent (e.g. RFQ → auto-open PO edit)
   pendingPoId: string | null
   setPendingPoId: (id: string | null) => void
+  activePOManagerId: string | null
+  setActivePOManagerId: (id: string | null) => void
 }
 
 export const useAppStore = create<AppStore>()(
@@ -68,6 +70,8 @@ export const useAppStore = create<AppStore>()(
 
       pendingPoId: null,
       setPendingPoId: (id) => set({ pendingPoId: id }),
+      activePOManagerId: null,
+      setActivePOManagerId: (id) => set({ activePOManagerId: id }),
     }),
     {
       name: 'omv2-app-store',
