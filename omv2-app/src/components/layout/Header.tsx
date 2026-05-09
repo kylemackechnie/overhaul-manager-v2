@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { setMobileOverride } from '../../hooks/useIsMobile'
 
 interface HeaderProps {
   onOpenPicker: () => void
@@ -126,6 +127,13 @@ export function Header({ onOpenPicker, onOpenSearch, onOpenSettings }: HeaderPro
                   👥 Manage Users
                 </button>
               )}
+              <button
+                className="header-dropdown-item"
+                onClick={() => { setUserMenuOpen(false); setMobileOverride('mobile') }}
+                title="Preview the phone layout. Switch back from the menu in mobile shell, or via ?mobile=0 in URL."
+              >
+                📱 Preview as mobile
+              </button>
               <button className="header-dropdown-item danger" onClick={signOut}>
                 ↩ Sign Out
               </button>

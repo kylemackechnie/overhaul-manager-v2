@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useAppStore } from '../../store/appStore'
 import { usePermissions, type Module } from '../../lib/permissions'
+import { setMobileOverride } from '../../hooks/useIsMobile'
 
 interface NavItem {
   panel: string
@@ -210,6 +211,15 @@ export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
             )
           })}
           <div className="mobile-nav-section">
+            <button
+              className="mobile-nav-item"
+              onClick={() => { onClose(); setMobileOverride('desktop') }}
+              style={{ width: '100%' }}
+              title="Force desktop view. Tap again from desktop menu to return to auto-detect."
+            >
+              <span className="mobile-nav-item-icon">🖥️</span>
+              <span className="mobile-nav-item-label">Switch to desktop view</span>
+            </button>
             <button
               className="mobile-nav-signout"
               onClick={() => { onClose(); onSignOut() }}
