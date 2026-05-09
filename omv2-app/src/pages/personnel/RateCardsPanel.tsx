@@ -338,7 +338,30 @@ export function RateCardsPanel() {
                 </div>
                 <table style={{fontSize:'12px'}}>
                   <thead>
-                    <tr><th>Bucket</th><th style={{textAlign:'right'}}>Cost ({CURRENCY_SYMBOLS[form.currency]||form.currency}/hr)</th><th style={{textAlign:'right'}}>Sell ({CURRENCY_SYMBOLS[form.currency]||form.currency}/hr)</th></tr>
+                    <tr>
+                      <th>Bucket</th>
+                      <th style={{textAlign:'right'}}>Cost ({CURRENCY_SYMBOLS[form.currency]||form.currency}/hr)</th>
+                      <th style={{textAlign:'right',verticalAlign:'bottom'}}>
+                        <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:'6px',marginBottom:'4px'}}>
+                          <span style={{fontSize:'10px',fontWeight:400,color:'var(--text3)'}}>Apply GM%:</span>
+                          <input type="number" id="quick-gm" min={0} max={99} step={0.5} defaultValue={20}
+                            style={{width:'56px',padding:'2px 5px',fontSize:'11px',fontFamily:'var(--mono)',textAlign:'right',border:'1px solid var(--border)',borderRadius:'4px',background:'var(--bg2)',color:'var(--text)'}}
+                          />
+                          <button className="btn btn-sm" style={{fontSize:'10px',padding:'2px 8px',whiteSpace:'nowrap'}}
+                            onClick={() => {
+                              const gm = parseFloat((document.getElementById('quick-gm') as HTMLInputElement)?.value || '0') || 0
+                              if (gm <= 0 || gm >= 100) return
+                              const newSell = Object.fromEntries(
+                                RATE_BUCKETS.map(b => [b, +(form.rates.cost[b] / (1 - gm / 100)).toFixed(2)])
+                              )
+                              setForm(f => ({ ...f, rates: { ...f.rates, sell: newSell as typeof f.rates.sell } }))
+                            }}>
+                            ↻ Apply
+                          </button>
+                        </div>
+                        Sell ({CURRENCY_SYMBOLS[form.currency]||form.currency}/hr)
+                      </th>
+                    </tr>
                   </thead>
                   <tbody>
                     {RATE_BUCKETS.map(b => (
@@ -361,7 +384,27 @@ export function RateCardsPanel() {
               </div>
 
               <div>
-                <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Allowances ($/day)</div>
+                <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px',display:'flex',alignItems:'center',gap:'10px'}}>
+                  Allowances ($/day)
+                  <span style={{display:'flex',alignItems:'center',gap:'5px',fontWeight:400,textTransform:'none',letterSpacing:0}}>
+                    <span style={{fontSize:'10px',color:'var(--text3)'}}>Apply same GM% to sell allowances</span>
+                    <button className="btn btn-sm" style={{fontSize:'10px',padding:'2px 8px'}}
+                      onClick={() => {
+                        const gm = parseFloat((document.getElementById('quick-gm') as HTMLInputElement)?.value || '0') || 0
+                        if (gm <= 0 || gm >= 100) return
+                        const apply = (cost: number) => +(cost / (1 - gm / 100)).toFixed(2)
+                        setForm(f => ({
+                          ...f,
+                          laha_sell: apply(f.laha_cost),
+                          fsa_sell:  apply(f.fsa_cost),
+                          meal_sell: apply(f.meal_cost),
+                          travel_sell: apply(f.travel_cost),
+                        }))
+                      }}>
+                      ↻ Apply
+                    </button>
+                  </span>
+                </div>
                 <div className="fg-row">
                   {isMgmtCat(form.category) ? (<>
                     <div className="fg"><label>FSA Cost</label><input type="number" className="input" value={form.fsa_cost} onChange={e=>setForm(f=>({...f,fsa_cost:parseFloat(e.target.value)||0}))} /></div>
