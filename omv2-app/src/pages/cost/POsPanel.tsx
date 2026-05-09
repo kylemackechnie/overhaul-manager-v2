@@ -285,7 +285,7 @@ export function POsPanel() {
             <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
               {[['SAP PO Number','po_number','4500123456'],['Internal Ref','internal_ref','SSOP-00176'],['Vendor *','vendor','Vendor name'],['Description','description','Scope / description']].map(([lbl,key,ph])=>(
                 <div key={key}><div style={SH}>{lbl}</div>
-                  <input className="input" style={{width:'100%',fontSize:'12px'}} value={(form as Record<string,string>)[key]||''} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}/>
+                  <input className="input" style={{width:'100%',fontSize:'12px'}} value={(form as unknown as Record<string,string>)[key]||''} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}/>
                 </div>
               ))}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
