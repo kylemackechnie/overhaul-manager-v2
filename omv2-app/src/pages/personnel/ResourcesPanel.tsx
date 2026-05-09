@@ -91,8 +91,8 @@ export function ResourcesPanel() {
   const { widths: rw, onResizeStart: rOnResize, thRef: rThRef } =
     useResizableColumns('resources', RES_COLS.map(c => ({ id: c.id, default: c.default })))
 
-  // Total width = pinned col (82px: checkbox + More + ✕) + sum of visible column widths
-  const totalResWidth = 82 + RES_COLS.reduce((s, c, i) => s + (isVisible(c.id) ? rw[i] : 0), 0)
+  // Total width = pinned col (102px: checkbox + More + ⧉ + ✕) + sum of visible column widths
+  const totalResWidth = 102 + RES_COLS.reduce((s, c, i) => s + (isVisible(c.id) ? rw[i] : 0), 0)
 
   const { canWrite } = usePermissions()
   const isMobile = useIsMobile()
@@ -245,6 +245,14 @@ export function ResourcesPanel() {
     if (!confirm(`Remove ${r.name}?`)) return
     await supabase.from('resources').delete().eq('id', r.id)
     toast('Removed', 'info'); load()
+  }
+
+  async function duplicateResource(r: Resource) {
+    const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = r as Resource & { created_at?: string; updated_at?: string }
+    const payload = { ...rest, name: r.name + ' (copy)', project_id: activeProject!.id }
+    const { error } = await supabase.from('resources').insert(payload)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`Duplicated ${r.name}`, 'success'); load()
   }
 
   // RFC 4180 CSV parser — handles quoted fields with embedded newlines/commas/escaped quotes.
@@ -643,7 +651,7 @@ export function ResourcesPanel() {
               <table style={{tableLayout:'fixed', width: totalResWidth + 'px'}}>
               <thead>
                 <tr>
-                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'82px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap',position:'sticky',left:0,top:0,zIndex:4,background:'var(--bg2)',borderRight:'1px solid var(--border)'}}>
+                  <th ref={el=>rThRef(el,0)} className="resizable" style={{width:'102px',textAlign:'left',padding:'8px 6px',whiteSpace:'nowrap',position:'sticky',left:0,top:0,zIndex:4,background:'var(--bg2)',borderRight:'1px solid var(--border)'}}>
                     <input type="checkbox"
                       style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                       checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
@@ -686,12 +694,13 @@ export function ResourcesPanel() {
                   const po = r.linked_po_id ? pos.find(p => p.id === r.linked_po_id) : null
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
-                      {/* Pinned left col — checkbox + edit + delete */}
+                      {/* Pinned left col — checkbox + edit + duplicate + delete */}
                       <td style={{padding:'5px 6px',whiteSpace:'nowrap',position:'sticky',left:0,zIndex:2,background:selected.has(r.id)?'rgba(15,118,110,.05)':'var(--bg)',borderRight:'1px solid var(--border)'}}>
                         <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
                           <input type="checkbox" checked={selected.has(r.id)} style={{accentColor:'var(--mod-hr)',cursor:'pointer'}}
                             onChange={e => setSelected(prev => { const next = new Set(prev); e.target.checked ? next.add(r.id) : next.delete(r.id); return next })} />
                           <button className="btn btn-sm" onClick={()=>openEdit(r)} style={{padding:'1px 6px',fontSize:'11px'}}>More</button>
+                          <button className="btn btn-sm" title="Duplicate" style={{padding:'1px 4px',fontSize:'11px'}} onClick={()=>duplicateResource(r)}>⧉</button>
                           <button className="btn btn-sm" style={{color:'var(--red)',padding:'1px 4px',fontSize:'11px'}} onClick={()=>del(r)}>✕</button>
                         </div>
                       </td>
