@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
+import { resolveShift, hasMixedShifts, validatePhases, SHIFT_LABELS } from '../../lib/shiftPhases'
+import type { ShiftPhase } from '../../types'
 import { findOrCreatePerson, type Person } from '../../lib/persons'
 import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
@@ -42,7 +44,7 @@ const RES_COL_GROUPS = ['Identity', 'Mob', 'Contact', 'Allowances', 'Logistics',
 const CATEGORIES = ['trades','management','seag','subcontractor'] as const
 const SHIFTS = ['day','night','both'] as const
 const EMPTY: Partial<Resource> = {
-  name:'', role:'', category:'trades', shift:'day',
+  name:'', role:'', category:'trades', shift:'day', shift_phases: null,
   mob_in:null, mob_out:null, travel_days:0, wbs:'',
   allow_laha:false, allow_fsa:false, allow_meal:false,
   company:'', phone:'', email:'', notes:'', flights:'',
@@ -224,7 +226,7 @@ export function ResourcesPanel() {
     const payload = {
       project_id: activeProject!.id,
       name: form.name?.trim(), role: form.role||'', category: form.category||'trades',
-      shift: form.shift||'day', mob_in: form.mob_in||null, mob_out: form.mob_out||null,
+      shift: form.shift||'day', shift_phases: form.shift_phases||null, mob_in: form.mob_in||null, mob_out: form.mob_out||null,
       travel_days: form.travel_days||0, wbs: form.wbs||'',
       allow_laha: form.allow_laha||false, allow_fsa: form.allow_fsa||false, allow_meal: form.allow_meal||false,
       company: form.company||'', phone: form.phone||'', email: form.email||'',
@@ -747,7 +749,17 @@ export function ResourcesPanel() {
                           {CATEGORIES.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                         </select>
                       </td>}
-                      {isVisible('shift') && <td style={{fontSize:'12px',color:'var(--text3)'}}>{r.shift||'day'}</td>}
+                      {isVisible('shift') && (() => {
+                        const today = new Date().toISOString().slice(0, 10)
+                        const resolved = resolveShift(r, today)
+                        const mixed = hasMixedShifts(r)
+                        return (
+                          <td style={{ fontSize: '12px', color: 'var(--text3)' }}>
+                            {SHIFT_LABELS[resolved]}
+                            {mixed && <span title="Multi-phase shift schedule" style={{ marginLeft: '3px', fontSize: '9px', color: 'var(--accent)', fontWeight: 700 }}>~</span>}
+                          </td>
+                        )
+                      })()}
                       {isVisible('company') && <td style={{overflow:'hidden'}}>
                         <input defaultValue={r.company||''} placeholder="—"
                           style={{width:'100%',background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:'var(--text2)',cursor:'pointer',padding:'1px 2px'}}
@@ -950,11 +962,23 @@ export function ResourcesPanel() {
                   </select>
                 </div>
                 <div className="fg">
-                  <label>Shift</label>
+                  <label>Shift (default)</label>
                   <select className="input" value={form.shift||'day'} onChange={e=>setForm(f=>({...f,shift:e.target.value as Resource['shift']}))}>
                     {SHIFTS.map(s=><option key={s} value={s}>{s==='day'?'☀️ Day':s==='night'?'🌙 Night':'☀️🌙 Both'}</option>)}
                   </select>
                 </div>
+              </div>
+
+              {/* Shift phase editor */}
+              <ShiftPhaseEditor
+                phases={form.shift_phases||[]}
+                defaultShift={form.shift||'day'}
+                mobIn={form.mob_in||null}
+                mobOut={form.mob_out||null}
+                onChange={phases=>setForm(f=>({...f,shift_phases:phases.length?phases:null}))}
+              />
+
+              <div className="fg-row">
                 <div className="fg">
                   <label>Rate Card</label>
                   <select className="input" value={form.rate_card_id||''} onChange={e=>setForm(f=>({...f,rate_card_id:e.target.value||null}))}>
@@ -1155,4 +1179,143 @@ export function ResourcesPanel() {
       {cardPerson && <PersonCard person={cardPerson} onClose={closeCard} />}
     </div>
   )
+}
+
+// ── ShiftPhaseEditor component ────────────────────────────────────────────────
+function ShiftPhaseEditor({ phases, defaultShift, mobIn, mobOut, onChange }: {
+  phases: ShiftPhase[]
+  defaultShift: 'day' | 'night' | 'both'
+  mobIn: string | null
+  mobOut: string | null
+  onChange: (phases: ShiftPhase[]) => void
+}) {
+  const [open, setOpen] = useState(phases.length > 0)
+  const hasPhases = phases.length > 0
+  const validationError = hasPhases ? validatePhases(phases, mobIn, mobOut) : null
+
+  function addPhase() {
+    // Default new phase: starts day after last phase ends (or mob_in), ends at mob_out
+    const lastEnd = phases.length > 0 ? phases[phases.length - 1].to : (mobIn || '')
+    const newFrom = lastEnd ? nextDay(lastEnd) : (mobIn || '')
+    const newTo = mobOut || newFrom
+    onChange([...phases, { from: newFrom, to: newTo, shift: defaultShift }])
+    setOpen(true)
+  }
+
+  function removePhase(i: number) {
+    const next = phases.filter((_, j) => j !== i)
+    onChange(next)
+    if (next.length === 0) setOpen(false)
+  }
+
+  function updatePhase(i: number, field: keyof ShiftPhase, value: string) {
+    onChange(phases.map((p, j) => j === i ? { ...p, [field]: value } : p))
+  }
+
+  // Timeline bar — visualise phases over mob period
+  const canTimeline = mobIn && mobOut && phases.length > 0
+  const mobStart = mobIn ? new Date(mobIn + 'T12:00:00').getTime() : 0
+  const mobEnd   = mobOut ? new Date(mobOut + 'T12:00:00').getTime() : 0
+  const mobSpan  = mobEnd - mobStart || 1
+
+  const SHIFT_COLORS: Record<string, string> = {
+    day:   '#fef3c7',
+    night: '#dbeafe',
+    both:  '#f3e8ff',
+  }
+  const SHIFT_TEXT: Record<string, string> = {
+    day:   '#92400e',
+    night: '#1e40af',
+    both:  '#6b21a8',
+  }
+
+  return (
+    <div style={{ marginBottom: '12px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--bg2)', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setOpen(o => !o)}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text2)', flex: 1 }}>
+          {hasPhases ? `⏱ Shift phases (${phases.length} phase${phases.length !== 1 ? 's' : ''})` : '⏱ Shift phases'}
+        </span>
+        {!hasPhases && (
+          <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Optional — split shift by date range</span>
+        )}
+        {hasPhases && validationError && (
+          <span style={{ fontSize: '10px', color: 'var(--red)', fontWeight: 600 }}>⚠ {validationError}</span>
+        )}
+        <button className="btn btn-sm" style={{ fontSize: '10px' }} onClick={e => { e.stopPropagation(); addPhase() }}>+ Add phase</button>
+        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: '10px 12px' }}>
+          {phases.length === 0 ? (
+            <div style={{ fontSize: '12px', color: 'var(--text3)', textAlign: 'center', padding: '8px 0' }}>
+              No phases. By default this person uses their default shift for the entire mob period.
+              <br />Click "+ Add phase" to split by date range.
+            </div>
+          ) : (
+            <>
+              {/* Phase rows */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '6px', marginBottom: '4px', fontSize: '10px', color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span>From</span><span>To</span><span>Shift</span><span />
+              </div>
+              {phases.map((p, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                  <input type="date" className="input" style={{ fontSize: '12px' }} value={p.from}
+                    onChange={e => updatePhase(i, 'from', e.target.value)} />
+                  <input type="date" className="input" style={{ fontSize: '12px' }} value={p.to}
+                    onChange={e => updatePhase(i, 'to', e.target.value)} />
+                  <select className="input" style={{ fontSize: '12px' }} value={p.shift}
+                    onChange={e => updatePhase(i, 'shift', e.target.value as ShiftPhase['shift'])}>
+                    <option value="day">☀️ Day</option>
+                    <option value="night">🌙 Night</option>
+                    <option value="both">☀️🌙 Both</option>
+                  </select>
+                  <button className="btn btn-sm" style={{ color: 'var(--red)', padding: '2px 6px' }}
+                    onClick={() => removePhase(i)}>✕</button>
+                </div>
+              ))}
+
+              {/* Validation error */}
+              {validationError && (
+                <div style={{ fontSize: '11px', color: 'var(--red)', padding: '4px 0', marginBottom: '6px' }}>
+                  ⚠ {validationError}
+                </div>
+              )}
+
+              {/* Timeline visualisation */}
+              {canTimeline && !validationError && (
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text3)', marginBottom: '4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Timeline</div>
+                  <div style={{ display: 'flex', height: '24px', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    {phases.map((p, i) => {
+                      const pStart = new Date(p.from + 'T12:00:00').getTime()
+                      const pEnd   = new Date(p.to   + 'T12:00:00').getTime()
+                      const left   = Math.max(0, (pStart - mobStart) / mobSpan * 100)
+                      const width  = Math.min(100 - left, (pEnd - pStart + 86400000) / mobSpan * 100)
+                      return (
+                        <div key={i} style={{ width: width + '%', background: SHIFT_COLORS[p.shift] || '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 700, color: SHIFT_TEXT[p.shift] || '#374151', borderRight: i < phases.length - 1 ? '1px solid var(--border)' : undefined, overflow: 'hidden', whiteSpace: 'nowrap', minWidth: 0 }}>
+                          {SHIFT_LABELS[p.shift]}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>
+                    <span>{mobIn}</span><span>{mobOut}</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function nextDay(date: string): string {
+  const d = new Date(date + 'T12:00:00')
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
 }

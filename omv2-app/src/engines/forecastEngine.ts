@@ -1,5 +1,6 @@
 import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment } from '../types'
 import { calcRentalCost } from '../lib/calculations'
+import { resolveShift } from '../lib/shiftPhases'
 
 export interface PoBucketPerson {
   resourceId: string
@@ -236,7 +237,7 @@ export function buildForecast(
     for (const d of days) {
       const dow = dayOfWeek(d)
       const dayType = getDayType(d, holidays)
-      const shift = r.shift || 'day'
+      const shift = resolveShift(r, d)
       let labCost = 0, labSell = 0, hours = 0
 
       const rcCost = (rc.rates as { cost: Record<string,number> })?.cost || {}
@@ -315,7 +316,7 @@ export function buildForecast(
       const totalCostForResource = days.reduce((sum, d) => {
         const dow = dayOfWeek(d)
         const dayType = getDayType(d, holidays)
-        const shift = r.shift || 'day'
+        const shift = resolveShift(r, d)
         const rcCost = (rc.rates as { cost: Record<string,number> })?.cost || {}
         const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
         let c = 0
@@ -331,7 +332,7 @@ export function buildForecast(
       }, 0)
       const totalHoursForResource = days.reduce((sum, d) => {
         const dow = dayOfWeek(d)
-        const shift = r.shift || 'day'
+        const shift = resolveShift(r, d)
         let h = 0
         if (shift === 'day' || shift === 'both') h += stdHours.day?.[dow] ?? 0
         if (shift === 'night' || shift === 'both') h += stdHours.night?.[dow] ?? 0

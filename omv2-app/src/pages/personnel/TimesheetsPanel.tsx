@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions, useTimesheetPermissions } from '../../lib/permissions'
+import { resolveShift } from '../../lib/shiftPhases'
 import { useAppStore } from '../../store/appStore'
 import { writeTimesheetCostLines, calcPersonTotals } from '../../engines/timesheetCostEngine'
 import { splitHours } from '../../engines/costEngine'
@@ -893,7 +894,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       const d = new Date(monday); d.setDate(monday.getDate() + i)
       const ds = d.toISOString().slice(0, 10)
       const dow = dayNames[i]
-      const shift = (r as Resource & {shift?:string}).shift || 'day'
+      const shift = resolveShift(r, ds)
       const dayType = autoType(ds, holidays)
       const hrs = std ? (shift === 'night' ? (std.night?.[dow] || 0) : (std.day?.[dow] || 0)) : 0
       // Person is on the project this day if within their mob window (or no mob dates set)

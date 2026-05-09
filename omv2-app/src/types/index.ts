@@ -227,6 +227,12 @@ export interface RegimeConfig {
 
 // ─── Resources ───────────────────────────────────────────────────────────────
 
+export interface ShiftPhase {
+  from:  string                   // ISO date inclusive
+  to:    string                   // ISO date inclusive
+  shift: 'day' | 'night' | 'both'
+}
+
 export interface Resource {
   id: string
   project_id: string
@@ -234,6 +240,7 @@ export interface Resource {
   role: string
   category: 'trades' | 'management' | 'seag' | 'subcontractor'
   shift: 'day' | 'night' | 'both'
+  shift_phases: ShiftPhase[] | null
   mob_in: string | null
   mob_out: string | null
   travel_days: number
