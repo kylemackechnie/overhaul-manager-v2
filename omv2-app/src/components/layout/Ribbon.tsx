@@ -64,7 +64,6 @@ const RIBBON_MODULES: RibbonTab[] = [
       { label: 'Records', buttons: [
         { icon: '🧾', label: 'Expenses', panel: 'expenses' },
         { icon: '📄', label: 'Purchase Orders', panel: 'purchase-orders' },
-        { icon: '🗂️', label: 'PO Manager', panel: 'po-manager' },
         { icon: '💳', label: 'Invoices', panel: 'invoices' },
         { icon: '🔄', label: 'SAP Recon', panel: 'sap-recon' },
       ]},
