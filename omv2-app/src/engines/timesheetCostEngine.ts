@@ -46,6 +46,7 @@ interface CostLineInsert {
   cost_allowances: number
   sell_allowances: number
   timesheet_status: string
+  po_id: string | null
 }
 
 /** Minimum TCE line shape needed for WO → item_id resolution at write time. */
