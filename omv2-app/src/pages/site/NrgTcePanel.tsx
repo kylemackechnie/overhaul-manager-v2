@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useResizableColumns } from '../../hooks/useResizableColumns'
+import { useResizableColumns, wasResizeDrag } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { SavedViewsBar } from '../../components/ui/SavedViewsBar'
@@ -603,7 +603,7 @@ export function NrgTcePanel() {
                       return (
                         <th key={col.id} ref={el => thRef(el, i + 1)} className="resizable"
                           style={{ width: cw[i + 1], textAlign: alignMap[col.id], cursor: sortable ? 'pointer' : undefined, userSelect: 'none', position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)' }}
-                          onClick={sortable ? () => doTceSort(col.id) : undefined}>
+                          onClick={sortable ? () => { if (!wasResizeDrag()) doTceSort(col.id) } : undefined}>
                           {col.label}
                           {sortable && (
                             <span style={{ fontSize: '9px', marginLeft: '3px', color: sortCol === col.id ? 'var(--accent)' : 'var(--border2)' }}>

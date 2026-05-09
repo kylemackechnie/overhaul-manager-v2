@@ -7,7 +7,7 @@ import { findOrCreatePerson, type Person } from '../../lib/persons'
 import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
-import { useResizableColumns } from '../../hooks/useResizableColumns'
+import { useResizableColumns, wasResizeDrag } from '../../hooks/useResizableColumns'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -679,7 +679,7 @@ export function ResourcesPanel() {
                     return (
                       <th key={col.id} ref={el=>rThRef(el,i)} className="resizable"
                         style={{width:rw[i], cursor: sortKey ? 'pointer' : undefined, userSelect:'none', position:'sticky', top:0, zIndex:10, background:'var(--bg2)'}}
-                        onClick={sortKey ? () => doSort(sortKey as SortCol) : undefined}>
+                        onClick={sortKey ? () => { if (!wasResizeDrag()) doSort(sortKey as SortCol) } : undefined}>
                         {col.label}{sortKey ? <span style={{color:'var(--accent)',fontSize:'10px',marginLeft:'2px'}}>{arrow(sortKey as SortCol)}</span> : null}
                         <div className="col-resizer" {...rOnResize(i)} />
                       </th>

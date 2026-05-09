@@ -34,6 +34,11 @@ const MIN_COL_WIDTH = 40
 const MAX_COL_WIDTH = 800
 const LS_PREFS_PREFIX = 'omv2_prefs_'
 
+// Shared flag: set true on resize mouseup, cleared after a tick.
+// Sort onClick handlers read this to bail out if a resize just finished.
+let resizeJustFinished = false
+export function wasResizeDrag(): boolean { return resizeJustFinished }
+
 /** Per-column minimum: largest of the hard floor and 50% of the default width */
 function colMin(defaultWidth: number): number {
   return Math.max(MIN_COL_WIDTH, Math.floor(defaultWidth * 0.5))
@@ -126,6 +131,9 @@ export function useResizableColumns(tableId: string, input: ColInput) {
     document.removeEventListener('mouseup', onMouseUp)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
+    // Suppress any click event that fires on the th immediately after drag
+    resizeJustFinished = true
+    setTimeout(() => { resizeJustFinished = false }, 0)
   }, [onMouseMove]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onResizeStart = useCallback((colIdx: number) => ({
