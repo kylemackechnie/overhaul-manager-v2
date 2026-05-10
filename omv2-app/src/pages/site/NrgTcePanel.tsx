@@ -635,9 +635,9 @@ export function NrgTcePanel() {
                       variation: { label: 'Variations',              bg: '#fdf2f8', color: '#701a75', border: '#f5d0fe' },
                     }
                     sortedVisible.forEach(l => {
-                      // Inject source section header when source changes
+                      // Inject source section header only at boundaries between non-group-header lines
                       const src = l.source || 'overhead'
-                      if (src !== lastSource && !isGroupHeader(l.item_id, l.line_type)) {
+                      if (!isGroupHeader(l.item_id, l.line_type) && src !== lastSource) {
                         lastSource = src
                         const sec = SOURCE_SECTION[src]
                         if (sec) {
