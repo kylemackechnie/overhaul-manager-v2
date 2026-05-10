@@ -163,6 +163,16 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
     setTimesheets(tsList)
     setTceLines(lines)
 
+    // Auto-set date range to cover all weeks with skilled allocations
+    if (tsList.length > 0) {
+      const allWeekStarts = tsList.map(t => t.week_start).sort()
+      const firstWeek = allWeekStarts[0]
+      const lastWeek  = allWeekStarts[allWeekStarts.length - 1]
+      const lastWeekEnd = (() => { const d = new Date(lastWeek + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10) })()
+      setDateFrom(firstWeek)
+      setDateTo(lastWeekEnd)
+    }
+
     const firstSkilled = lines.find(l => l.source === 'skilled' && l.contract_scope?.trim())
     if (firstSkilled) setContractPrefix(firstSkilled.contract_scope.trim().replace(/^0+/,'').split('/')[0])
 

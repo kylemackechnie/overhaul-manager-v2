@@ -22,7 +22,6 @@ interface CostLineInsert {
   project_id: string
   timesheet_id: string
   week_start: string
-  week_ending: string
   work_date: string
   person_id: string
   person_name: string
@@ -113,9 +112,8 @@ export async function writeTimesheetCostLines(
   }
 
   const weekStart = timesheet.week_start
-  const weekEndDate = new Date(weekStart + 'T00:00:00')
-  weekEndDate.setDate(weekEndDate.getDate() + 6)
-  const weekEnding = weekEndDate.toISOString().slice(0, 10)
+  // week_ending is now a GENERATED ALWAYS column on timesheet_cost_lines
+  // (always the Sunday of the week). Do not write it — the DB computes it.
   // Timesheet-level default allowance TCE item — used unless a crew member
   // sets an override. Empty string = no default; allowance rows for members
   // without an override will write tce_item_id=null.
@@ -280,7 +278,6 @@ export async function writeTimesheetCostLines(
             project_id: projectId,
             timesheet_id: timesheet.id,
             week_start: weekStart,
-            week_ending: weekEnding,
             work_date: workDate,
             person_id: member.personId,
             person_name: member.name,
@@ -311,7 +308,6 @@ export async function writeTimesheetCostLines(
           project_id: projectId,
           timesheet_id: timesheet.id,
           week_start: weekStart,
-          week_ending: weekEnding,
           work_date: workDate,
           person_id: member.personId,
           person_name: member.name,
@@ -344,7 +340,6 @@ export async function writeTimesheetCostLines(
           project_id: projectId,
           timesheet_id: timesheet.id,
           week_start: weekStart,
-          week_ending: weekEnding,
           work_date: workDate,
           person_id: member.personId,
           person_name: member.name,
