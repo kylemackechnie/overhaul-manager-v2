@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { naturalSortItemId } from '../../lib/dates'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
@@ -740,7 +741,7 @@ export function ExpensesPanel() {
                     {form.tce_item_id && !tceLines.some(l => l.item_id === form.tce_item_id) && (
                       <option value={form.tce_item_id}>{form.tce_item_id} (not in current TCE)</option>
                     )}
-                    {tceLines.map(l => <option key={l.id} value={l.item_id || ''}>{l.item_id} — {l.description}</option>)}
+                    {[...tceLines].sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(l => <option key={l.id} value={l.item_id || ''}>{l.item_id} — {l.description}</option>)}
                   </select>
                 ) : (
                   <input className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))} placeholder="e.g. 2.02.4.1 (import TCE to enable dropdown)" />
@@ -787,7 +788,7 @@ export function ExpensesPanel() {
                         <select className="input" style={{fontSize:'11px',padding:'3px 4px'}} value={l.tce_item_id||''}
                           onChange={e=>updateLine(l.id,'tce_item_id',e.target.value||null)}>
                           <option value="">— No TCE —</option>
-                          {tceLines.map(t=><option key={t.id} value={t.item_id||''}>{t.item_id}</option>)}
+                          {[...tceLines].sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(t=><option key={t.id} value={t.item_id||''}>{t.item_id}</option>)}
                         </select>
                         <button type="button" style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:'14px',lineHeight:1,padding:'0'}}
                           onClick={()=>removeLine(l.id)}>×</button>

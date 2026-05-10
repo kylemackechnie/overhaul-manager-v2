@@ -10,6 +10,7 @@
  * - Status workflow is controlled — not free-form
  */
 import { useEffect, useState } from 'react'
+import { naturalSortItemId } from '../../lib/dates'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
@@ -622,7 +623,7 @@ export function VariationsPanel() {
                           <select className="input" value={form.tce_link} onChange={e=>setForm(f=>({...f,tce_link:e.target.value}))}>
                             <option value="">— No TCE Link —</option>
                             <option value="create_new">+ Create new TCE line for this VN</option>
-                            {tceLines.filter(l=>l.item_id&&!isGroupHeader(l.item_id)).map(l=>(
+                            {[...tceLines].filter(l=>l.item_id&&!isGroupHeader(l.item_id)).sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(l=>(
                               <option key={l.id} value={l.item_id||''}>{l.item_id} — {l.description}</option>
                             ))}
                           </select>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { naturalSortItemId } from '../../lib/dates'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
@@ -743,7 +744,7 @@ export function InvoicesPanel() {
                     {/* Strip group-header rows (3-segment item_ids are headers, not selectable lines) */}
                     {tceLines
                       .filter(l => l.item_id && !/^\d+\.\d+\.\d+$/.test(l.item_id))
-                      .map(l => <option key={l.id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
+                      .sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(l => <option key={l.id} value={l.item_id}>{l.item_id} — {l.description}</option>)}
                   </select>
                 )}
               </div>

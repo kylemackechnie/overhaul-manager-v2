@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { naturalSortItemId } from '../../lib/dates'
 import { supabase } from '../../lib/supabase'
 import { usePermissions, useTimesheetPermissions } from '../../lib/permissions'
 import { resolveShift } from '../../lib/shiftPhases'
@@ -750,13 +751,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       l.source === 'skilled' &&
       !isGroupHeader(l.item_id, l.line_type) &&
       l.line_type !== 'Fixed Price'
-    )
+    ).sort((a,b) => naturalSortItemId(a.item_id, b.item_id))
     const overhead = tceLines.filter(l =>
       l.item_id &&
       l.source === 'overhead' &&
       !isGroupHeader(l.item_id, l.line_type) &&
       l.line_type !== 'Fixed Price'
-    )
+    ).sort((a,b) => naturalSortItemId(a.item_id, b.item_id))
     return (
       <>
         {!excludeSkilled && skilled.length > 0 && (

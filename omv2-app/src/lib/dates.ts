@@ -64,7 +64,18 @@ export function displayDate(isoDate: string | null | undefined): string {
   })
 }
 
-/** Difference in calendar days between two ISO date strings (b - a). */
+/** Natural-sort comparator for TCE item IDs like "2.02.7.2" vs "2.02.7.10".
+ *  Splits on '.' and compares each segment numerically. */
+export function naturalSortItemId(a: string | null | undefined, b: string | null | undefined): number {
+  const segA = (a || '').split('.').map(s => parseInt(s, 10) || 0)
+  const segB = (b || '').split('.').map(s => parseInt(s, 10) || 0)
+  const len = Math.max(segA.length, segB.length)
+  for (let i = 0; i < len; i++) {
+    const diff = (segA[i] || 0) - (segB[i] || 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
 export function daysDiff(a: string, b: string): number {
   return Math.round((parseDate(b).getTime() - parseDate(a).getTime()) / 86400000)
 }

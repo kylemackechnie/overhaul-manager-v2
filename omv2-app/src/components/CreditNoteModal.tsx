@@ -7,6 +7,7 @@
  * Step 3: Confirmation + apply
  */
 import { useState, useEffect } from 'react'
+import { naturalSortItemId } from '../lib/dates'
 import { supabase } from '../lib/supabase'
 import { useAppStore } from '../store/appStore'
 import { applyCreditNote, getNextReference, type SourceLine, type CreditNotePayload } from '../engines/creditNoteEngine'
@@ -434,10 +435,10 @@ export function CreditNoteModal({ projectId, sourceLines, onClose, onApplied }: 
                                 })
                               }}>
                               <option value="">— Select target scope —</option>
-                              {tceLines.filter(l => l.source === 'skilled' && l.work_order).map(l => (
+                              {[...tceLines].filter(l => l.source === 'skilled' && l.work_order).sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(l => (
                                 <option key={l.id} value={`wo:${l.work_order}`}>[WO] {l.work_order} — {l.description}</option>
                               ))}
-                              {tceLines.filter(l => l.source === 'overhead' || (l.source === 'skilled' && !l.work_order)).map(l => (
+                              {[...tceLines].filter(l => l.source === 'overhead' || (l.source === 'skilled' && !l.work_order)).sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(l => (
                                 <option key={l.id} value={`tce:${l.item_id}`}>[TCE] {l.item_id} — {l.description}</option>
                               ))}
                             </select>
