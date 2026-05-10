@@ -605,12 +605,23 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     const { error } = await supabase.from('weekly_timesheets').update(updates).eq('id', s.id)
     if (error) { toast(error.message, 'error'); return }
     // Write cost lines immediately on approval
-    try {
-      await writeTimesheetCostLines({ ...s, ...updates } as WeeklyTimesheet, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays)
-    } catch { /* non-critical */ }
+    const { error: clErr } = await writeTimesheetCostLines({ ...s, ...updates } as WeeklyTimesheet, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays)
+    if (clErr) console.warn('[TimesheetsPanel] Cost line write failed:', clErr)
     toast('Timesheet approved and locked', 'success')
     load()
     if (activeWeek?.id === s.id) setActiveWeek(null)
+  }
+
+  async function backfillCostLines() {
+    const approved = sheets.filter(s => s.status === 'approved')
+    if (!approved.length) { toast('No approved timesheets to backfill', 'info'); return }
+    let count = 0
+    for (const s of approved) {
+      const { error } = await writeTimesheetCostLines(s, activeProject!.id, rateCards, tceLines, resources, activeProject, holidays)
+      if (error) console.warn('[backfill] Failed for week', s.week_start, error)
+      else count++
+    }
+    toast(`Cost lines recalculated for ${count} timesheet${count !== 1 ? 's' : ''}`, 'success')
   }
 
   async function submitTimesheet(s: WeeklyTimesheet) {
@@ -1057,6 +1068,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             <button className="btn" onClick={() => setActiveWeek(null)}>← All Weeks</button>
             <button className="btn btn-sm" onClick={exportTimesheetCSV}>⬇ CSV</button>
             <button className="btn btn-sm" onClick={applyAllowances} title="Apply LAHA/meal defaults from resource list">🏷 Allowances</button>
+            {sheets.some(s => s.status === 'approved') && (
+              <button className="btn btn-sm" onClick={backfillCostLines} title="Recalculate cost lines for all approved timesheets (fixes missing actuals in MIKA/WBS view)">↺ Recalculate</button>
+            )}
           </>}
           <button className="btn btn-primary" onClick={() => setShowNewModal(true)} disabled={!canWrite('personnel')}>+ New Week</button>
         </div>

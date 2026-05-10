@@ -107,9 +107,10 @@ export async function writeTimesheetCostLines(
   // well as the current 'nrg_tce' for backwards compat with old timesheets
   // saved before the scope_tracking rename.
   const scopeTracking = (timesheet as unknown as { scope_tracking?: string }).scope_tracking
-  if (scopeTracking !== 'tce' && scopeTracking !== 'nrg_tce') {
-    return { error: null }
-  }
+  const isTce = scopeTracking === 'tce' || scopeTracking === 'nrg_tce'
+  // Non-TCE projects (WBS-based) still write cost lines — they use the
+  // resource's WBS code and write one row per person per day rather than
+  // splitting across TCE/WO allocations.
 
   const weekStart = timesheet.week_start
   // week_ending is now a GENERATED ALWAYS column on timesheet_cost_lines
@@ -181,7 +182,8 @@ export async function writeTimesheetCostLines(
       const allocs = day.nrgWoAllocations || []
       // Allocations carry hours-based labour. Filter to TCE/WO-tagged only.
       const tceAllocs = allocs.filter(a => a.tceItemId || a.wo)
-      const hasLabour = dayHours > 0 && tceAllocs.length > 0
+      // TCE timesheets require alloc rows; WBS timesheets just need hours > 0
+      const hasLabour = dayHours > 0 && (isTce ? tceAllocs.length > 0 : true)
 
       const shiftType = (day.shiftType === 'night' ? 'night' : 'day') as 'day' | 'night'
       // Calendar day type — used for travel Sunday/PH uplift rule
@@ -283,37 +285,65 @@ export async function writeTimesheetCostLines(
       const rcRates = (rcAny.rates as { cost: Record<string,number>; sell: Record<string,number> } | null)
 
       if (hasLabour) {
-        for (const alloc of tceAllocs) {
-          const allocHours = Number(alloc.hours) || 0
-          if (!allocHours) continue
+        if (isTce) {
+          // ── TCE path: split labour across WO/TCE allocations ──────────────
+          for (const alloc of tceAllocs) {
+            const allocHours = Number(alloc.hours) || 0
+            if (!allocHours) continue
 
-          // Internal cost: always proportional from the day's splitHours total
-          const ratio = allocHours / dayHours
-          const costLabour = dayLabourCost * ratio
+            // Internal cost: always proportional from the day's splitHours total
+            const ratio = allocHours / dayHours
+            const costLabour = dayLabourCost * ratio
 
-          // TCE sell: use payCode rate directly if available, else fall back to ratio
-          let sellLabour: number
-          let sellLabourEur: number
-          const rateKey = alloc.payCode ? PAY_CODE_TO_KEY[alloc.payCode] : undefined
-          if (rateKey && rcRates) {
-            const rSell = rcRates.sell[rateKey] || 0
-            sellLabour    = allocHours * rSell * labourFx
-            sellLabourEur = isEurCard ? allocHours * rSell : 0
-          } else {
-            sellLabour    = dayLabourSell * ratio
-            sellLabourEur = dayLabourSellEur * ratio
+            // TCE sell: use payCode rate directly if available, else fall back to ratio
+            let sellLabour: number
+            let sellLabourEur: number
+            const rateKey = alloc.payCode ? PAY_CODE_TO_KEY[alloc.payCode] : undefined
+            if (rateKey && rcRates) {
+              const rSell = rcRates.sell[rateKey] || 0
+              sellLabour    = allocHours * rSell * labourFx
+              sellLabourEur = isEurCard ? allocHours * rSell : 0
+            } else {
+              sellLabour    = dayLabourSell * ratio
+              sellLabourEur = dayLabourSellEur * ratio
+            }
+
+            // Resolve tce_item_id:
+            //   1. Prefer the alloc's explicit tceItemId
+            //   2. Fall back to WO → item_id when exactly one TCE line owns this WO
+            //   3. Otherwise null (ambiguous; user must pick the TCE line)
+            let resolvedItemId: string | null = alloc.tceItemId || null
+            if (!resolvedItemId && alloc.wo) {
+              const candidates = itemIdsByWO[alloc.wo] || []
+              if (candidates.length === 1) resolvedItemId = candidates[0]
+            }
+
+            rows.push({
+              project_id: projectId,
+              timesheet_id: timesheet.id,
+              week_start: weekStart,
+              work_date: workDate,
+              person_id: member.personId,
+              person_name: member.name,
+              role: member.role,
+              category,
+              wbs: memberWbs,
+              tce_item_id: resolvedItemId,
+              work_order: alloc.wo || null,
+              day_type: dayType,
+              shift_type: shiftType,
+              allocated_hours: allocHours,
+              cost_labour: costLabour,
+              sell_labour: sellLabour,
+              sell_labour_eur: sellLabourEur,
+              cost_allowances: 0,
+              sell_allowances: 0,
+              timesheet_status: timesheet.status,
+              po_id: member.personId ? (poIdByResourceId[member.personId] ?? null) : null,
+            })
           }
-
-          // Resolve tce_item_id:
-          //   1. Prefer the alloc's explicit tceItemId
-          //   2. Fall back to WO → item_id when exactly one TCE line owns this WO
-          //   3. Otherwise null (ambiguous; user must pick the TCE line)
-          let resolvedItemId: string | null = alloc.tceItemId || null
-          if (!resolvedItemId && alloc.wo) {
-            const candidates = itemIdsByWO[alloc.wo] || []
-            if (candidates.length === 1) resolvedItemId = candidates[0]
-          }
-
+        } else {
+          // ── WBS path: one row per person per day, no alloc splitting ───────
           rows.push({
             project_id: projectId,
             timesheet_id: timesheet.id,
@@ -324,14 +354,14 @@ export async function writeTimesheetCostLines(
             role: member.role,
             category,
             wbs: memberWbs,
-            tce_item_id: resolvedItemId,
-            work_order: alloc.wo || null,
+            tce_item_id: null,
+            work_order: null,
             day_type: dayType,
             shift_type: shiftType,
-            allocated_hours: allocHours,
-            cost_labour: costLabour,
-            sell_labour: sellLabour,
-            sell_labour_eur: sellLabourEur,
+            allocated_hours: dayHours,
+            cost_labour: dayLabourCost,
+            sell_labour: dayLabourSell,
+            sell_labour_eur: dayLabourSellEur,
             cost_allowances: 0,
             sell_allowances: 0,
             timesheet_status: timesheet.status,
