@@ -632,7 +632,7 @@ export function ResourcesPanel() {
           {selected.size > 0 && (
             <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',borderRadius:'6px',marginBottom:'10px',flexWrap:'wrap'}}>
               <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{selected.size} selected</span>
-              <button className="btn btn-sm" onClick={()=>{setBulkForm({role:'',company:'',category:'',mob_in:'',mob_out:'',shift:'',wbs:'',allow_laha:false,allow_meal:false,allow_fsa:false,applyLaha:false,applyMeal:false,applyFsa:false});setBulkModal(true)}}>✏ Edit Role/Shift</button>
+              <button className="btn btn-sm" onClick={()=>{setBulkForm({role:'',company:'',category:'',mob_in:'',mob_out:'',shift:'',wbs:'',specialisation:'',allow_laha:false,allow_meal:false,allow_fsa:false,applyLaha:false,applyMeal:false,applyFsa:false});setBulkModal(true)}}>✏ Edit Role/Shift</button>
               <button className="btn btn-sm" style={{color:'var(--red)',borderColor:'var(--red)'}} onClick={bulkDelete}>🗑 Delete Selected</button>
               <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelected(new Set())}>✕ Clear</button>
             </div>
