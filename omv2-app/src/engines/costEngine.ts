@@ -642,6 +642,7 @@ export interface NrgVariationMin {
   status: string
   tce_link: string
   sell_total: number
+  cost_total?: number
   approved_date?: string | null
 }
 

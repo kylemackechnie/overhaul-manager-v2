@@ -130,7 +130,7 @@ export function NrgTcePanel() {
         .eq('project_id', pid).eq('status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date,description,vendor,expense_ref,category').eq('project_id', pid),
-      supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
+      supabase.from('variations').select('status,tce_link,sell_total,cost_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
       supabase.from('timesheet_cost_lines').select('tce_item_id,allocated_hours,sell_labour,sell_labour_eur,sell_allowances,work_date').eq('project_id', pid).eq('timesheet_status', 'approved'),
@@ -193,6 +193,12 @@ export function NrgTcePanel() {
 
   function lineActualCost(l: NrgTceLine): number {
     if (l.line_type === 'Fixed Price') return l.tce_total || 0
+    // Variation lines: use VN cost_total (planned/committed cost) from all linked variations
+    if (l.source === 'variation' && l.item_id) {
+      return variations
+        .filter(v => v.tce_link === l.item_id)
+        .reduce((s, v) => s + (v.cost_total || 0), 0)
+    }
     const isLabour = l.line_type === 'Labour' || l.source === 'skilled'
     if (isLabour && l.item_id) {
       // Read from stored timesheet_cost_lines (same source as NRG Actuals + NRG Invoice)
