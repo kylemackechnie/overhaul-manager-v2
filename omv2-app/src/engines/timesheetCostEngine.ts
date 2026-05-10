@@ -176,6 +176,7 @@ export async function writeTimesheetCostLines(
 
       const dayHours = day.hours || 0
       const travelHoursComposite = (day as { travel_hours?: number }).travel_hours || 0
+      const dayType = day.dayType || 'weekday'
       const isCompositeDayType = dayType === 'travel_and_work' || dayType === 'sea_travel_and_work'
       const allocs = day.nrgWoAllocations || []
       // Allocations carry hours-based labour. Filter to TCE/WO-tagged only.
@@ -479,7 +480,7 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
     if (isCompositeDay) {
       // Travel portion — NT except Sunday/PH → T1.5
       if (travelH > 0) {
-        const travelDayType = (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') ? calendarDayType : 'travel'
+        const travelDayType = ((calendarDayType as string) === 'sunday' || (calendarDayType as string) === 'public_holiday') ? calendarDayType : 'travel'
         const tSplit = splitHours(travelH, travelDayType, (day.shiftType === 'night' ? 'night' : 'day'), rcRegime, calendarDayType)
         hours += travelH
         Object.entries(tSplit).forEach(([b, bh]) => {
