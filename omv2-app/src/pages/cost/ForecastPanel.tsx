@@ -14,7 +14,7 @@ import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveCont
 type Period = 'week' | 'month'
 type Mode = 'cost' | 'sell'
 
-type CatKey = 'trades' | 'mgmt' | 'seag' | 'dryHire' | 'wetHire' | 'localHire' | 'tooling' | 'cars' | 'accom' | 'expenses'
+type CatKey = 'trades' | 'mgmt' | 'seag' | 'dryHire' | 'wetHire' | 'localHire' | 'tooling' | 'cars' | 'accom' | 'expenses' | 'subcon'
 
 const LABOUR_CATS: { key: CatKey; label: string; color: string }[] = [
   { key: 'trades', label: 'Trades', color: '#0891b2' },
@@ -26,6 +26,7 @@ const OTHER_CATS: { key: CatKey; label: string; color: string }[] = [
   { key: 'wetHire',   label: 'Wet Hire',   color: '#b45309' },
   { key: 'localHire', label: 'Local Hire', color: '#92400e' },
   { key: 'tooling',   label: 'Tooling',    color: '#1d4ed8' },
+  { key: 'subcon',    label: 'Subcon',     color: '#f97316' },
   { key: 'cars',      label: 'Cars',       color: '#059669' },
   { key: 'accom',     label: 'Accom',      color: '#7c3aed' },
   { key: 'expenses',  label: 'Expenses',   color: '#dc2626' },
@@ -82,7 +83,7 @@ export function ForecastPanel() {
   const [showConfig, setShowConfig] = useState(false)
   const [config, setConfig] = useState({
     labour: true, dryHire: true, wetHire: true, localHire: true,
-    tooling: true, cars: true, accom: true, expenses: true,
+    tooling: true, subcon: true, cars: true, accom: true, expenses: true,
   })
 
   const [expandedPeriods, setExpandedPeriods] = useState<Record<string, boolean>>({})
@@ -107,7 +108,7 @@ export function ForecastPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [resData, rcData, boData, hireData, carData, acData, tcData, expData, tvsData, deptsData] = await Promise.all([
+    const [resData, rcData, boData, hireData, carData, acData, tcData, expData, tvsData, deptsData, posData, invData] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('back_office_hours').select('*').eq('project_id', pid),
@@ -118,6 +119,8 @@ export function ForecastPanel() {
       supabase.from('expenses').select('*').eq('project_id', pid),
       supabase.from('global_tvs').select('*'),
       supabase.from('global_departments').select('*'),
+      supabase.from('purchase_orders').select('*').eq('project_id', pid),
+      supabase.from('invoices').select('*').eq('project_id', pid),
     ])
     const stdHours = (activeProject!.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day:{}, night:{} }
     const publicHolidays = (activeProject!.public_holidays as { date: string }[]) || []
@@ -133,6 +136,8 @@ export function ForecastPanel() {
       0,
       tvsData.data || [],
       deptsData.data || [],
+      posData.data || [],
+      invData.data || [],
     )
     setData(forecast)
     setLoading(false)
@@ -143,14 +148,15 @@ export function ForecastPanel() {
     return data.days.filter(d => {
       const b = data.byDay[d]
       const hasLabour = config.labour && (b.trades.cost + b.mgmt.cost + b.seag.cost) > 0
-      const hasDry  = config.dryHire   && b.dryHire.cost > 0
-      const hasWet  = config.wetHire   && b.wetHire.cost > 0
-      const hasLoc  = config.localHire && b.localHire.cost > 0
-      const hasTool = config.tooling   && b.tooling.cost > 0
-      const hasCar  = config.cars      && b.cars.cost > 0
-      const hasAcc  = config.accom     && b.accom.cost > 0
-      const hasExp  = config.expenses  && b.expenses.cost > 0
-      return hasLabour || hasDry || hasWet || hasLoc || hasTool || hasCar || hasAcc || hasExp
+      const hasDry    = config.dryHire   && b.dryHire.cost > 0
+      const hasWet    = config.wetHire   && b.wetHire.cost > 0
+      const hasLoc    = config.localHire && b.localHire.cost > 0
+      const hasTool   = config.tooling   && b.tooling.cost > 0
+      const hasSubcon = config.subcon    && b.subcon.cost > 0
+      const hasCar    = config.cars      && b.cars.cost > 0
+      const hasAcc    = config.accom     && b.accom.cost > 0
+      const hasExp    = config.expenses  && b.expenses.cost > 0
+      return hasLabour || hasDry || hasWet || hasLoc || hasTool || hasSubcon || hasCar || hasAcc || hasExp
     })
   }, [data, config])
 
@@ -288,16 +294,17 @@ export function ForecastPanel() {
   // Chart is always weekly — monthly bars are too few to read as a curve.
   const chartData = useMemo(() => {
     if (!data) return []
-    const map: Record<string, { week: string; trades:number; mgmt:number; seag:number; hire:number; tooling:number; cars:number; accom:number; expenses:number; total:number }> = {}
+    const map: Record<string, { week: string; trades:number; mgmt:number; seag:number; hire:number; tooling:number; subcon:number; cars:number; accom:number; expenses:number; total:number }> = {}
     for (const d of filteredDays) {
       const wk = weekKey(d)
-      if (!map[wk]) map[wk] = { week: wk, trades:0, mgmt:0, seag:0, hire:0, tooling:0, cars:0, accom:0, expenses:0, total:0 }
+      if (!map[wk]) map[wk] = { week: wk, trades:0, mgmt:0, seag:0, hire:0, tooling:0, subcon:0, cars:0, accom:0, expenses:0, total:0 }
       const b = data.byDay[d]
       map[wk].trades   += b.trades[mode]
       map[wk].mgmt     += b.mgmt[mode]
       map[wk].seag     += b.seag[mode] * eurRate
       map[wk].hire     += b.dryHire[mode] + b.wetHire[mode] + b.localHire[mode]
       map[wk].tooling  += b.tooling[mode] * eurRate
+      map[wk].subcon   += b.subcon[mode]
       map[wk].cars     += b.cars[mode]
       map[wk].accom    += b.accom[mode]
       map[wk].expenses += b.expenses[mode]

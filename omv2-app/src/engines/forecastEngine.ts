@@ -1,4 +1,4 @@
-import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment } from '../types'
+import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment, PurchaseOrder, Invoice } from '../types'
 import { calcRentalCost } from '../lib/calculations'
 import { resolveShift } from '../lib/shiftPhases'
 
@@ -45,9 +45,7 @@ export interface DayBucket {
   cars:      { cost: number; sell: number }
   accom:     { cost: number; sell: number }
   expenses:  { cost: number; sell: number }
-  /** Per-day list of people on site — populated for labour and back-office.
-   *  Used by the panel's day-expand-to-people view and mob/demob badges.
-   *  Engine pushes one entry per resource per day they're on site. */
+  subcon:    { cost: number; sell: number }  // PO-based subcontractor costs
   people:    DayPerson[]
 }
 
@@ -91,6 +89,7 @@ function emptyDay(): DayBucket {
     cars:      { cost: 0, sell: 0 },
     accom:     { cost: 0, sell: 0 },
     expenses:  { cost: 0, sell: 0 },
+    subcon:    { cost: 0, sell: 0 },
     people:    [],
   }
 }
@@ -185,6 +184,8 @@ export function buildForecast(
   dailyExpenseEstimate: number = 0,
   globalTVs: GlobalTV[] = [],
   globalDepartments: GlobalDepartment[] = [],
+  purchaseOrders: PurchaseOrder[] = [],
+  invoices: Invoice[] = [],
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
@@ -584,6 +585,140 @@ export function buildForecast(
     }
   }
 
+  // ── Subcontractor PO costs ────────────────────────────────────────────────
+  // For each active/raised PO, spread uninvoiced cost across the forecast
+  // period as a daily rate — invoice period_from/period_to replaces the
+  // plan estimate for periods already invoiced.
+  //
+  // Three cases (matching poCommitmentsEngine logic):
+  //   1. PO linked to resources (no rate card) → spread across mob dates
+  //   2. PO linked to bookings (hire/cars/accom) → already in forecast, skip
+  //   3. Standalone PO → spread across forecast_start/forecast_end
+
+  // Build lookup: which POs have linked bookings?
+  const poHasBooking = new Set<string>()
+  for (const h of hireItems) {
+    const lpi = (h as HireItem & { linked_po_id?: string | null }).linked_po_id
+    if (lpi) poHasBooking.add(lpi)
+  }
+  for (const c of cars) {
+    const lpi = (c as Car & { linked_po_id?: string | null }).linked_po_id
+    if (lpi) poHasBooking.add(lpi)
+  }
+  for (const a of accom) {
+    const lpi = (a as Accommodation & { linked_po_id?: string | null }).linked_po_id
+    if (lpi) poHasBooking.add(lpi)
+  }
+
+  // Build lookup: which resources are subcon (no rate card) and link to a PO?
+  const subconByPo: Record<string, Resource[]> = {}
+  for (const r of resources) {
+    const lpi = (r as Resource & { linked_po_id?: string | null }).linked_po_id
+    if (!lpi || r.category !== 'subcontractor') continue
+    const hasRateCard = rateCards.some(rc => rc.role.toLowerCase() === r.role.toLowerCase())
+    if (hasRateCard) continue  // already in labour forecast
+    if (!subconByPo[lpi]) subconByPo[lpi] = []
+    subconByPo[lpi].push(r)
+  }
+
+  // Build approved invoice totals per PO
+  const invoicedByPo: Record<string, number> = {}
+  const invoicesByPo: Record<string, Invoice[]> = {}
+  for (const inv of invoices) {
+    if (!inv.po_id || inv.status !== 'approved') continue
+    invoicedByPo[inv.po_id] = (invoicedByPo[inv.po_id] || 0) + (Number(inv.amount) || 0)
+    if (!invoicesByPo[inv.po_id]) invoicesByPo[inv.po_id] = []
+    invoicesByPo[inv.po_id].push(inv)
+  }
+
+  // Helper: how much of an invoice overlaps a single day?
+  function invDayAmount(inv: Invoice, day: string): number {
+    if (!inv.period_from || !inv.period_to) return 0
+    if (day < inv.period_from || day > inv.period_to) return 0
+    const days = Math.max(1,
+      Math.round((new Date(inv.period_to + 'T12:00:00').getTime() -
+                  new Date(inv.period_from + 'T12:00:00').getTime()) / 86400000) + 1
+    )
+    return (Number(inv.amount) || 0) / days
+  }
+
+  function invoicedOnDay(poId: string, day: string): number {
+    return (invoicesByPo[poId] || []).reduce((s, inv) => s + invDayAmount(inv, day), 0)
+  }
+
+  // Helper: resolve FX for PO currency
+  function poFx(currency: string): number {
+    if (!currency || currency === 'AUD') return 1
+    return fxRates.find(r => r.code === currency)?.rate || 1
+  }
+
+  // Helper: date range
+  function dateRangePO(start: string, end: string): string[] {
+    const result: string[] = []
+    const cur = new Date(start + 'T12:00:00')
+    const last = new Date(end + 'T12:00:00')
+    while (cur <= last) {
+      result.push(cur.toISOString().slice(0, 10))
+      cur.setDate(cur.getDate() + 1)
+    }
+    return result
+  }
+
+  for (const po of purchaseOrders) {
+    if (!['raised', 'active'].includes(po.status)) continue
+    const poValue = Number(po.po_value) || 0
+    if (!poValue) continue
+    const fx = poFx(po.currency)
+    const poValueAud = poValue * fx
+    const invoicedTotal = invoicedByPo[po.id] || 0
+    const remaining = Math.max(0, poValueAud - invoicedTotal)
+    if (!remaining && !invoicedByPo[po.id]) continue
+
+    // Case 1: linked bookings — already in hire/car/accom forecast, skip
+    if (poHasBooking.has(po.id)) continue
+
+    // Case 2: subcon resources with mob dates (no rate card)
+    if (subconByPo[po.id]) {
+      const subRes = subconByPo[po.id]
+      const totalMobDays = subRes.reduce((sum, r) => {
+        if (!r.mob_in || !r.mob_out) return sum
+        return sum + Math.max(1, Math.round(
+          (new Date(r.mob_out + 'T12:00:00').getTime() - new Date(r.mob_in + 'T12:00:00').getTime()) / 86400000
+        ) + 1)
+      }, 0)
+      if (!totalMobDays) continue
+      const dailyRate = poValueAud / totalMobDays
+
+      for (const r of subRes) {
+        if (!r.mob_in || !r.mob_out) continue
+        for (const day of dateRangePO(r.mob_in, r.mob_out)) {
+          const invAmt = invoicedOnDay(po.id, day)
+          // Invoice replaces plan for this day — use the higher specificity number
+          const dayCost = invAmt > 0 ? invAmt : dailyRate
+          ensure(day).subcon.cost += dayCost
+          ensure(day).subcon.sell += dayCost  // cost = sell for subcon (no markup model yet)
+        }
+      }
+      continue
+    }
+
+    // Case 3: standalone PO — spread across forecast_start/forecast_end
+    const spreadStart = po.forecast_start || po.raised_date
+    const spreadEnd   = po.forecast_end   || po.closed_date || projEnd
+    if (!spreadStart || !spreadEnd || spreadStart > spreadEnd) continue
+
+    const spreadDays = dateRangePO(spreadStart, spreadEnd)
+    if (!spreadDays.length) continue
+    const dailyRate = poValueAud / spreadDays.length
+
+    for (const day of spreadDays) {
+      const invAmt = invoicedOnDay(po.id, day)
+      const dayCost = invAmt > 0 ? invAmt : dailyRate
+      ensure(day).subcon.cost += dayCost
+      ensure(day).subcon.sell += dayCost
+    }
+  }
+
   // Compute byPo totals
   for (const pb of Object.values(byPo)) {
     pb.total = pb.labour.cost + pb.dryHire.cost + pb.wetHire.cost + pb.localHire.cost + pb.cars.cost + pb.accom.cost
@@ -631,20 +766,17 @@ export const EUR_CATS: ReadonlySet<string> = new Set(['seag', 'tooling'])
 // Sum a DayBucket to a single cost/sell — in raw bucket units (EUR cats stay EUR).
 export function bucketTotal(b: DayBucket): { cost: number; sell: number } {
   let cost = 0, sell = 0
-  for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
+  for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses','subcon'] as const) {
     cost += b[cat].cost
     sell += b[cat].sell
   }
   return { cost, sell }
 }
 
-/** FX-aware bucket total — converts EUR-source categories to base currency.
- *  Use this for any total that must be summable in AUD (KPIs, project total
- *  row, CSV exports for accounting). The eurRate arg is the project's
- *  current EUR→base multiplier; the panel pulls it from project.currency_rates. */
+/** FX-aware bucket total — converts EUR-source categories to base currency. */
 export function bucketTotalBase(b: DayBucket, eurRate: number): { cost: number; sell: number } {
   let cost = 0, sell = 0
-  for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
+  for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses','subcon'] as const) {
     const factor = EUR_CATS.has(cat) ? eurRate : 1
     cost += b[cat].cost * factor
     sell += b[cat].sell * factor
