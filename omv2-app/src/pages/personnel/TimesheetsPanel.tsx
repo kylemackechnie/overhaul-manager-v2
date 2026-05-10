@@ -394,7 +394,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [bulkAddModal, setBulkAddModal] = useState(false)
   const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number;payCode?:string}[]>([])
-  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null}[]>([])
+  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null}[]>([])
   // Multi-match resolver — opens a modal listing every TasTK-imported alloc whose
   // WO maps to >1 TCE candidate item. User splits the hours, then save replaces
   // each ambiguous alloc with explicit {wo, tceItemId, hours} rows.
@@ -406,8 +406,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       supabase.from('work_orders').select('id,wo_number,description').eq('project_id', activeProject.id).neq('status','cancelled').order('wo_number')
         .then(r => setWorkOrders((r.data||[]) as {id:string;wo_number:string;description:string}[]))
       // Always load TCE lines when project has them — needed for allocation modal regardless of scope_tracking
-      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source,line_type').eq('project_id', activeProject.id).order('sort_order').order('item_id')
-        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null}[]))
+      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source,line_type,unit_type').eq('project_id', activeProject.id).order('sort_order').order('item_id')
+        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null}[]))
     }
   }, [activeProject?.id])
 
@@ -757,14 +757,18 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   // Three-tier dropdown per spec _getNrgTceAllocOptions():
   // Tier 1: [WO] Skilled labour grouped by Work Order (345 scopes → ~207 WO entries)
   // Tier 2: [SL] Skilled labour without a Work Order (direct item_id allocation)
-  // Tier 3: [OH] Overhead lines (per item_id)
+  // Overhead, Fixed Price, and Fixed Hours lines excluded — not allocatable labour.
   // Must read tceLines live — do NOT memoize (edits in TCE register must reflect immediately)
+  const isFixedUnit = (l: {unit_type:string|null}) => {
+    const u = (l.unit_type || '').toLowerCase()
+    return u === 'fixed hours' || u === 'fixed price'
+  }
   function getTceOptions(): {key:string; label:string}[] {
     const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
     const opts: {key:string;label:string}[] = []
 
-    // Tier 1: Skilled labour with WO — grouped by WO
-    const skilledWithWo = tceLines.filter(l => l.source === 'skilled' && l.work_order && !isGroupHeader(l.item_id))
+    // Tier 1: Skilled labour with WO — grouped by WO (exclude fixed unit types)
+    const skilledWithWo = tceLines.filter(l => l.source === 'skilled' && l.work_order && !isGroupHeader(l.item_id) && !isFixedUnit(l))
     const byWo: Record<string, typeof skilledWithWo> = {}
     skilledWithWo.forEach(l => {
       const wo = l.work_order!
@@ -776,31 +780,33 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       opts.push({ key: `wo:${wo}`, label: `[WO] ${wo} — ${ls[0]?.description?.slice(0,40)||''}${extra}` })
     })
 
-    // Tier 2: Skilled labour WITHOUT a Work Order (fallback, direct item_id)
-    tceLines.filter(l => l.source === 'skilled' && !l.work_order && !isGroupHeader(l.item_id)).forEach(l => {
+    // Tier 2: Skilled labour WITHOUT a Work Order (fallback, direct item_id; exclude fixed unit types)
+    tceLines.filter(l => l.source === 'skilled' && !l.work_order && !isGroupHeader(l.item_id) && !isFixedUnit(l)).forEach(l => {
       opts.push({ key: `tce:${l.item_id}`, label: `[SL] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
     })
 
-    // Overhead and Fixed Price lines intentionally excluded — bulk TCE scope is skilled labour only
+    // Overhead and Fixed Price/Fixed Hours lines intentionally excluded — bulk TCE scope is skilled labour only
 
     return opts
   }
 
   // ── Allowance / Travel TCE option renderer ──────────────────────────────
   // Renders <optgroup> sections matching TCE register order (skilled → overhead).
-  // Excludes group-header rows and Fixed Price lines (not relevant for allowances).
+  // Excludes group-header rows, Fixed Price line_type, and Fixed Hours/Fixed Price unit types.
   function renderAllowanceTceOptions(excludeSkilled = false) {
     const skilled = tceLines.filter(l =>
       l.item_id &&
       l.source === 'skilled' &&
       !isGroupHeader(l.item_id, l.line_type) &&
-      l.line_type !== 'Fixed Price'
+      l.line_type !== 'Fixed Price' &&
+      !isFixedUnit(l)
     ).sort((a,b) => naturalSortItemId(a.item_id, b.item_id))
     const overhead = tceLines.filter(l =>
       l.item_id &&
       l.source === 'overhead' &&
       !isGroupHeader(l.item_id, l.line_type) &&
-      l.line_type !== 'Fixed Price'
+      l.line_type !== 'Fixed Price' &&
+      !isFixedUnit(l)
     ).sort((a,b) => naturalSortItemId(a.item_id, b.item_id))
     return (
       <>
