@@ -23,7 +23,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { usePermissions } from '../../lib/permissions'
-import { getDefaultLayout, mergeLayout, filterRegistry, makeAUDFormatter } from '../../lib/dashboardLayout'
+import { getDefaultLayout, mergeLayout, filterRegistry } from '../../lib/dashboardLayout'
+import { fmt as fmtCurrency } from '../../lib/currency'
 import { SortableTile } from './SortableTile'
 import { DashboardToolbar } from './DashboardToolbar'
 import { TileErrorBoundary } from './TileErrorBoundary'
@@ -99,9 +100,9 @@ export function CustomisableDashboard({
     projectId: activeProject?.id,
     userId: currentUser?.id ?? '',
     timeWindow: { from: '', to: '', preset: '' },
-    fmt: makeAUDFormatter(),
+    fmt: (n: number) => fmtCurrency(n, activeProject ?? null),
     setActivePanel,
-  }), [activeProject?.id, currentUser?.id, setActivePanel])
+  }), [activeProject, currentUser?.id, setActivePanel])
 
   // ── Layout mutators ─────────────────────────────────────────────────────────
   function saveLayout(next: TileLayoutEntry[]) {
