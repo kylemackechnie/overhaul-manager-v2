@@ -37,6 +37,8 @@ const DAY_TYPES = [
 
 const TRAVEL_AND_WORK_TYPES = new Set(['travel_and_work', 'sea_travel_and_work'])
 const isTravelAndWork = (dt: string) => TRAVEL_AND_WORK_TYPES.has(dt)
+
+function getMon(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00')
   const dow = d.getDay()
   d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1))
