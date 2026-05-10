@@ -628,7 +628,7 @@ export interface MikaWbsLine {
 export interface NrgTceLine {
   id: string; project_id: string
   item_id: string | null; wbs_code: string; description: string
-  category: string; source: 'overhead' | 'skilled'
+  category: string; source: 'overhead' | 'skilled' | 'variation'
   tce_total: number; tce_rate: number; estimated_qty: number; unit_type: string
   work_order: string; contract_scope: string; line_type: string; kpi_included: boolean
   forecast_enabled: boolean; forecast_type: string | null
