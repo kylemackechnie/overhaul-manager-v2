@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Resource } from '../../types'
 import { toast } from '../../components/ui/Toast'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -91,9 +92,17 @@ interface Props {
 export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBulkEdit, onClearSelected }: Props) {
   const today = todayStr()
 
+  const { prefs, setPref } = useUserPrefs()
+
   // ── View state ───────────────────────────────────────────────────────────────
-  const [preset, setPreset] = useState<ViewPreset>('4w')
+  const [preset, setPreset] = useState<ViewPreset>((prefs.res_cal_preset as ViewPreset | undefined) ?? '4w')
   const [offset, setOffset] = useState(0)  // days to shift window from default start
+
+  function changePreset(p: ViewPreset) {
+    setPreset(p)
+    setOffset(0)
+    setPref('res_cal_preset', p)
+  }
 
   // Resources that have at least one mob date
   const calResources = useMemo(
@@ -319,7 +328,7 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
             key={p}
             className="btn btn-sm"
             style={preset === p ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : undefined}
-            onClick={() => { setPreset(p); resetOffset() }}
+            onClick={() => changePreset(p)}
           >
             {p === 'span' ? 'Full span' : p === '2w' ? '2 weeks' : p === '4w' ? '4 weeks' : '8 weeks'}
           </button>

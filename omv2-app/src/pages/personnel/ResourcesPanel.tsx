@@ -118,11 +118,11 @@ export function ResourcesPanel() {
   const [catFilter, setCatFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [sortCol, setSortCol] = useState<SortCol>('name')
+  const [sortCol, setSortCol] = useState<SortCol>((prefs.res_sort_col as SortCol | undefined) ?? 'name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', specialisation:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
-  const [sortAsc, setSortAsc] = useState(true)
+  const [sortAsc, setSortAsc] = useState(prefs.res_sort_asc ?? true)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -464,8 +464,16 @@ export function ResourcesPanel() {
   }
 
   function doSort(col: SortCol) {
-    if (sortCol === col) setSortAsc(a => !a)
-    else { setSortCol(col); setSortAsc(true) }
+    if (sortCol === col) {
+      const next = !sortAsc
+      setSortAsc(next)
+      setPref('res_sort_asc', next)
+    } else {
+      setSortCol(col)
+      setSortAsc(true)
+      setPref('res_sort_col', col)
+      setPref('res_sort_asc', true)
+    }
   }
 
   const catCounts: Record<string,number> = {}

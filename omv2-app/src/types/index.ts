@@ -113,7 +113,10 @@ export interface UserPrefs {
   inv_sort_dir?: string      // 'asc' | 'desc'
   inv_filter_status?: string
 
-  // ── Column visibility ─────────────────────────────────────────────────────
+  // ── Resources panel ────────────────────────────────────────────────────────
+  res_sort_col?: string      // SortCol for resource table
+  res_sort_asc?: boolean     // sort direction
+  res_cal_preset?: string    // ViewPreset for resource calendar ('2w' | '4w' | '8w' | 'span')
   hidden_cols?: Record<string, string[]>  // tableId → array of hidden column IDs
 
   // ── Ribbon tabs ───────────────────────────────────────────────────────────
