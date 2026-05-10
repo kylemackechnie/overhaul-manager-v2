@@ -23,7 +23,7 @@ const CELL_PX = 26  // pixels per day column
 const ROW_H = 30    // px per person row
 const EDGE_PX = 8   // drag-handle zone width at each end of bar
 
-const CAT_ORDER: Resource['category'][] = ['trades', 'management', 'seag', 'subcontractor']
+const CAT_ORDER: Resource['category'][] = ['management', 'trades', 'subcontractor', 'seag']
 const CAT_LABEL: Record<Resource['category'], string> = {
   trades: 'Trades',
   management: 'Management',
