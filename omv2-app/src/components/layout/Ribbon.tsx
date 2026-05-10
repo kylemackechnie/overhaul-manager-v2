@@ -50,6 +50,9 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '🗓️', label: 'Holidays', panel: 'public-holidays' },
         { icon: '📍', label: 'WBS', panel: 'wbs-list' },
       ]},
+      { label: 'Planning', buttons: [
+        { icon: '✅', label: 'Pre-Planning', panel: 'pre-planning' },
+      ]},
     ],
   },
   {
