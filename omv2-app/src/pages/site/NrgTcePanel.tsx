@@ -14,7 +14,7 @@ import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled', 'variation'] as const
 type TceSource = typeof SOURCES[number]
-const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other', 'Fixed Price', 'Invoice / Receipt'] as const
+const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other', 'Fixed Price', 'Invoice / Receipt', 'Labour and Invoice / Receipt'] as const
 
 // ── TCE column registry ───────────────────────────────────────────────────────
 const TCE_COLS = [
