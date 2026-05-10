@@ -193,7 +193,7 @@ export async function writeTimesheetCostLines(
       let dayLabourCost = 0, dayLabourSell = 0
       let dayLabourSellEur = 0
       if (hasLabour) {
-        const adjH = (memberAny.mealBreakAdj && dayHours > 0) ? 0.5 : 0
+        const adjH = (memberAny.mealBreakAdj && dayHours > 10) ? 0.5 : 0
         const effH = dayHours + adjH
         const split = splitHours(effH, dayType, shiftType, rcRegime, calendarDayType)
         dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
@@ -437,7 +437,7 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
     if (h <= 0) return
 
     // mealBreakAdj: +0.5h to cost/sell calc (not payroll). Matches writer.
-    const adjH = (member.mealBreakAdj && h > 0) ? 0.5 : 0
+    const adjH = (member.mealBreakAdj && h > 10) ? 0.5 : 0
     const effH = h + adjH
     hours += effH
 

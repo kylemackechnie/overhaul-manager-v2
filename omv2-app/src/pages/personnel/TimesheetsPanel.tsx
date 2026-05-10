@@ -242,7 +242,7 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
       const ds = d.toISOString().slice(0,10)
       const cell = (m.days||{})[ds] as {hours?:number;dayType?:string;shiftType?:string;laha?:boolean;meal?:boolean;fsa?:boolean;camp?:boolean}|undefined
       if (!cell?.hours) return { split:{} as Record<string,number>, sell:{} as Record<string,number>, hours:0, totalSell:0, allowances:[] as {label:string;sell:number}[] }
-      const adjH = (m.mealBreakAdj && !isMgmt) ? 0.5 : 0
+      const adjH = (m.mealBreakAdj && !isMgmt && (cell?.hours||0) > 10) ? 0.5 : 0
       const effH = cell.hours + adjH
       const sp = splitHours(effH, cell.dayType||'weekday', cell.shiftType||'day', rc.regime) as unknown as Record<string,number>
       const sellMap: Record<string,number> = {}
@@ -1398,7 +1398,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     {/* EBA Meal Break Adjustment — trades only (+½h per worked day, cost & sell only) */}
                     {(type === 'trades') && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginTop: '2px' }}
-                        title="+0.5h per worked day (EBA meal break adjustment — cost & charge only, payroll unaffected)">
+                        title="+0.5h per day worked >10h (EBA meal break adjustment — cost &amp; charge only, payroll unaffected)">
                         <input type="checkbox" checked={!!member.mealBreakAdj} style={{ accentColor: TYPE_COLOR[type], width: '10px', height: '10px' }}
                           onChange={e => {
                             const updated = { ...member, mealBreakAdj: e.target.checked }
@@ -1420,7 +1420,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     const meal = (raw.meal as boolean) || false
                     const isPH = holidays.has(d)
                     // EBA adj for display and split
-                    const adjH = (member.mealBreakAdj && cellHrs > 0) ? 0.5 : 0
+                    const adjH = (member.mealBreakAdj && cellHrs > 10) ? 0.5 : 0
                     const dispHrs = cellHrs + adjH
                     const calDow = new Date(d + 'T12:00:00').getDay()
                     const calendarDayType = holidays.has(d) ? 'public_holiday' : calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
