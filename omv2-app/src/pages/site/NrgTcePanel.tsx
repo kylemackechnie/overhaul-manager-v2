@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useResizableColumns, wasResizeDrag } from '../../hooks/useResizableColumns'
 import { useAppStore } from '../../store/appStore'
@@ -12,7 +12,8 @@ import { exportTceSkilledLabour } from '../../lib/exportTce'
 import { nrgLineActual, nrgInvoiceActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
-const SOURCES = ['overhead', 'skilled'] as const
+const SOURCES = ['overhead', 'skilled', 'variation'] as const
+type TceSource = typeof SOURCES[number]
 const LINE_TYPES = ['', 'Labour', 'Equipment', 'Other', 'Fixed Price', 'Invoice / Receipt'] as const
 
 // ── TCE column registry ───────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ type TceColId = typeof TCE_COLS[number]['id']
 const TCE_COL_GROUPS = ['Identity', 'Scope', 'Estimates', 'Financials', 'Admin'] as const
 
 const EMPTY = {
-  wbs_code: '', description: '', category: '', source: 'overhead' as 'overhead' | 'skilled',
+  wbs_code: '', description: '', category: '', source: 'overhead' as TceSource,
   tce_total: 0, item_id: '', work_order: '', contract_scope: '', line_type: '', kpi_included: false,
   unit_type: '', estimated_qty: 0, tce_rate: 0, details: {} as Record<string, unknown>
 }
@@ -404,6 +405,7 @@ export function NrgTcePanel() {
   let filtered = lines
   if (sourceFilter === 'overhead') filtered = filtered.filter(l => l.source === 'overhead')
   else if (sourceFilter === 'skilled') filtered = filtered.filter(l => l.source === 'skilled')
+  else if (sourceFilter === 'variation') filtered = filtered.filter(l => l.source === 'variation')
   else if (sourceFilter === 'untyped') filtered = filtered.filter(l => !l.line_type)
 
   if (hideUnused) {
@@ -497,13 +499,15 @@ export function NrgTcePanel() {
     ? [...new Set(timesheets.map(ts => ts.week_start))].sort()
     : []
 
-  const sourceBadge = (src: string) => (
-    <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
-      background: src === 'skilled' ? '#dbeafe' : '#fef3c7',
-      color: src === 'skilled' ? '#1d4ed8' : '#92400e' }}>
-      {src === 'skilled' ? 'Skilled' : 'Overhead'}
-    </span>
-  )
+  const SOURCE_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+    skilled:   { bg: '#dbeafe', color: '#1d4ed8', label: 'Skilled' },
+    overhead:  { bg: '#fef3c7', color: '#92400e', label: 'Overhead' },
+    variation: { bg: '#fce7f3', color: '#9d174d', label: 'Variation' },
+  }
+  const sourceBadge = (src: string) => {
+    const s = SOURCE_STYLE[src] || { bg: '#f3f4f6', color: '#374151', label: src }
+    return <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px', background: s.bg, color: s.color }}>{s.label}</span>
+  }
 
   return (
     <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
@@ -535,7 +539,7 @@ export function NrgTcePanel() {
       {/* Filters + toolbar */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
         <input className="input" style={{ maxWidth: '220px' }} placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
-        {(['all', 'overhead', 'skilled', 'untyped'] as string[]).map(s => (
+        {(['all', 'overhead', 'skilled', 'variation', 'untyped'] as string[]).map(s => (
           <button key={s} className="btn btn-sm"
             style={{ background: sourceFilter === s ? 'var(--accent)' : 'var(--bg)', color: sourceFilter === s ? '#fff' : 'var(--text)' }}
             onClick={() => setSourceFilter(s)}>
@@ -622,16 +626,42 @@ export function NrgTcePanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedVisible.map(l => {
+                  {(() => {
+                    const rows: React.ReactNode[] = []
+                    let lastSource = ''
+                    const SOURCE_SECTION: Record<string, { label: string; bg: string; color: string; border: string }> = {
+                      overhead:  { label: 'Non TasTK — Overheads', bg: '#fef9c3', color: '#78350f', border: '#fde68a' },
+                      skilled:   { label: 'Skilled Labour',          bg: '#eff6ff', color: '#1e3a8a', border: '#bfdbfe' },
+                      variation: { label: 'Variations',              bg: '#fdf2f8', color: '#701a75', border: '#f5d0fe' },
+                    }
+                    sortedVisible.forEach(l => {
+                      // Inject source section header when source changes
+                      const src = l.source || 'overhead'
+                      if (src !== lastSource && !isGroupHeader(l.item_id, l.line_type)) {
+                        lastSource = src
+                        const sec = SOURCE_SECTION[src]
+                        if (sec) {
+                          const visColCount = 1 + TCE_COLS.filter(c => isTceVisible(c.id)).length + (showWeekly ? weekKeys.length : 0)
+                          rows.push(
+                            <tr key={`section-${src}`} style={{ background: sec.bg, borderTop: `2px solid ${sec.border}`, borderBottom: `1px solid ${sec.border}` }}>
+                              <td colSpan={visColCount} style={{ padding: '5px 12px', fontWeight: 700, fontSize: '11px', color: sec.color, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                {sec.label}
+                              </td>
+                            </tr>
+                          )
+                        }
+                      }
+
                     const isHdr = isGroupHeader(l.item_id, l.line_type)
                     const isCol = isHdr && collapsed.has(l.item_id || '')
                     const isSel = !isHdr && selected.has(l.id)
 
+                    let row: React.ReactNode
                     if (isHdr) {
                       const children = filtered.filter(c => !isGroupHeader(c.item_id) && (c.item_id || '').startsWith((l.item_id || '') + '.'))
                       const groupTotal = children.reduce((s, c) => s + (c.tce_total || 0), 0)
                       const childCount = children.length
-                      return (
+                      row = (
                         <tr key={l.id} style={{ background: '#e0e7ff', color: '#3730a3', borderBottom: '1px solid #c7d2fe' }}>
                           <td></td>
                           <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer' }}
@@ -663,7 +693,8 @@ export function NrgTcePanel() {
                       )
                     }
 
-                    return (
+                    } else {
+                    row = (
                       <tr key={l.id} style={{ background: isSel ? 'rgba(59,130,246,0.05)' : 'transparent' }}>
                         <td>
                           <input type="checkbox" checked={isSel} onChange={e => {
@@ -735,8 +766,13 @@ export function NrgTcePanel() {
                           <button className="btn btn-sm" style={{ fontSize: '10px', padding: '1px 6px', marginLeft: '3px', color: 'var(--red)' }} onClick={() => del(l)}>🗑</button>
                         </td>}
                       </tr>
-                    )
-                  })}
+                      )
+                      }
+
+                      rows.push(row)
+                    })
+                    return rows
+                  })()}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
@@ -769,7 +805,7 @@ export function NrgTcePanel() {
               <div className="fg-row">
                 <div className="fg"><label>Item ID</label><input className="input" value={form.item_id} onChange={e => setForm(f => ({ ...f, item_id: e.target.value }))} placeholder="e.g. 1.2.3" /></div>
                 <div className="fg"><label>Source</label>
-                  <select className="input" value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value as 'overhead' | 'skilled' }))}>
+                  <select className="input" value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value as TceSource }))}>
                     {SOURCES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                   </select>
                 </div>
