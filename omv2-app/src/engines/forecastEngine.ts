@@ -671,15 +671,27 @@ export function buildForecast(
     const fx = poFx(po.currency)
     const poValueAud = poValue * fx
     const invoicedTotal = invoicedByPo[po.id] || 0
-    const remaining = Math.max(0, poValueAud - invoicedTotal)
-    if (!remaining && !invoicedByPo[po.id]) continue
 
-    // Case 1: linked bookings — already in hire/car/accom forecast, skip
-    if (poHasBooking.has(po.id)) continue
-
-    // Case 2: subcon resources with mob dates (no rate card)
+    // ── Case 2: subcon resources with mob dates (checked FIRST — a PO can have
+    //    both hire items and labour resources, e.g. a scaffolding PO) ──────────
     if (subconByPo[po.id]) {
       const subRes = subconByPo[po.id]
+
+      // If the same PO has linked bookings (hire/cars/accom), those booking costs
+      // are already in the forecast. Deduct them from the PO value so we only
+      // spread the remaining labour portion across the resource mob dates.
+      const linkedBookingCost = [
+        ...hireItems.filter(h => (h as HireItem & { linked_po_id?: string | null }).linked_po_id === po.id)
+          .map(h => Number(h.hire_cost) || 0),
+        ...cars.filter(c => (c as Car & { linked_po_id?: string | null }).linked_po_id === po.id)
+          .map(c => Number(c.total_cost) || 0),
+        ...accom.filter(a => (a as Accommodation & { linked_po_id?: string | null }).linked_po_id === po.id)
+          .map(a => Number(a.total_cost) || 0),
+      ].reduce((s, v) => s + v, 0) * fx
+
+      const labourValueAud = Math.max(0, poValueAud - linkedBookingCost - invoicedTotal)
+      if (!labourValueAud) continue
+
       const totalMobDays = subRes.reduce((sum, r) => {
         if (!r.mob_in || !r.mob_out) return sum
         return sum + Math.max(1, Math.round(
@@ -687,29 +699,36 @@ export function buildForecast(
         ) + 1)
       }, 0)
       if (!totalMobDays) continue
-      const dailyRate = poValueAud / totalMobDays
+      const dailyRate = labourValueAud / totalMobDays
 
       for (const r of subRes) {
         if (!r.mob_in || !r.mob_out) continue
         for (const day of dateRangePO(r.mob_in, r.mob_out)) {
           const invAmt = invoicedOnDay(po.id, day)
-          // Invoice replaces plan for this day — use the higher specificity number
-          const dayCost = invAmt > 0 ? invAmt : dailyRate
+          const dayCost = invAmt > 0 ? invAmt / subRes.length : dailyRate
           ensure(day).subcon.cost += dayCost
-          ensure(day).subcon.sell += dayCost  // cost = sell for subcon (no markup model yet)
+          ensure(day).subcon.sell += dayCost
         }
       }
       continue
     }
 
-    // Case 3: standalone PO — spread across forecast_start/forecast_end
+    // ── Case 1: PO has linked bookings but no subcon resources ────────────────
+    // Booking costs (hire_cost, total_cost) are already in the forecast via the
+    // hire/car/accom spread loops above. Skip to avoid double counting.
+    if (poHasBooking.has(po.id)) continue
+
+    // ── Case 3: standalone PO — spread across forecast_start/forecast_end ─────
+    const remaining = Math.max(0, poValueAud - invoicedTotal)
+    if (!remaining) continue
+
     const spreadStart = po.forecast_start || po.raised_date
     const spreadEnd   = po.forecast_end   || po.closed_date || projEnd
     if (!spreadStart || !spreadEnd || spreadStart > spreadEnd) continue
 
     const spreadDays = dateRangePO(spreadStart, spreadEnd)
     if (!spreadDays.length) continue
-    const dailyRate = poValueAud / spreadDays.length
+    const dailyRate = remaining / spreadDays.length
 
     for (const day of spreadDays) {
       const invAmt = invoicedOnDay(po.id, day)
