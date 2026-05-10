@@ -346,6 +346,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [holidays, setHolidays] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [activeWeek, setActiveWeek] = useState<WeeklyTimesheet | null>(null)
+  const [noteOpen, setNoteOpen] = useState<string | null>(null) // `${personId}__${date}`
   const [showNewModal, setShowNewModal] = useState(false)
   const [newForm, setNewForm] = useState({ week_start: getMon(new Date().toISOString().slice(0, 10)), wbs: '', notes: '', vendor: '', po_id: '' })
   const [saving, setSaving] = useState(false)
@@ -1544,6 +1545,33 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             })()}
                           </div>
                         )}
+                        {/* Day note */}
+                        {(() => {
+                          const note = (raw.note as string) || ''
+                          const noteKey = `${member.personId}__${d}`
+                          const isOpen = noteOpen === noteKey
+                          return (
+                            <div style={{ marginTop: '3px' }}>
+                              <button
+                                onClick={() => setNoteOpen(isOpen ? null : noteKey)}
+                                title={note || 'Add note'}
+                                style={{ fontSize: '9px', padding: '0 3px', border: '1px solid var(--border)', borderRadius: '3px', background: note ? '#e6f4f1' : 'var(--bg3)', color: note ? 'var(--accent)' : 'var(--text3)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                                {note ? '✎· Note' : '✎ Note'}
+                              </button>
+                              {isOpen && (
+                                <textarea
+                                  autoFocus
+                                  value={note}
+                                  onChange={e => setDay(member.personId, d, 'note', e.target.value)}
+                                  onBlur={() => setNoteOpen(null)}
+                                  placeholder="Day note…"
+                                  rows={3}
+                                  style={{ width: '100%', fontSize: '10px', marginTop: '2px', padding: '3px 4px', border: '1px solid var(--accent)', borderRadius: '3px', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', boxSizing: 'border-box' }}
+                                />
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )
                   })}
