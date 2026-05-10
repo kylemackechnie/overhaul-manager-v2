@@ -25,7 +25,7 @@ export interface PoBucket {
 export interface DayPerson {
   name: string
   role: string
-  category: 'trades' | 'mgmt' | 'seag'
+  category: 'trades' | 'mgmt' | 'seag' | 'subcon'
   cost: number
   sell: number
   hours: number
@@ -38,6 +38,7 @@ export interface DayBucket {
   trades:    { cost: number; sell: number; headcount: number; hours: number }
   mgmt:      { cost: number; sell: number; headcount: number; hours: number }
   seag:      { cost: number; sell: number; headcount: number; hours: number }
+  subcon:    { cost: number; sell: number; headcount: number; hours: number }
   dryHire:   { cost: number; sell: number }
   wetHire:   { cost: number; sell: number }
   localHire: { cost: number; sell: number }
@@ -45,7 +46,6 @@ export interface DayBucket {
   cars:      { cost: number; sell: number }
   accom:     { cost: number; sell: number }
   expenses:  { cost: number; sell: number }
-  subcon:    { cost: number; sell: number }  // PO-based subcontractor costs
   people:    DayPerson[]
 }
 
@@ -82,6 +82,7 @@ function emptyDay(): DayBucket {
     trades:    { cost: 0, sell: 0, headcount: 0, hours: 0 },
     mgmt:      { cost: 0, sell: 0, headcount: 0, hours: 0 },
     seag:      { cost: 0, sell: 0, headcount: 0, hours: 0 },
+    subcon:    { cost: 0, sell: 0, headcount: 0, hours: 0 },
     dryHire:   { cost: 0, sell: 0 },
     wetHire:   { cost: 0, sell: 0 },
     localHire: { cost: 0, sell: 0 },
@@ -89,7 +90,6 @@ function emptyDay(): DayBucket {
     cars:      { cost: 0, sell: 0 },
     accom:     { cost: 0, sell: 0 },
     expenses:  { cost: 0, sell: 0 },
-    subcon:    { cost: 0, sell: 0 },
     people:    [],
   }
 }
@@ -231,7 +231,7 @@ export function buildForecast(
     if (!rc) continue
 
     const cat = rc.category || r.category || 'trades'
-    const catKey = cat === 'management' ? 'mgmt' : cat === 'seag' ? 'seag' : 'trades'
+    const catKey = cat === 'management' ? 'mgmt' : cat === 'seag' ? 'seag' : cat === 'subcontractor' ? 'subcon' : 'trades'
     const end = r.mob_out || projEnd || r.mob_in
     const days = dateRange(r.mob_in, end)
 

@@ -185,7 +185,7 @@ export function ForecastPanel() {
         g.totals[c.key].cost += b[c.key].cost
         g.totals[c.key].sell += b[c.key].sell
       }
-      const dayHC = b.trades.headcount + b.mgmt.headcount + b.seag.headcount
+      const dayHC = b.trades.headcount + b.mgmt.headcount + b.seag.headcount + b.subcon.headcount
       if (dayHC > g.hc) g.hc = dayHC
       g.hours.trades += b.trades.hours
       g.hours.mgmt   += b.mgmt.hours
@@ -205,7 +205,7 @@ export function ForecastPanel() {
         grandCost += tot.cost
         grandSell += tot.sell
         grandHours += b.trades.hours + b.mgmt.hours + b.seag.hours
-        const hc = b.trades.headcount + b.mgmt.headcount + b.seag.headcount
+        const hc = b.trades.headcount + b.mgmt.headcount + b.seag.headcount + b.subcon.headcount
         if (hc > peakHC) { peakHC = hc; peakHCDay = d }
       }
     }
@@ -656,7 +656,7 @@ function PeriodRowFragment(props: PeriodRowProps) {
         const dayCost = activeCats.reduce((s, c) => s + (EUR_CATS.has(c.key) ? b[c.key].cost * eurRate : b[c.key].cost), 0)
         const daySell = activeCats.reduce((s, c) => s + (EUR_CATS.has(c.key) ? b[c.key].sell * eurRate : b[c.key].sell), 0)
         const dayBase = mode === 'sell' ? daySell : dayCost
-        const dayHC = b.trades.headcount + b.mgmt.headcount + b.seag.headcount
+        const dayHC = b.trades.headcount + b.mgmt.headcount + b.seag.headcount + b.subcon.headcount
         const dayHrs = b.trades.hours + b.mgmt.hours + b.seag.hours
         const dayKey = g.key + '|' + d
         const dayExp = !!expandedDays[dayKey]
@@ -722,11 +722,11 @@ function PeriodRowFragment(props: PeriodRowProps) {
 interface PeopleGridProps { people: DayPerson[]; mode: Mode }
 function PeopleGrid({ people, mode }: PeopleGridProps) {
   const sorted = [...people].sort((a, b) => {
-    const order = { trades: 0, mgmt: 1, seag: 2 } as const
-    return (order[a.category] ?? 3) - (order[b.category] ?? 3) || a.name.localeCompare(b.name)
+    const order = { trades: 0, mgmt: 1, seag: 2, subcon: 3 } as const
+    return (order[a.category] ?? 4) - (order[b.category] ?? 4) || a.name.localeCompare(b.name)
   })
-  const catColor = { trades: '#0891b2', mgmt: '#0369a1', seag: '#1d4ed8' } as const
-  const catLabel = { trades: 'Trades', mgmt: 'Mgmt', seag: 'SE AG' } as const
+  const catColor = { trades: '#0891b2', mgmt: '#0369a1', seag: '#1d4ed8', subcon: '#f97316' } as const
+  const catLabel = { trades: 'Trades', mgmt: 'Mgmt', seag: 'SE AG', subcon: 'Subcon' } as const
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '4px', padding: '6px 16px 6px 0' }}>
       {sorted.map((p, i) => {
