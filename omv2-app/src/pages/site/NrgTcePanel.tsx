@@ -691,8 +691,6 @@ export function NrgTcePanel() {
                           </td>}
                         </tr>
                       )
-                    }
-
                     } else {
                     row = (
                       <tr key={l.id} style={{ background: isSel ? 'rgba(59,130,246,0.05)' : 'transparent' }}>
@@ -767,7 +765,7 @@ export function NrgTcePanel() {
                         </td>}
                       </tr>
                       )
-                      }
+                    }
 
                       rows.push(row)
                     })
