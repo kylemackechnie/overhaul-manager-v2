@@ -874,8 +874,6 @@ export function PrePlanningPanel() {
     setSelected(newSelection)
   }
 
-  const existingTexts = useMemo(() => new Set(items.map(i => i.item)), [items])
-
   const filteredLibrary = useMemo(() => ITEM_LIBRARY.map(cat => ({
     ...cat,
     items: cat.items.filter(li => {
