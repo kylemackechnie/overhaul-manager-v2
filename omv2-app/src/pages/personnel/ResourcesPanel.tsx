@@ -625,6 +625,15 @@ export function ResourcesPanel() {
             </div>
           )}
           {/* Resource table — scrollbar mirrored to top */}
+          {(() => {
+            const unlinked = filtered.filter(r => r.category === 'subcontractor' && !r.linked_po_id)
+            return unlinked.length > 0 ? (
+              <div style={{marginBottom:'8px',padding:'7px 12px',background:'rgba(249,115,22,0.08)',border:'1px solid rgba(249,115,22,0.3)',borderRadius:'var(--radius)',fontSize:'11px',display:'flex',alignItems:'center',gap:'8px'}}>
+                <span style={{color:'#c2410c',fontWeight:600}}>⚠ {unlinked.length} subcontractor{unlinked.length>1?'s':''} with no linked PO</span>
+                <span style={{color:'var(--text3)'}}>— forecast will use flat spread instead of mob dates. Set PO in the PO column below.</span>
+              </div>
+            ) : null
+          })()}
           <div className="card" style={{padding:0,marginBottom:'16px'}}>
             <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'calc(100vh - 280px)'}} onScroll={e => {
               const el = e.currentTarget
@@ -682,7 +691,6 @@ export function ResourcesPanel() {
                   const ss = STATUS_STYLE[st]
                   const car = cars.find(c => c.person_id === r.id)
                   const room = accom.find(a => (a.occupants||[]).includes(r.id))
-                  const po = r.linked_po_id ? pos.find(p => p.id === r.linked_po_id) : null
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
                       {/* Pinned left col — checkbox + edit + duplicate + delete */}
@@ -790,11 +798,24 @@ export function ResourcesPanel() {
                       {isVisible('flights') && <td style={{fontSize:'11px',color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.flights||'—'}</td>}
                       {isVisible('room') && <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>}
                       {isVisible('wbs') && <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>}
-                      {isVisible('po') && <td>
+                      {isVisible('po') && <td style={{minWidth:'110px'}}>
                         {r.category==='subcontractor' ? (
-                          po
-                            ? <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#d1fae5',color:'#065f46',fontWeight:700}}>{po.po_number||'PO'}</span>
-                            : <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',background:'#fee2e2',color:'#991b1b',fontWeight:700}}>⚠ No PO</span>
+                          <select
+                            className="input"
+                            style={{fontSize:'10px',padding:'1px 4px',height:'22px',minWidth:'100px',
+                              background: r.linked_po_id ? 'transparent' : 'rgba(220,38,38,0.06)',
+                              color: r.linked_po_id ? 'var(--text)' : 'var(--red)',
+                              borderColor: r.linked_po_id ? 'transparent' : 'rgba(220,38,38,0.3)',
+                            }}
+                            value={r.linked_po_id||''}
+                            onChange={e => {
+                              const val = e.target.value || null
+                              saveInline(r.id, 'linked_po_id', val)
+                            }}
+                          >
+                            <option value="">⚠ No PO</option>
+                            {subconPos.map(po => <option key={po.id} value={po.id}>{po.po_number||'—'} {po.vendor}</option>)}
+                          </select>
                         ) : <span style={{color:'var(--text3)'}}>—</span>}
                       </td>}
                     </tr>
