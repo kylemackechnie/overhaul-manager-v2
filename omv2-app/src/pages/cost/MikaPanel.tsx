@@ -260,11 +260,12 @@ export function MikaPanel() {
       .map((l, i) => ({
         project_id: activeProject.id,
         code: l.wbs, name: l.desc || l.wbs,
-        level: l.level, pm80: l.pm80tot, pm100: l.pm100,
+        level: String(l.level ?? 0), pm80: l.pm80tot, pm100: l.pm100,
         source: 'mika', sort_order: i,
       }))
     if (wbsInserts.length) {
-      await supabase.from('wbs_list').insert(wbsInserts)
+      const { error: wbsErr } = await supabase.from('wbs_list').insert(wbsInserts)
+      if (wbsErr) console.warn('[MikaPanel] wbs_list sync failed:', wbsErr.message)
     }
 
     // Also keep a lightweight meta blob on projects for dashboard display

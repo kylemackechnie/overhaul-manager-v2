@@ -21,15 +21,20 @@ export function WBSPanel() {
   const [bulkSaving, setBulkSaving] = useState(false)
   const [mikaImporting, setMikaImporting] = useState(false)
   const [actuals, setActuals] = useState<Record<string, number>>({})
+  const [mikaLineCount, setMikaLineCount] = useState(0)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const { data } = await supabase.from('wbs_list').select('*')
-      .eq('project_id', pid).order('sort_order').order('code')
-    setItems((data || []) as WbsItem[])
+    const [wbsRes, mikaCountRes] = await Promise.all([
+      supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order').order('code'),
+      supabase.from('mika_wbs_lines').select('id', { count: 'exact', head: true }).eq('project_id', pid),
+    ])
+    setItems((wbsRes.data || []) as WbsItem[])
+    setMikaLineCount(mikaCountRes.count || 0)
 
     // Run the canonical aggregator and apply parent-prefix rollup so a WBS row
     // shows the sum of itself plus any descendants tagged underneath it.
@@ -147,6 +152,38 @@ export function WBSPanel() {
     setBulkSaving(false); setBulkText(''); setShowBulk(false); load()
   }
 
+  async function syncFromMika() {
+    setSyncing(true)
+    const pid = activeProject!.id
+    const { data, error } = await supabase
+      .from('mika_wbs_lines')
+      .select('wbs,description,level,pm80,pm100')
+      .eq('project_id', pid)
+      .order('sort_order')
+    if (error || !data?.length) {
+      toast('No MIKA data found for this project', 'error')
+      setSyncing(false)
+      return
+    }
+    // Replace wbs_list with fresh data from mika_wbs_lines
+    await supabase.from('wbs_list').delete().eq('project_id', pid)
+    const inserts = data.map((l, i) => ({
+      project_id: pid,
+      code: l.wbs,
+      name: l.description || l.wbs,
+      level: String(l.level ?? 0),
+      pm80: l.pm80,
+      pm100: l.pm100,
+      source: 'mika',
+      sort_order: i,
+    }))
+    const { error: insertErr } = await supabase.from('wbs_list').insert(inserts)
+    if (insertErr) { toast('Sync failed: ' + insertErr.message, 'error'); setSyncing(false); return }
+    toast(`Synced ${inserts.length} WBS codes from MIKA cost plan`, 'success')
+    setSyncing(false)
+    load()
+  }
+
   async function handleMikaImport(file: File) {
     setMikaImporting(true)
     try {
@@ -227,6 +264,11 @@ export function WBSPanel() {
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
           <button className="btn btn-sm" onClick={() => setShowBulk(b => !b)}>📋 Bulk Import</button>
+          {mikaLineCount > 0 && (
+            <button className="btn btn-sm" onClick={syncFromMika} disabled={syncing} title={`Re-sync ${mikaLineCount} WBS lines from MIKA cost plan`}>
+              {syncing ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '↺'} Sync from MIKA
+            </button>
+          )}
           <label className="btn btn-sm" style={{cursor:"pointer"}}>{mikaImporting?<span className="spinner" style={{width:"14px",height:"14px"}}/>:"📊"} MIKA Import<input type="file" accept=".csv" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)handleMikaImport(f)}} /></label>
           <button className="btn btn-primary" onClick={() => { setForm({ code: '', name: '', pm100: '', pm80: '' }); setModal('new') }}>+ Add WBS</button>
         </div>
@@ -254,11 +296,26 @@ export function WBSPanel() {
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
         : filtered.length === 0 ? (
-          <div className="empty-state">
-            <div className="icon">📍</div>
-            <h3>No WBS codes</h3>
-            <p>Add WBS codes to allocate costs across this project. Use Bulk Import to add many at once.</p>
-          </div>
+          <>
+            {mikaLineCount > 0 && (
+              <div style={{ padding: '12px 16px', borderRadius: 'var(--radius)', background: '#eff6ff', border: '1px solid #bfdbfe', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e40af' }}>📊 MIKA data available</div>
+                  <div style={{ fontSize: '12px', color: '#3b82f6', marginTop: '2px' }}>
+                    {mikaLineCount} WBS lines found in the MIKA cost plan — click to populate this list.
+                  </div>
+                </div>
+                <button className="btn btn-primary" onClick={syncFromMika} disabled={syncing}>
+                  {syncing ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '↺'} Sync from MIKA
+                </button>
+              </div>
+            )}
+            <div className="empty-state">
+              <div className="icon">📍</div>
+              <h3>No WBS codes</h3>
+              <p>Add WBS codes to allocate costs across this project. Use Bulk Import to add many at once.</p>
+            </div>
+          </>
         ) : (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <table>
