@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { resolveShift, hasMixedShifts, validatePhases, SHIFT_LABELS } from '../../lib/shiftPhases'
@@ -12,6 +12,7 @@ import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { ResourcesMobile } from '../mobile/ResourcesMobile'
+import { ResourceCalendar } from './ResourceCalendar'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
 
 // ── Column registry ───────────────────────────────────────────────────────────
@@ -488,28 +489,6 @@ export function ResourcesPanel() {
   const arrow = (col: SortCol) => sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''
   void doSort; void arrow  // kept for future sort wiring on resizable headers
 
-  // Heatmap calendar
-  const today = new Date().toISOString().slice(0,10)
-  const calStart = new Date(); calStart.setDate(calStart.getDate()-7)
-  const calEnd = new Date(); calEnd.setDate(calEnd.getDate()+28)
-  const calDays: string[] = []
-  const d = new Date(calStart)
-  while (d <= calEnd) { calDays.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1) }
-  // Stable calendar order — locked to filtered order at load time
-  // Use the current filtered order but maintain stability across saves
-  const calResourceIds = useRef<string[]>([])
-  const calWithDates = filtered.filter(r => r.mob_in || r.mob_out)
-  // Update order when the set of IDs changes (new person added/removed), but not on date changes
-  const newIds = calWithDates.map(r => r.id).sort().join(',')
-  const prevIds = useRef('')
-  if (newIds !== prevIds.current) {
-    prevIds.current = newIds
-    calResourceIds.current = calWithDates.map(r => r.id)
-  }
-  const calResources = calResourceIds.current
-    .map(id => resources.find(r => r.id === id))
-    .filter((r): r is Resource => !!r && !!(r.mob_in || r.mob_out))
-
   const subconPos = pos.filter(po => po.status !== 'cancelled')
 
 
@@ -818,94 +797,15 @@ export function ResourcesPanel() {
             </div>
           </div>
 
-          {/* On-site heatmap calendar */}
-          {calResources.length > 0 && (
-            <div className="card" style={{marginBottom:'16px'}}>
-              <div style={{fontWeight:600,fontSize:'12px',color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'10px'}}>On-site Calendar</div>
-              {selected.size > 0 && (
-                <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(59,130,246,0.08)',border:'1px solid rgba(59,130,246,0.2)',borderRadius:'var(--radius)',marginBottom:'10px'}}>
-                  <span style={{fontSize:'12px',fontWeight:600,color:'#1d4ed8'}}>{selected.size} selected</span>
-                  <button className="btn btn-sm" onClick={()=>setBulkModal(true)}>✏ Bulk Edit</button>
-                  <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelected(new Set())}>✕ Clear</button>
-                </div>
-              )}
-              <div style={{overflowX:'auto'}}>
-                <table style={{borderCollapse:'collapse',fontSize:'10px',whiteSpace:'nowrap'}}>
-                  <thead>
-                    <tr>
-                      <th style={{padding:'3px 8px',textAlign:'left',fontWeight:600,color:'var(--text3)',minWidth:'120px'}}>Person</th>
-                      {calDays.map(day => {
-                        const dow = new Date(day+'T12:00:00').getDay()
-                        const isToday = day === today
-                        const isWknd = dow===0||dow===6
-                        return (
-                          <th key={day} style={{padding:'2px 1px',textAlign:'center',fontWeight:isToday?700:400,color:isToday?'var(--accent)':isWknd?'var(--amber)':'var(--text3)',minWidth:'18px',width:'18px'}}>
-                            {isToday ? '▼' : new Date(day+'T12:00:00').getDate()===1 ? new Date(day+'T12:00:00').toLocaleDateString('en-AU',{month:'short'}) : new Date(day+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric'})}
-                          </th>
-                        )
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {calResources.map(r => (
-                      <tr key={r.id}>
-                        <td style={{padding:'2px 8px',fontWeight:500,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'120px'}}>{r.name}</td>
-                        {calDays.map(day => {
-                          const onsite = r.mob_in && r.mob_in<=day && (!r.mob_out||r.mob_out>=day)
-                          const isToday = day===today
-                          const dow = new Date(day+'T12:00:00').getDay()
-                          const isWknd = dow===0||dow===6
-                          const isEdge = day===r.mob_in || day===r.mob_out
-                          // Clicks inside the range (not on an edge) do nothing — prevents accidental overwrites
-                          let targetField: 'mob_in'|'mob_out'|null = null
-                          let tooltip = ''
-                          if (r.mob_in && r.mob_out) {
-                            if (day < r.mob_in) { targetField = 'mob_in'; tooltip = `Move mob-in → ${day}` }
-                            else if (day === r.mob_in) { targetField = 'mob_in'; tooltip = `Move mob-in → ${day}` }
-                            else if (day === r.mob_out) { targetField = 'mob_out'; tooltip = `Move mob-out → ${day}` }
-                            else if (day > r.mob_out) { targetField = 'mob_out'; tooltip = `Move mob-out → ${day}` }
-                            else { tooltip = `${r.name} on-site` }
-                          } else if (r.mob_in && !r.mob_out) {
-                            if (day > r.mob_in) { targetField = 'mob_out'; tooltip = `Set mob-out → ${day}` }
-                            else { targetField = 'mob_in'; tooltip = `Move mob-in → ${day}` }
-                          } else if (!r.mob_in && r.mob_out) {
-                            if (day < r.mob_out) { targetField = 'mob_in'; tooltip = `Set mob-in → ${day}` }
-                            else { targetField = 'mob_out'; tooltip = `Move mob-out → ${day}` }
-                          } else {
-                            targetField = 'mob_in'; tooltip = `Set mob-in → ${day}`
-                          }
-                          return (
-                            <td key={day} style={{padding:'1px',textAlign:'center'}} title={tooltip}
-                              onClick={() => {
-                                if (!targetField) return
-                                const label = targetField === 'mob_in' ? 'Mob In' : 'Mob Out'
-                                saveInline(r.id, targetField, day)
-                                toast(`${r.name}: ${label} → ${day}`, 'success')
-                              }}>
-                              <div style={{
-                                width:'16px',height:'14px',borderRadius:'2px',margin:'auto',cursor:'pointer',
-                                background: onsite ? 'var(--accent)' : isToday ? 'rgba(0,137,138,0.1)' : isWknd ? 'rgba(0,0,0,0.03)' : 'transparent',
-                                border: isEdge ? '2px solid var(--accent)' : isToday ? '1px solid var(--accent)' : '1px solid transparent',
-                                transition:'opacity 0.1s',
-                              }}
-                              onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.opacity='0.55'}
-                              onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.opacity='1'}
-                              />
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{marginTop:'8px',display:'flex',gap:'16px',fontSize:'11px',color:'var(--text3)'}}>
-                <span><span style={{display:'inline-block',width:'12px',height:'10px',borderRadius:'2px',background:'var(--accent)',marginRight:'4px',verticalAlign:'middle'}}/>On-site</span>
-                <span style={{color:'var(--amber)'}}>Sat/Sun shaded lighter</span>
-                <span style={{color:'var(--accent)'}}>▼ = today</span>
-              </div>
-            </div>
-          )}
+          {/* On-site Gantt calendar */}
+          <ResourceCalendar
+            resources={filtered}
+            onSave={async (id, field, value) => { await saveInline(id, field, value) }}
+            onOpenEdit={r => { setForm({...r}); setModal(r) }}
+            selected={selected}
+            onBulkEdit={() => setBulkModal(true)}
+            onClearSelected={() => setSelected(new Set())}
+          />
         </>
       )}
     </>)}
