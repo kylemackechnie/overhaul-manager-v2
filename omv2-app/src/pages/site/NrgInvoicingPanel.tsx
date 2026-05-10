@@ -428,16 +428,67 @@ export function NrgInvoicingPanel() {
                   </tr>,
                 ]
               })}
+
+              {/* Variations section — one row per variation TCE line, manual override cells */}
+              {(() => {
+                const variationLines = tceLines.filter(l => l.source === 'variation')
+                if (!variationLines.length) return null
+                const varTotals = sortedInvoices.map(inv =>
+                  variationLines.reduce((s, vl) => s + effectiveAmount(inv, `__var__${vl.id}`), 0)
+                )
+                const varProgressTotal = varTotals.reduce((s,t)=>s+t,0)
+                return [
+                  <tr key="g-variations" style={{background:'#fdf2f8'}}>
+                    <td colSpan={sortedInvoices.length+2} style={{padding:'6px 12px',fontWeight:700,fontSize:'11px',color:'#701a75',textTransform:'uppercase',letterSpacing:'0.04em'}}>Variations</td>
+                  </tr>,
+                  ...variationLines.map(vl => {
+                    const key = `__var__${vl.id}`
+                    const rowTotal = sortedInvoices.reduce((s,inv)=>s+effectiveAmount(inv,key),0)
+                    return (
+                      <tr key={key} style={{borderBottom:'1px solid var(--border)'}}>
+                        <td style={{padding:'6px 12px',paddingLeft:'24px'}}>
+                          <span style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text2)',marginRight:'6px'}}>{vl.item_id||'—'}</span>
+                          <span style={{fontSize:'12px',color:'var(--text)'}}>{vl.description||''}</span>
+                          {vl.tce_total ? <span style={{marginLeft:'8px',fontSize:'10px',color:'var(--text3)'}}>(TCE: {fmt(vl.tce_total)})</span> : null}
+                        </td>
+                        {sortedInvoices.map(inv => {
+                          const amount = effectiveAmount(inv, key)
+                          const isOv = hasOverride(inv, key)
+                          return (
+                            <td key={inv.id} onClick={()=>handleCellClick(inv, key)}
+                              style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',cursor:'pointer',
+                                background:isOv?'#fefce8':'transparent',
+                                color:amount>0?'var(--text)':amount<0?'var(--red)':'var(--text3)'}}>
+                              {isOv&&<span style={{fontSize:'9px',color:'#d97706',marginRight:'3px'}}>✎</span>}
+                              {amount !== 0 ? fmt(amount) : <span style={{color:'var(--text3)'}}>—</span>}
+                            </td>
+                          )
+                        })}
+                        <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:600,borderLeft:'2px solid var(--border)'}}>{rowTotal !== 0 ? fmt(rowTotal) : '—'}</td>
+                      </tr>
+                    )
+                  }),
+                  <tr key="gt-variations" style={{background:'var(--bg3)',fontWeight:600,borderTop:'1px solid var(--border)'}}>
+                    <td style={{padding:'6px 12px',paddingLeft:'24px',color:'var(--text2)'}}>Total</td>
+                    {varTotals.map((t,i)=><td key={i} style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)'}}>{t !== 0 ? fmt(t) : '—'}</td>)}
+                    <td style={{padding:'6px 12px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:700,borderLeft:'2px solid var(--border)'}}>{varProgressTotal !== 0 ? fmt(varProgressTotal) : '—'}</td>
+                  </tr>,
+                ]
+              })()}
             </tbody>
             <tfoot>
               <tr style={{background:'#1e3a5f',color:'#fff',fontWeight:700}}>
                 <td style={{padding:'8px 12px'}}>GRAND TOTAL</td>
                 {sortedInvoices.map(inv => {
-                  const colTotal = contractScopes.reduce((s,cs)=>s+effectiveAmount(inv,cs),0)
-                  return <td key={inv.id} style={{padding:'8px 12px',textAlign:'right',fontFamily:'var(--mono)'}}>{fmt(colTotal)}</td>
+                  const scopeTotal = contractScopes.reduce((s,cs)=>s+effectiveAmount(inv,cs),0)
+                  const varTotal = tceLines.filter(l=>l.source==='variation').reduce((s,vl)=>s+effectiveAmount(inv,`__var__${vl.id}`),0)
+                  return <td key={inv.id} style={{padding:'8px 12px',textAlign:'right',fontFamily:'var(--mono)'}}>{fmt(scopeTotal+varTotal)}</td>
                 })}
                 <td style={{padding:'8px 12px',textAlign:'right',fontFamily:'var(--mono)',borderLeft:'2px solid rgba(255,255,255,0.2)'}}>
-                  {fmt(contractScopes.reduce((s,cs)=>s+sortedInvoices.reduce((ss,inv)=>ss+effectiveAmount(inv,cs),0),0))}
+                  {fmt(
+                    contractScopes.reduce((s,cs)=>s+sortedInvoices.reduce((ss,inv)=>ss+effectiveAmount(inv,cs),0),0) +
+                    tceLines.filter(l=>l.source==='variation').reduce((s,vl)=>s+sortedInvoices.reduce((ss,inv)=>ss+effectiveAmount(inv,`__var__${vl.id}`),0),0)
+                  )}
                 </td>
               </tr>
             </tfoot>
