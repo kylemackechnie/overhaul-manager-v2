@@ -175,16 +175,52 @@ export async function writeTimesheetCostLines(
       }
 
       const dayHours = day.hours || 0
+      const travelHoursComposite = (day as { travel_hours?: number }).travel_hours || 0
+      const isCompositeDayType = dayType === 'travel_and_work' || dayType === 'sea_travel_and_work'
       const allocs = day.nrgWoAllocations || []
       // Allocations carry hours-based labour. Filter to TCE/WO-tagged only.
       const tceAllocs = allocs.filter(a => a.tceItemId || a.wo)
       const hasLabour = dayHours > 0 && tceAllocs.length > 0
 
-      const dayType = day.dayType || 'weekday'
       const shiftType = (day.shiftType === 'night' ? 'night' : 'day') as 'day' | 'night'
       // Calendar day type — used for travel Sunday/PH uplift rule
       const calDow = new Date(workDate + 'T12:00:00').getDay()
       const calendarDayType = publicHolidays?.has?.(workDate) ? 'public_holiday' : calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
+
+      // ── For composite (travel+work) days, write a dedicated travel labour row ──
+      if (isCompositeDayType && travelHoursComposite > 0) {
+        const travelDayType = (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') ? calendarDayType : 'travel'
+        const tSplit = splitHours(travelHoursComposite, travelDayType, shiftType, rcRegime, calendarDayType)
+        const tCost = calcHoursCost(tSplit, rc, 'cost') * labourFx
+        const tSell = calcHoursCost(tSplit, rc, 'sell') * labourFx
+        const tSellEur = isEurCard ? calcHoursCost(tSplit, rc, 'sell') : 0
+        const memberTravelItem = (member as unknown as { travelTceItemId?: string | null }).travelTceItemId
+        const tsTravelDefault = ((timesheet as unknown as { travel_tce_default?: string }).travel_tce_default || '').trim()
+        const travelItemId: string | null = memberTravelItem || tsTravelDefault || null
+        rows.push({
+          project_id: projectId,
+          timesheet_id: timesheet.id,
+          week_start: weekStart,
+          work_date: workDate,
+          person_id: member.personId,
+          person_name: member.name,
+          role: member.role,
+          category,
+          wbs: memberWbs,
+          tce_item_id: travelItemId,
+          work_order: null,
+          day_type: 'travel',
+          shift_type: shiftType,
+          allocated_hours: travelHoursComposite,
+          cost_labour: tCost,
+          sell_labour: tSell,
+          sell_labour_eur: tSellEur,
+          cost_allowances: 0,
+          sell_allowances: 0,
+          timesheet_status: timesheet.status,
+          po_id: member.personId ? (poIdByResourceId[member.personId] ?? null) : null,
+        })
+      }
 
       // ── Day-level labour calc (matches UI's calcPersonTotals exactly) ──
       // Apply meal-break adjustment to effective hours, then split ONCE for the
@@ -195,7 +231,9 @@ export async function writeTimesheetCostLines(
       if (hasLabour) {
         const adjH = (memberAny.mealBreakAdj && dayHours > 10) ? 0.5 : 0
         const effH = dayHours + adjH
-        const split = splitHours(effH, dayType, shiftType, rcRegime, calendarDayType)
+        // For composite days, work hours use weekday rates regardless of dayType
+        const effectiveDayType = isCompositeDayType ? 'weekday' : dayType
+        const split = splitHours(effH, effectiveDayType, shiftType, rcRegime, calendarDayType)
         dayLabourCost = calcHoursCost(split, rc, 'cost') * labourFx
         dayLabourSell = calcHoursCost(split, rc, 'sell') * labourFx
         // Raw EUR for seag — stored separately so invoicing can apply spot rate
@@ -220,10 +258,11 @@ export async function writeTimesheetCostLines(
       }
 
       // ── Travel allowance (hours-based, separate TCE item) ──
+      // Not applied for composite travel+work days — travel is already a dedicated labour row above
       const travelRate = pf(rcAny.travel_cost) || 30
       const travelRateSell = pf(rcAny.travel_sell) || 30
-      const dayCostTravel = day.travel && dayHours > 0 ? dayHours * travelRate : 0
-      const daySellTravel = day.travel && dayHours > 0 ? dayHours * travelRateSell : 0
+      const dayCostTravel = !isCompositeDayType && day.travel && dayHours > 0 ? dayHours * travelRate : 0
+      const daySellTravel = !isCompositeDayType && day.travel && dayHours > 0 ? dayHours * travelRateSell : 0
 
       // Nothing to write — skip the day
       if (!hasLabour && dayCostAllow === 0 && daySellAllow === 0 && dayCostTravel === 0) continue
@@ -415,9 +454,10 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
   const travelSellRate = pf(rcX.travel_sell, 30)
 
   Object.entries(member.days || {}).forEach(([dateKey, d]) => {
-    const day = d as { dayType?: string; shiftType?: string; hours?: number; laha?: boolean; meal?: boolean; fsa?: boolean; camp?: boolean; travel?: boolean }
+    const day = d as { dayType?: string; shiftType?: string; hours?: number; travel_hours?: number; laha?: boolean; meal?: boolean; fsa?: boolean; camp?: boolean; travel?: boolean }
     const calDow = new Date(dateKey + 'T12:00:00').getDay()
     const calendarDayType = calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
+    const isCompositeDay = day.dayType === 'travel_and_work' || day.dayType === 'sea_travel_and_work'
 
     // Allowances apply on every day entry (rest days included), matching the
     // writer's behaviour from the dedicated-allowance-row commit.
@@ -433,21 +473,46 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
     const h0 = day.hours || 0
     if (day.travel && h0 > 0) { allowances += h0 * travelSellRate; allowCost += h0 * travelCostRate }
 
-    const h = day.hours || 0
-    if (h <= 0) return
+    const workH = day.hours || 0
+    const travelH = day.travel_hours || 0
 
-    // mealBreakAdj: +0.5h to cost/sell calc (not payroll). Matches writer.
-    const adjH = (member.mealBreakAdj && h > 10) ? 0.5 : 0
-    const effH = h + adjH
-    hours += effH
-
-    const split = splitHours(effH, day.dayType || 'weekday', (day.shiftType === 'night' ? 'night' : 'day'), rcRegime, calendarDayType)
-    Object.entries(split).forEach(([b, bh]) => {
-      if (bh > 0) {
-        labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)
-        labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0)
+    if (isCompositeDay) {
+      // Travel portion — NT except Sunday/PH → T1.5
+      if (travelH > 0) {
+        const travelDayType = (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') ? calendarDayType : 'travel'
+        const tSplit = splitHours(travelH, travelDayType, (day.shiftType === 'night' ? 'night' : 'day'), rcRegime, calendarDayType)
+        hours += travelH
+        Object.entries(tSplit).forEach(([b, bh]) => {
+          if (bh > 0) { labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0); labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0) }
+        })
       }
-    })
+      // Work portion — weekday rates, meal adj on work hours only
+      if (workH > 0) {
+        const adjH = (member.mealBreakAdj && workH > 10) ? 0.5 : 0
+        const effH = workH + adjH
+        hours += effH
+        const wSplit = splitHours(effH, 'weekday', (day.shiftType === 'night' ? 'night' : 'day'), rcRegime, calendarDayType)
+        Object.entries(wSplit).forEach(([b, bh]) => {
+          if (bh > 0) { labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0); labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0) }
+        })
+      }
+    } else {
+      const h = workH
+      if (h <= 0) return
+
+      // mealBreakAdj: +0.5h to cost/sell calc (not payroll). Matches writer.
+      const adjH = (member.mealBreakAdj && h > 10) ? 0.5 : 0
+      const effH = h + adjH
+      hours += effH
+
+      const split = splitHours(effH, day.dayType || 'weekday', (day.shiftType === 'night' ? 'night' : 'day'), rcRegime, calendarDayType)
+      Object.entries(split).forEach(([b, bh]) => {
+        if (bh > 0) {
+          labourCost += bh * (parseFloat(String(cr[b] || 0)) || 0)
+          labourSell += bh * (parseFloat(String(sr[b] || 0)) || 0)
+        }
+      })
+    }
   })
 
   // sell/cost = labour + allowances (combined total, matching HTML)

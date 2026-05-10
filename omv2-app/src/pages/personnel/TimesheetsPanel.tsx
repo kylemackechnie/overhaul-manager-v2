@@ -31,9 +31,12 @@ const DAY_TYPES = [
   { key: 'sunday', label: 'Sunday' }, { key: 'public_holiday', label: 'Public Holiday' },
   { key: 'rest', label: 'Rest/Fatigue' }, { key: 'standby', label: 'Standby' },
   { key: 'travel', label: 'Direct Travel' }, { key: 'sea_travel', label: 'SEA Travel' },
+  { key: 'travel_and_work', label: '✈ Direct Travel + Work' },
+  { key: 'sea_travel_and_work', label: '✈ SEA Travel + Work' },
 ]
 
-function getMon(dateStr: string) {
+const TRAVEL_AND_WORK_TYPES = new Set(['travel_and_work', 'sea_travel_and_work'])
+const isTravelAndWork = (dt: string) => TRAVEL_AND_WORK_TYPES.has(dt)
   const d = new Date(dateStr + 'T12:00:00')
   const dow = d.getDay()
   d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1))
@@ -149,6 +152,14 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
         if (dt === 'public_holiday') night ? (split.ndt15=h) : (split.ddt15=h)
         else if (dt === 'rest') night ? (split.nnt=h) : (split.dnt=h)
         else if (dt === 'travel'||dt==='sea_travel'||dt==='mob') split.dnt=h
+        else if (dt === 'travel_and_work'||dt==='sea_travel_and_work') {
+          // Composite: travel_hours at NT, hours at weekday rates
+          const tH = (cell as Record<string,unknown>).travel_hours as number || 0
+          if (tH > 0) split.dnt = (split.dnt||0) + tH
+          // Work portion through normal weekday split (simplified for HTML export)
+          const wH = h
+          if (wH > 0) { split.dnt=(split.dnt||0)+Math.min(wH,7.2); split.dt15=(split.dt15||0)+Math.min(Math.max(0,wH-7.2),3.3); split.ddt=(split.ddt||0)+Math.max(0,wH-10.5) }
+        }
         else if (night) { if (dt==='saturday'||dt==='sunday') split.ndt=h; else { split.nnt=Math.min(h,7.2); split.ndt=Math.max(0,h-7.2) } }
         else if (dt==='saturday') { split.dt15=Math.min(h,3); split.ddt=Math.max(0,h-3) }
         else if (dt==='sunday') split.ddt=h
@@ -662,7 +673,11 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
   function openTceAlloc(personId: string, date: string, hours: number, name: string) {
     const member = activeWeek?.crew.find(m => m.personId === personId)
-    const allAllocs = ((member?.days?.[date] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[]) || []
+    const dayRaw = (member?.days?.[date] as Record<string,unknown>) || {}
+    const allAllocs = (dayRaw.nrgWoAllocations as NrgWoAlloc[]) || []
+    const dayType = (dayRaw.dayType as string) || 'weekday'
+    const travelHours = (dayRaw.travel_hours as number) || 0
+
     // Show all rows that have any scope identity — _tceMode manual rows, tceItemId rows, and WO-keyed TasTK rows
     const tceRows = allAllocs
       .filter(a => a._tceMode || a.tceItemId || a.wo)
@@ -674,6 +689,25 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         tceItemId: a.tceItemId || null,
         payCode: (a as NrgWoAlloc & {payCode?:string}).payCode,
       }))
+
+    // For composite travel+work days, auto-add a travel row if not already present
+    if (isTravelAndWork(dayType) && travelHours > 0 && tceRows.length === 0) {
+      const memberAny = member as unknown as { travelTceItemId?: string | null }
+      const tsTravelDefault = (activeWeek as WeeklyTimesheet & { travel_tce_default?: string }).travel_tce_default || ''
+      const travelItemId = memberAny?.travelTceItemId || tsTravelDefault || ''
+      const travelLine = tceLines.find(l => l.item_id === travelItemId)
+      if (travelItemId) {
+        tceRows.push({
+          key: `tce:${travelItemId}`,
+          label: `[OH] ${travelItemId}${travelLine ? ' — ' + travelLine.description : ''}`,
+          hours: travelHours,
+          wo: '',
+          tceItemId: travelItemId,
+          payCode: undefined,
+        })
+      }
+    }
+
     setTceAllocRows(tceRows.length ? tceRows : [])
     setTceAllocModal({ personId, date, hours, name })
   }
@@ -1413,36 +1447,82 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   {days.map((d) => {
                     const raw = (member.days[d] || {}) as Record<string, unknown>
                     const cellHrs = (raw.hours as number) || 0
+                    const travelHrs = (raw.travel_hours as number) || 0
                     const rawDayType = (raw.dayType as string) || autoType(d, holidays)
                     const dayType = rawDayType
+                    const isComposite = isTravelAndWork(dayType)
                     const shiftType = (raw.shiftType as string) || 'day'
                     const laha = (raw.laha as boolean) || false
                     const meal = (raw.meal as boolean) || false
                     const isPH = holidays.has(d)
-                    // EBA adj for display and split
+                    // EBA adj applies to work hours only
                     const adjH = (member.mealBreakAdj && cellHrs > 10) ? 0.5 : 0
-                    const dispHrs = cellHrs + adjH
+                    const dispWorkHrs = cellHrs + adjH
                     const calDow = new Date(d + 'T12:00:00').getDay()
                     const calendarDayType = holidays.has(d) ? 'public_holiday' : calDow === 0 ? 'sunday' : calDow === 6 ? 'saturday' : 'weekday'
-                    const split = dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, (rc?.regime as RegimeConfig), calendarDayType) : null
-                    // Split summary labels/colors matching HTML
+                    // Travel split — NT except Sunday/PH which are T1.5
+                    const travelDayType = (calendarDayType === 'sunday' || calendarDayType === 'public_holiday') ? calendarDayType : 'travel'
+                    const travelSplit = isComposite && travelHrs > 0 ? splitHours(travelHrs, travelDayType, shiftType, (rc?.regime as RegimeConfig), calendarDayType) : null
+                    // Work split — normal weekday/sat/sun etc
+                    const workSplit = isComposite && dispWorkHrs > 0 ? splitHours(dispWorkHrs, 'weekday', shiftType, (rc?.regime as RegimeConfig), calendarDayType) : null
+                    // Single-mode split (non-composite)
+                    const dispHrs = cellHrs + adjH
+                    const split = !isComposite && dispHrs > 0 ? splitHours(dispHrs, dayType, shiftType, (rc?.regime as RegimeConfig), calendarDayType) : null
                     const SPLIT_LABELS: Record<string,string> = { dnt:'NT', dt15:'T1.5', ddt:'DT', ddt15:'DT1.5', nnt:'NNT', ndt:'NDT', ndt15:'NDT1.5' }
                     const SPLIT_COLORS: Record<string,string> = { dnt:'var(--accent)', dt15:'var(--orange)', ddt:'var(--red)', ddt15:'var(--red)', nnt:'var(--mod-tooling,#8b5cf6)', ndt:'var(--mod-tooling,#8b5cf6)', ndt15:'var(--mod-tooling,#8b5cf6)' }
                     const splitEntries = split ? (Object.entries(split) as [string,number][]).filter(([,v])=>v>0) : []
+                    const travelSplitEntries = travelSplit ? (Object.entries(travelSplit) as [string,number][]).filter(([,v])=>v>0) : []
+                    const workSplitEntries = workSplit ? (Object.entries(workSplit) as [string,number][]).filter(([,v])=>v>0) : []
                     return (
                       <div key={d} style={{ background: isPH ? 'rgba(139,92,246,0.05)' : 'var(--bg2)', padding: '4px 5px', borderLeft: '1px solid var(--border)' }}>
-                        <input type="number" min="0" max="24" step="0.5" value={cellHrs || ''} placeholder="0"
-                          style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 600, padding: '2px 4px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: cellHrs > 0 ? 'var(--text)' : 'var(--text3)', textAlign: 'center' }}
-                          onChange={e => setDay(member.personId, d, 'hours', parseFloat(e.target.value) || 0)} />
-                        {/* EBA adjustment display */}
-                        {adjH > 0 && <div style={{ fontSize: '9px', color: TYPE_COLOR[type], textAlign: 'center', marginTop: '1px' }}>{dispHrs.toFixed(2)}h (adj)</div>}
+                        {isComposite ? (
+                          /* Composite: two inputs — travel hours + work hours */
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div>
+                              <div style={{ fontSize: '8px', color: '#f59e0b', fontWeight: 600, letterSpacing: '0.04em', marginBottom: '1px' }}>✈ TRAVEL</div>
+                              <input type="number" min="0" max="24" step="0.01" value={travelHrs || ''} placeholder="0"
+                                style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: 600, padding: '2px 4px', border: '1px solid #fde68a', borderRadius: '3px', background: 'transparent', color: travelHrs > 0 ? '#92400e' : 'var(--text3)', textAlign: 'center' }}
+                                onChange={e => setDay(member.personId, d, 'travel_hours', parseFloat(e.target.value) || 0)} />
+                              {travelSplitEntries.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginTop: '1px' }}>
+                                  {travelSplitEntries.map(([k, v]) => <span key={k} style={{ color: SPLIT_COLORS[k], fontSize: '8px' }}>{SPLIT_LABELS[k]}:{v.toFixed(2)}</span>)}
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '8px', color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: '1px' }}>☀ WORK</div>
+                              <input type="number" min="0" max="24" step="0.01" value={cellHrs || ''} placeholder="0"
+                                style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: 600, padding: '2px 4px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: cellHrs > 0 ? 'var(--text)' : 'var(--text3)', textAlign: 'center' }}
+                                onChange={e => setDay(member.personId, d, 'hours', parseFloat(e.target.value) || 0)} />
+                              {adjH > 0 && <div style={{ fontSize: '8px', color: TYPE_COLOR[type], textAlign: 'center' }}>{dispWorkHrs.toFixed(2)}h (adj)</div>}
+                              {workSplitEntries.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginTop: '1px' }}>
+                                  {workSplitEntries.map(([k, v]) => <span key={k} style={{ color: SPLIT_COLORS[k], fontSize: '8px' }}>{SPLIT_LABELS[k]}:{v.toFixed(2)}</span>)}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '8px', color: 'var(--text3)', textAlign: 'right', borderTop: '1px solid var(--border)', paddingTop: '1px' }}>
+                              Total: {(travelHrs + cellHrs).toFixed(2)}h
+                            </div>
+                          </div>
+                        ) : (
+                          /* Standard: single hours input */
+                          <>
+                            <input type="number" min="0" max="24" step="0.5" value={cellHrs || ''} placeholder="0"
+                              style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 600, padding: '2px 4px', border: '1px solid var(--border2)', borderRadius: '3px', background: 'transparent', color: cellHrs > 0 ? 'var(--text)' : 'var(--text3)', textAlign: 'center' }}
+                              onChange={e => setDay(member.personId, d, 'hours', parseFloat(e.target.value) || 0)} />
+                            {adjH > 0 && <div style={{ fontSize: '9px', color: TYPE_COLOR[type], textAlign: 'center', marginTop: '1px' }}>{dispHrs.toFixed(2)}h (adj)</div>}
+                          </>
+                        )}
                         <select value={dayType} style={{ width: '100%', fontSize: '9px', padding: '1px 2px', border: '1px solid var(--border2)', borderRadius: '2px', background: 'var(--bg3)', color: 'var(--text3)', marginTop: '2px' }}
                           onChange={e => {
                             const newType = e.target.value
                             setDayMulti(member.personId, d, {
                               dayType: newType,
-                              // Auto-tick travel allowance when dayType = travel, auto-clear otherwise
-                              travel: newType === 'travel',  // Direct Travel auto-ticks allowance; SEA Travel does not
+                              // Auto-tick travel for pure travel or composite types
+                              travel: newType === 'travel' || isTravelAndWork(newType),
+                              // Init travel_hours to 0 when switching to composite
+                              ...(isTravelAndWork(newType) && !raw.travel_hours ? { travel_hours: 0 } : {}),
                             })
                           }}>
                           {DAY_TYPES.map(dt => <option key={dt.key} value={dt.key}>{dt.label}</option>)}
@@ -1452,8 +1532,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                           <option value="day">Day</option>
                           <option value="night">Night</option>
                         </select>
-                        {/* NT / T1.5 / DT breakdown */}
-                        {splitEntries.length > 0 && (
+                        {/* NT / T1.5 / DT breakdown — non-composite only */}
+                        {!isComposite && splitEntries.length > 0 && (
                           <div style={{ marginTop: '2px', lineHeight: 1.4, display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
                             {splitEntries.map(([k, v]) => (
                               <span key={k} style={{ color: SPLIT_COLORS[k], fontSize: '9px' }}>{SPLIT_LABELS[k]}:{v.toFixed(2)}</span>
@@ -1526,7 +1606,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               const reconciled = allocs.length === 0 || Math.abs(tceTotal - dayTotal) < 0.05
                               return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                  <button onClick={() => openTceAlloc(member.personId, d, cellHrs, member.name)}
+                                  <button onClick={() => openTceAlloc(member.personId, d, isComposite ? travelHrs + cellHrs : cellHrs, member.name)}
                                     style={{ width: '100%', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', border: `1px solid ${allocs.length ? '#be185d' : 'var(--border2)'}`, background: allocs.length ? 'rgba(244,114,182,0.08)' : 'transparent', color: allocs.length ? '#be185d' : 'var(--text3)', cursor: 'pointer', textAlign: 'center' }}>
                                     {allocs.length ? `🎯 ${allocs.length} alloc${allocs.length > 1 ? 's' : ''}` : '🎯 TCE'}
                                   </button>
