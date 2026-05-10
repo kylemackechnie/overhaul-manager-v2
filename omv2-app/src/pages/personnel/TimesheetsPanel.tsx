@@ -1555,7 +1555,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                               <button
                                 onClick={() => setNoteOpen(isOpen ? null : noteKey)}
                                 title={note || 'Add note'}
-                                style={{ fontSize: '9px', padding: '0 3px', border: '1px solid var(--border)', borderRadius: '3px', background: note ? '#e6f4f1' : 'var(--bg3)', color: note ? 'var(--accent)' : 'var(--text3)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                                style={{ fontSize: '9px', padding: '0 3px', border: '1px solid var(--border)', borderRadius: '3px', background: note ? '#fef9c3' : 'var(--bg3)', color: note ? '#92400e' : 'var(--text3)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
                                 {note ? '✎· Note' : '✎ Note'}
                               </button>
                               {isOpen && (
