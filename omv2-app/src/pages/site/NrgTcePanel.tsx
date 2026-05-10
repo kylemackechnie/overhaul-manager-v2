@@ -630,29 +630,29 @@ export function NrgTcePanel() {
                     const rows: React.ReactNode[] = []
                     let lastSource = ''
                     const SOURCE_SECTION: Record<string, { label: string; bg: string; color: string; border: string }> = {
-                      overhead:  { label: 'Non TasTK — Overheads', bg: '#fef9c3', color: '#78350f', border: '#fde68a' },
-                      skilled:   { label: 'Skilled Labour',          bg: '#eff6ff', color: '#1e3a8a', border: '#bfdbfe' },
-                      variation: { label: 'Variations',              bg: '#fdf2f8', color: '#701a75', border: '#f5d0fe' },
+                      variation: { label: 'Variations', bg: '#fdf2f8', color: '#701a75', border: '#f5d0fe' },
                     }
                     sortedVisible.forEach(l => {
-                      // Inject source section header only at boundaries between non-group-header lines
-                      const src = l.source || 'overhead'
-                      if (!isGroupHeader(l.item_id, l.line_type) && src !== lastSource) {
-                        lastSource = src
-                        const sec = SOURCE_SECTION[src]
-                        if (sec) {
-                          const visColCount = 1 + TCE_COLS.filter(c => isTceVisible(c.id)).length + (showWeekly ? weekKeys.length : 0)
-                          rows.push(
-                            <tr key={`section-${src}`} style={{ background: sec.bg, borderTop: `2px solid ${sec.border}`, borderBottom: `1px solid ${sec.border}` }}>
-                              <td colSpan={visColCount} style={{ padding: '5px 12px', fontWeight: 700, fontSize: '11px', color: sec.color, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                                {sec.label}
-                              </td>
-                            </tr>
-                          )
+                      // Inject source section header only between real data lines — skip group headers entirely
+                      const isHdr = isGroupHeader(l.item_id, l.line_type)
+                      if (!isHdr) {
+                        const src = l.source || 'overhead'
+                        if (src !== lastSource) {
+                          lastSource = src
+                          const sec = SOURCE_SECTION[src]
+                          if (sec) {
+                            const visColCount = 1 + TCE_COLS.filter(c => isTceVisible(c.id)).length + (showWeekly ? weekKeys.length : 0)
+                            rows.push(
+                              <tr key={`section-${src}`} style={{ background: sec.bg, borderTop: `2px solid ${sec.border}`, borderBottom: `1px solid ${sec.border}` }}>
+                                <td colSpan={visColCount} style={{ padding: '5px 12px', fontWeight: 700, fontSize: '11px', color: sec.color, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                  {sec.label}
+                                </td>
+                              </tr>
+                            )
+                          }
                         }
                       }
 
-                    const isHdr = isGroupHeader(l.item_id, l.line_type)
                     const isCol = isHdr && collapsed.has(l.item_id || '')
                     const isSel = !isHdr && selected.has(l.id)
 
