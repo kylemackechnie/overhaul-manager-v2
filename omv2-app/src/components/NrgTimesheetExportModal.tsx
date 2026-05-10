@@ -353,8 +353,14 @@ export function NrgTimesheetExportModal({ onClose }: Props) {
                       onClick={() => { setDateFrom(from); setDateTo(to) }}>{label}</button>
                   )
                   const today = new Date()
-                  const iso = (d: Date) => d.toISOString().slice(0,10)
-                  // Most recent week
+                  const isoLocal = (d: Date) => {
+                    const y = d.getFullYear()
+                    const m = String(d.getMonth() + 1).padStart(2, '0')
+                    const day = String(d.getDate()).padStart(2, '0')
+                    return `${y}-${m}-${day}`
+                  }
+                  const iso = isoLocal
+                  // Most recent week — Monday start using local getDay()
                   const monOffset = (today.getDay() + 6) % 7
                   const mon = new Date(today); mon.setDate(today.getDate() - monOffset)
                   const sun = new Date(mon); sun.setDate(mon.getDate() + 6)

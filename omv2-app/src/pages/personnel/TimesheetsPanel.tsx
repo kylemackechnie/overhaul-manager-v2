@@ -781,10 +781,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       opts.push({ key: `tce:${l.item_id}`, label: `[SL] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
     })
 
-    // Tier 3: Overhead lines (not WO-tracked, allocate by item_id)
-    tceLines.filter(l => l.source === 'overhead' && !isGroupHeader(l.item_id)).forEach(l => {
-      opts.push({ key: `tce:${l.item_id}`, label: `[OH] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
-    })
+    // Overhead and Fixed Price lines intentionally excluded — bulk TCE scope is skilled labour only
 
     return opts
   }

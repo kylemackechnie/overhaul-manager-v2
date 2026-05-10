@@ -53,6 +53,10 @@ export function ExpensesPanel() {
   const [showBulkDownload, setShowBulkDownload] = useState(false)
   const [bulkDlWeeks, setBulkDlWeeks] = useState<Set<string>>(new Set())
   const [bulkDlLoading, setBulkDlLoading] = useState(false)
+  type ExpSortCol = 'date'|'description'|'category'|'cost'|'sell'|'wbs'
+  type ExpSortDir = 'asc'|'desc'
+  const [sortCol, setSortCol] = useState<ExpSortCol>('date')
+  const [sortDir, setSortDir] = useState<ExpSortDir>('desc')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -484,9 +488,37 @@ export function ExpensesPanel() {
       'expenses_' + (activeProject?.name || 'project')
     )
   }
-  const filtered = expenses.filter(e =>
-    !search || [e.description, e.category, e.wbs].some(f => (f||'').toLowerCase().includes(search.toLowerCase()))
-  )
+  const filtered = (() => {
+    const f = expenses.filter(e =>
+      !search || [e.description, e.category, e.wbs].some(f => (f||'').toLowerCase().includes(search.toLowerCase()))
+    )
+    return [...f].sort((a, b) => {
+      let va: string|number = '', vb: string|number = ''
+      switch (sortCol) {
+        case 'date':        va = a.date||''; vb = b.date||''; break
+        case 'description': va = (a.description||'').toLowerCase(); vb = (b.description||'').toLowerCase(); break
+        case 'category':    va = (a.category||'').toLowerCase(); vb = (b.category||'').toLowerCase(); break
+        case 'cost':        va = a.cost_ex_gst||0; vb = b.cost_ex_gst||0; break
+        case 'sell':        va = a.sell_price||0; vb = b.sell_price||0; break
+        case 'wbs':         va = (a.wbs||'').toLowerCase(); vb = (b.wbs||'').toLowerCase(); break
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  })()
+  function toggleSort(col: ExpSortCol) {
+    if (sortCol === col) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  function SortTh({ col, label, align = 'left' }: { col: ExpSortCol; label: string; align?: string }) {
+    const active = sortCol === col
+    return (
+      <th onClick={() => toggleSort(col)} style={{padding:'8px 10px',textAlign:align as 'left'|'right'|'center',cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',background:'var(--bg3)',color:active?'var(--accent)':'var(--text2)',fontSize:'11px'}}>
+        {label} {active ? (sortDir==='asc'?'↑':'↓') : ''}
+      </th>
+    )
+  }
   const totalCost = expenses.reduce((s, e) => s + (e.cost_ex_gst || 0), 0)
   const totalSell = expenses.reduce((s, e) => s + (e.sell_price || 0), 0)
   const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -560,10 +592,14 @@ export function ExpensesPanel() {
                     <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
                       onChange={e=>toggleAll(e.target.checked)} style={{accentColor:'#f472b6'}} />
                   </th>
-                  <th>Date</th><th>Description</th><th>Category</th>
-                  <th style={{ textAlign: 'right' }}>Cost (ex GST)</th>
-                  <th style={{ textAlign: 'right' }}>Sell</th>
-                  <th>Receipts</th><th>WBS</th><th></th>
+                  <SortTh col="date" label="Date" />
+                  <SortTh col="description" label="Description" />
+                  <SortTh col="category" label="Category" />
+                  <SortTh col="cost" label="Cost (ex GST)" align="right" />
+                  <SortTh col="sell" label="Sell" align="right" />
+                  <th>Receipts</th>
+                  <SortTh col="wbs" label="WBS" />
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
