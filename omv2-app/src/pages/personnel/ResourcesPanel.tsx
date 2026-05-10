@@ -20,8 +20,9 @@ import type { Resource, RateCard, PurchaseOrder } from '../../types'
 const RES_COLS = [
   { id: 'status',    label: 'Status',       default: 70,  group: 'Identity' },
   { id: 'name',      label: 'Name',         default: 140, group: 'Identity' },
-  { id: 'role',      label: 'Role / Trade', default: 110, group: 'Identity' },
-  { id: 'category',  label: 'Category',     default: 100, group: 'Identity' },
+  { id: 'role',           label: 'Role / Trade', default: 110, group: 'Identity' },
+  { id: 'specialisation', label: 'Area',         default: 100, group: 'Identity' },
+  { id: 'category',       label: 'Category',     default: 100, group: 'Identity' },
   { id: 'shift',     label: 'Shift',        default: 60,  group: 'Identity' },
   { id: 'company',   label: 'Company',      default: 110, group: 'Identity' },
   { id: 'mob_in',    label: 'Mob In',       default: 80,  group: 'Mob' },
@@ -44,7 +45,7 @@ const RES_COL_GROUPS = ['Identity', 'Mob', 'Contact', 'Allowances', 'Logistics',
 const CATEGORIES = ['trades','management','seag','subcontractor'] as const
 const SHIFTS = ['day','night','both'] as const
 const EMPTY: Partial<Resource> = {
-  name:'', role:'', category:'trades', shift:'day', shift_phases: null,
+  name:'', role:'', category:'trades', shift:'day', shift_phases: null, specialisation: null,
   mob_in:null, mob_out:null, travel_days:0, wbs:'',
   allow_laha:false, allow_fsa:false, allow_meal:false,
   company:'', phone:'', email:'', notes:'', flights:'',
@@ -226,7 +227,7 @@ export function ResourcesPanel() {
     const payload = {
       project_id: activeProject!.id,
       name: form.name?.trim(), role: form.role||'', category: form.category||'trades',
-      shift: form.shift||'day', shift_phases: form.shift_phases||null, mob_in: form.mob_in||null, mob_out: form.mob_out||null,
+      shift: form.shift||'day', shift_phases: form.shift_phases||null, specialisation: form.specialisation||null, mob_in: form.mob_in||null, mob_out: form.mob_out||null,
       travel_days: form.travel_days||0, wbs: form.wbs||'',
       allow_laha: form.allow_laha||false, allow_fsa: form.allow_fsa||false, allow_meal: form.allow_meal||false,
       company: form.company||'', phone: form.phone||'', email: form.email||'',
@@ -740,6 +741,7 @@ export function ResourcesPanel() {
                           )
                         })()}
                       </td>}
+                      {isVisible('specialisation') && <td style={{fontSize:'12px',color:'var(--text3)'}}>{r.specialisation||'—'}</td>}
                       {isVisible('category') && <td>
                         <select defaultValue={r.category||'trades'}
                           style={{background:'transparent',border:'none',borderBottom:'1px solid transparent',fontSize:'12px',fontFamily:'inherit',color:'var(--text2)',cursor:'pointer',padding:'1px 2px',appearance:'none'}}
@@ -938,6 +940,14 @@ export function ResourcesPanel() {
                       {rcs.map(rc => <option key={rc.id} value={rc.role}>{rc.role}</option>)}
                     </select>
                   )}
+                </div>
+                <div className="fg">
+                  <label>Area / Specialisation</label>
+                  <SpecialisationPicker
+                    value={form.specialisation||''}
+                    allSpecialisations={[...new Set(resources.map(r=>r.specialisation).filter(Boolean) as string[])]}
+                    onChange={v=>setForm(f=>({...f,specialisation:v||null}))}
+                  />
                 </div>
               </div>
               <div className="fg-row">
@@ -1318,4 +1328,51 @@ function nextDay(date: string): string {
   const d = new Date(date + 'T12:00:00')
   d.setDate(d.getDate() + 1)
   return d.toISOString().slice(0, 10)
+}
+
+// ── SpecialisationPicker ──────────────────────────────────────────────────────
+const DEFAULT_SPECIALISATIONS = ['Turbine', 'Generator', 'Valves', 'Auxiliaries']
+
+function SpecialisationPicker({ value, allSpecialisations, onChange }: {
+  value: string
+  allSpecialisations: string[]
+  onChange: (v: string) => void
+}) {
+  const [addingNew, setAddingNew] = useState(false)
+  const [newVal, setNewVal] = useState('')
+
+  // Merge defaults + any project-specific ones already in use
+  const options = [...new Set([...DEFAULT_SPECIALISATIONS, ...allSpecialisations])].sort()
+
+  if (addingNew) {
+    return (
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <input
+          className="input"
+          autoFocus
+          placeholder="e.g. Cooling Water"
+          value={newVal}
+          onChange={e => setNewVal(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && newVal.trim()) { onChange(newVal.trim()); setAddingNew(false); setNewVal('') }
+            if (e.key === 'Escape') { setAddingNew(false); setNewVal('') }
+          }}
+        />
+        <button className="btn btn-sm" onClick={() => { if (newVal.trim()) { onChange(newVal.trim()); setAddingNew(false); setNewVal('') } }}>✓</button>
+        <button className="btn btn-sm" style={{ color: 'var(--text3)' }} onClick={() => { setAddingNew(false); setNewVal('') }}>✕</button>
+      </div>
+    )
+  }
+
+  return (
+    <select className="input" value={value} onChange={e => {
+      if (e.target.value === '__add_new__') { setAddingNew(true) }
+      else onChange(e.target.value)
+    }}>
+      <option value="">— None —</option>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {value && !options.includes(value) && <option value={value}>{value}</option>}
+      <option value="__add_new__">+ Add new…</option>
+    </select>
+  )
 }

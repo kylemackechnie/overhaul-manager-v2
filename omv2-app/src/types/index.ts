@@ -241,6 +241,7 @@ export interface Resource {
   category: 'trades' | 'management' | 'seag' | 'subcontractor'
   shift: 'day' | 'night' | 'both'
   shift_phases: ShiftPhase[] | null
+  specialisation: string | null
   mob_in: string | null
   mob_out: string | null
   travel_days: number
