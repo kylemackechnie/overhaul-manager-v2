@@ -168,7 +168,11 @@ export function WBSPanel() {
     // Delete existing rows first and confirm before inserting
     const { error: delErr } = await supabase.from('wbs_list').delete().eq('project_id', pid)
     if (delErr) { toast('Sync failed (delete): ' + delErr.message, 'error'); setSyncing(false); return }
-    const inserts = data.map((l, i) => ({
+    // Deduplicate by WBS code (MIKA CSVs can have the same WBS on multiple rows)
+    const seen = new Set<string>()
+    const inserts = data
+      .filter(l => { if (seen.has(l.wbs)) return false; seen.add(l.wbs); return true })
+      .map((l, i) => ({
       project_id: pid,
       code: l.wbs,
       name: l.description || l.wbs,

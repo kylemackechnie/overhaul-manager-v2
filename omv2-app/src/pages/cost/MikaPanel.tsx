@@ -257,8 +257,10 @@ export function MikaPanel() {
     const { error: wbsDelErr } = await supabase.from('wbs_list').delete().eq('project_id', activeProject.id)
     if (wbsDelErr) { console.warn('[MikaPanel] wbs_list delete failed:', wbsDelErr.message) }
     else {
+      const seenCodes = new Set<string>()
       const wbsInserts = preview.lines
-        .filter(l => l.wbs.includes('-') || l.wbs.includes('.')) // skip blank rows
+        .filter(l => l.wbs.includes('-') || l.wbs.includes('.'))
+        .filter(l => { if (seenCodes.has(l.wbs)) return false; seenCodes.add(l.wbs); return true })
         .map((l, i) => ({
           project_id: activeProject.id,
           code: l.wbs, name: l.desc || l.wbs,
