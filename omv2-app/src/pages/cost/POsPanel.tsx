@@ -319,7 +319,7 @@ export function POsPanel() {
                   </div>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px'}}>
                     <select className="input" style={{fontSize:'11px'}} value={line.wbs} onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,wbs:e.target.value}:l)}))}>
-                      <option value="">— WBS —</option>{wbsList.map(w=><option key={w.id} value={w.code}>{w.code}</option>)}
+                      <option value="">— WBS —</option>{wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}
                     </select>
                     <input type="number" className="input" style={{fontSize:'11px'}} value={line.value||''} min={0} placeholder="Value" onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,value:parseFloat(e.target.value)||0}:l)}))}/>
                   </div>
