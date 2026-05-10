@@ -138,16 +138,15 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
     return { mob_in: r.mob_in, mob_out: r.mob_out }
   }
 
-  // Bar position as % of window
-  function barPosition(r: Resource): { left: number; width: number; visible: boolean } {
+  // Bar position in absolute pixels (matches CELL_PX grid exactly)
+  function barPosition(r: Resource): { leftPx: number; widthPx: number; visible: boolean } {
     const { mob_in, mob_out } = getResourceDates(r)
-    if (!mob_in && !mob_out) return { left: 0, width: 0, visible: false }
+    if (!mob_in && !mob_out) return { leftPx: 0, widthPx: 0, visible: false }
 
     const start = mob_in || windowStart
     const end = mob_out || windowEnd
 
-    // Check if bar overlaps the window at all
-    if (end < windowStart || start > windowEnd) return { left: 0, width: 0, visible: false }
+    if (end < windowStart || start > windowEnd) return { leftPx: 0, widthPx: 0, visible: false }
 
     const clampedStart = clampDate(start, windowStart, windowEnd)
     const clampedEnd = clampDate(end, windowStart, windowEnd)
@@ -155,8 +154,8 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
     const widthDays = daysBetween(clampedStart, clampedEnd) + 1
 
     return {
-      left: (leftDays / totalDays) * 100,
-      width: Math.max(1 / totalDays * 100, (widthDays / totalDays) * 100),
+      leftPx: leftDays * CELL_PX,
+      widthPx: Math.max(CELL_PX, widthDays * CELL_PX),
       visible: true,
     }
   }
@@ -439,8 +438,7 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
                   const inWindow = pos.visible
 
                   // Bar label
-                  const widthPx = (pos.width / 100) * ganttW
-                  const isNarrow = widthPx < 50
+                  const isNarrow = pos.widthPx < 50
                   const barLabel = !inWindow ? null : isNarrow ? null : mob_out && mob_out < today ? 'demobbed' : mob_in && mob_in > today ? `mob ${mob_in.slice(5)}` : 'on site'
 
                   return (
@@ -469,8 +467,8 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
                       </div>
 
-                      {/* Gantt row */}
-                      <div style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
+                      {/* Gantt row — explicit px width so bars and bg cells share the same coordinate space */}
+                      <div style={{ width: ganttW, flexShrink: 0, position: 'relative', height: '100%', overflow: 'hidden' }}>
                         {/* Day background stripes */}
                         <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
                           {calDays.map(day => renderDayBg(day))}
@@ -483,8 +481,8 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
                               position: 'absolute',
                               top: 5,
                               bottom: 5,
-                              left: `${pos.left}%`,
-                              width: `${pos.width}%`,
+                              left: pos.leftPx,
+                              width: pos.widthPx,
                               background: barColor,
                               borderRadius: 3,
                               display: 'flex',
@@ -582,7 +580,7 @@ export function ResourceCalendar({ resources, onSave, onOpenEdit, selected, onBu
               }}>
                 Headcount
               </div>
-              <div style={{ flex: 1, display: 'flex', height: 36, alignItems: 'flex-end', padding: '3px 0' }}>
+              <div style={{ width: ganttW, flexShrink: 0, display: 'flex', height: 36, alignItems: 'flex-end', padding: '3px 0' }}>
                 {headcounts.map(({ day, count }) => {
                   const dow = new Date(day + 'T12:00:00').getDay()
                   const isWknd = dow === 0 || dow === 6
