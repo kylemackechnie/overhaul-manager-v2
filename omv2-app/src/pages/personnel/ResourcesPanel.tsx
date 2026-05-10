@@ -120,7 +120,7 @@ export function ResourcesPanel() {
   const [sortCol, setSortCol] = useState<SortCol>('name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState(false)
-  const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
+  const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', specialisation:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
   const [sortAsc, setSortAsc] = useState(true)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -166,6 +166,7 @@ export function ResourcesPanel() {
     if (bulkForm.mob_out)  updates.mob_out  = bulkForm.mob_out
     if (bulkForm.shift)    updates.shift    = bulkForm.shift as Resource['shift']
     if (bulkForm.wbs)      updates.wbs      = bulkForm.wbs
+    if (bulkForm.specialisation) updates.specialisation = bulkForm.specialisation
     if (bulkForm.applyLaha) updates.allow_laha = bulkForm.allow_laha
     if (bulkForm.applyMeal) updates.allow_meal = bulkForm.allow_meal
     if (bulkForm.applyFsa)  updates.allow_fsa  = bulkForm.allow_fsa
@@ -1110,6 +1111,14 @@ export function ResourcesPanel() {
                   <option value="">— Select WBS —</option>
                   {wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}
                 </select>
+              </div>
+              <div className="fg">
+                <label>Area / Specialisation (set for all selected)</label>
+                <SpecialisationPicker
+                  value={bulkForm.specialisation}
+                  allSpecialisations={[...new Set(resources.map(r=>r.specialisation).filter(Boolean) as string[])]}
+                  onChange={v=>setBulkForm(f=>({...f,specialisation:v}))}
+                />
               </div>
               <div style={{marginTop:'8px',fontSize:'12px',fontWeight:600,color:'var(--text2)',marginBottom:'6px'}}>Allowances</div>
               {(['allow_laha','allow_meal','allow_fsa'] as const).map(k => {
