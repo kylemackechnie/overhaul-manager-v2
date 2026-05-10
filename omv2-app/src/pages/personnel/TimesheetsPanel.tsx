@@ -1738,7 +1738,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     {workOrders.map(w => <option key={w.id} value={w.id}>{w.wo_number} — {w.description}</option>)}
                   </select>
                   <input type="number" className="input" style={{ width: '70px', textAlign: 'right', fontFamily: 'var(--mono)' }}
-                    value={r.hours || ''} min={0} max={woAllocModal.hours} step={0.5} placeholder="hrs"
+                    value={r.hours || ''} min={0} max={woAllocModal.hours} step={0.01} placeholder="hrs"
                     onChange={e => setWoAllocRows(rows => rows.map((x, j) => j === i ? { ...x, hours: parseFloat(e.target.value) || 0 } : x))} />
                   <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => setWoAllocRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
                 </div>
@@ -1887,7 +1887,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   })()}
                   <input type="number" className="input"
                     style={{ width: '72px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '13px', fontWeight: 700 }}
-                    value={r.hours || ''} min={0} max={tceAllocModal.hours} step={0.5} placeholder="h"
+                    value={r.hours || ''} min={0} max={tceAllocModal.hours} step={0.01} placeholder="h"
                     onChange={e => setTceAllocRows(rows => rows.map((x, j) => j === i ? { ...x, hours: parseFloat(e.target.value) || 0 } : x))} />
                   <button className="btn btn-sm" style={{ color: 'var(--red)', flexShrink: 0 }}
                     onClick={() => setTceAllocRows(rows => rows.filter((_, j) => j !== i))}>✕</button>
@@ -1992,7 +1992,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                             <span style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{c.itemId}</span>
                             <span style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.description}>{c.description}</span>
                             <input
-                              type="number" min="0" step="0.5"
+                              type="number" min="0" step="0.01"
                               className="input"
                               style={{ fontSize: '12px', fontFamily: 'var(--mono)', textAlign: 'right' }}
                               value={s.split[ci] || ''}
