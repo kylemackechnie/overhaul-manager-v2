@@ -85,6 +85,7 @@ interface Invoice {
   sap_doc_number: string|null; sap_wbs: string|null; tce_item_id: string|null
   status_history: StatusHistoryEntry[]; notes: string|null; dispute_note: string|null
   receipt_paths: string[]
+  invoice_ref: string|null
   created_at: string
 }
 
@@ -162,6 +163,41 @@ export function InvoicesPanel() {
   const [uploadingId, setUploadingId] = useState<string|null>(null)
   const [sapParsing, setSapParsing] = useState(false)
   const [sapImporting, setSapImporting] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [modalDragOver, setModalDragOver] = useState(false)
+
+  // ── Live SPOL reference preview ────────────────────────────────────────────
+  function buildInvRefSlug(invoiceNumber: string, vendor: string, amount: string): string {
+    const clean = (s: string) => s.trim().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').slice(0, 24)
+    const parts = [clean(invoiceNumber)||'INV', clean(vendor)||'Vendor', amount ? `$${parseFloat(amount).toFixed(0)}` : '']
+    return parts.filter(Boolean).join('_')
+  }
+
+  // Resolve vendor name from form (PO vendor or vendor_details)
+  function formVendor(): string {
+    if (form.po_id) {
+      const po = pos.find(p => p.id === form.po_id)
+      return po?.vendor || ''
+    }
+    return form.vendor_details
+  }
+
+  const invRefPreview = `INV-####_${buildInvRefSlug(form.invoice_number, formVendor(), form.amount)}`
+
+  async function assignInvoiceRef(invoiceId: string): Promise<string> {
+    // Get max number across BOTH expenses and invoices for a shared sequence
+    const [expData, invData] = await Promise.all([
+      supabase.from('expenses').select('expense_ref').eq('project_id', activeProject!.id).not('expense_ref', 'is', null),
+      supabase.from('invoices').select('invoice_ref').eq('project_id', activeProject!.id).not('invoice_ref', 'is', null),
+    ])
+    const expNums = (expData.data || []).map((e: { expense_ref?: string | null }) => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
+    const invNums = (invData.data || []).map((e: { invoice_ref?: string | null }) => { const m = (e.invoice_ref || '').match(/INV-(\d+)/); return m ? parseInt(m[1]) : 0 })
+    const allNums = [...expNums, ...invNums].filter(n => n > 0)
+    const next = allNums.length > 0 ? Math.max(...allNums) + 1 : 1
+    const ref = `INV-${String(next).padStart(4, '0')}_${buildInvRefSlug(form.invoice_number, formVendor(), form.amount)}`
+    await supabase.from('invoices').update({ invoice_ref: ref }).eq('id', invoiceId)
+    return ref
+  }
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -250,11 +286,37 @@ export function InvoicesPanel() {
       notes: form.notes,
     }
     const isNew = modal === 'new'
-    const { error } = isNew
-      ? await supabase.from('invoices').insert(payload)
-      : await supabase.from('invoices').update(payload).eq('id', (modal as Invoice).id)
-    if (error) { toast(error.message,'error'); setSaving(false); return }
-    toast(isNew ? 'Invoice added' : 'Invoice saved','success')
+    let savedId: string
+    if (isNew) {
+      const { data, error } = await supabase.from('invoices').insert(payload).select('id').single()
+      if (error || !data) { toast(error?.message || 'Insert failed', 'error'); setSaving(false); return }
+      savedId = data.id
+    } else {
+      const { error } = await supabase.from('invoices').update(payload).eq('id', (modal as Invoice).id)
+      if (error) { toast(error.message, 'error'); setSaving(false); return }
+      savedId = (modal as Invoice).id
+    }
+
+    // Assign SPOL invoice ref if not already set
+    const existingInv = isNew ? null : (modal as Invoice)
+    if (!existingInv?.invoice_ref) {
+      await assignInvoiceRef(savedId)
+    }
+
+    // Upload any pending files from the modal
+    if (pendingFiles.length > 0) {
+      for (const file of pendingFiles) {
+        const { path, error } = await uploadReceipt(activeProject!.id, savedId, file)
+        if (!error && path) {
+          const { data: current } = await supabase.from('invoices').select('receipt_paths').eq('id', savedId).single()
+          const existing = (current as { receipt_paths?: string[] })?.receipt_paths || []
+          await supabase.from('invoices').update({ receipt_paths: [...existing, path] }).eq('id', savedId)
+        }
+      }
+      setPendingFiles([])
+    }
+
+    toast(isNew ? 'Invoice added' : 'Invoice saved', 'success')
     setSaving(false); setModal(null); load()
   }
 
@@ -444,7 +506,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm(EMPTY_FORM);setPendingFiles([]);setModal('new')}}>+ New Invoice</button>
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
@@ -558,6 +620,7 @@ export function InvoicesPanel() {
                     {/* Invoice # */}
                     {isInvVisible('invoice') && <td style={{padding:'8px 10px',verticalAlign:'top'}}>
                       <div style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:'12px'}}>{inv.invoice_number || '—'}</div>
+                      {inv.invoice_ref && <div style={{fontSize:'9px',color:'var(--accent)',fontFamily:'var(--mono)',marginTop:'1px'}}>{inv.invoice_ref}</div>}
                       {inv.source === 'sap_import' && <div style={{fontSize:'9px',color:'#7c3aed'}}>SAP Import</div>}
                     </td>}
                     {/* PO / Vendor */}
@@ -749,10 +812,68 @@ export function InvoicesPanel() {
                 )}
               </div>
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
+
+              {/* SPOL reference preview */}
+              <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',padding:'10px 12px',marginTop:'4px'}}>
+                <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'}}>
+                  SPOL File Reference
+                  {modal !== 'new' && (modal as Invoice).invoice_ref && (
+                    <span style={{marginLeft:'8px',fontWeight:400,color:'var(--accent)',textTransform:'none',letterSpacing:0}}>✓ Assigned</span>
+                  )}
+                </div>
+                <div style={{fontFamily:'var(--mono)',fontSize:'12px',fontWeight:600,color: modal !== 'new' && (modal as Invoice).invoice_ref ? 'var(--accent)' : 'var(--text2)'}}>
+                  {modal !== 'new' && (modal as Invoice).invoice_ref
+                    ? (modal as Invoice).invoice_ref
+                    : invRefPreview}
+                </div>
+                {modal === 'new' && (
+                  <div style={{fontSize:'10px',color:'var(--text3)',marginTop:'3px'}}>
+                    Assigned automatically on save — number shared with expense sequence
+                  </div>
+                )}
+              </div>
+
+              {/* Invoice copy / attachment */}
+              <div style={{marginTop:'8px'}}>
+                <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'6px'}}>Invoice copy</div>
+
+                {/* Show existing attachments for edit mode */}
+                {modal !== 'new' && ((modal as Invoice).receipt_paths || []).length > 0 && (
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'4px',marginBottom:'6px'}}>
+                    {((modal as Invoice).receipt_paths || []).map((path: string) => (
+                      <span key={path} style={{display:'inline-flex',alignItems:'center',gap:'3px',fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:'var(--bg3)',border:'1px solid var(--border)',cursor:'pointer'}} onClick={()=>openInvReceipt(path)}>
+                        {fileIcon(path)} {fileName(path).slice(0,20)}{fileName(path).length>20?'…':''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Pending files (new ones to upload on save) */}
+                {pendingFiles.length > 0 && (
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'4px',marginBottom:'6px'}}>
+                    {pendingFiles.map((f,i)=>(
+                      <span key={i} style={{display:'inline-flex',alignItems:'center',gap:'3px',fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:'#dcfce7',border:'1px solid #86efac',color:'#065f46'}}>
+                        📎 {f.name.slice(0,24)}{f.name.length>24?'…':''}{' '}
+                        <button onClick={()=>setPendingFiles(prev=>prev.filter((_,j)=>j!==i))} style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626',fontSize:'12px',padding:'0',lineHeight:1}}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <label
+                  onDragOver={e=>{e.preventDefault();setModalDragOver(true)}}
+                  onDragLeave={()=>setModalDragOver(false)}
+                  onDrop={e=>{e.preventDefault();setModalDragOver(false);const f=e.dataTransfer.files[0];if(f)setPendingFiles(prev=>[...prev,f])}}
+                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',padding:'12px',border:`2px dashed ${modalDragOver?'var(--accent)':'var(--border)'}`,borderRadius:'6px',cursor:'pointer',background:modalDragOver?'var(--accent-bg)':'transparent',transition:'all 0.15s',fontSize:'12px',color:'var(--text3)'}}>
+                  <span style={{fontSize:'18px'}}>📎</span>
+                  Drop invoice copy here or click to attach
+                  <input type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f){setPendingFiles(prev=>[...prev,f]);e.target.value=''}}} />
+                </label>
+              </div>
             </div>
             <div className="modal-footer">
               {modal!=='new'&&<button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{deleteInvoice(modal as Invoice);setModal(null)}}>Delete</button>}
-              <button className="btn" onClick={()=>setModal(null)}>Cancel</button>
+              <button className="btn" onClick={()=>{setModal(null);setPendingFiles([])}}>Cancel</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Save</button>
             </div>
           </div>
