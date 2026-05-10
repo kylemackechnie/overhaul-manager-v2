@@ -43,8 +43,8 @@ function prorateToDate(total: number, start?: string | null, end?: string | null
 
 interface PoLine { id: string; description: string; wbs: string; value: number; notes: string; tce_item_id?: string }
 const mkLine = (): PoLine => ({ id: Math.random().toString(36).slice(2), description: '', wbs: '', value: 0, notes: '' })
-type PoForm = { po_number: string; internal_ref: string; vendor: string; description: string; status: string; currency: string; po_type: string; notes: string; effective_start: string; effective_end: string; raised_date: string; tce_item_id: string | null; lines: PoLine[] }
-const EMPTY_FORM: PoForm = { po_number: '', internal_ref: '', vendor: '', description: '', status: 'draft', currency: 'AUD', po_type: 'fixed', notes: '', effective_start: '', effective_end: '', tce_item_id: null, raised_date: '', lines: [mkLine()] }
+type PoForm = { po_number: string; internal_ref: string; vendor: string; description: string; status: string; currency: string; po_type: string; notes: string; effective_start: string; effective_end: string; raised_date: string; forecast_start: string; forecast_end: string; tce_item_id: string | null; lines: PoLine[] }
+const EMPTY_FORM: PoForm = { po_number: '', internal_ref: '', vendor: '', description: '', status: 'draft', currency: 'AUD', po_type: 'fixed', notes: '', effective_start: '', effective_end: '', forecast_start: '', forecast_end: '', tce_item_id: null, raised_date: '', lines: [mkLine()] }
 type DetailTab = 'overview' | 'labour' | 'equipment' | 'invoices'
 interface ActualsRow { person_name: string; role: string; work_date: string; week_start: string; allocated_hours: number; cost_labour: number; cost_allowances: number; po_id?: string }
 
@@ -170,7 +170,7 @@ export function POsPanel() {
   }
   function openEditForm(po: PurchaseOrder) {
     const p = po as PurchaseOrder & { line_items?: PoLine[]; po_type?: string; effective_start?: string; effective_end?: string }
-    setForm({ po_number: po.po_number||'', internal_ref: po.internal_ref||'', vendor: po.vendor||'', description: po.description||'', status: po.status||'draft', currency: po.currency||'AUD', po_type: p.po_type||'fixed', notes: po.notes||'', effective_start: p.effective_start||'', effective_end: p.effective_end||'', tce_item_id: po.tce_item_id||null, raised_date: po.raised_date||'', lines: p.line_items?.length ? p.line_items : [mkLine()] })
+    setForm({ po_number: po.po_number||'', internal_ref: po.internal_ref||'', vendor: po.vendor||'', description: po.description||'', status: po.status||'draft', currency: po.currency||'AUD', po_type: p.po_type||'fixed', notes: po.notes||'', effective_start: p.effective_start||'', effective_end: p.effective_end||'', forecast_start: po.forecast_start||'', forecast_end: po.forecast_end||'', tce_item_id: po.tce_item_id||null, raised_date: po.raised_date||'', lines: p.line_items?.length ? p.line_items : [mkLine()] })
   }
   function openNew() { setForm({ ...EMPTY_FORM, lines: [mkLine()] }); setActivePO(null); setEditOpen(true) }
   const formValue = form.lines.reduce((s, l) => s + (l.value || 0), 0)
@@ -178,7 +178,7 @@ export function POsPanel() {
   async function save() {
     if (!form.vendor.trim()) { toast('Vendor required', 'error'); return }
     setSaving(true)
-    const payload = { project_id: activeProject!.id, po_number: form.po_number, internal_ref: form.internal_ref, vendor: form.vendor.trim(), description: form.description, status: form.status, currency: form.currency, po_type: form.po_type, tce_item_id: form.tce_item_id||null, po_value: formValue||null, effective_start: form.effective_start||null, effective_end: form.effective_end||null, raised_date: form.raised_date||null, notes: form.notes, line_items: form.lines }
+    const payload = { project_id: activeProject!.id, po_number: form.po_number, internal_ref: form.internal_ref, vendor: form.vendor.trim(), description: form.description, status: form.status, currency: form.currency, po_type: form.po_type, tce_item_id: form.tce_item_id||null, po_value: formValue||null, effective_start: form.effective_start||null, effective_end: form.effective_end||null, raised_date: form.raised_date||null, forecast_start: form.forecast_start||null, forecast_end: form.forecast_end||null, notes: form.notes, line_items: form.lines }
     const { error } = activePO ? await supabase.from('purchase_orders').update(payload).eq('id', activePO.id) : await supabase.from('purchase_orders').insert(payload)
     if (error) { toast(error.message, 'error'); setSaving(false); return }
     toast(activePO ? 'PO saved' : 'PO created', 'success'); setSaving(false); setEditOpen(false); await load()
@@ -305,6 +305,8 @@ export function POsPanel() {
                 <div><div style={SH}>End</div><input type="date" className="input" style={{width:'100%',fontSize:'12px'}} value={form.effective_end} onChange={e=>setForm(f=>({...f,effective_end:e.target.value}))}/></div>
               </div>
               <div><div style={SH}>Raised Date</div><input type="date" className="input" style={{width:'100%',fontSize:'12px'}} value={form.raised_date} onChange={e=>setForm(f=>({...f,raised_date:e.target.value}))}/></div>
+              <div><div style={SH}>Forecast Start</div><input type="date" className="input" style={{width:'100%',fontSize:'12px'}} value={form.forecast_start} onChange={e=>setForm(f=>({...f,forecast_start:e.target.value}))} title="When spend begins — used for cost forecasting"/></div>
+              <div><div style={SH}>Forecast End</div><input type="date" className="input" style={{width:'100%',fontSize:'12px'}} value={form.forecast_end} onChange={e=>setForm(f=>({...f,forecast_end:e.target.value}))} title="When spend ends — used for cost forecasting"/></div>
             </div>
             {/* Line items */}
             <div style={{marginTop:'12px'}}>
@@ -553,7 +555,7 @@ export function POsPanel() {
                           <td style={TD}>{ia.invoice_ref||`Invoice ${i+1}`}</td>
                           <td style={TD}>{fmtDate(ia.invoice_date)}</td>
                           <td style={TDR}>{fmtFull(inv.amount||0)}</td>
-                          <td style={TD}><span style={{fontSize:'10px',padding:'2px 6px',borderRadius:'10px',background:inv.status==='approved'?'#d1fae5':inv.status==='paid'?'#dbeafe':'#fef3c7',color:inv.status==='approved'?'#065f46':inv.status==='paid'?'#1e40af':'#92400e',fontWeight:600}}>{inv.status}</span></td>
+                          <td style={TD}><span style={{fontSize:'10px',padding:'2px 6px',borderRadius:'10px',background:inv.status==='approved'?'#d1fae5':'#fef3c7',color:inv.status==='approved'?'#065f46':'#92400e',fontWeight:600}}>{inv.status}</span></td>
                           <td style={TDR}>{budget>0?((inv.amount||0)/budget*100).toFixed(1)+'%':'—'}</td>
                         </tr>
                       })}
@@ -614,6 +616,10 @@ export function POsPanel() {
             <div className="fg"><label>Type</label><select className="input" value={form.po_type} onChange={e=>setForm(f=>({...f,po_type:e.target.value}))}>{Object.entries(PO_TYPE).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
             <div className="fg"><label>Currency</label><select className="input" value={form.currency} onChange={e=>setForm(f=>({...f,currency:e.target.value}))}>{CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
             <div className="fg"><label>Raised Date</label><input type="date" className="input" value={form.raised_date} onChange={e=>setForm(f=>({...f,raised_date:e.target.value}))}/></div>
+            <div className="fg-row">
+              <div className="fg"><label>Forecast Start <span style={{fontWeight:400,color:'var(--text3)'}}>— cost spread begins</span></label><input type="date" className="input" value={form.forecast_start} onChange={e=>setForm(f=>({...f,forecast_start:e.target.value}))}/></div>
+              <div className="fg"><label>Forecast End <span style={{fontWeight:400,color:'var(--text3)'}}>— cost spread ends</span></label><input type="date" className="input" value={form.forecast_end} onChange={e=>setForm(f=>({...f,forecast_end:e.target.value}))}/></div>
+            </div>
           </div>
           <div className="fg-row">
             <div className="fg"><label>Effective Start</label><input type="date" className="input" value={form.effective_start} onChange={e=>setForm(f=>({...f,effective_start:e.target.value}))}/></div>

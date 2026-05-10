@@ -36,28 +36,29 @@ type InvColId = typeof INV_COLS[number]['id']
 const INV_COL_GROUPS = ['Core', 'Dates', 'Financials', 'Workflow'] as const
 
 // ── Status workflow (mirrors HTML INV_STATUS / INV_TRANSITIONS) ───────────────
+// 'paid' has been removed — accounts handles payment outside this system.
+// Existing 'paid' records display as 'approved' for backward compatibility.
 const INV_STATUS: Record<string,{label:string;color:string;bg:string}> = {
   received: { label:'Received', color:'#d97706', bg:'#fef3c7' },
   checked:  { label:'Checked',  color:'#7c3aed', bg:'#ede9fe' },
   approved: { label:'Approved', color:'#0369a1', bg:'#dbeafe' },
-  paid:     { label:'Paid',     color:'#059669', bg:'#d1fae5' },
+  paid:     { label:'Approved', color:'#0369a1', bg:'#dbeafe' }, // legacy — treat as approved
   disputed: { label:'Disputed', color:'#dc2626', bg:'#fee2e2' },
 }
 const INV_TRANSITIONS: Record<string,string[]> = {
   received: ['checked', 'disputed'],
   checked:  ['approved', 'disputed'],
-  approved: ['paid', 'disputed'],
-  paid:     ['disputed'],
+  approved: ['disputed'],
+  paid:     ['disputed'], // legacy — no forward transition
   disputed: ['checked'],
 }
 const BTN_STYLE: Record<string,string> = {
   checked:  'background:#7c3aed;color:#fff;border:none',
   approved: 'background:#0369a1;color:#fff;border:none',
-  paid:     'background:#059669;color:#fff;border:none',
   disputed: 'background:#dc2626;color:#fff;border:none',
 }
 const BTN_LABEL: Record<string,string> = {
-  checked:'Check ✓', approved:'Approve ✓', paid:'Mark Paid', disputed:'Dispute',
+  checked:'Check ✓', approved:'Approve ✓', disputed:'Dispute',
 }
 const STATUS_ORDER_NUM: Record<string,number> = { received:0, checked:1, disputed:2, approved:3, paid:4 }
 
@@ -156,7 +157,6 @@ export function InvoicesPanel() {
   function setSortDir(v: SortDir)      { _setSortDir(v);      setPref('inv_sort_dir', v) }
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
   const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
-  const [payDateModal, setPayDateModal] = useState<{inv:Invoice;date:string}|null>(null)
   const [sapModal, setSapModal] = useState(false)
   const [sapRows, setSapRows] = useState<SapInvRow[]>([])
   const [dragOverId, setDragOverId] = useState<string|null>(null)
@@ -248,7 +248,6 @@ export function InvoicesPanel() {
   // ── Approval workflow transition ──────────────────────────────────────────
   async function transition(inv: Invoice, toStatus: string) {
     if (toStatus === 'disputed') { setDisputeModal({ inv, note:'' }); return }
-    if (toStatus === 'paid') { setPayDateModal({ inv, date: new Date().toISOString().slice(0,10) }); return }
     await doTransition(inv, toStatus, '')
   }
 
@@ -478,7 +477,7 @@ export function InvoicesPanel() {
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const totalAmt  = filtered.reduce((s, i) => s + (i.amount||0), 0)
-  const unpaidAmt = filtered.filter(i => i.status !== 'paid').reduce((s, i) => s + (i.amount||0), 0)
+  const unpaidAmt = filtered.filter(i => i.status !== 'approved' && i.status !== 'paid').reduce((s, i) => s + (i.amount||0), 0)
   const statusCounts = Object.fromEntries(Object.keys(INV_STATUS).map(k => [k, invoices.filter(i=>i.status===k).length]))
 
   if (loading) return <div style={{padding:'24px'}}><div className="loading-center"><span className="spinner"/></div></div>
@@ -590,13 +589,12 @@ export function InvoicesPanel() {
                 const lastAction = inv.status_history?.at(-1)
                 const transitions = INV_TRANSITIONS[inv.status] || []
                 const unlinked = !inv.po_id
-                const isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && inv.status !== 'paid'
+                const isApproved = inv.status === 'approved' || inv.status === 'paid'
+                const isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && !isApproved
 
-                // Days-to-pay calculation
+                // Days-to-pay: days until due (or overdue) for unapproved invoices
                 let dtp: number|null = null
-                if (inv.status === 'paid' && inv.paid_date && inv.invoice_date) {
-                  dtp = Math.round((new Date(inv.paid_date).getTime() - new Date(inv.invoice_date).getTime()) / 86400000)
-                } else if (inv.due_date && inv.invoice_date && inv.status !== 'paid') {
+                if (inv.due_date && inv.invoice_date && !isApproved) {
                   dtp = Math.round((new Date(inv.due_date).getTime() - new Date().getTime()) / 86400000)
                 }
 
@@ -668,8 +666,8 @@ export function InvoicesPanel() {
                       ) : <span style={{color:'var(--text3)',fontSize:'10px'}}>—</span>}
                     </td>}
                     {/* DTP */}
-                    {isInvVisible('dtp') && <td style={{padding:'8px 10px',textAlign:'center',fontFamily:'var(--mono)',verticalAlign:'top',color:inv.status==='paid'?'#059669':dtp!=null&&dtp>30?'var(--red)':dtp!=null&&dtp>14?'var(--orange)':'var(--text3)'}}>
-                      {inv.status==='paid'?'✓':dtp!=null?dtp+'d':'—'}
+                    {isInvVisible('dtp') && <td style={{padding:'8px 10px',textAlign:'center',fontFamily:'var(--mono)',verticalAlign:'top',color:isApproved?'#059669':dtp!=null&&dtp<0?'var(--red)':dtp!=null&&dtp<14?'var(--orange)':'var(--text3)'}}>
+                      {isApproved?'✓':dtp!=null?dtp+'d':'—'}
                     </td>}
                     {/* Optional columns */}
                     {isInvVisible('vendor_ref') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'11px',color:'var(--text3)'}}>{inv.vendor_ref || '—'}</td>}
@@ -920,22 +918,6 @@ export function InvoicesPanel() {
             <div className="modal-footer">
               <button className="btn" onClick={()=>setDisputeModal(null)}>Cancel</button>
               <button className="btn" style={{background:'#dc2626',color:'#fff',border:'none'}} onClick={async()=>{await doTransition(disputeModal.inv,'disputed',disputeModal.note);setDisputeModal(null)}}>Flag Disputed</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Pay Date Modal */}
-      {payDateModal && (
-        <div className="modal-overlay">
-          <div className="modal" style={{maxWidth:'360px'}} onClick={e=>e.stopPropagation()}>
-            <div className="modal-header"><h3>✓ Mark as Paid</h3><button className="btn btn-sm" onClick={()=>setPayDateModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="fg"><label>Payment Date</label><input type="date" className="input" value={payDateModal.date} onChange={e=>setPayDateModal(d=>d?{...d,date:e.target.value}:d)} autoFocus /></div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={()=>setPayDateModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={async()=>{await doTransition(payDateModal.inv,'paid','',payDateModal.date);setPayDateModal(null)}}>Confirm Payment</button>
             </div>
           </div>
         </div>

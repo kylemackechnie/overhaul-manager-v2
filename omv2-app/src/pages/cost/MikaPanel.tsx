@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
+import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCommitmentsEngine'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
-  HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine } from '../../types'
+  HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine,
+  PurchaseOrder, Invoice } from '../../types'
 
 interface MikaLine {
   wbs: string; desc: string; level: number
   pm80tot: number; pm100: number; actuals: number; forecast: number
+  poCommitted: number   // uninvoiced PO commitment for this WBS
   monthly?: Record<string, number>
 }
 interface MikaData {
@@ -51,6 +54,7 @@ export function MikaPanel() {
   const [status, setStatus] = useState<{ msg: string; type: 'info' | 'success' | 'error' } | null>(null)
   const [saving, setSaving] = useState(false)
   const [variations, setVariations] = useState<{ status: string; line_items: unknown[] }[]>([])
+  const [poWarnings, setPoWarnings] = useState<PoCommitmentWarning[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -88,6 +92,7 @@ export function MikaPanel() {
         tcOwnedR, tcCrossR, tvsR, deptsR,
         hireR, carsR, accomR, expensesR, boR,
         varsR, varLinesR, holsR, costLinesR, seR,
+        posR, invoicesR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -105,15 +110,18 @@ export function MikaPanel() {
         supabase.from('variations').select('*').eq('project_id', pid),
         supabase.from('variation_lines').select('*').eq('project_id', pid),
         supabase.from('public_holidays').select('date').eq('project_id', pid),
-        // Pre-calculated labour cost lines — single source of truth for labour
         supabase.from('timesheet_cost_lines')
           .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
           .eq('project_id', pid),
-        // SE AG support / mob costs
         supabase.from('se_support_costs')
           .select('wbs,amount,sell_price,currency,person,description,date')
           .eq('project_id', pid),
+        supabase.from('purchase_orders').select('*').eq('project_id', pid),
+        supabase.from('invoices').select('*').eq('project_id', pid),
       ])
+
+      const poList = (posR.data || []) as PurchaseOrder[]
+      const invoiceList = (invoicesR.data || []) as Invoice[]
 
       const agg = aggregateAllCostsByWbs({
         project: activeProject,
@@ -132,22 +140,42 @@ export function MikaPanel() {
         seSupport: (seR.data || []) as SeSupportEntry[],
         variations: (varsR.data || []) as Variation[],
         variationLines: (varLinesR.data || []) as VariationLine[],
+        invoices: invoiceList,
+        purchaseOrders: poList,
         publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),
         activeProjectId: pid,
       })
 
-      // Build actualsByWbs with parent-prefix rollup so a timesheet tagged
-      // .P.02.02.01 surfaces against .P.02.02 and .P.02 too — same as HTML getLiveActuals.
-      const actualsByWbs: Record<string, number> = {}
-      for (const [code, row] of Object.entries(agg)) {
-        if (!row.total) continue
+      // PO committed costs
+      const { byWbs: committedByWbs, warnings } = buildPoCommitments(
+        poList,
+        invoiceList,
+        (hireR.data || []) as HireItem[],
+        (carsR.data || []) as Car[],
+        (accomR.data || []) as Accommodation[],
+        (resourcesR.data || []) as Parameters<typeof buildPoCommitments>[5],
+        (activeProject || {}) as unknown as Parameters<typeof buildPoCommitments>[6],
+      )
+      setPoWarnings(warnings)
+
+      // Parent-prefix rollup for both actuals and committed
+      function rollup(map: Record<string, number>, code: string, value: number) {
         const parts = code.split('.')
         let prefix = parts[0]
-        actualsByWbs[prefix] = (actualsByWbs[prefix] || 0) + row.total
+        map[prefix] = (map[prefix] || 0) + value
         for (let i = 1; i < parts.length; i++) {
           prefix += '.' + parts[i]
-          actualsByWbs[prefix] = (actualsByWbs[prefix] || 0) + row.total
+          map[prefix] = (map[prefix] || 0) + value
         }
+      }
+
+      const actualsByWbs: Record<string, number> = {}
+      const committedRolled: Record<string, number> = {}
+      for (const [code, row] of Object.entries(agg)) {
+        if (row.total) rollup(actualsByWbs, code, row.total)
+      }
+      for (const [code, val] of Object.entries(committedByWbs)) {
+        if (val) rollup(committedRolled, code, val)
       }
 
       const dbLines: MikaLine[] = rows.map(r => ({
@@ -157,6 +185,7 @@ export function MikaPanel() {
         pm80tot: r.pm80 || 0,
         pm100: r.pm100 || 0,
         actuals: actualsByWbs[r.wbs] || 0,
+        poCommitted: committedRolled[r.wbs] || 0,
         forecast: r.forecast_tc || 0,
       }))
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
@@ -219,7 +248,7 @@ export function MikaPanel() {
           const actuals = parseCurrency(r[iActuals])
           const forecast = parseCurrency(r[iFC])
           const level = wbs.split('.').length - 1
-          lines.push({ wbs, desc, level, pm80tot, pm100, actuals, forecast })
+          lines.push({ wbs, desc, level, pm80tot, pm100, actuals, forecast, poCommitted: 0 })
         }
 
         if (!lines.length) { setStatus({ msg: '✗ No WBS data rows found', type: 'error' }); return }
@@ -324,12 +353,13 @@ export function MikaPanel() {
   // Top-level KPIs — use the minimum level rows only to avoid double-counting
   const minLevel = lines.length > 0 ? Math.min(...lines.map(l => l.level)) : 0
   const topLines = lines.filter(l => l.level === minLevel)
-  const totPM80    = topLines.reduce((s, l) => s + l.pm80tot, 0)
-  const totPM100   = topLines.reduce((s, l) => s + l.pm100, 0)
-  const totActuals = topLines.reduce((s, l) => s + l.actuals, 0)
-  const totFC      = topLines.reduce((s, l) => s + l.forecast, 0)
-  const totEAC     = totActuals + totFC
-  const totVar     = totPM100 - totEAC
+  const totPM80       = topLines.reduce((s, l) => s + l.pm80tot, 0)
+  const totPM100      = topLines.reduce((s, l) => s + l.pm100, 0)
+  const totActuals    = topLines.reduce((s, l) => s + l.actuals, 0)
+  const totCommitted  = topLines.reduce((s, l) => s + l.poCommitted, 0)
+  const totFC         = topLines.reduce((s, l) => s + l.forecast, 0)
+  const totEAC        = totActuals + totCommitted + totFC
+  const totVar        = totPM100 - totEAC
 
   const statusColors = { info: 'var(--text2)', success: 'var(--green)', error: 'var(--red)' }
 
@@ -426,13 +456,14 @@ export function MikaPanel() {
       {/* KPI cards when MIKA data exists */}
       {mika && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '10px', marginBottom: '16px' }}>
             {[
-              { label: 'PM80 Baseline', val: totPM80, color: 'var(--accent)' },
-              { label: 'PM100 Budget', val: totPM100, color: '#3b82f6' },
-              { label: 'PTD Actuals', val: totActuals, color: 'var(--green)' },
-              { label: 'Forecast TC', val: totFC, color: 'var(--amber)' },
-              { label: 'Budget Variance', val: totVar, color: totVar >= 0 ? 'var(--green)' : 'var(--red)' },
+              { label: 'PM80 Baseline',   val: totPM80,      color: 'var(--accent)' },
+              { label: 'PM100 Budget',    val: totPM100,     color: '#3b82f6' },
+              { label: 'PTD Actuals',     val: totActuals,   color: 'var(--green)' },
+              { label: 'PO Committed',    val: totCommitted, color: '#f97316' },
+              { label: 'EAC (calc)',      val: totEAC,       color: '#7c3aed' },
+              { label: 'Variance',        val: totVar,       color: totVar >= 0 ? 'var(--green)' : 'var(--red)' },
             ].map(k => (
               <div key={k.label} className="card" style={{ padding: '12px', borderTop: `3px solid ${k.color}` }}>
                 <div style={{ fontSize: '17px', fontWeight: 700, fontFamily: 'var(--mono)', color: k.color }}>{fmt(k.val)}</div>
@@ -461,6 +492,17 @@ export function MikaPanel() {
             <span style={{ fontSize: '12px', color: 'var(--text3)', marginLeft: 'auto' }}>{filtered.length} rows</span>
           </div>
 
+          {/* Data quality warning strip */}
+          {poWarnings.length > 0 && (
+            <div style={{ marginBottom: '10px', padding: '8px 12px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 'var(--radius)', fontSize: '11px' }}>
+              <div style={{ fontWeight: 600, color: '#92400e', marginBottom: '4px' }}>⚠ {poWarnings.length} cost item{poWarnings.length > 1 ? 's' : ''} missing WBS or forecast dates — excluded from EAC</div>
+              {poWarnings.slice(0, 3).map((w, i) => (
+                <div key={i} style={{ color: 'var(--text3)', marginTop: '2px' }}>{w.message}</div>
+              ))}
+              {poWarnings.length > 3 && <div style={{ color: 'var(--text3)', marginTop: '2px' }}>…and {poWarnings.length - 3} more</div>}
+            </div>
+          )}
+
           {/* Full MIKA table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
@@ -474,8 +516,9 @@ export function MikaPanel() {
                     <th style={{ textAlign: 'right', color: '#d97706' }}>Pending VNs</th>
                     <th style={{ textAlign: 'right', color: '#7c3aed' }}>Revised Budget</th>
                     <th style={{ textAlign: 'right' }}>PTD Actuals</th>
-                    <th style={{ textAlign: 'right' }}>Forecast TC</th>
-                    <th style={{ textAlign: 'right' }}>EAC</th>
+                    <th style={{ textAlign: 'right', color: '#f97316' }}>PO Committed</th>
+                    <th style={{ textAlign: 'right', color: 'var(--amber)' }}>Forecast TC</th>
+                    <th style={{ textAlign: 'right', color: '#7c3aed' }}>EAC (calc)</th>
                     <th style={{ textAlign: 'right' }}>Variance</th>
                     <th style={{ textAlign: 'right' }}>% Spent</th>
                   </tr>
@@ -484,7 +527,7 @@ export function MikaPanel() {
                   {filtered.map((l, i) => {
                     const vn = getVn(l.wbs)
                     const revisedBudget = l.pm100 + vn.approved
-                    const eac = l.actuals + l.forecast
+                    const eac = l.actuals + l.poCommitted + l.forecast
                     const variance = (revisedBudget || l.pm100) - eac
                     const pct = l.actuals && (revisedBudget || l.pm100) ? Math.round(l.actuals / (revisedBudget || l.pm100) * 100) : 0
                     const indent = '\u00a0'.repeat(Math.max(0, l.level - 1) * 3)
@@ -500,9 +543,10 @@ export function MikaPanel() {
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: vn.approved > 0 ? '#d97706' : 'var(--text3)' }}>{vn.approved > 0 ? fmt(vn.approved) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: vn.pending > 0 ? '#d97706' : 'var(--text3)' }}>{vn.pending > 0 ? fmt(vn.pending) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: hasVns ? 700 : bold }}>{hasVns ? fmt(revisedBudget) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmt(l.actuals)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--amber)' }}>{fmt(l.forecast)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(eac)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)' }}>{l.actuals ? fmt(l.actuals) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: l.poCommitted ? '#f97316' : 'var(--text3)' }}>{l.poCommitted ? fmt(l.poCommitted) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--amber)' }}>{l.forecast ? fmt(l.forecast) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: 600 }}>{fmt(eac)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance >= 0 ? 'var(--green)' : 'var(--red)' }}>{l.pm100 ? fmt(variance) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: pct > 100 ? 'var(--red)' : pct > 85 ? 'var(--amber)' : 'var(--text2)' }}>{l.pm100 ? fmtPct(pct) : '—'}</td>
                       </tr>

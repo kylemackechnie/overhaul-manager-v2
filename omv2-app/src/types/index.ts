@@ -376,6 +376,8 @@ export interface PurchaseOrder {
   quote_source: { type?: 'rfq' | 'manual'; rfqId: string; responseId?: string; docTitle: string } | null
   raised_date: string | null
   closed_date: string | null
+  forecast_start: string | null   // spread window start for standalone PO cost forecasting
+  forecast_end: string | null     // spread window end
   notes: string
   tce_item_id: string | null
   receipt_paths: string[]
@@ -387,7 +389,7 @@ export interface PurchaseOrder {
   forecast_value?: number | null
 }
 
-export type InvoiceStatus = 'received' | 'checked' | 'approved' | 'paid' | 'disputed'
+export type InvoiceStatus = 'received' | 'checked' | 'approved' | 'disputed'
 
 export interface Invoice {
   id: string

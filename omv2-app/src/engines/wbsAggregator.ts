@@ -25,6 +25,7 @@ import type {
   HireItem, Car, Accommodation, Expense,
   BackOfficeHour, Variation, VariationLine,
   ToolingCosting, GlobalTV, GlobalDepartment,
+  Invoice, PurchaseOrder,
 } from '../types'
 
 /** Minimum shape of se_support_costs rows needed for WBS rollup. */
@@ -56,6 +57,7 @@ export interface WbsAggregateRow {
   accom: number
   expenses: number
   variations: number
+  invoices: number       // approved invoice actuals (Type B costs)
   total: number
 
   // Sell counterparts
@@ -73,6 +75,7 @@ export interface WbsAggregateRow {
   accomSell: number
   expensesSell: number
   variationsSell: number
+  invoicesSell: number
   totalSell: number
 
   margin: number | null   // (sell - cost) / sell as percentage, or null if sell ≤ 0
@@ -116,6 +119,10 @@ export interface WbsAggregatorInput {
   seSupport?: SeSupportEntry[]
   variations: Variation[]
   variationLines: VariationLine[]
+  /** Approved invoices — used as hard actuals for Type B costs (hire, cars, accom, subcon) */
+  invoices?: Invoice[]
+  /** Purchase orders — used for WBS resolution when joining invoices */
+  purchaseOrders?: PurchaseOrder[]
   publicHolidays?: string[]
   /** Required to scope tooling splits — tooling on other projects flows in via splits.projectId === activeProjectId */
   activeProjectId: string
@@ -139,10 +146,10 @@ function makeEmptyRow(): WbsAggregateRow {
   return {
     tooling: 0, hardware: 0, hire: 0,
     labourTrades: 0, labourMgmt: 0, labourSeag: 0, labourSubcon: 0, labour: 0,
-    backoffice: 0, se_support: 0, cars: 0, accom: 0, expenses: 0, variations: 0, total: 0,
+    backoffice: 0, se_support: 0, cars: 0, accom: 0, expenses: 0, variations: 0, invoices: 0, total: 0,
     toolingSell: 0, hardwareSell: 0, hireSell: 0,
     labourTradesSell: 0, labourMgmtSell: 0, labourSeagSell: 0, labourSubconSell: 0, labourSell: 0,
-    backofficeSell: 0, se_supportSell: 0, carsSell: 0, accomSell: 0, expensesSell: 0, variationsSell: 0, totalSell: 0,
+    backofficeSell: 0, se_supportSell: 0, carsSell: 0, accomSell: 0, expensesSell: 0, variationsSell: 0, invoicesSell: 0, totalSell: 0,
     margin: null,
     items: [],
   }
@@ -361,9 +368,54 @@ export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate 
     if (!approvedVnIds.has(line.variation_id)) continue
     const wbs = line.wbs
     if (!wbs) continue
-    const cost = Number(line.cost_total || 0)
+    const cost = Number(line.cost_total || 0)   // cost side feeds EAC
     const sell = Number(line.sell_total || 0)
     add(wbs, cost, sell, 'variations', `VN ${approvedVnByNo[line.variation_id]}: ${line.description || line.category || ''}`.trim())
+  }
+
+  // ── Approved invoices — hard actuals for Type B costs ─────────────────────
+  // WBS resolution: sap_wbs on invoice → PO line items (proportional) → PO top-level wbs
+  const poMap = new Map<string, PurchaseOrder>(
+    ((input.purchaseOrders || []) as PurchaseOrder[]).map(p => [p.id, p])
+  )
+  for (const inv of (input.invoices || []) as Invoice[]) {
+    if (inv.status !== 'approved') continue
+    const amount = Number(inv.amount) || 0
+    if (!amount) continue
+
+    // FX
+    const invCurrency = inv.currency || 'AUD'
+    const invFx = invCurrency !== 'AUD' ? fxRate(input.project, invCurrency) : 1
+    const amountAud = amount * invFx
+
+    // Resolve WBS: sap_wbs set directly on invoice (from SAP recon import)
+    if (inv.sap_wbs) {
+      add(inv.sap_wbs, amountAud, amountAud, 'invoices', `Invoice ${inv.invoice_number || inv.id}`)
+      continue
+    }
+
+    // Resolve via linked PO line items
+    if (inv.po_id) {
+      const po = poMap.get(inv.po_id)
+      if (po) {
+        const lineItems = ((po as unknown as { line_items?: unknown[] }).line_items || []) as { wbs?: string; value?: number }[]
+        const totalLineVal = lineItems.reduce((s, l) => s + (Number(l.value) || 0), 0)
+        if (lineItems.length > 0 && totalLineVal > 0) {
+          for (const line of lineItems) {
+            const lineVal = Number(line.value) || 0
+            if (!lineVal || !line.wbs) continue
+            const share = lineVal / totalLineVal
+            add(line.wbs, amountAud * share, amountAud * share, 'invoices',
+              `Invoice ${inv.invoice_number || inv.id} (PO ${po.po_number})`)
+          }
+          continue
+        }
+        const poWbs = (po as PurchaseOrder & { wbs?: string }).wbs
+        if (poWbs) {
+          add(poWbs, amountAud, amountAud, 'invoices', `Invoice ${inv.invoice_number || inv.id}`)
+        }
+      }
+    }
   }
 
   // ── Margin per WBS ────────────────────────────────────────────────────────
