@@ -481,6 +481,536 @@ export function PrePlanningPanel() {
 
   const existingTexts = useMemo(() => new Set(items.map(i => i.item)), [items])
 
+  // ─── Templates ──────────────────────────────────────────────────────────────
+  // Each template is a Set of "Category||Item text" keys that maps to a curated
+  // starting point. Users can then add/remove freely from there.
+
+  const TEMPLATES: Record<string, { label: string; description: string; icon: string; keys: string[] }> = {
+    domestic_st: {
+      label: 'Domestic ST Overhaul',
+      description: 'Steam turbine major — domestic crew, Kollos shipped locally',
+      icon: '🏭',
+      keys: [
+        // Commercial
+        'Commercial & Contract||Contract signed and fully executed',
+        'Commercial & Contract||Scope freeze confirmed in writing with client',
+        'Commercial & Contract||Scope of work document issued to team',
+        'Commercial & Contract||PM100 budget approved',
+        'Commercial & Contract||SE insurance and contractor registration current',
+        'Commercial & Contract||Variation / scope change process agreed with client',
+        'Commercial & Contract||Variation notices submitted and approved',
+        'Commercial & Contract||Customer cost report issued',
+        'Commercial & Contract||Client representative / point of contact confirmed',
+        // POs
+        'Procurement & Purchase Orders||Purchase orders raised for all subcontractors',
+        'Procurement & Purchase Orders||All POs approved or active (none in draft)',
+        'Procurement & Purchase Orders||SAP cost codes active and confirmed',
+        'Procurement & Purchase Orders||WBS structure aligned to SAP / MIKA',
+        'Procurement & Purchase Orders||PO for accommodation confirmed',
+        'Procurement & Purchase Orders||PO for car hire confirmed',
+        'Procurement & Purchase Orders||Subcontractor rate cards loaded in system',
+        // Crew
+        'Crew & Resourcing||All crew confirmed and on roster',
+        'Crew & Resourcing||Supervision ratio adequate for scope',
+        'Crew & Resourcing||Day/night shift roster finalised',
+        'Crew & Resourcing||Crew acceptance / offer letters signed',
+        'Crew & Resourcing||LAHA / allowance settings confirmed',
+        'Crew & Resourcing||Payroll regime confirmed per person (trades / mgmt / subcon)',
+        'Crew & Resourcing||First shift briefing time and location confirmed',
+        'Crew & Resourcing||Crew contact list and emergency contacts compiled',
+        // Tooling
+        'Tooling & Equipment||WOSIT / TV export received from Kanlog',
+        'Tooling & Equipment||TV charge dates and costings entered',
+        'Tooling & Equipment||Kollo manifest reviewed',
+        'Tooling & Equipment||All tooling inspected and functional-tested pre-ship',
+        'Tooling & Equipment||Torque tools calibrated and certs current',
+        'Tooling & Equipment||Alignment kit checked and complete',
+        'Tooling & Equipment||Jacking and lifting equipment certified',
+        'Tooling & Equipment||NDT equipment calibrated',
+        'Tooling & Equipment||PPE quantities checked vs crew headcount',
+        'Tooling & Equipment||Consumables list confirmed (gaskets, fasteners, seals)',
+        'Tooling & Equipment||Packing list complete and matched to manifest',
+        // Shipping (domestic)
+        'Shipping & Customs||SLI documents generated',
+        'Shipping & Customs||DG (Dangerous Goods) declaration completed',
+        'Shipping & Customs||Freight forwarder engaged and briefed',
+        'Shipping & Customs||Shipping method confirmed (air / sea / road)',
+        'Shipping & Customs||Expected arrival window confirmed vs outage start',
+        'Shipping & Customs||Tracking / AWB numbers distributed to team',
+        'Shipping & Customs||Site unloading / materials receiving contact confirmed',
+        'Shipping & Customs||Contingency plan if tooling delayed (air freight escalation)',
+        // Parts
+        'Spare Parts & Hardware||Parts list finalised against scope',
+        'Spare Parts & Hardware||OEM parts vs non-OEM decision documented',
+        'Spare Parts & Hardware||Parts on order and confirmed with ETA',
+        'Spare Parts & Hardware||Long-lead items identified and expedited',
+        'Spare Parts & Hardware||Parts received and inspected at warehouse',
+        'Spare Parts & Hardware||Certificate of conformance / traceability docs on file',
+        'Spare Parts & Hardware||Balance weights / special hardware approved',
+        'Spare Parts & Hardware||Rotor blade parts kitted and labelled by stage',
+        'Spare Parts & Hardware||Seals and gaskets matched to as-built drawings',
+        'Spare Parts & Hardware||Consumable hardware quantities confirmed (bolts, pins, lockwire)',
+        // HSE
+        'HSE & Compliance||SWMS / JSAs prepared',
+        'HSE & Compliance||SWMS submitted to and approved by client',
+        'HSE & Compliance||Site inductions completed by each crew member',
+        'HSE & Compliance||Permit to work types identified (HV isolation, confined space, hot work, heights)',
+        'HSE & Compliance||HV / LV isolation competency confirmed for crew',
+        'HSE & Compliance||Confined space entry requirements confirmed',
+        'HSE & Compliance||Emergency evacuation plan obtained from site',
+        'HSE & Compliance||First aid officer on crew confirmed',
+        'HSE & Compliance||Nearest hospital / medical facility confirmed',
+        'HSE & Compliance||Crew fatigue management plan in place',
+        'HSE & Compliance||Incident reporting process briefed',
+        // Technical
+        'Technical Readiness||Work orders created and assigned',
+        'Technical Readiness||Inspection and Test Plan (ITP) prepared',
+        'Technical Readiness||Maintenance procedures / work instructions issued',
+        'Technical Readiness||Hold points and witness points confirmed with client QA',
+        'Technical Readiness||As-built drawings available on site',
+        'Technical Readiness||Alignment records from previous outage reviewed',
+        'Technical Readiness||Test equipment calibration current',
+        'Technical Readiness||As-found data sheets prepared (blank, ready to fill)',
+        'Technical Readiness||Rotor dynamics / balance criteria confirmed',
+        'Technical Readiness||OEM technical bulletins / service notices reviewed',
+        'Technical Readiness||Hydraulic torquing requirements and sequence confirmed',
+        'Technical Readiness||Non-conformance report (NCR) process briefed',
+        // Site
+        'Site Readiness||Unit isolation / shutdown confirmed by operations',
+        'Site Readiness||Clearance / zero energy state confirmed',
+        'Site Readiness||Site access approved for all crew',
+        'Site Readiness||Crane / overhead lifting equipment booked',
+        'Site Readiness||Crane operator certified and confirmed',
+        'Site Readiness||Scaffolding erected and certified before crew arrival',
+        'Site Readiness||Lifting plan reviewed and approved',
+        'Site Readiness||Laydown / work area allocated and confirmed',
+        'Site Readiness||LOTO hardware available on site',
+        'Site Readiness||Temporary power / compressed air available',
+        'Site Readiness||Lighting for night shift adequate',
+        'Site Readiness||Toolbox talk agenda prepared',
+        // Accom
+        'Accommodation & Travel||Accommodation booked',
+        'Accommodation & Travel||Accommodation booking confirmation on file',
+        'Accommodation & Travel||Car hire booked',
+        'Accommodation & Travel||Car hire confirmation and pickup details confirmed',
+        'Accommodation & Travel||Domestic flights booked',
+        'Accommodation & Travel||Crew aware of full travel itinerary',
+        // Subcon
+        'Subcontractors||All subcontractors identified and engaged',
+        'Subcontractors||Subcontractor contracts executed',
+        'Subcontractors||Subcontractor insurance certificates on file',
+        'Subcontractors||Subcontractor HSE prequalification approved by client',
+        'Subcontractors||Subcontractor inductions submitted to site',
+        'Subcontractors||Scaffolding contractor engaged and schedule confirmed',
+        'Subcontractors||NDT subcontractor confirmed with method approval',
+        'Subcontractors||Crane / rigging subcontractor confirmed',
+        // Client
+        'Client & Stakeholder||Client kickoff meeting scheduled and held',
+        'Client & Stakeholder||Unit shutdown timeline confirmed and agreed in writing',
+        'Client & Stakeholder||Client QA representative identified',
+        'Client & Stakeholder||Client operations representative (unit owner) confirmed',
+        'Client & Stakeholder||Client HSE site rules received and distributed to crew',
+        'Client & Stakeholder||Client permit-to-work system briefing held',
+        'Client & Stakeholder||Escalation path agreed (site level → management level)',
+        // Admin
+        'IT & Admin Setup||Project code active in cost management system',
+        'IT & Admin Setup||Timesheet templates set up and distributed',
+        'IT & Admin Setup||Weekly reporting cadence agreed with client',
+        'IT & Admin Setup||Crew added to project roster in system',
+      ],
+    },
+
+    domestic_gt: {
+      label: 'Domestic GT Major',
+      description: 'Gas turbine major overhaul — domestic, heavy subcon (NDT, scaffold, crane)',
+      icon: '⚡',
+      keys: [
+        // Commercial
+        'Commercial & Contract||Contract signed and fully executed',
+        'Commercial & Contract||Scope freeze confirmed in writing with client',
+        'Commercial & Contract||Scope of work document issued to team',
+        'Commercial & Contract||PM100 budget approved',
+        'Commercial & Contract||SE insurance and contractor registration current',
+        'Commercial & Contract||Variation / scope change process agreed with client',
+        'Commercial & Contract||Variation notices submitted and approved',
+        'Commercial & Contract||Customer cost report issued',
+        'Commercial & Contract||Client representative / point of contact confirmed',
+        // POs
+        'Procurement & Purchase Orders||Purchase orders raised for all subcontractors',
+        'Procurement & Purchase Orders||All POs approved or active (none in draft)',
+        'Procurement & Purchase Orders||SAP cost codes active and confirmed',
+        'Procurement & Purchase Orders||WBS structure aligned to SAP / MIKA',
+        'Procurement & Purchase Orders||PO for accommodation confirmed',
+        'Procurement & Purchase Orders||PO for car hire confirmed',
+        'Procurement & Purchase Orders||PO for freight / logistics confirmed',
+        'Procurement & Purchase Orders||Subcontractor rate cards loaded in system',
+        // Crew
+        'Crew & Resourcing||All crew confirmed and on roster',
+        'Crew & Resourcing||Supervision ratio adequate for scope',
+        'Crew & Resourcing||Day/night shift roster finalised',
+        'Crew & Resourcing||Crew acceptance / offer letters signed',
+        'Crew & Resourcing||LAHA / allowance settings confirmed',
+        'Crew & Resourcing||Payroll regime confirmed per person (trades / mgmt / subcon)',
+        'Crew & Resourcing||Technical advisor role and authority defined',
+        'Crew & Resourcing||First shift briefing time and location confirmed',
+        'Crew & Resourcing||Crew contact list and emergency contacts compiled',
+        // Tooling
+        'Tooling & Equipment||WOSIT / TV export received from Kanlog',
+        'Tooling & Equipment||TV charge dates and costings entered',
+        'Tooling & Equipment||Kollo manifest reviewed',
+        'Tooling & Equipment||All tooling inspected and functional-tested pre-ship',
+        'Tooling & Equipment||Torque tools calibrated and certs current',
+        'Tooling & Equipment||Alignment kit checked and complete',
+        'Tooling & Equipment||Jacking and lifting equipment certified',
+        'Tooling & Equipment||NDT equipment calibrated',
+        'Tooling & Equipment||Borescope / inspection camera serviceable',
+        'Tooling & Equipment||PPE quantities checked vs crew headcount',
+        'Tooling & Equipment||Consumables list confirmed (gaskets, fasteners, seals)',
+        'Tooling & Equipment||Packing list complete and matched to manifest',
+        // Shipping
+        'Shipping & Customs||SLI documents generated',
+        'Shipping & Customs||DG (Dangerous Goods) declaration completed',
+        'Shipping & Customs||Freight forwarder engaged and briefed',
+        'Shipping & Customs||Shipping method confirmed (air / sea / road)',
+        'Shipping & Customs||Expected arrival window confirmed vs outage start',
+        'Shipping & Customs||Tracking / AWB numbers distributed to team',
+        'Shipping & Customs||Contingency plan if tooling delayed (air freight escalation)',
+        // Parts
+        'Spare Parts & Hardware||Parts list finalised against scope',
+        'Spare Parts & Hardware||OEM parts vs non-OEM decision documented',
+        'Spare Parts & Hardware||Parts on order and confirmed with ETA',
+        'Spare Parts & Hardware||Long-lead items identified and expedited',
+        'Spare Parts & Hardware||Parts received and inspected at warehouse',
+        'Spare Parts & Hardware||Certificate of conformance / traceability docs on file',
+        'Spare Parts & Hardware||Seals and gaskets matched to as-built drawings',
+        'Spare Parts & Hardware||Consumable hardware quantities confirmed (bolts, pins, lockwire)',
+        // HSE
+        'HSE & Compliance||SWMS / JSAs prepared',
+        'HSE & Compliance||SWMS submitted to and approved by client',
+        'HSE & Compliance||Site inductions completed by each crew member',
+        'HSE & Compliance||Permit to work types identified (HV isolation, confined space, hot work, heights)',
+        'HSE & Compliance||HV / LV isolation competency confirmed for crew',
+        'HSE & Compliance||Confined space entry requirements confirmed',
+        'HSE & Compliance||Heights / working at heights assessment complete',
+        'HSE & Compliance||Emergency evacuation plan obtained from site',
+        'HSE & Compliance||First aid officer on crew confirmed',
+        'HSE & Compliance||Crew fatigue management plan in place',
+        'HSE & Compliance||Incident reporting process briefed',
+        // Technical
+        'Technical Readiness||Work orders created and assigned',
+        'Technical Readiness||Inspection and Test Plan (ITP) prepared',
+        'Technical Readiness||Maintenance procedures / work instructions issued',
+        'Technical Readiness||Hold points and witness points confirmed with client QA',
+        'Technical Readiness||As-built drawings available on site',
+        'Technical Readiness||Alignment records from previous outage reviewed',
+        'Technical Readiness||Test equipment calibration current',
+        'Technical Readiness||As-found data sheets prepared (blank, ready to fill)',
+        'Technical Readiness||OEM technical bulletins / service notices reviewed',
+        'Technical Readiness||Non-conformance report (NCR) process briefed',
+        'Technical Readiness||Scaffold design / access plan approved',
+        'Technical Readiness||Hydraulic torquing requirements and sequence confirmed',
+        // Site
+        'Site Readiness||Unit isolation / shutdown confirmed by operations',
+        'Site Readiness||Clearance / zero energy state confirmed',
+        'Site Readiness||Site access approved for all crew',
+        'Site Readiness||Crane / overhead lifting equipment booked',
+        'Site Readiness||Crane operator certified and confirmed',
+        'Site Readiness||Scaffolding erected and certified before crew arrival',
+        'Site Readiness||Lifting plan reviewed and approved',
+        'Site Readiness||Laydown / work area allocated and confirmed',
+        'Site Readiness||LOTO hardware available on site',
+        'Site Readiness||Temporary power / compressed air available',
+        'Site Readiness||Lighting for night shift adequate',
+        'Site Readiness||Toolbox talk agenda prepared',
+        // Accom
+        'Accommodation & Travel||Accommodation booked',
+        'Accommodation & Travel||Accommodation booking confirmation on file',
+        'Accommodation & Travel||Car hire booked',
+        'Accommodation & Travel||Domestic flights booked',
+        'Accommodation & Travel||Crew aware of full travel itinerary',
+        // Subcon — heavier for GT
+        'Subcontractors||All subcontractors identified and engaged',
+        'Subcontractors||Subcontractor contracts executed',
+        'Subcontractors||Subcontractor insurance certificates on file',
+        'Subcontractors||Subcontractor HSE prequalification approved by client',
+        'Subcontractors||Subcontractor inductions submitted to site',
+        'Subcontractors||Subcontractor scope and deliverables agreed in writing',
+        'Subcontractors||Scaffolding contractor engaged and schedule confirmed',
+        'Subcontractors||NDT subcontractor confirmed with method approval',
+        'Subcontractors||Crane / rigging subcontractor confirmed',
+        'Subcontractors||Subcontractor payment terms and invoice process briefed',
+        // Client
+        'Client & Stakeholder||Client kickoff meeting scheduled and held',
+        'Client & Stakeholder||Unit shutdown timeline confirmed and agreed in writing',
+        'Client & Stakeholder||Client QA representative identified',
+        'Client & Stakeholder||Client operations representative (unit owner) confirmed',
+        'Client & Stakeholder||Client HSE site rules received and distributed to crew',
+        'Client & Stakeholder||Client permit-to-work system briefing held',
+        'Client & Stakeholder||Escalation path agreed (site level → management level)',
+        // Admin
+        'IT & Admin Setup||Project code active in cost management system',
+        'IT & Admin Setup||Timesheet templates set up and distributed',
+        'IT & Admin Setup||Weekly reporting cadence agreed with client',
+        'IT & Admin Setup||Crew added to project roster in system',
+      ],
+    },
+
+    international: {
+      label: 'International Outage',
+      description: 'SE AG crew, Kollos shipping overseas — full customs, visas, ATA Carnet',
+      icon: '✈️',
+      keys: [
+        // Commercial — full set
+        'Commercial & Contract||Contract signed and fully executed',
+        'Commercial & Contract||Scope freeze confirmed in writing with client',
+        'Commercial & Contract||Scope of work document issued to team',
+        'Commercial & Contract||PM100 budget approved',
+        'Commercial & Contract||SE insurance and contractor registration current',
+        'Commercial & Contract||Variation / scope change process agreed with client',
+        'Commercial & Contract||Variation notices submitted and approved',
+        'Commercial & Contract||Revenue recognition milestones confirmed',
+        'Commercial & Contract||Billing schedule agreed (milestone vs T&M)',
+        'Commercial & Contract||Customer cost report format agreed',
+        'Commercial & Contract||Customer cost report issued',
+        'Commercial & Contract||Client representative / point of contact confirmed',
+        'Commercial & Contract||NDA / confidentiality obligations checked',
+        // POs — full set
+        'Procurement & Purchase Orders||Purchase orders raised for all subcontractors',
+        'Procurement & Purchase Orders||All POs approved or active (none in draft)',
+        'Procurement & Purchase Orders||SAP cost codes active and confirmed',
+        'Procurement & Purchase Orders||WBS structure aligned to SAP / MIKA',
+        'Procurement & Purchase Orders||PO numbers communicated to all vendors',
+        'Procurement & Purchase Orders||PO for accommodation confirmed',
+        'Procurement & Purchase Orders||PO for car hire confirmed',
+        'Procurement & Purchase Orders||PO for freight / logistics confirmed',
+        'Procurement & Purchase Orders||Subcontractor rate cards loaded in system',
+        // Crew
+        'Crew & Resourcing||All crew confirmed and on roster',
+        'Crew & Resourcing||Supervision ratio adequate for scope',
+        'Crew & Resourcing||Day/night shift roster finalised',
+        'Crew & Resourcing||Crew acceptance / offer letters signed',
+        'Crew & Resourcing||LAHA / allowance settings confirmed',
+        'Crew & Resourcing||Payroll regime confirmed per person (trades / mgmt / subcon)',
+        'Crew & Resourcing||Technical advisor role and authority defined',
+        'Crew & Resourcing||First shift briefing time and location confirmed',
+        'Crew & Resourcing||Crew contact list and emergency contacts compiled',
+        // International — full set
+        'International Mobilisation||SE AG (European) crew visas / work permits confirmed',
+        'International Mobilisation||Passports valid (>6 months beyond outage end)',
+        'International Mobilisation||Visa approval confirmed before flights booked',
+        'International Mobilisation||Work permits / work authorisation obtained',
+        'International Mobilisation||Flights booked (international legs)',
+        'International Mobilisation||Connecting domestic flights booked',
+        'International Mobilisation||Arrival / departure transfers arranged',
+        'International Mobilisation||Travel insurance confirmed (medical, evacuation)',
+        'International Mobilisation||International SIM cards / roaming plans arranged',
+        'International Mobilisation||Per diem / foreign currency arranged',
+        'International Mobilisation||Medical clearance for international crew',
+        'International Mobilisation||Vaccination requirements checked and met',
+        'International Mobilisation||Emergency contact protocol for overseas crew briefed',
+        'International Mobilisation||Local emergency numbers and hospital identified',
+        // Tooling
+        'Tooling & Equipment||WOSIT / TV export received from Kanlog',
+        'Tooling & Equipment||TV charge dates and costings entered',
+        'Tooling & Equipment||Kollo manifest reviewed',
+        'Tooling & Equipment||All tooling inspected and functional-tested pre-ship',
+        'Tooling & Equipment||Torque tools calibrated and certs current',
+        'Tooling & Equipment||Alignment kit checked and complete',
+        'Tooling & Equipment||Jacking and lifting equipment certified',
+        'Tooling & Equipment||NDT equipment calibrated',
+        'Tooling & Equipment||PPE quantities checked vs crew headcount',
+        'Tooling & Equipment||Packing list complete and matched to manifest',
+        'Tooling & Equipment||Serial / asset numbers recorded pre-despatch',
+        'Tooling & Equipment||Tooling insurance / ATA Carnet arranged',
+        // Shipping & Customs — full intl set
+        'Shipping & Customs||SLI documents generated',
+        'Shipping & Customs||DG (Dangerous Goods) declaration completed',
+        'Shipping & Customs||Freight forwarder engaged and briefed',
+        'Shipping & Customs||Shipping method confirmed (air / sea / road)',
+        'Shipping & Customs||Expected arrival window confirmed vs outage start',
+        'Shipping & Customs||Tracking / AWB numbers distributed to team',
+        'Shipping & Customs||Site unloading / materials receiving contact confirmed',
+        'Shipping & Customs||Contingency plan if tooling delayed (air freight escalation)',
+        'Shipping & Customs||Customs import clearance organised for tooling vehicles',
+        'Shipping & Customs||Export clearance obtained (origin country)',
+        'Shipping & Customs||HS codes confirmed for all tooling and parts',
+        'Shipping & Customs||ATA Carnet prepared for temporary import of tools',
+        'Shipping & Customs||Customs broker engaged at destination port',
+        'Shipping & Customs||Estimated duty / import taxes budgeted',
+        // Parts
+        'Spare Parts & Hardware||Parts list finalised against scope',
+        'Spare Parts & Hardware||OEM parts vs non-OEM decision documented',
+        'Spare Parts & Hardware||Parts on order and confirmed with ETA',
+        'Spare Parts & Hardware||Long-lead items identified and expedited',
+        'Spare Parts & Hardware||Parts received and inspected at warehouse',
+        'Spare Parts & Hardware||Certificate of conformance / traceability docs on file',
+        'Spare Parts & Hardware||Balance weights / special hardware approved',
+        'Spare Parts & Hardware||Hardware shipped and tracking confirmed',
+        // HSE
+        'HSE & Compliance||SWMS / JSAs prepared',
+        'HSE & Compliance||SWMS submitted to and approved by client',
+        'HSE & Compliance||Site inductions completed by each crew member',
+        'HSE & Compliance||Permit to work types identified (HV isolation, confined space, hot work, heights)',
+        'HSE & Compliance||HV / LV isolation competency confirmed for crew',
+        'HSE & Compliance||Emergency evacuation plan obtained from site',
+        'HSE & Compliance||First aid officer on crew confirmed',
+        'HSE & Compliance||Nearest hospital / medical facility confirmed',
+        'HSE & Compliance||Crew fatigue management plan in place',
+        'HSE & Compliance||Incident reporting process briefed',
+        // Technical
+        'Technical Readiness||Work orders created and assigned',
+        'Technical Readiness||Inspection and Test Plan (ITP) prepared',
+        'Technical Readiness||Maintenance procedures / work instructions issued',
+        'Technical Readiness||Hold points and witness points confirmed with client QA',
+        'Technical Readiness||As-built drawings available on site',
+        'Technical Readiness||Alignment records from previous outage reviewed',
+        'Technical Readiness||Test equipment calibration current',
+        'Technical Readiness||As-found data sheets prepared (blank, ready to fill)',
+        'Technical Readiness||OEM technical bulletins / service notices reviewed',
+        'Technical Readiness||Non-conformance report (NCR) process briefed',
+        'Technical Readiness||Hydraulic torquing requirements and sequence confirmed',
+        // Site
+        'Site Readiness||Unit isolation / shutdown confirmed by operations',
+        'Site Readiness||Clearance / zero energy state confirmed',
+        'Site Readiness||Site access approved for all crew',
+        'Site Readiness||Crane / overhead lifting equipment booked',
+        'Site Readiness||Crane operator certified and confirmed',
+        'Site Readiness||Scaffolding erected and certified before crew arrival',
+        'Site Readiness||Lifting plan reviewed and approved',
+        'Site Readiness||Laydown / work area allocated and confirmed',
+        'Site Readiness||LOTO hardware available on site',
+        'Site Readiness||Toolbox talk agenda prepared',
+        // Accom
+        'Accommodation & Travel||Accommodation booked',
+        'Accommodation & Travel||Accommodation booking confirmation on file',
+        'Accommodation & Travel||Car hire booked',
+        'Accommodation & Travel||Car hire confirmation and pickup details confirmed',
+        'Accommodation & Travel||Domestic flights booked',
+        'Accommodation & Travel||Crew aware of full travel itinerary',
+        'Accommodation & Travel||Meal allowance process confirmed (claim vs provided)',
+        // Subcon
+        'Subcontractors||All subcontractors identified and engaged',
+        'Subcontractors||Subcontractor contracts executed',
+        'Subcontractors||Subcontractor insurance certificates on file',
+        'Subcontractors||Subcontractor HSE prequalification approved by client',
+        'Subcontractors||Subcontractor inductions submitted to site',
+        'Subcontractors||Subcontractor scope and deliverables agreed in writing',
+        // Client
+        'Client & Stakeholder||Client kickoff meeting scheduled and held',
+        'Client & Stakeholder||Unit shutdown timeline confirmed and agreed in writing',
+        'Client & Stakeholder||Client QA representative identified',
+        'Client & Stakeholder||Client operations representative (unit owner) confirmed',
+        'Client & Stakeholder||Client HSE site rules received and distributed to crew',
+        'Client & Stakeholder||Client permit-to-work system briefing held',
+        'Client & Stakeholder||Client decision authority for scope changes confirmed',
+        'Client & Stakeholder||Escalation path agreed (site level → management level)',
+        'Client & Stakeholder||SE management briefed on project risks',
+        // Admin
+        'IT & Admin Setup||Project code active in cost management system',
+        'IT & Admin Setup||Timesheet templates set up and distributed',
+        'IT & Admin Setup||Weekly reporting cadence agreed with client',
+        'IT & Admin Setup||Crew added to project roster in system',
+      ],
+    },
+
+    valve_minor: {
+      label: 'Valve / Minor Outage',
+      description: 'Valve overhaul or short-scope minor — lighter crew, no heavy rotor work',
+      icon: '🔧',
+      keys: [
+        // Commercial
+        'Commercial & Contract||Contract signed and fully executed',
+        'Commercial & Contract||Scope of work document issued to team',
+        'Commercial & Contract||PM100 budget approved',
+        'Commercial & Contract||SE insurance and contractor registration current',
+        'Commercial & Contract||Variation notices submitted and approved',
+        'Commercial & Contract||Customer cost report issued',
+        'Commercial & Contract||Client representative / point of contact confirmed',
+        // POs
+        'Procurement & Purchase Orders||Purchase orders raised for all subcontractors',
+        'Procurement & Purchase Orders||All POs approved or active (none in draft)',
+        'Procurement & Purchase Orders||SAP cost codes active and confirmed',
+        'Procurement & Purchase Orders||PO for accommodation confirmed',
+        'Procurement & Purchase Orders||PO for car hire confirmed',
+        // Crew
+        'Crew & Resourcing||All crew confirmed and on roster',
+        'Crew & Resourcing||Day/night shift roster finalised',
+        'Crew & Resourcing||LAHA / allowance settings confirmed',
+        'Crew & Resourcing||Payroll regime confirmed per person (trades / mgmt / subcon)',
+        'Crew & Resourcing||First shift briefing time and location confirmed',
+        'Crew & Resourcing||Crew contact list and emergency contacts compiled',
+        // Tooling — lighter
+        'Tooling & Equipment||WOSIT / TV export received from Kanlog',
+        'Tooling & Equipment||TV charge dates and costings entered',
+        'Tooling & Equipment||All tooling inspected and functional-tested pre-ship',
+        'Tooling & Equipment||Torque tools calibrated and certs current',
+        'Tooling & Equipment||PPE quantities checked vs crew headcount',
+        'Tooling & Equipment||Consumables list confirmed (gaskets, fasteners, seals)',
+        // Shipping — domestic only
+        'Shipping & Customs||SLI documents generated',
+        'Shipping & Customs||Freight forwarder engaged and briefed',
+        'Shipping & Customs||Expected arrival window confirmed vs outage start',
+        // Parts — focused on valve hardware
+        'Spare Parts & Hardware||Parts list finalised against scope',
+        'Spare Parts & Hardware||OEM parts vs non-OEM decision documented',
+        'Spare Parts & Hardware||Parts on order and confirmed with ETA',
+        'Spare Parts & Hardware||Parts received and inspected at warehouse',
+        'Spare Parts & Hardware||Certificate of conformance / traceability docs on file',
+        'Spare Parts & Hardware||Seals and gaskets matched to as-built drawings',
+        'Spare Parts & Hardware||Consumable hardware quantities confirmed (bolts, pins, lockwire)',
+        // HSE
+        'HSE & Compliance||SWMS / JSAs prepared',
+        'HSE & Compliance||SWMS submitted to and approved by client',
+        'HSE & Compliance||Site inductions completed by each crew member',
+        'HSE & Compliance||Permit to work types identified (HV isolation, confined space, hot work, heights)',
+        'HSE & Compliance||HV / LV isolation competency confirmed for crew',
+        'HSE & Compliance||First aid officer on crew confirmed',
+        'HSE & Compliance||Incident reporting process briefed',
+        // Technical — no rotor dynamics, no balance
+        'Technical Readiness||Work orders created and assigned',
+        'Technical Readiness||Maintenance procedures / work instructions issued',
+        'Technical Readiness||Hold points and witness points confirmed with client QA',
+        'Technical Readiness||As-built drawings available on site',
+        'Technical Readiness||Test equipment calibration current',
+        'Technical Readiness||As-found data sheets prepared (blank, ready to fill)',
+        'Technical Readiness||OEM technical bulletins / service notices reviewed',
+        // Site
+        'Site Readiness||Unit isolation / shutdown confirmed by operations',
+        'Site Readiness||Clearance / zero energy state confirmed',
+        'Site Readiness||Site access approved for all crew',
+        'Site Readiness||LOTO hardware available on site',
+        'Site Readiness||Toolbox talk agenda prepared',
+        // Accom
+        'Accommodation & Travel||Accommodation booked',
+        'Accommodation & Travel||Car hire booked',
+        'Accommodation & Travel||Domestic flights booked',
+        // Client
+        'Client & Stakeholder||Client kickoff meeting scheduled and held',
+        'Client & Stakeholder||Unit shutdown timeline confirmed and agreed in writing',
+        'Client & Stakeholder||Client HSE site rules received and distributed to crew',
+        'Client & Stakeholder||Client permit-to-work system briefing held',
+        // Admin
+        'IT & Admin Setup||Project code active in cost management system',
+        'IT & Admin Setup||Timesheet templates set up and distributed',
+        'IT & Admin Setup||Crew added to project roster in system',
+      ],
+    },
+  }
+
+  function applyTemplate(templateKey: string) {
+    const tmpl = TEMPLATES[templateKey]
+    if (!tmpl) return
+    const newSelection = new Set<string>()
+    for (const key of tmpl.keys) {
+      if (!existingTexts.has(key.split('||')[1])) {
+        newSelection.add(key)
+      }
+    }
+    setSelected(newSelection)
+  }
+
+  const existingTexts = useMemo(() => new Set(items.map(i => i.item)), [items])
+
   const filteredLibrary = useMemo(() => ITEM_LIBRARY.map(cat => ({
     ...cat,
     items: cat.items.filter(li => {
@@ -766,6 +1296,37 @@ export function PrePlanningPanel() {
                   </button>
                 </div>
               </div>
+              {/* Template strip */}
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Start from a template</div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {Object.entries(TEMPLATES).map(([key, tmpl]) => {
+                    const availableCount = tmpl.keys.filter(k => !existingTexts.has(k.split('||')[1])).length
+                    return (
+                      <button key={key} onClick={() => applyTemplate(key)} style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+                        border: '1px solid var(--border2)', background: 'var(--bg3)',
+                        fontSize: '12px', color: 'var(--text1)', textAlign: 'left',
+                      }}>
+                        <span style={{ fontSize: '16px' }}>{tmpl.icon}</span>
+                        <div>
+                          <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{tmpl.label}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text3)', lineHeight: 1.3 }}>{availableCount} items</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                  {selected.size > 0 && (
+                    <button onClick={() => setSelected(new Set())} style={{
+                      padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+                      border: '1px solid var(--border2)', background: 'transparent',
+                      fontSize: '12px', color: 'var(--text3)', alignSelf: 'center',
+                    }}>Clear selection</button>
+                  )}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input className="input" placeholder="Search items…" value={pickerSearch}
                   onChange={e => setPickerSearch(e.target.value)} style={{ flex: 1, fontSize: '13px' }} />
