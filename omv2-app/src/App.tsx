@@ -36,6 +36,7 @@ import { InvoicesPanel } from './pages/cost/InvoicesPanel'
 import { VariationsPanel } from './pages/cost/VariationsPanel'
 import { ExpensesPanel } from './pages/cost/ExpensesPanel'
 import { SapReconPanel } from './pages/cost/SapReconPanel'
+import { CostRegisterPanel } from './pages/cost/CostRegisterPanel'
 // Personnel
 import { RateCardsPanel } from './pages/personnel/RateCardsPanel'
 import { ResourcesPanel } from './pages/personnel/ResourcesPanel'
@@ -427,6 +428,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'pre-planning-report':  return <PrePlanningReportPanel />
     case 'cost-scurve':           return <SCurvePanel />
     case 'cost-report':           return <CostReportPanel />
+    case 'cost-register':         return <CostRegisterPanel />
     case 'reports-db':            return <ReportsDatabasePanel />
     case 'purchase-orders':       return <POsPanel />
     case 'po-manager':             return <POsPanel />
