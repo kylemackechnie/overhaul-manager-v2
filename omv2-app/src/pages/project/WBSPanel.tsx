@@ -165,8 +165,9 @@ export function WBSPanel() {
       setSyncing(false)
       return
     }
-    // Replace wbs_list with fresh data from mika_wbs_lines
-    await supabase.from('wbs_list').delete().eq('project_id', pid)
+    // Delete existing rows first and confirm before inserting
+    const { error: delErr } = await supabase.from('wbs_list').delete().eq('project_id', pid)
+    if (delErr) { toast('Sync failed (delete): ' + delErr.message, 'error'); setSyncing(false); return }
     const inserts = data.map((l, i) => ({
       project_id: pid,
       code: l.wbs,

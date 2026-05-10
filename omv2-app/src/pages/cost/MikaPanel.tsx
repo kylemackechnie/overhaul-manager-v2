@@ -254,18 +254,21 @@ export function MikaPanel() {
     if (error) { setStatus({ msg: '✗ Save error: ' + error.message, type: 'error' }); setSaving(false); return }
 
     // Also sync to wbs_list so CostReport and other panels get WBS structure from MIKA
-    await supabase.from('wbs_list').delete().eq('project_id', activeProject.id)
-    const wbsInserts = preview.lines
-      .filter(l => l.wbs.includes('-') || l.wbs.includes('.')) // skip blank rows
-      .map((l, i) => ({
-        project_id: activeProject.id,
-        code: l.wbs, name: l.desc || l.wbs,
-        level: String(l.level ?? 0), pm80: l.pm80tot, pm100: l.pm100,
-        source: 'mika', sort_order: i,
-      }))
-    if (wbsInserts.length) {
-      const { error: wbsErr } = await supabase.from('wbs_list').insert(wbsInserts)
-      if (wbsErr) console.warn('[MikaPanel] wbs_list sync failed:', wbsErr.message)
+    const { error: wbsDelErr } = await supabase.from('wbs_list').delete().eq('project_id', activeProject.id)
+    if (wbsDelErr) { console.warn('[MikaPanel] wbs_list delete failed:', wbsDelErr.message) }
+    else {
+      const wbsInserts = preview.lines
+        .filter(l => l.wbs.includes('-') || l.wbs.includes('.')) // skip blank rows
+        .map((l, i) => ({
+          project_id: activeProject.id,
+          code: l.wbs, name: l.desc || l.wbs,
+          level: String(l.level ?? 0), pm80: l.pm80tot, pm100: l.pm100,
+          source: 'mika', sort_order: i,
+        }))
+      if (wbsInserts.length) {
+        const { error: wbsErr } = await supabase.from('wbs_list').insert(wbsInserts)
+        if (wbsErr) console.warn('[MikaPanel] wbs_list sync failed:', wbsErr.message)
+      }
     }
 
     // Also keep a lightweight meta blob on projects for dashboard display
