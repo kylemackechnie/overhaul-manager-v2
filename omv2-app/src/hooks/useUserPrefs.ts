@@ -87,11 +87,23 @@ export function useUserPrefs() {
         const merged: UserPrefs = {
           ...cached,
           ...remote,
-          col_widths:    { ...cached.col_widths,    ...remote.col_widths },
-          col_widths_v2: { ...cached.col_widths_v2, ...remote.col_widths_v2 },
-          hidden_cols:   { ...cached.hidden_cols,   ...remote.hidden_cols },
+          col_widths:       { ...cached.col_widths,       ...remote.col_widths },
+          col_widths_v2:    { ...cached.col_widths_v2,    ...remote.col_widths_v2 },
+          hidden_cols:      { ...cached.hidden_cols,       ...remote.hidden_cols },
+          dashboard_layouts:{ ...cached.dashboard_layouts, ...remote.dashboard_layouts },
           // ribbon_tabs: remote wins entirely (it's a full ordered list)
           ribbon_tabs: remote.ribbon_tabs ?? cached.ribbon_tabs,
+        }
+        // ── Migrate legacy dashboard_layout → dashboard_layouts.main ─────────
+        if (merged.dashboard_layout && !merged.dashboard_layouts?.main) {
+          const converted = merged.dashboard_layout.map(t => ({
+            id: t.id,
+            visible: t.visible,
+            order: t.order,
+            // Convert old size strings to new TileSize tokens
+            size: (t.size === 'wide' ? 'lg' : 'md') as import('../types/dashboard').TileSize,
+          }))
+          merged.dashboard_layouts = { ...(merged.dashboard_layouts || {}), main: converted }
         }
         setUserPrefs(merged)
         writeLS(uid, merged)

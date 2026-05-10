@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { supabase } from './lib/supabase'
 import { useAppStore } from './store/appStore'
 import { usePermissions, AccessDenied, type Module } from './lib/permissions'
@@ -112,7 +113,11 @@ import { useIsMobile } from './hooks/useIsMobile'
 import type { Session } from '@supabase/supabase-js'
 import type { Project } from './types'
 
-export default function App() {
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
+})
+
+function AppInner() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   const { activePanel, activeProject, setActivePanel, setActiveProject, restoreProject } = useAppStore()
@@ -355,6 +360,14 @@ export default function App() {
       <ToastContainer />
       <PWAUpdatePrompt />
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppInner />
+    </QueryClientProvider>
   )
 }
 

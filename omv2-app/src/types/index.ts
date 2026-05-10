@@ -71,7 +71,33 @@ export const PAYROLL_RULES_DEFAULTS: PayrollRules = {
 export interface UserPrefs {
   col_widths?: Record<string, number[]>                    // legacy — position-indexed (kept for migration period)
   col_widths_v2?: Record<string, Record<string, number>>   // current — ID-keyed widths per table
-  dashboard_layout?: DashboardTileConfig[]                 // dashboard widget order/size/visibility
+
+  /**
+   * @deprecated Use dashboard_layouts['main'] instead.
+   * Kept for one release as migration fallback — do not read directly.
+   * On first load, useUserPrefs migrates this into dashboard_layouts.main.
+   */
+  dashboard_layout?: DashboardTileConfig[]
+
+  /**
+   * Per-dashboard layouts keyed by dashboardId ('main' | 'cost' | 'hr' | 'hse' | ...).
+   * Replaces the legacy single-dashboard dashboard_layout key.
+   * Migration: on read, if dashboard_layout exists and dashboard_layouts.main is absent,
+   *            dashboard_layout is converted and copied into dashboard_layouts.main.
+   */
+  dashboard_layouts?: Record<string, import('./dashboard').TileLayoutEntry[]>
+
+  /**
+   * Per-dashboard selected time window preset key.
+   * e.g. dashboard_time_windows['cost'] = 'this-month'
+   */
+  dashboard_time_windows?: Record<string, string>
+
+  /**
+   * Per-tile state (filters, sorts) namespaced by dashboard + tile id.
+   * e.g. tile_state['cost']['invoice-total']['sort'] = 'desc'
+   */
+  tile_state?: Record<string, Record<string, Record<string, unknown>>>
 
   // ── Forecast ──────────────────────────────────────────────────────────────
   forecast_period?: string   // 'week' | 'fortnight' | 'month'
