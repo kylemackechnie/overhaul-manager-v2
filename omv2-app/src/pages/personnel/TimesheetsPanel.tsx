@@ -513,8 +513,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
   const [dupModal, setDupModal] = useState<WeeklyTimesheet|null>(null)
   const [dupMode, setDupMode] = useState<'copy'|'standard'|'blank'>('copy')
+  const [dupCopyTce, setDupCopyTce] = useState(true)
 
-  async function confirmDuplicate(src: WeeklyTimesheet, mode: 'copy'|'standard'|'blank') {
+  async function confirmDuplicate(src: WeeklyTimesheet, mode: 'copy'|'standard'|'blank', copyTce: boolean) {
     const ws = new Date(src.week_start + 'T12:00:00')
     ws.setDate(ws.getDate() + 7)
     const newStart = ws.toISOString().slice(0, 10)
@@ -522,18 +523,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
     const newCrew = src.crew.map(m => {
       if (mode === 'copy') {
-        // Shift day keys forward 7 days, recalc dayType, remove WO allocs
         const newDays: Record<string, unknown> = {}
         Object.entries(m.days || {}).forEach(([ds, cell]) => {
           const d = new Date(ds + 'T12:00:00'); d.setDate(d.getDate() + 7)
           const newDs = d.toISOString().slice(0, 10)
           newDays[newDs] = { ...(cell as object), dayType: autoType(newDs, holidays) }
-          // Clear WO allocations (date-specific) but keep nrgWoAllocations (TCE scope tags carry forward)
           delete (newDays[newDs] as Record<string,unknown>).woAllocations
+          if (!copyTce) delete (newDays[newDs] as Record<string,unknown>).nrgWoAllocations
         })
         return { ...m, days: newDays }
       } else if (mode === 'standard' && std) {
-        // Use project standard hours via buildPreDays
         const res = resources.find(r => r.id === m.personId)
         return { ...m, days: res ? buildPreDays(res, newStart) : {} }
       } else {
@@ -1739,16 +1738,25 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         const ws = new Date(dupModal.week_start + 'T12:00:00'); ws.setDate(ws.getDate() + 7)
         const newStart = ws.toISOString().slice(0, 10)
         const hasStd = !!(activeProject?.std_hours as {day?:Record<string,number>})?.day
+        // Check if any crew member has TCE scope allocations
+        const hasTce = dupModal.crew.some(m =>
+          Object.values(m.days || {}).some(cell =>
+            ((cell as Record<string,unknown>).nrgWoAllocations as unknown[])?.length > 0
+          )
+        )
+        // Only show for NRG-style timesheets (trades, management, seag, subcon)
+        const isTceType = ['trades','management','seag','subcon'].includes(dupModal.type || '')
+        const showTceOption = hasTce && isTceType
         return (
           <div className="modal-overlay">
             <div className="modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
-              <div className="modal-header"><h3>⧉ Duplicate Week</h3><button className="btn btn-sm" onClick={() => setDupModal(null)}>✕</button></div>
+              <div className="modal-header"><h3>⧉ Duplicate Week</h3><button className="btn-sm btn" onClick={() => setDupModal(null)}>✕</button></div>
               <div className="modal-body">
                 <p style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '16px' }}>
                   Creating new week starting <strong>{newStart}</strong> with {dupModal.crew.length} people.
                 </p>
                 <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px' }}>How should hours be filled?</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: showTceOption ? '16px' : '20px' }}>
                   {([
                     { val: 'copy' as const,     title: 'Copy hours from previous week',     desc: 'Same hours, day types, shifts and allowances. Dates shift forward 7 days.' },
                     { val: 'standard' as const, title: 'Use standard hours from Project Settings', desc: hasStd ? 'Each person gets the configured shift pattern.' : 'No standard hours configured in Project Settings yet.', disabled: !hasStd },
@@ -1763,10 +1771,19 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     </label>
                   ))}
                 </div>
+                {showTceOption && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: `1px solid ${dupCopyTce ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius)', background: 'var(--bg2)', cursor: 'pointer', marginBottom: '4px' }}>
+                    <input type="checkbox" checked={dupCopyTce} onChange={e => setDupCopyTce(e.target.checked)} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '12px' }}>Copy TCE scope allocations</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>Carry forward which TCE scopes each person's hours are tagged to.</div>
+                    </div>
+                  </label>
+                )}
               </div>
               <div className="modal-footer">
                 <button className="btn" onClick={() => setDupModal(null)}>Cancel</button>
-                <button className="btn btn-primary" onClick={() => confirmDuplicate(dupModal, dupMode)}>⧉ Duplicate</button>
+                <button className="btn btn-primary" onClick={() => confirmDuplicate(dupModal, dupMode, showTceOption ? dupCopyTce : false)}>⧉ Duplicate</button>
               </div>
             </div>
           </div>
