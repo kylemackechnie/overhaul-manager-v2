@@ -155,8 +155,9 @@ export function NrgActualsPanel() {
     setLoading(false)
   }
 
-  // Skip group headers (3-segment IDs)
-  const isGroupHeader = (id: string | null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
+  // Skip group headers (3-segment IDs or line_type === 'group')
+  const isGroupHeader = (id: string | null, lineType?: string | null) =>
+    (!!id && /^\d+\.\d+\.\d+$/.test(id)) || lineType === 'group'
 
   function lineCommitted(itemId: string | null): number {
     if (!itemId) return 0
@@ -207,7 +208,7 @@ export function NrgActualsPanel() {
   })()
 
   const withActuals = lines
-    .filter(l => !isGroupHeader(l.item_id))
+    .filter(l => !isGroupHeader(l.item_id, l.line_type))
     .map(l => {
       const tce = l.tce_total || 0
       // Fixed Price scopes: TCE only tracks sell, planned figure flows
@@ -247,18 +248,21 @@ export function NrgActualsPanel() {
     | { kind: 'header'; line: NrgTceLine; groupTce: number; groupActuals: number; groupWeekActuals: number }
     | { kind: 'leaf'; line: NrgTceLine; actuals: number; tce: number; pct: number | null; weekActuals: number }
 
-  const groupHeaders = lines.filter(l => isGroupHeader(l.item_id))
+  const groupHeaders = lines.filter(l => isGroupHeader(l.item_id, l.line_type))
   const displayedIds = new Set(displayed.map(x => x.line.item_id))
 
   const tableRows: RenderRow[] = []
   // Walk in original `lines` order to preserve TCE register ordering
   for (const l of lines) {
-    if (isGroupHeader(l.item_id)) {
-      // Collect children of this header that are in `displayed`
-      const children = displayed.filter(x =>
-        (x.line.item_id || '').startsWith((l.item_id || '') + '.') &&
-        !groupHeaders.some(h => h !== l && (x.line.item_id || '').startsWith((h.item_id || '') + '.') && (h.item_id || '').startsWith((l.item_id || '') + '.'))
-      )
+    if (isGroupHeader(l.item_id, l.line_type)) {
+      // Collect direct children: prefer parent_id match, fall back to item_id prefix
+      const children = displayed.filter(x => {
+        if (x.line.parent_id) return x.line.parent_id === l.item_id
+        return (x.line.item_id || '').startsWith((l.item_id || '') + '.') &&
+          !groupHeaders.some(h => h !== l && isGroupHeader(h.item_id, h.line_type) &&
+            (x.line.item_id || '').startsWith((h.item_id || '') + '.') &&
+            (h.item_id || '').startsWith((l.item_id || '') + '.'))
+      })
       if (children.length === 0) continue  // no visible children → skip header
       tableRows.push({
         kind: 'header',
