@@ -189,7 +189,7 @@ export async function exportTceAll(
     supabase.from('timesheet_cost_lines')
       .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances')
       .eq('project_id', projectId).eq('timesheet_status', 'approved'),
-    supabase.from('variations').select('id,ref,description,tce_link,sell_total,status,estimated_hours,tce_rate')
+    supabase.from('variations').select('id,number,title,tce_link,sell_total,cost_total,status,scope,notes')
       .eq('project_id', projectId),
     supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
       .eq('project_id', projectId).order('week_ending'),
@@ -201,8 +201,8 @@ export async function exportTceAll(
 
   const costLines = (clRes.data||[]) as CostRow[]
   const variations = (varRes.data||[]) as {
-    id:string;ref:string;description:string;tce_link:string|null;
-    sell_total:number;status:string;estimated_hours:number;tce_rate:number
+    id:string;number:string;title:string;tce_link:string|null;
+    sell_total:number;cost_total:number;status:string;scope:string;notes:string
   }[]
   const nrgInvSorted = ((nrgInvRes.data||[]) as {week_ending:string|null;eur_spot_rate:number|null}[])
     .filter(i=>i.week_ending).sort((a,b)=>a.week_ending!.localeCompare(b.week_ending!))
@@ -374,16 +374,16 @@ export async function exportTceAll(
   for(const v of variations){
     const dc:Record<string,CellDef>={
       A:{type:'s',value:strIdx('')},B:{type:'s',value:strIdx('')},
-      C:{type:'s',value:strIdx(v.description||'')},
-      D:{type:v.estimated_hours?'n':'',value:v.estimated_hours||null},
-      E:{type:v.tce_rate?'n':'',value:v.tce_rate||null},
+      C:{type:'s',value:strIdx(v.title||'')},
+      D:{type:'',value:null},
+      E:{type:'',value:null},
       F:{type:v.sell_total?'n':'',value:v.sell_total||null},
-      G:{type:'s',value:strIdx(v.status||'')},H:{type:'s',value:strIdx(v.ref||'')},I:{type:'',value:null},
+      G:{type:'s',value:strIdx(v.status||'')},H:{type:'s',value:strIdx(v.number||'')},I:{type:'',value:null},
     }
     const{totHrs,totSell}=weekCells(v.tce_link,VAR_WEEK_PAIRS,varWeeks,dc)
     dc['AH']={type:totHrs?'n':'',value:totHrs||null}
     dc['AI']={type:totSell?'n':'',value:totSell||null}
-    dc['AJ']=(v.estimated_hours||0)>0?{type:'n',value:totHrs/v.estimated_hours}:{type:'',value:null}
+    dc['AJ']={type:'',value:null}
     dc['AK']=(v.sell_total||0)>0?{type:'n',value:totSell/v.sell_total}:{type:'',value:null}
     dc['AL']={type:'',value:null};dc['AM']={type:'',value:null}
     varRows.push(buildVarRow(varRowNum++,dc))
