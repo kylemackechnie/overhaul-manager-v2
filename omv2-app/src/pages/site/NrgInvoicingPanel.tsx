@@ -234,6 +234,18 @@ export function NrgInvoicingPanel() {
         total += vals.sell
       }
     }
+    // Also add any invoices/expenses tagged to this line (e.g. 'Labour and Invoice / Receipt' lines)
+    for (const inv of supplierInvoices) {
+      if (inv.tce_item_id !== line.item_id) continue
+      if (!inPeriod(inv.invoice_date as string, fromWE, toWE)) continue
+      total += Number(inv.amount) || 0
+    }
+    for (const exp of expenseItems) {
+      if (exp.tce_item_id !== line.item_id) continue
+      if (!inPeriod(exp.date as string, fromWE, toWE)) continue
+      const sell = Number(exp.sell_price), cost = Number(exp.cost_ex_gst)
+      total += (!isNaN(sell) && sell !== 0) ? sell : ((!isNaN(cost) && cost !== 0) ? cost : (Number(exp.amount) || 0))
+    }
     return total
   }
 
