@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -7,7 +7,11 @@ import { MobileSearchBar } from '../../components/mobile/ui/MobileSearchBar'
 import { MobileCard } from '../../components/mobile/ui/MobileCard'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
-import { MobileBarcodeScanner } from '../../components/mobile/ui/MobileBarcodeScanner'
+
+// Scanner is heavy (~500 KB with zxing) — lazy so the panel itself loads fast
+const MobileBarcodeScanner = lazy(() =>
+  import('../../components/mobile/ui/MobileBarcodeScanner').then(m => ({ default: m.MobileBarcodeScanner }))
+)
 
 interface SparePart {
   id: string; part_number: string; description: string
@@ -328,13 +332,20 @@ export function PartsIssueMobile() {
         )}
       </MobileBottomSheet>
 
-      <MobileBarcodeScanner
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onScan={handleScan}
-        title="Scan Part #"
-        hint="Point camera at part barcode"
-      />
+      {/* Mount scanner only when user taps the camera button. This means
+          zxing-js is fetched on-demand (200-500 ms over a connection) and
+          the Suspense fallback is invisible inside the fullscreen overlay. */}
+      {scanOpen && (
+        <Suspense fallback={null}>
+          <MobileBarcodeScanner
+            open={scanOpen}
+            onClose={() => setScanOpen(false)}
+            onScan={handleScan}
+            title="Scan Part #"
+            hint="Point camera at part barcode"
+          />
+        </Suspense>
+      )}
     </>
   )
 }

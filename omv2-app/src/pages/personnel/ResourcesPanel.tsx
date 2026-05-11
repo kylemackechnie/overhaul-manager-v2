@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { resolveShift, hasMixedShifts, validatePhases, SHIFT_LABELS } from '../../lib/shiftPhases'
@@ -11,9 +11,13 @@ import { useResizableColumns, wasResizeDrag } from '../../hooks/useResizableColu
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { ResourcesMobile } from '../mobile/ResourcesMobile'
 import { ResourceCalendar } from './ResourceCalendar'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
+
+// Lazy — mobile bundle only loads on phones
+const ResourcesMobile = lazy(() =>
+  import('../mobile/ResourcesMobile').then(m => ({ default: m.ResourcesMobile }))
+)
 
 // ── Column registry ───────────────────────────────────────────────────────────
 // All resizable columns except col-0 (checkbox) which is always visible.
@@ -517,19 +521,21 @@ export function ResourcesPanel() {
   return (
     <div style={isMobile ? {padding:0,maxWidth:'100%'} : {padding:'24px',maxWidth:'100%'}}>
     {isMobile ? (
-      <ResourcesMobile
-        resources={resources}
-        loading={loading}
-        search={search}
-        onSearchChange={setSearch}
-        catFilter={catFilter}
-        onCatFilterChange={setCatFilter}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        onAddNew={openNew}
-        onEdit={openEdit}
-        canWrite={canWrite('personnel')}
-      />
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <ResourcesMobile
+          resources={resources}
+          loading={loading}
+          search={search}
+          onSearchChange={setSearch}
+          catFilter={catFilter}
+          onCatFilterChange={setCatFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          onAddNew={openNew}
+          onEdit={openEdit}
+          canWrite={canWrite('personnel')}
+        />
+      </Suspense>
     ) : (<>
     <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px',flexWrap:'wrap'}}>
         {/* Title block */}

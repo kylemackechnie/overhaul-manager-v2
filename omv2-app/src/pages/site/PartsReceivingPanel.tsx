@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { PartsReceiveMobile } from '../mobile/PartsReceiveMobile'
+
+const PartsReceiveMobile = lazy(() =>
+  import('../mobile/PartsReceiveMobile').then(m => ({ default: m.PartsReceiveMobile }))
+)
 
 interface WositLine {
   id: string
@@ -29,7 +32,13 @@ type Step = 1 | 2 | 3
 
 export function PartsReceivingPanel() {
   const isMobile = useIsMobile()
-  if (isMobile) return <PartsReceiveMobile />
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <PartsReceiveMobile />
+      </Suspense>
+    )
+  }
   return <PartsReceivingPanelDesktop />
 }
 

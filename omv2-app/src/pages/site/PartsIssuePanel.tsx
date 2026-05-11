@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { PartsIssueMobile } from '../mobile/PartsIssueMobile'
+
+// Lazy — mobile bundle (which pulls in zxing) only loads on phones
+const PartsIssueMobile = lazy(() =>
+  import('../mobile/PartsIssueMobile').then(m => ({ default: m.PartsIssueMobile }))
+)
 
 interface SparePart {
   id: string; part_number: string; description: string
@@ -18,8 +22,13 @@ interface IssueLine {
 
 export function PartsIssuePanel() {
   const isMobile = useIsMobile()
-  if (isMobile) return <PartsIssueMobile />
-
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <PartsIssueMobile />
+      </Suspense>
+    )
+  }
   return <PartsIssuePanelDesktop />
 }
 

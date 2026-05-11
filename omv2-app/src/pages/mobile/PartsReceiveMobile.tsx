@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileCard } from '../../components/mobile/ui/MobileCard'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
-import { MobileBarcodeScanner } from '../../components/mobile/ui/MobileBarcodeScanner'
+
+const MobileBarcodeScanner = lazy(() =>
+  import('../../components/mobile/ui/MobileBarcodeScanner').then(m => ({ default: m.MobileBarcodeScanner }))
+)
 
 interface WositLine {
   id: string
@@ -373,13 +376,17 @@ export function PartsReceiveMobile() {
         </div>
       )}
 
-      <MobileBarcodeScanner
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onScan={handleScan}
-        title="Scan Material #"
-        hint="Point camera at material label"
-      />
+      {scanOpen && (
+        <Suspense fallback={null}>
+          <MobileBarcodeScanner
+            open={scanOpen}
+            onClose={() => setScanOpen(false)}
+            onScan={handleScan}
+            title="Scan Material #"
+            hint="Point camera at material label"
+          />
+        </Suspense>
+      )}
     </>
   )
 }

@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Accommodation, Resource, PurchaseOrder } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { AccommodationMobile } from '../mobile/AccommodationMobile'
+
+const AccommodationMobile = lazy(() =>
+  import('../mobile/AccommodationMobile').then(m => ({ default: m.AccommodationMobile }))
+)
 
 type AccomForm = {
   property: string; room: string; vendor: string
@@ -33,7 +36,13 @@ function calcCustomerPrice(cost: number, gm: number): number {
 
 export function AccommodationPanel() {
   const isMobile = useIsMobile()
-  if (isMobile) return <AccommodationMobile />
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <AccommodationMobile />
+      </Suspense>
+    )
+  }
   return <AccommodationPanelDesktop />
 }
 

@@ -517,13 +517,25 @@ function PanelRouter({ panel }: { panel: string }) {
 // ════════════════════════════════════════════════════════════════════════
 // MOBILE PANEL ROUTER
 // Wraps PanelRouter and hard-blocks panels that haven't been built for mobile.
-// As mobile-optimised panels are added in future sessions, append their
-// panel keys to MOBILE_OPTIMISED below.
+//
+// To add a new mobile-optimised panel:
+// 1. Build the mobile component in src/pages/mobile/<Panel>Mobile.tsx
+// 2. In the desktop panel file (src/pages/<module>/<Panel>Panel.tsx):
+//    a. Convert the import to React.lazy() — see CarsPanel for the pattern
+//    b. Rename existing function to <Panel>PanelDesktop
+//    c. Add a wrapper: useIsMobile() → <Suspense fallback={…}><Mobile/></Suspense>
+// 3. Add the panel key to MOBILE_OPTIMISED below
+//
+// Lazy-loading is mandatory — otherwise mobile code ends up in the main
+// bundle and inflates desktop downloads.
 // ════════════════════════════════════════════════════════════════════════
 
-/** Panels that have a mobile-optimised render (or are simple enough to work as-is) */
+/**
+ * Panels that have a mobile-optimised render. Anything not in this set shows
+ * the "Open on desktop" soft-block via MobileDesktopOnly.
+ */
 const MOBILE_OPTIMISED: Set<string> = new Set([
-  // Always-allow: navigation/admin/profile
+  // Always-allow: navigation/admin/profile (simple enough to render as-is)
   'dashboard',
   'profile',
   'help',

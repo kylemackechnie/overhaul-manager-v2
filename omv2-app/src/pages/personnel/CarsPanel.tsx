@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Car, Resource, PurchaseOrder } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { CarsMobile } from '../mobile/CarsMobile'
+
+// Lazy-loaded — only fetched when a phone user opens this panel. Desktop
+// users never download the mobile bundle. Saves ~30 KB per panel + lets
+// Vite split the bottom-sheet/scanner deps into their own chunk.
+const CarsMobile = lazy(() =>
+  import('../mobile/CarsMobile').then(m => ({ default: m.CarsMobile }))
+)
 
 type CarForm = {
   vehicle_type: string; rego: string; vendor: string
@@ -43,7 +49,13 @@ function calcCustomerPrice(cost: number, gm: number): number {
 
 export function CarsPanel() {
   const isMobile = useIsMobile()
-  if (isMobile) return <CarsMobile />
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <CarsMobile />
+      </Suspense>
+    )
+  }
   return <CarsPanelDesktop />
 }
 
