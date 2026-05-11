@@ -189,7 +189,7 @@ export async function exportTceAll(
     supabase.from('timesheet_cost_lines')
       .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances')
       .eq('project_id', projectId).eq('timesheet_status', 'approved'),
-    supabase.from('variations').select('id,number,title,tce_link,sell_total,cost_total,status,scope,notes')
+    supabase.from('variations').select('id,number,title,tce_link,wo_ref,sell_total,cost_total,status,scope,notes')
       .eq('project_id', projectId),
     supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
       .eq('project_id', projectId).order('week_ending'),
@@ -201,7 +201,7 @@ export async function exportTceAll(
 
   const costLines = (clRes.data||[]) as CostRow[]
   const variations = (varRes.data||[]) as {
-    id:string;number:string;title:string;tce_link:string|null;
+    id:string;number:string;title:string;tce_link:string|null;wo_ref:string|null;
     sell_total:number;cost_total:number;status:string;scope:string;notes:string
   }[]
   const nrgInvSorted = ((nrgInvRes.data||[]) as {week_ending:string|null;eur_spot_rate:number|null}[])
@@ -230,6 +230,10 @@ export async function exportTceAll(
   }
   const varByItem:Record<string,number>={}
   for (const v of variations) if(v.tce_link) varByItem[v.tce_link]=(varByItem[v.tce_link]||0)+(v.sell_total||0)
+
+  // Build item_id → contract_scope map from TCE lines for variation service order lookup
+  const scopeByItemId:Record<string,string>={}
+  for (const l of lines) if(l.item_id && l.contract_scope) scopeByItemId[l.item_id]=l.contract_scope
 
   const zip=await JSZip.loadAsync(templateBuf)
   const sl3Xml=await zip.file('xl/worksheets/sheet3.xml')!.async('string')
@@ -372,8 +376,10 @@ export async function exportTceAll(
   // ── Variations rows (data from row 2, 1 header) ────────────────────────
   const varRows:string[]=[]; let varRowNum=2
   for(const v of variations){
+    const contractScope = v.tce_link ? (scopeByItemId[v.tce_link]||'') : ''
     const dc:Record<string,CellDef>={
-      A:{type:'s',value:strIdx('')},B:{type:'s',value:strIdx('')},
+      A:{type:'s',value:strIdx(contractScope)},
+      B:{type:'s',value:strIdx(v.wo_ref||'')},
       C:{type:'s',value:strIdx(v.title||'')},
       D:{type:'',value:null},
       E:{type:'',value:null},
