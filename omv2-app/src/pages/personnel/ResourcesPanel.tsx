@@ -5,6 +5,7 @@ import { resolveShift, hasMixedShifts, validatePhases, SHIFT_LABELS } from '../.
 import type { ShiftPhase } from '../../types'
 import { findOrCreatePerson, type Person } from '../../lib/persons'
 import { resolveImportRole, resolveImportShift } from '../../lib/roleAliases'
+import { HelpButton } from '../../components/HelpButton'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
 import { useAppStore } from '../../store/appStore'
 import { useResizableColumns, wasResizeDrag } from '../../hooks/useResizableColumns'
@@ -540,7 +541,10 @@ export function ResourcesPanel() {
     <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px',flexWrap:'wrap'}}>
         {/* Title block */}
         <div style={{display:'flex',flexDirection:'column',gap:'1px',flexShrink:0}}>
-          <span style={{fontSize:'14px',fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}}>Resources</span>
+          <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+            <span style={{fontSize:'14px',fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}}>Resources</span>
+            <HelpButton panelId="hr-resources" />
+          </div>
           <span style={{fontSize:'11px',color:'var(--text3)',whiteSpace:'nowrap'}}>{resources.length} people</span>
         </div>
 

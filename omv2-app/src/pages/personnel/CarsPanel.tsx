@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import type { Car, Resource, PurchaseOrder } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { HelpButton } from '../../components/HelpButton'
 
 // Lazy-loaded — only fetched when a phone user opens this panel. Desktop
 // users never download the mobile bundle. Saves ~30 KB per panel + lets
@@ -238,7 +239,10 @@ function CarsPanelDesktop() {
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Car Hire</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Car Hire</h1>
+            <HelpButton panelId="hr-cars" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {cars.length} vehicles · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>

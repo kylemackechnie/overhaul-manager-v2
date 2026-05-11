@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import type { Accommodation, Resource, PurchaseOrder } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { HelpButton } from '../../components/HelpButton'
 
 const AccommodationMobile = lazy(() =>
   import('../mobile/AccommodationMobile').then(m => ({ default: m.AccommodationMobile }))
@@ -318,7 +319,10 @@ function AccommodationPanelDesktop() {
     <div style={{ padding: '24px', maxWidth: '1100px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Accommodation</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Accommodation</h1>
+            <HelpButton panelId="hr-accommodation" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {accomList.length} rooms · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>

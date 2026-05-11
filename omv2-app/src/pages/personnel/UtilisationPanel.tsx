@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { PersonCard, usePersonCard } from '../../components/PersonCard'
+import { HelpButton } from '../../components/HelpButton'
 import type { Person } from '../../lib/persons'
 
 interface ResourceRow {
@@ -105,7 +106,10 @@ export function UtilisationPanel() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
-            <h1 style={{ fontSize: 18, fontWeight: 700 }}>Utilisation</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Utilisation</h1>
+              <HelpButton panelId="hr-utilisation" />
+            </div>
             <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
               {groupedRows.length} people · {monthLabel}
             </p>

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { defaultCurrencyForCategory, getBaseCurrency, CURRENCY_SYMBOLS } from '../../lib/currency'
+import { HelpButton } from '../../components/HelpButton'
 import type { RateCard } from '../../types'
 
 const CATEGORIES = ['trades', 'management', 'seag', 'subcontractor'] as const
@@ -170,7 +171,10 @@ export function RateCardsPanel() {
     <div style={{padding:'24px', maxWidth:'1100px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
         <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>Rate Cards</h1>
+          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>Rate Cards</h1>
+            <HelpButton panelId="hr-ratecards" />
+          </div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{rcs.length} roles defined</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>+ New Rate Card</button>

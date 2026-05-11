@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 
 // ── Print helpers ──────────────────────────────────────────────────────────
 
@@ -634,7 +635,10 @@ export function InductionsPanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>🎓 Inductions</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>🎓 Inductions</h1>
+            <HelpButton panelId="hr-inductions" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             Match SE Learning induction export against project resources
           </p>

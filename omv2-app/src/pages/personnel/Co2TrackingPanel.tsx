@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 
 interface Co2Entry { category: string; description: string; quantity: number; unit: string; factor: number; kgCo2: number }
 
@@ -119,7 +120,10 @@ export function Co2TrackingPanel() {
 
   return (
     <div style={{padding:'24px',maxWidth:'800px'}}>
-      <h1 style={{fontSize:'18px',fontWeight:700,marginBottom:'4px'}}>CO₂ Tracking</h1>
+      <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px'}}>
+        <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>CO₂ Tracking</h1>
+        <HelpButton panelId="hse-co2" />
+      </div>
       <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'20px'}}>Track carbon emissions for this project</p>
 
       {/* Summary */}

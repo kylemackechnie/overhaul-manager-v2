@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { HelpButton } from '../../components/HelpButton'
 
 interface HSEEntry {
   id: string; project_id: string; date: string; person: string
@@ -84,7 +85,10 @@ export function HSEHoursPanel() {
     <div style={{ padding: '24px', maxWidth: '900px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>HSE Hours</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>HSE Hours</h1>
+            <HelpButton panelId="hse-hours" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {filtered.length} entries · {totalHours.toFixed(2)} hours
           </p>

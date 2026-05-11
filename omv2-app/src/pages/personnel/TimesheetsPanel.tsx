@@ -9,6 +9,7 @@ import { splitHours } from '../../engines/costEngine'
 import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
+import { HelpButton } from '../../components/HelpButton'
 import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry } from '../../types'
 
 // Group-header rows in NRG TCE have item_ids like "2.02.4" (3 segments).
@@ -1053,7 +1054,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     <div style={{ padding: '24px', maxWidth: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>{TYPE_LABELS[type]} Timesheets</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{TYPE_LABELS[type]} Timesheets</h1>
+            <HelpButton panelId={`hr-timesheets-${type === 'mgmt' ? 'mgmt' : type === 'seag' ? 'seag' : type === 'subcon' ? 'subcon' : 'trades'}`} />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{sheets.length} weeks · {resources.length} people</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>

@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase'
 import { toast } from '../../components/ui/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import { CURRENCY_SYMBOLS } from '../../lib/currency'
+import { HelpButton } from '../../components/HelpButton'
 
 const CATEGORIES = ['trades', 'management', 'seag', 'subcontractor'] as const
 const RATE_BUCKETS = ['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const
@@ -178,7 +179,10 @@ export function GlobalRateDefaultsPanel() {
     <div style={{padding:'24px', maxWidth:'1100px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
         <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>🌐 Global Rate Defaults</h1>
+          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>🌐 Global Rate Defaults</h1>
+            <HelpButton panelId="rate-defaults" />
+          </div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
             {rcs.length} role{rcs.length === 1 ? '' : 's'} in the system-wide template
           </p>
