@@ -4,6 +4,8 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import type { Car, Resource, PurchaseOrder } from '../../types'
 import { downloadCSV } from '../../lib/csv'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { CarsMobile } from '../mobile/CarsMobile'
 
 type CarForm = {
   vehicle_type: string; rego: string; vendor: string
@@ -40,6 +42,12 @@ function calcCustomerPrice(cost: number, gm: number): number {
 }
 
 export function CarsPanel() {
+  const isMobile = useIsMobile()
+  if (isMobile) return <CarsMobile />
+  return <CarsPanelDesktop />
+}
+
+function CarsPanelDesktop() {
   const { activeProject } = useAppStore()
   const [cars, setCars] = useState<Car[]>([])
   const [resources, setResources] = useState<Resource[]>([])

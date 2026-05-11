@@ -1641,3 +1641,172 @@ th.resizable .col-resizer:active {
   max-width: 360px;
   margin: 0 auto;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Session 3 — Accommodation + Cars mobile
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Filter chips row ────────────────────────────────────────────────── */
+.mobile-filter-chips {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px 4px;
+  background: var(--bg);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mobile-filter-chips::-webkit-scrollbar { display: none; }
+.mobile-chip {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text2);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.mobile-chip:active { background: var(--bg3); }
+.mobile-chip-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ── Section header (week grouping in Accom) ─────────────────────────── */
+.mobile-section-header {
+  padding: 14px 16px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text3);
+  background: var(--bg);
+}
+
+/* ── Accom + Car card overrides ──────────────────────────────────────── */
+.mobile-accom-card,
+.mobile-car-card {
+  display: block;
+  flex-direction: unset;
+  align-items: unset;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  margin: 0 14px 8px;
+  width: calc(100% - 28px);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+  font: inherit;
+  color: inherit;
+}
+.mobile-accom-card:active,
+.mobile-car-card:active {
+  background: var(--bg3);
+}
+
+/* ── Status pills (Accom) ────────────────────────────────────────────── */
+.mobile-status-pill {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: capitalize;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.mobile-status-current      { background: #dcfce7; color: #14532d; }
+.mobile-status-upcoming     { background: #dbeafe; color: #1e3a8a; }
+.mobile-status-past         { background: #f1f5f9; color: var(--text3); }
+.mobile-status-unscheduled  { background: #fef3c7; color: #78350f; }
+
+/* ── Status pills (Cars) ─────────────────────────────────────────────── */
+.mobile-status-car-collected { background: #fed7aa; color: #7c2d12; }   /* should be collected today */
+.mobile-status-car-in_use    { background: #dcfce7; color: #14532d; }
+.mobile-status-car-returned  { background: #f1f5f9; color: var(--text3); }
+.mobile-status-car-pending   { background: #dbeafe; color: #1e3a8a; }
+.mobile-status-car-no_dates  { background: #fef3c7; color: #78350f; }
+
+/* ── Occupant chips on card ──────────────────────────────────────────── */
+.mobile-occupant-chip {
+  font-size: 11px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mobile-occupant-chip-more {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+/* ── Occupant picker inside edit sheet ───────────────────────────────── */
+.mobile-occupant-picker {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg2);
+}
+.mobile-occupant-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.mobile-occupant-row:last-child { border-bottom: 0; }
+.mobile-occupant-row:active { background: var(--bg3); }
+.mobile-occupant-row-checked { background: var(--accent-light); }
+
+/* ── Toggle pill (Collected / Dropped off) ───────────────────────────── */
+.mobile-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text2);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.mobile-toggle-pill:active { background: var(--bg3); }
+.mobile-toggle-pill-on {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #065f46;
+  font-weight: 600;
+}
+.mobile-toggle-pill-lg {
+  padding: 12px 16px;
+  font-size: 14px;
+}
+/* When toggle pill is rendered inside a card-button, we use <span> which has
+   no native button click feedback. The pointer cursor + active state on
+   the parent button is enough. */
