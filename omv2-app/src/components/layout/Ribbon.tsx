@@ -354,7 +354,7 @@ export function Ribbon() {
         background: 'var(--bg2)'
       }}>
         {/* File button */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} data-tour="ribbon-file-button">
           <button
             className="btn btn-sm"
             style={{ background: 'var(--purple)', color: '#fff', border: 'none', fontWeight: 600 }}
@@ -403,11 +403,25 @@ export function Ribbon() {
           )}
         </div>
 
+        {/* Help button — quick access to Help & Guide */}
+        <button
+          className="btn btn-sm"
+          style={{ background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 600 }}
+          onClick={() => setActivePanel('help')}
+          title="Open Help & Guide"
+          data-tour="ribbon-help-button"
+        >
+          ❓ Help
+        </button>
+
         {/* Project name */}
-        <div style={{
-          flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-          fontSize: '13px', fontWeight: 600, color: 'var(--text)'
-        }}>
+        <div
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+            fontSize: '13px', fontWeight: 600, color: 'var(--text)'
+          }}
+          data-tour="ribbon-project-name"
+        >
           <span style={{
             background: 'var(--accent)', color: '#fff', padding: '2px 8px',
             borderRadius: '4px', fontSize: '11px'
@@ -426,10 +440,13 @@ export function Ribbon() {
       </div>
 
       {/* Tab row */}
-      <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: '2px',
-        padding: '4px 12px 0', background: 'var(--bg2)'
-      }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'flex-end', gap: '2px',
+          padding: '4px 12px 0', background: 'var(--bg2)'
+        }}
+        data-tour="ribbon-tabs"
+      >
         {visibleTabs.map(tab => (
           <button
             key={tab.key}
@@ -515,11 +532,14 @@ export function Ribbon() {
       </div>
 
       {/* Ribbon strip */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: '0',
-        padding: '6px 12px', borderTop: '1px solid var(--border)',
-        minHeight: '52px', alignItems: 'flex-start',
-      }}>
+      <div
+        style={{
+          display: 'flex', flexWrap: 'wrap', gap: '0',
+          padding: '6px 12px', borderTop: '1px solid var(--border)',
+          minHeight: '52px', alignItems: 'flex-start',
+        }}
+        data-tour="ribbon-buttons"
+      >
         {activeTab.groups.map((group, gi) => (
           <div key={gi} style={{ display: 'flex', alignItems: 'flex-start', gap: '2px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
