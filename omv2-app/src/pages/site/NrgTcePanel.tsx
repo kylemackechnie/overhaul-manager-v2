@@ -8,7 +8,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
-import { exportTceSkilledLabour } from '../../lib/exportTce'
+import { exportTceSkilledLabour, exportTceOverheadsVariations } from '../../lib/exportTce'
 import { nrgLineActual, nrgInvoiceActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine, RateCard } from '../../types'
 
@@ -77,6 +77,9 @@ export function NrgTcePanel() {
   const [tceInvoiceWeeks, setTceInvoiceWeeks] = useState<{id:string;label:string;week_ending:string}[]>([])
   const [tceSelectedWeeks, setTceSelectedWeeks] = useState<Set<string>>(new Set())
   const [tceWeeksLoading, setTceWeeksLoading] = useState(false)
+  const [showOHTceWeekPicker, setShowOHTceWeekPicker] = useState(false)
+  const [ohTceSelectedWeeks, setOhTceSelectedWeeks] = useState<Set<string>>(new Set())
+  const [exportingOHTce, setExportingOHTce] = useState(false)
   const [search, setSearch] = useState('')
   const [sourceFilter, _setSourceFilter] = useState((prefs.tce_source_filter as string) || 'all')
   const [hideUnused, _setHideUnused] = useState((prefs.tce_hide_unused as boolean) ?? false)
@@ -358,6 +361,36 @@ export function NrgTcePanel() {
     }
   }
 
+  async function openOHTceExport() {
+    if (!activeProject) return
+    setOhTceSelectedWeeks(new Set())
+    setShowOHTceWeekPicker(true)
+    if (tceInvoiceWeeks.length === 0) {
+      setTceWeeksLoading(true)
+      const { data } = await supabase
+        .from('nrg_customer_invoices').select('id,label,week_ending')
+        .eq('project_id', activeProject.id).order('week_ending')
+      setTceInvoiceWeeks((data || []).filter(i => i.week_ending) as {id:string;label:string;week_ending:string}[])
+      setTceWeeksLoading(false)
+    }
+  }
+
+  async function doExportOHTce() {
+    if (!activeProject || ohTceSelectedWeeks.size === 0) return
+    const orderedWeeks = tceInvoiceWeeks
+      .filter(i => ohTceSelectedWeeks.has(i.id))
+      .map(i => i.week_ending)
+    setExportingOHTce(true)
+    setShowOHTceWeekPicker(false)
+    try {
+      await exportTceOverheadsVariations(activeProject.id, activeProject.name || 'project', lines, orderedWeeks)
+    } catch (e) {
+      toast('Export failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    } finally {
+      setExportingOHTce(false)
+    }
+  }
+
   async function del(l: NrgTceLine) {
     if (!confirm(`Delete "${l.description}"?`)) return
     await supabase.from('nrg_tce_lines').delete().eq('id', l.id)
@@ -527,6 +560,9 @@ export function NrgTcePanel() {
           <button className="btn btn-sm" onClick={() => downloadTemplate('nrg_tce')}>⬇ Template</button>
           <button className="btn btn-sm" onClick={openTceExport} disabled={exportingTce}>
             {exportingTce ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📊'} Export TCE XLSX
+          </button>
+          <button className="btn btn-sm" onClick={openOHTceExport} disabled={exportingOHTce}>
+            {exportingOHTce ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📊'} Export OH/Var XLSX
           </button>
           <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
             {importing ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : '📥'} Import XLSX
@@ -1132,6 +1168,63 @@ export function NrgTcePanel() {
               <button className="btn" onClick={() => setShowTceWeekPicker(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={doExportTce} disabled={tceSelectedWeeks.size === 0 || exportingTce}>
                 Export {tceSelectedWeeks.size > 0 ? `(${tceSelectedWeeks.size} week${tceSelectedWeeks.size !== 1 ? 's' : ''})` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* TCE Overheads/Variations Export — week picker modal */}
+      {showOHTceWeekPicker && (
+        <div className="modal-overlay" onClick={() => setShowOHTceWeekPicker(false)}>
+          <div className="modal" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Export Overheads &amp; Variations XLSX — Select Weeks</h2>
+              <button className="btn-close" onClick={() => setShowOHTceWeekPicker(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {tceWeeksLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}><span className="spinner" /></div>
+              ) : tceInvoiceWeeks.length === 0 ? (
+                <p style={{ color: 'var(--text3)', fontSize: '13px' }}>No invoices found. Add invoices in the Invoicing panel first.</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
+                    Select the invoice weeks to include. Week 1 in the export = first ticked, Week 2 = second, etc.
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    <button className="btn btn-sm" onClick={() => setOhTceSelectedWeeks(new Set(tceInvoiceWeeks.map(i => i.id)))}>Select All</button>
+                    <button className="btn btn-sm" onClick={() => setOhTceSelectedWeeks(new Set())}>Clear</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {tceInvoiceWeeks.map((inv, idx) => {
+                      const checked = ohTceSelectedWeeks.has(inv.id)
+                      const weekNum = checked
+                        ? [...tceInvoiceWeeks].filter(i => ohTceSelectedWeeks.has(i.id)).findIndex(i => i.id === inv.id) + 1
+                        : null
+                      return (
+                        <label key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '6px', background: checked ? 'rgba(99,102,241,0.08)' : 'var(--bg2)', cursor: 'pointer', border: `1px solid ${checked ? 'var(--primary)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                          <input type="checkbox" checked={checked}
+                            onChange={ev => setOhTceSelectedWeeks(prev => {
+                              const next = new Set(prev)
+                              ev.target.checked ? next.add(inv.id) : next.delete(inv.id)
+                              return next
+                            })} />
+                          {weekNum != null && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, background: 'var(--primary)', color: '#fff', borderRadius: '3px', padding: '1px 5px', minWidth: '48px', textAlign: 'center', flexShrink: 0 }}>Week {weekNum}</span>
+                          )}
+                          <span style={{ flex: 1, fontSize: '13px', fontWeight: 500 }}>{inv.label || `Invoice ${idx + 1}`}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>WE {inv.week_ending}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowOHTceWeekPicker(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={doExportOHTce} disabled={ohTceSelectedWeeks.size === 0 || exportingOHTce}>
+                Export {ohTceSelectedWeeks.size > 0 ? `(${ohTceSelectedWeeks.size} week${ohTceSelectedWeeks.size !== 1 ? 's' : ''})` : ''}
               </button>
             </div>
           </div>
