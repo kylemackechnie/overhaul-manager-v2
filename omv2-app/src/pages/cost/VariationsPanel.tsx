@@ -115,8 +115,10 @@ function splitHoursVn(
 function computeLine(l: LineForm, gmPct: number, rateCards: RateCard[]): LineForm {
   if (l.category.startsWith('labour')) {
     const hours = parseFloat(l.hours) || 0
+    const absHours = Math.abs(hours)
+    const sign = hours < 0 ? -1 : 1
     const rc = rateCards.find(r => r.role.toLowerCase() === l.role.toLowerCase())
-    if (rc && hours > 0) {
+    if (rc && absHours > 0) {
       const rates = rc.rates as { cost?: Record<string,number>; sell?: Record<string,number> }
       const costRates = rates.cost || {}
       const sellRates = rates.sell || {}
@@ -124,8 +126,8 @@ function computeLine(l: LineForm, gmPct: number, rateCards: RateCard[]): LineFor
       // Standard shift hours — use 10.5 default (matched to HTML's stdH default)
       const shHrs = 10.5
       const regime: 'lt12' | 'ge12' = shHrs >= 12 ? 'ge12' : 'lt12'
-      const fullShifts = Math.floor(hours / shHrs)
-      const rem = +(hours % shHrs).toFixed(2)
+      const fullShifts = Math.floor(absHours / shHrs)
+      const rem = +(absHours % shHrs).toFixed(2)
       const nShifts = fullShifts + (rem > 0 ? 1 : 0)
 
       // Accumulate hour buckets across all shifts
@@ -158,29 +160,35 @@ function computeLine(l: LineForm, gmPct: number, rateCards: RateCard[]): LineFor
         }
       }
 
+      // Apply sign — negative hours = credit/giveback, negate all amounts
       return {
         ...l,
         unit_cost: String((costRates.dnt || 0).toFixed(2)),
         unit_sell: String((sellRates.dnt || 0).toFixed(2)),
-        cost_total: +labCost.toFixed(2),
-        sell_total: +labSell.toFixed(2),
-        breakdown,
+        cost_total: +(labCost * sign).toFixed(2),
+        sell_total: +(labSell * sign).toFixed(2),
+        breakdown: breakdown!.map(b => ({
+          ...b,
+          hrs: b.hrs !== null ? b.hrs * sign : null,
+          costAmt: b.costAmt * sign,
+          sellAmt: b.sellAmt * sign,
+        })),
       }
     }
-    // No rate card — manual entry
+    // No rate card — manual entry. Allow negative hours for credits.
     const uc = parseFloat(l.unit_cost) || 0
     const us = parseFloat(l.unit_sell) || 0
-    const cost_total = hours > 0 ? hours * uc : uc
-    const sell_total = us > 0 ? (hours > 0 ? hours * us : us)
-      : cost_total > 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
+    const cost_total = absHours > 0 ? hours * uc : uc
+    const sell_total = us !== 0 ? (absHours > 0 ? hours * us : us)
+      : cost_total !== 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
     return { ...l, cost_total, sell_total, breakdown: [] }
   }
   const qty = parseFloat(l.qty) || 1
   const uc = parseFloat(l.unit_cost) || 0
   const us = parseFloat(l.unit_sell) || 0
   const cost_total = qty * uc
-  const sell_total = us > 0 ? qty * us
-    : cost_total > 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
+  const sell_total = us !== 0 ? qty * us
+    : cost_total !== 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
   return { ...l, cost_total, sell_total }
 }
 
@@ -358,7 +366,7 @@ export function VariationsPanel() {
 
   const sumCost = (ls: LineForm[]) => ls.reduce((s,l)=>s+(l.cost_total||0),0)
   const sumSell = (ls: LineForm[]) => ls.reduce((s,l)=>s+(l.sell_total||0),0)
-  const fmt = (n: number) => n>0 ? '$'+n.toLocaleString('en-AU',{maximumFractionDigits:0}) : '—'
+  const fmt = (n: number) => n!==0 ? '$'+n.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'
 
   async function save() {
     if (!form.number.trim()) return toast('Variation number required','error')
@@ -639,9 +647,9 @@ export function VariationsPanel() {
                   {/* Cost summary footer */}
                   {lines.some(l=>l.description.trim()) && (
                     <div style={{display:'flex',gap:'16px',padding:'10px 0',borderTop:'1px solid var(--border)',marginTop:'12px',fontSize:'12px'}}>
-                      <span style={{color:'var(--text3)'}}>Total Cost: <strong>{fmt(sumCost(lines))}</strong></span>
-                      <span style={{color:'var(--green)'}}>Total Sell: <strong>{fmt(sumSell(lines))}</strong></span>
-                      {sumCost(lines)>0&&sumSell(lines)>0&&<span style={{color:'var(--text3)'}}>GM: <strong>{Math.round((1-sumCost(lines)/sumSell(lines))*100)}%</strong></span>}
+                      <span style={{color:'var(--text3)'}}>Total Cost: <strong style={{color:sumCost(lines)<0?'var(--red)':undefined}}>{fmt(sumCost(lines))}</strong></span>
+                      <span style={{color:sumSell(lines)<0?'var(--red)':'var(--green)'}}>Total Sell: <strong>{fmt(sumSell(lines))}</strong></span>
+                      {sumCost(lines)!==0&&sumSell(lines)!==0&&<span style={{color:'var(--text3)'}}>GM: <strong>{Math.round((1-sumCost(lines)/sumSell(lines))*100)}%</strong></span>}
                     </div>
                   )}
                 </>
@@ -698,7 +706,7 @@ export function VariationsPanel() {
                               </td>
                               {/* Hours */}
                               <td style={{padding:'3px 4px'}}>
-                                <input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.hours} onChange={e=>setLineField(i,'hours',e.target.value)} placeholder="hrs" min={0} step={0.5}/>
+                                <input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.hours} onChange={e=>setLineField(i,'hours',e.target.value)} placeholder="hrs" step={0.5}/>
                               </td>
                               {/* Day type */}
                               <td style={{padding:'3px 4px'}}>
@@ -723,8 +731,8 @@ export function VariationsPanel() {
                               <td colSpan={2} style={{padding:'3px 4px'}}><input type="number" className="input" style={{padding:'3px 6px',fontSize:'12px',textAlign:'right'}} value={l.unit_sell||''} onChange={e=>setLineField(i,'unit_sell',e.target.value)} placeholder="0"/></td>
                             </>
                           )}
-                          <td style={{padding:'3px 8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text2)'}}>{l.cost_total>0?fmt(l.cost_total):'—'}</td>
-                          <td style={{padding:'3px 8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--green)',fontWeight:600}}>{l.sell_total>0?fmt(l.sell_total):'—'}</td>
+                          <td style={{padding:'3px 8px',textAlign:'right',fontFamily:'var(--mono)',color:l.cost_total<0?'var(--red)':'var(--text2)'}}>{l.cost_total!==0?fmt(l.cost_total):'—'}</td>
+                          <td style={{padding:'3px 8px',textAlign:'right',fontFamily:'var(--mono)',color:l.sell_total<0?'var(--red)':'var(--green)',fontWeight:600}}>{l.sell_total!==0?fmt(l.sell_total):'—'}</td>
                           <td style={{padding:'3px 4px',textAlign:'center'}}>
                             <button className="btn btn-sm" style={{color:'var(--red)',padding:'2px 5px'}} onClick={()=>setLines(ls=>ls.filter((_,j)=>j!==i))}>✕</button>
                           </td>
@@ -779,8 +787,8 @@ export function VariationsPanel() {
                       <tfoot>
                         <tr style={{background:'var(--bg3)',fontWeight:600}}>
                           <td colSpan={6} style={{padding:'7px 8px'}}>Total ({lines.filter(l=>l.description.trim()).length} lines)</td>
-                          <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>{fmt(sumCost(lines))}</td>
-                          <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--green)'}}>{fmt(sumSell(lines))}</td>
+                          <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'var(--mono)',color:sumCost(lines)<0?'var(--red)':undefined}}>{fmt(sumCost(lines))}</td>
+                          <td style={{padding:'7px 8px',textAlign:'right',fontFamily:'var(--mono)',color:sumSell(lines)<0?'var(--red)':'var(--green)'}}>{fmt(sumSell(lines))}</td>
                           <td/>
                         </tr>
                       </tfoot>
