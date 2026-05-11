@@ -53,28 +53,26 @@ import JSZip from 'jszip'
 import { supabase } from './supabase'
 import type { NrgTceLine } from '../types'
 
-// ── Skilled Labour styles (from sheet3 in full template) ──────────────────
+// ── Skilled Labour styles (from standalone tce_skilled_labour_template.xlsx) ─
+// H-row cells use s=14-31, detail cells use s=33-47. Row-level: H=32, D=48.
 const SL_H: Record<string, number> = {
-  A:294,B:444,C:444,D:444,E:294,F:294,G:295,H:295,I:296,J:296,K:296,
-  L:297,M:296,N:298,O:299,P:298,Q:380,R:296,S:298,T:299,U:298,V:239,
-  W:300,X:298,Y:300,Z:298,AA:300,AB:298,AC:300,AD:298,AE:300,AF:298,
-  AG:300,AH:298,AI:300,AJ:298,AK:300,AL:298,AM:300,AN:298,AO:300,AP:298,
-  AQ:300,AR:298,AS:298,AT:298,AU:301,AV:298,AW:298,AX:302,AY:303,AZ:303,BA:237,
+  A:14,B:15,C:16,D:17,E:18,F:19,G:20,H:19,I:21,J:20,K:20,L:22,M:23,
+  N:20,O:23,P:24,Q:23,R:25,S:26,T:27,U:26,V:27,W:26,X:27,Y:26,Z:27,
+  AA:26,AB:27,AC:26,AD:27,AE:26,AF:27,AG:26,AH:27,AI:26,AJ:27,
+  AK:26,AL:27,AM:26,AN:27,AO:27,AP:27,AQ:28,AR:27,AS:27,AT:29,AU:30,AV:30,AW:31,
 }
 const SL_D: Record<string, number> = {
-  A:445,B:446,C:446,D:446,E:445,F:445,G:447,H:448,I:448,J:448,K:448,
-  L:297,M:448,N:449,O:450,P:449,Q:380,R:448,S:449,T:450,U:449,V:239,
-  W:451,X:452,Y:451,Z:452,AA:451,AB:452,AC:451,AD:452,AE:451,AF:452,
-  AG:451,AH:452,AI:451,AJ:452,AK:451,AL:452,AM:451,AN:452,AO:451,AP:452,
-  AQ:451,AR:452,AS:452,AT:452,AU:453,AV:452,AW:452,AX:454,AY:455,AZ:455,BA:456,
+  A:33,B:34,C:35,D:36,E:37,F:38,G:39,H:40,I:41,J:39,K:42,L:42,M:39,
+  N:39,O:39,P:42,Q:39,R:39,S:43,T:42,U:43,V:42,W:43,X:42,Y:43,Z:42,
+  AA:43,AB:42,AC:43,AD:42,AE:43,AF:42,AG:43,AH:42,AI:43,AJ:42,
+  AK:43,AL:42,AM:43,AN:42,AO:42,AP:42,AQ:44,AR:42,AS:42,AT:45,AU:46,AV:46,AW:47,
 }
 const SL_COLS = [
   'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R',
   'S','T','U','V','W','X','Y','Z','AA','AB','AC','AD','AE','AF','AG','AH',
   'AI','AJ','AK','AL','AM','AN','AO','AP','AQ','AR','AS','AT','AU','AV','AW',
-  'AX','AY','AZ','BA',
 ]
-// Week pairs S/T … AM/AN (11 weeks) — same columns as standalone template
+// Week pairs S/T … AM/AN (11 weeks)
 const SL_WEEK_PAIRS: [string, string][] = [
   ['S','T'],['U','V'],['W','X'],['Y','Z'],['AA','AB'],['AC','AD'],
   ['AE','AF'],['AG','AH'],['AI','AJ'],['AK','AL'],['AM','AN'],
@@ -150,9 +148,9 @@ function makeCell(col: string, row: number, s: number, cd: CellDef): string {
 }
 
 function buildSLRow(rowNum: number, isH: boolean, cells: Record<string, CellDef>): string {
-  const rowS = isH ? 304 : 457
+  const rowS = isH ? 32 : 48
   const parts = SL_COLS.map(col => makeCell(col, rowNum, isH ? SL_H[col] : SL_D[col], cells[col] ?? { type:'', value:null }))
-  return `<row r="${rowNum}" spans="1:53" s="${rowS}" customFormat="1" ht="15.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
+  return `<row r="${rowNum}" spans="1:49" s="${rowS}" customFormat="1" ht="12.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
 }
 
 function buildOHRow(rowNum: number, isH: boolean, cells: Record<string, CellDef>): string {
@@ -173,8 +171,8 @@ export async function exportTceAll(
   lines: NrgTceLine[],
   orderedWeeks: string[], // week_ending dates user selected, Week1=[0] etc.
 ) {
-  // 1. Fetch all data in parallel
-  const [clRes, varRes, nrgInvRes, templateResp] = await Promise.all([
+  // 1. Fetch all data in parallel — both templates loaded simultaneously
+  const [clRes, varRes, nrgInvRes, slTemplateResp, fullTemplateResp] = await Promise.all([
     supabase.from('timesheet_cost_lines')
       .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances')
       .eq('project_id', projectId).eq('timesheet_status', 'approved'),
@@ -183,7 +181,8 @@ export async function exportTceAll(
       .eq('project_id', projectId),
     supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
       .eq('project_id', projectId).order('week_ending'),
-    fetch('/tce_full_template.xlsx'),
+    fetch('/tce_skilled_labour_template.xlsx'),  // standalone — correct SL styles
+    fetch('/tce_full_template.xlsx'),            // full — OH + Var sheets
   ])
 
   const costLines = (clRes.data || []) as CostRow[]
@@ -193,7 +192,8 @@ export async function exportTceAll(
   }[]
   const nrgInvSorted = ((nrgInvRes.data || []) as {week_ending:string|null;eur_spot_rate:number|null}[])
     .filter(i => i.week_ending).sort((a,b) => a.week_ending!.localeCompare(b.week_ending!))
-  const templateBuf = await templateResp.arrayBuffer()
+  const slTemplateBuf   = await slTemplateResp.arrayBuffer()
+  const fullTemplateBuf = await fullTemplateResp.arrayBuffer()
 
   // 2. Spot rate lookup (exact match by week_ending)
   const spotRateByWE: Record<string, number|null> = {}
@@ -222,25 +222,47 @@ export async function exportTceAll(
       : (r.sell_labour || 0) + (r.sell_allowances || 0)
   }
 
-  // 5. Load template
-  const zip = await JSZip.loadAsync(templateBuf)
-  const sl3Xml = await zip.file('xl/worksheets/sheet3.xml')!.async('string')
-  const oh2Xml = await zip.file('xl/worksheets/sheet2.xml')!.async('string')
-  const var4Xml = await zip.file('xl/worksheets/sheet4.xml')!.async('string')
-  const ssXml   = await zip.file('xl/sharedStrings.xml')!.async('string')
+  // 5. Load both template ZIPs
+  const [slZip, fullZip] = await Promise.all([
+    JSZip.loadAsync(slTemplateBuf),
+    JSZip.loadAsync(fullTemplateBuf),
+  ])
+  // Skilled Labour: use standalone template (correct SL styles)
+  const sl1Xml  = await slZip.file('xl/worksheets/sheet1.xml')!.async('string')
+  const slSsXml = await slZip.file('xl/sharedStrings.xml')!.async('string')
+  // Overheads + Variations: use full template
+  const oh2Xml   = await fullZip.file('xl/worksheets/sheet2.xml')!.async('string')
+  const var4Xml  = await fullZip.file('xl/worksheets/sheet4.xml')!.async('string')
+  const fullSsXml = await fullZip.file('xl/sharedStrings.xml')!.async('string')
 
-  // 6. Shared strings
-  const existingSiCount = (ssXml.match(/<si>/g) || []).length
-  const newSi: string[] = []
-  const strCache: Record<string, number> = {}
-  function strIdx(s: string): number {
-    if (s in strCache) return strCache[s]
-    const idx = existingSiCount + newSi.length
-    const space = s !== s.trim() ? ' xml:space="preserve"' : ''
-    newSi.push(`<si><t${space}>${xmlEsc(s)}</t></si>`)
-    strCache[s] = idx
-    return idx
+  // 6. Shared strings — separate caches per output file
+  function makeStrIdx(baseSsXml: string) {
+    const existingCount = (baseSsXml.match(/<si>/g) || []).length
+    const newSiArr: string[] = []
+    const cache: Record<string, number> = {}
+    return {
+      strIdx: (s: string): number => {
+        if (s in cache) return cache[s]
+        const idx = existingCount + newSiArr.length
+        const space = s !== s.trim() ? ' xml:space="preserve"' : ''
+        newSiArr.push(`<si><t${space}>${xmlEsc(s)}</t></si>`)
+        cache[s] = idx
+        return idx
+      },
+      buildSs: (baseSs: string): string => {
+        const total = existingCount + newSiArr.length
+        return baseSs
+          .replace(/count="\d+"/, `count="${total}"`)
+          .replace(/uniqueCount="\d+"/, `uniqueCount="${total}"`)
+          .replace(/<\/sst>/, newSiArr.join('') + '</sst>')
+      }
+    }
   }
+  const slStr   = makeStrIdx(slSsXml)
+  const fullStr = makeStrIdx(fullSsXml)
+  // Use slStr for SL rows, fullStr for OH+Var rows
+  // We need strIdx available for all row builders — use a proxy that switches
+  let strIdx = slStr.strIdx  // will be swapped for OH+Var rows
 
   // ── Helper: group lines ──────────────────────────────────────────────────
   const isGroupHdr = (l: NrgTceLine) =>
@@ -287,35 +309,39 @@ export async function exportTceAll(
     if (v.tce_link) varByItem[v.tce_link] = (varByItem[v.tce_link]||0) + (v.sell_total||0)
   }
 
+  // Standalone template column layout:
+  // A=Service Order, B=Work Order, C=Scope No., D=Description, E=Scope Type,
+  // F=Task Responsibility, G=Variable Scope Def, H=Comment, I=spacer,
+  // J=Est Hours, K=Gang Rate, L=Est Total, M=Notes, N-Q=Adjusted TCE, R=spacer,
+  // S/T…AM/AN=Week pairs, AO=Var Hrs, AP=Var Amt, AQ=Total Hrs, AR=Total Cost,
+  // AS=Gang Rate, AT=%Hrs, AU=%Cost, AV=Task Complete, AW=Forecast
   for (const { hdr, dets } of groupLines(lines.filter(l => l.source === 'skilled'))) {
     const hRow = slRowNum++
     const detRows = dets.map(() => slRowNum++)
 
     const hc: Record<string,CellDef> = {
       A: { type:'s', value: strIdx(hdr.contract_scope || '') },
-      B: { type:'s', value: strIdx('') },
-      C: { type:'s', value: strIdx('') },
-      D: { type:'s', value: strIdx('') },
-      E: { type:'s', value: strIdx('') },
-      F: { type:'s', value: strIdx('') },
-      G: { type:'s', value: strIdx(hdr.item_id || '') },
-      H: { type:'s', value: strIdx(hdr.description || '') },
-      I: { type:'s', value: strIdx(hdr.line_type === 'group' ? 'H' : hdr.line_type || '') },
-      J: { type:'s', value: strIdx((hdr.details as Record<string,unknown>)?.task_responsibility as string || '') },
-      K: { type:'s', value: strIdx(hdr.notes || '') },
+      B: { type:'s', value: strIdx(hdr.work_order || '') },
+      C: { type:'s', value: strIdx(hdr.item_id || '') },
+      D: { type:'s', value: strIdx(hdr.description || '') },
+      E: { type:'s', value: strIdx(hdr.line_type === 'group' ? 'H' : hdr.line_type || '') },
+      F: { type:'s', value: strIdx((hdr.details as Record<string,unknown>)?.task_responsibility as string || '') },
+      G: { type:'', value:null },
+      H: { type:'s', value: strIdx(hdr.notes || '') },
+      I: { type:'', value:null },
     }
     if (detRows.length > 0) {
       const r0 = detRows[0], r1 = detRows[detRows.length-1]
-      hc['N'] = { type:'f', value:0, formula: r0===r1 ? `N${r0}` : `SUM(N${r0}:N${r1})` }
-      hc['P'] = { type:'f', value:0, formula: r0===r1 ? `P${r0}` : `SUM(P${r0}:P${r1})` }
+      hc['J'] = { type:'f', value:0, formula: r0===r1 ? `J${r0}` : `SUM(J${r0}:J${r1})` }
+      hc['L'] = { type:'f', value:0, formula: r0===r1 ? `L${r0}` : `SUM(L${r0}:L${r1})` }
     } else {
-      hc['N'] = { type:'n', value: hdr.estimated_qty || 0 }
-      hc['P'] = { type:'n', value: hdr.tce_total || 0 }
+      hc['J'] = { type:'n', value: hdr.estimated_qty || 0 }
+      hc['L'] = { type:'n', value: hdr.tce_total || 0 }
     }
-    hc['O'] = { type:'n', value: hdr.tce_rate || 0 }
-    for (const c of ['L','M','Q','R']) hc[c] = { type:'', value:null }
+    hc['K'] = { type:'n', value: hdr.tce_rate || 0 }
+    for (const c of ['M','N','O','P','Q','R']) hc[c] = { type:'', value:null }
     for (const [wh,wc] of SL_WEEK_PAIRS) { hc[wh]={ type:'', value:null }; hc[wc]={ type:'', value:null } }
-    for (const c of ['AO','AP','AQ','AR','AS','AT','AU','AV','AW','AX','AY','AZ','BA'])
+    for (const c of ['AO','AP','AQ','AR','AS','AT','AU','AV','AW'])
       hc[c] = { type:'', value:null }
     slRows.push(buildSLRow(hRow, true, hc))
 
@@ -324,19 +350,18 @@ export async function exportTceAll(
       const dc: Record<string,CellDef> = {
         A: { type:'s', value: strIdx(d.contract_scope || '') },
         B: { type:'s', value: strIdx(d.work_order || '') },
-        C: { type:'s', value: strIdx('') },
-        D: { type:'s', value: strIdx('') },
-        E: { type:'s', value: strIdx('') },
-        F: { type:'s', value: strIdx('') },
-        G: { type:'s', value: strIdx(d.item_id || '') },
-        H: { type:'s', value: strIdx(d.description || '') },
-        I: { type:'s', value: strIdx(d.line_type || '') },
-        J: { type:'s', value: strIdx((d.details as Record<string,unknown>)?.task_responsibility as string || '') },
-        K: { type:'s', value: strIdx(d.notes || '') },
-        L: { type:'', value:null }, M: { type:'', value:null },
-        N: { type: d.estimated_qty ? 'n' : '', value: d.estimated_qty || null },
-        O: { type: d.tce_rate    ? 'n' : '', value: d.tce_rate    || null },
-        P: { type: d.tce_total   ? 'n' : '', value: d.tce_total   || null },
+        C: { type:'s', value: strIdx(d.item_id || '') },
+        D: { type:'s', value: strIdx(d.description || '') },
+        E: { type:'s', value: strIdx(d.line_type || '') },
+        F: { type:'s', value: strIdx((d.details as Record<string,unknown>)?.task_responsibility as string || '') },
+        G: { type:'', value:null },
+        H: { type:'s', value: strIdx(d.notes || '') },
+        I: { type:'', value:null },
+        J: { type: d.estimated_qty ? 'n' : '', value: d.estimated_qty || null },
+        K: { type: d.tce_rate    ? 'n' : '', value: d.tce_rate    || null },
+        L: { type: d.tce_total   ? 'n' : '', value: d.tce_total   || null },
+        M: { type:'', value:null }, N: { type:'', value:null },
+        O: { type:'', value:null }, P: { type:'', value:null },
         Q: { type:'', value:null }, R: { type:'', value:null },
       }
       const { totHrs, totSell } = weekCells(d.item_id, SL_WEEK_PAIRS, slWeeks, dc)
@@ -349,10 +374,14 @@ export async function exportTceAll(
       dc['AS'] = fHrs > 0 ? { type:'n', value: fCost/fHrs } : { type:'', value:null }
       dc['AT'] = (d.estimated_qty||0) > 0 ? { type:'n', value: fHrs/d.estimated_qty } : { type:'', value:null }
       dc['AU'] = (d.tce_total||0) > 0 ? { type:'n', value: fCost/d.tce_total } : { type:'', value:null }
-      for (const c of ['AV','AW','AX','AY','AZ','BA']) dc[c] = { type:'', value:null }
+      dc['AV'] = { type:'', value:null }
+      dc['AW'] = { type:'', value:null }
       slRows.push(buildSLRow(dr, false, dc))
     }
   }
+
+  // Switch strIdx to full template cache for OH + Var rows
+  strIdx = fullStr.strIdx
 
   // ────────────────────────────────────────────────────────────────────────
   // 7B. Build Overheads rows
@@ -439,40 +468,46 @@ export async function exportTceAll(
   }
 
   // ────────────────────────────────────────────────────────────────────────
-  // 8. Splice all three sheets
+  // 8. Splice sheets and produce two downloads
   // ────────────────────────────────────────────────────────────────────────
   function spliceSheet(xml: string, headerRows: number, dataRows: string[], lastRow: string, dimPattern: RegExp): string {
     const hdrs = Array.from({ length: headerRows }, (_, i) =>
-      xml.match(new RegExp(`<row r="${i+1}"[^>]*>.*?</row>`, 's'))?.[0] || ''
+      xml.match(new RegExp('<row r="' + (i+1) + '"[^>]*>.*?<\/row>', 's'))?.[0] || ''
     ).join('')
     return xml
       .replace(/<sheetData>.*?<\/sheetData>/s, `<sheetData>${hdrs}${dataRows.join('')}</sheetData>`)
       .replace(dimPattern, `ref="A1:${lastRow}"`)
   }
 
-  const updatedSL  = spliceSheet(sl3Xml, 2, slRows,  `BA${slRowNum-1}`,  /ref="A1:BA\d+"/)
-  const updatedOH  = spliceSheet(oh2Xml, 2, ohRows,  `AU${ohRowNum-1}`,  /ref="A1:BC\d+"/)
+  // File 1: Skilled Labour — standalone template with correct SL styles
+  const updatedSL = spliceSheet(sl1Xml, 2, slRows, `AW${slRowNum-1}`, /ref="A1:AW\d+"/)
+  slZip.file('xl/worksheets/sheet1.xml', updatedSL)
+  slZip.file('xl/sharedStrings.xml', slStr.buildSs(slSsXml))
+  slZip.remove('xl/calcChain.xml')
+
+  // File 2: Overheads + Variations — full template
+  const updatedOH  = spliceSheet(oh2Xml,  2, ohRows,  `AU${ohRowNum-1}`,  /ref="A1:BC\d+"/)
   const updatedVar = spliceSheet(var4Xml, 1, varRows, `AM${varRowNum-1}`, /ref="A1:AM\d+"/)
+  fullZip.file('xl/worksheets/sheet2.xml', updatedOH)
+  fullZip.file('xl/worksheets/sheet4.xml', updatedVar)
+  fullZip.file('xl/sharedStrings.xml', fullStr.buildSs(fullSsXml))
+  fullZip.remove('xl/calcChain.xml')
 
-  // 9. Update sharedStrings
-  const total = existingSiCount + newSi.length
-  const updatedSs = ssXml
-    .replace(/count="\d+"/, `count="${total}"`)
-    .replace(/uniqueCount="\d+"/, `uniqueCount="${total}"`)
-    .replace(/<\/sst>/, newSi.join('') + '</sst>')
+  // 9. Download both files
+  function download(buf: ArrayBuffer, filename: string) {
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
 
-  zip.file('xl/worksheets/sheet3.xml', updatedSL)
-  zip.file('xl/worksheets/sheet2.xml', updatedOH)
-  zip.file('xl/worksheets/sheet4.xml', updatedVar)
-  zip.file('xl/sharedStrings.xml', updatedSs)
-  zip.remove('xl/calcChain.xml')
-
-  // 10. Download
-  const outBuf = await zip.generateAsync({ type:'arraybuffer', compression:'DEFLATE' })
-  const blob = new Blob([outBuf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `TCE_${projectName.replace(/[^a-zA-Z0-9_-]/g,'_')}.xlsx`
-  a.click()
-  URL.revokeObjectURL(a.href)
+  const pName = projectName.replace(/[^a-zA-Z0-9_-]/g,'_')
+  const [slBuf, fullBuf] = await Promise.all([
+    slZip.generateAsync({ type:'arraybuffer', compression:'DEFLATE' }),
+    fullZip.generateAsync({ type:'arraybuffer', compression:'DEFLATE' }),
+  ])
+  download(slBuf,   `TCE_Skilled_Labour_${pName}.xlsx`)
+  download(fullBuf, `TCE_Overheads_Variations_${pName}.xlsx`)
 }
