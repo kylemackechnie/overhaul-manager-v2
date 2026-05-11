@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -973,7 +974,10 @@ export function PrePlanningPanel() {
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Pre-Outage Planning</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Pre-Outage Planning</h1>
+            <HelpButton panelId="pre-planning" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {complete}/{items.length} items complete · {pct}% ready
             {criticalIncomplete > 0 && <span style={{ color: '#dc2626', marginLeft: '10px' }}>· {criticalIncomplete} critical outstanding</span>}

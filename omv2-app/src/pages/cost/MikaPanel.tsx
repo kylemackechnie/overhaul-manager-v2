@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
 import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCommitmentsEngine'
+import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
   HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine,
   PurchaseOrder, Invoice } from '../../types'
@@ -367,7 +368,10 @@ export function MikaPanel() {
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>MIKA Cost Plan</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>MIKA Cost Plan</h1>
+            <HelpButton panelId="cost-mika" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>Full WBS breakdown — all lines</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>

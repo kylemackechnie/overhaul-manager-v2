@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { HelpButton } from '../../components/HelpButton'
 
 interface Resource { id: string; name: string; role: string; category: string; company: string; mob_in: string | null; mob_out: string | null; shift: string }
 interface WBS { code: string; name: string; pm100: number | null }
@@ -153,7 +154,10 @@ ${sections.agenda && notes.agenda ? `<div class="section">
     <div style={{ padding: '24px', maxWidth: '900px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Pre-Planning Report</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Pre-Planning Report</h1>
+            <HelpButton panelId="pre-planning-report" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>Generate a meeting-ready summary of all project details</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
