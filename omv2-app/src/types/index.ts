@@ -832,7 +832,7 @@ export interface CurrencyRate { code: string; name: string; rate: number }
 export interface ShiftPattern { id: string; name: string; day: Record<string, number>; night: Record<string, number> }
 export interface RoleAlias { from: string; to: string }
 export interface MikaRow { wbs: string; pm80: number; pm100: number; description: string }
-export interface InductionPerson { name: string; company: string; [key: string]: unknown }
+export interface InductionPerson { name: string; company?: string; role?: string; courses: Record<string, unknown>; [key: string]: unknown }
 export interface Co2Config { emissionFactors?: Record<string, number>; [key: string]: unknown }
 export interface SapReconState { lastImport: string | null; fileName: string | null; rows: unknown[]; mapping: Record<string, string> }
 export interface ReportLogEntry { id: string; title: string; type: string; html: string; createdAt: string; createdBy: string }
