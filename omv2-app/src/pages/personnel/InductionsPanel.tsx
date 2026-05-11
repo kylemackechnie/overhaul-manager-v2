@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -433,9 +433,23 @@ export function InductionsPanel() {
   const [lessonsData, setLessonsData]     = useState<InductionPerson[]>([])
   const [coursesFile, setCoursesFile]     = useState('')
   const [lessonsFile, setLessonsFile]     = useState('')
-  const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))
-  const [loading, setLoading]             = useState(false)
+  const [refDate, setRefDate] = useState(today)
+  const [loading, setLoading] = useState(false)
   const today = new Date().toISOString().slice(0,10)
+
+  // Persist ref date per project in localStorage
+  const refDateKey = activeProject ? `inductions_refdate_${activeProject.id}` : null
+  function updateRefDate(d: string) {
+    setRefDate(d)
+    if (refDateKey) localStorage.setItem(refDateKey, d)
+  }
+
+  // Restore ref date when project changes
+  useEffect(() => {
+    if (!refDateKey) return
+    const saved = localStorage.getItem(refDateKey)
+    setRefDate(saved || today)
+  }, [refDateKey])
 
   // Session cache: avoid re-fetching resources every time the panel is opened
   const resourceCache = useRef<Record<string, Resource[]>>({})
@@ -553,38 +567,42 @@ export function InductionsPanel() {
   }
 
   // ── Matching — merge courses + lessons by name ────────────────────────────
+  // Expensive O(resources × inductionData) — memoised, does NOT depend on refDate
 
-  // Build a merged lookup: for each person in courses data, find best lessons match and merge HRWL keys
-  const mergedData: InductionPerson[] = inductionData.map(person => {
-    let bestLesson: InductionPerson | null = null, bestScore = 0
-    lessonsData.forEach(lp => {
-      const s = nameSimilarity(person.name, lp.name)
-      if (s > bestScore) { bestScore = s; bestLesson = lp }
+  const matched = useMemo(() => {
+    // Build merged dataset: courses base + lessons HRWL keys overlaid
+    const mergedData: InductionPerson[] = inductionData.map(person => {
+      let bestLesson: InductionPerson | null = null, bestScore = 0
+      lessonsData.forEach(lp => {
+        const s = nameSimilarity(person.name, lp.name)
+        if (s > bestScore) { bestScore = s; bestLesson = lp }
+      })
+      if (!bestLesson || bestScore < 0.8) return person
+      const mergedCourses = { ...person.courses }
+      HRWL_KEYS.forEach(k => {
+        const lc = (bestLesson as InductionPerson).courses[k]
+        if (lc && lc.status !== 'na') mergedCourses[k] = lc
+      })
+      return { ...person, courses: mergedCourses }
     })
-    if (!bestLesson || bestScore < 0.8) return person
-    const mergedCourses = { ...person.courses }
-    HRWL_KEYS.forEach(k => {
-      const lc = (bestLesson as InductionPerson).courses[k]
-      if (lc && lc.status !== 'na') mergedCourses[k] = lc
+
+    const lessonsOnlyData: InductionPerson[] = lessonsData.filter(lp =>
+      !inductionData.some(cp => nameSimilarity(cp.name, lp.name) >= 0.8)
+    )
+    const allInductionData = [...mergedData, ...lessonsOnlyData]
+
+    return resources.map(r => {
+      let best: InductionPerson | null = null, bestScore = 0
+      allInductionData.forEach(p => {
+        const s = nameSimilarity(r.name, p.name)
+        if (s > bestScore) { bestScore = s; best = p }
+      })
+      return { resource: r, match: bestScore >= 0.8 ? best : null, score: bestScore }
     })
-    return { ...person, courses: mergedCourses }
-  })
+  }, [inductionData, lessonsData, resources])
 
-  // Also include lessons-only people (in lessons but not in courses) so they can match resources
-  const lessonsOnlyData: InductionPerson[] = lessonsData.filter(lp => {
-    return !inductionData.some(cp => nameSimilarity(cp.name, lp.name) >= 0.8)
-  })
-
-  const allInductionData = [...mergedData, ...lessonsOnlyData]
-
-  const matched = resources.map(r => {
-    let best: InductionPerson | null = null, bestScore = 0
-    allInductionData.forEach(p => {
-      const s = nameSimilarity(r.name, p.name)
-      if (s > bestScore) { bestScore = s; best = p }
-    })
-    return { resource: r, match: bestScore >= 0.8 ? best : null, score: bestScore }
-  })
+  // allInductionData length for UI guards — derived cheaply from matched
+  const hasInductionData = inductionData.length > 0 || lessonsData.length > 0
 
   // ── Status counting ───────────────────────────────────────────────────────
 
@@ -646,13 +664,13 @@ export function InductionsPanel() {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <label style={{ fontSize: '11px', color: 'var(--text3)' }}>Ref date</label>
-            <input type="date" className="input" value={refDate} onChange={e => setRefDate(e.target.value)}
+            <input type="date" className="input" value={refDate} onChange={e => updateRefDate(e.target.value)}
               style={{ fontSize: '11px', width: '140px' }} />
           </div>
           {refDate !== today && (
-            <button className="btn btn-xs btn-secondary" onClick={() => setRefDate(today)}>Today</button>
+            <button className="btn btn-xs btn-secondary" onClick={() => updateRefDate(today)}>Today</button>
           )}
-          {allInductionData.length > 0 && (<>
+          {hasInductionData && (<>
             <button className="btn btn-secondary" onClick={() => doPrint('wall')} title="Print wall/noticeboard sheet (landscape)">
               🖨 Wall Sheet
             </button>
@@ -693,7 +711,7 @@ export function InductionsPanel() {
       )}
 
       {/* KPIs */}
-      {resources.length > 0 && allInductionData.length > 0 && (
+      {resources.length > 0 && hasInductionData && (
         <div className="kpi-grid" style={{ marginBottom: '16px' }}>
           <div className="kpi-card" style={{ borderTopColor: 'var(--green)' }}>
             <div className="kpi-val" style={{ color: 'var(--green)' }}>{allValid}</div>
@@ -732,14 +750,14 @@ export function InductionsPanel() {
       {!loading && resources.length === 0 && (
         <div className="empty-state"><div className="icon">👥</div><h3>No resources</h3><p>Add people to Resources first.</p></div>
       )}
-      {!loading && resources.length > 0 && allInductionData.length === 0 && lessonsData.length === 0 && (
+      {!loading && resources.length > 0 && !hasInductionData && (
         <div className="empty-state"><div className="icon">📄</div><h3>No induction data</h3>
           <p>Load the Courses export and/or the Lessons export from SE Learning. Both files will be merged automatically.</p>
         </div>
       )}
 
       {/* Table */}
-      {resources.length > 0 && allInductionData.length > 0 && (
+      {resources.length > 0 && hasInductionData && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
             <thead>
