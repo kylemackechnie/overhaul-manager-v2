@@ -686,9 +686,8 @@ export function nrgVariationActual(
 }
 
 /**
- * nrgInvoiceActual — sum of supplier invoices + expenses + approved variations
- * for a given TCE item_id. This is the non-labour path.
- * NOTE: Do NOT also call nrgVariationActual() in render — it's already here.
+ * nrgInvoiceActual — sum of supplier invoices + expenses for a given TCE item_id.
+ * Variations are excluded — their sell_total sits in Committed until a customer invoice covers them.
  */
 export function nrgInvoiceActual(
   itemId: string | null,
@@ -710,9 +709,7 @@ export function nrgInvoiceActual(
       return s + val
     }, 0)
 
-  const vnTotal = nrgVariationActual(itemId, variations)
-
-  return invTotal + expTotal + vnTotal
+  return invTotal + expTotal
 }
 
 /**
