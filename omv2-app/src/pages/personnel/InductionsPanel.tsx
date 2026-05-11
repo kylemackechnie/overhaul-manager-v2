@@ -433,9 +433,9 @@ export function InductionsPanel() {
   const [lessonsData, setLessonsData]     = useState<InductionPerson[]>([])
   const [coursesFile, setCoursesFile]     = useState('')
   const [lessonsFile, setLessonsFile]     = useState('')
+  const today = new Date().toISOString().slice(0,10)
   const [refDate, setRefDate] = useState(today)
   const [loading, setLoading] = useState(false)
-  const today = new Date().toISOString().slice(0,10)
 
   // Persist ref date per project in localStorage
   const refDateKey = activeProject ? `inductions_refdate_${activeProject.id}` : null
