@@ -4,6 +4,294 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 
+// ── Print helpers ──────────────────────────────────────────────────────────
+
+const SEP_SQP_KEYS = ['sep_trades','sep_project','sep_contractors','sqp_gt','sqp_project','sqp_trades','sqp_contractors']
+const SITE_KEYS    = ['hydraulic','rad_torque','confined_space','hytorc','grinder']
+
+const SHORT: Record<string,string> = {
+  sep_trades:'SEP Trades', sep_project:'SEP Project', sep_contractors:'SEP Contr.',
+  sqp_gt:'SQP GT', sqp_project:'SQP Project', sqp_trades:'SQP Trades', sqp_contractors:'SQP Contr.',
+  hydraulic:'Hydraulic', rad_torque:'Rad Torque', confined_space:'Confined Sp.', hytorc:'Hytorc', grinder:'Grinder',
+}
+
+function printCss() {
+  return `
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:9pt;color:#111;background:#fff;}
+    h1{font-size:13pt;font-weight:700;}
+    h2{font-size:10pt;font-weight:700;margin:0;}
+    .meta{font-size:8pt;color:#555;margin-top:2px;}
+    table{width:100%;border-collapse:collapse;}
+    th,td{border:0.5px solid #bbb;padding:3px 5px;font-size:7.5pt;vertical-align:middle;}
+    th{background:#1e293b;color:#f1f5f9;font-weight:600;text-align:center;}
+    th.left,td.left{text-align:left;}
+    .sep-border-l{border-left:2px solid #334155!important;}
+    .sep-border-r{border-right:2px solid #334155!important;}
+    .ok   {background:#dcfce7;color:#166534;text-align:center;border-radius:2px;padding:1px 3px;font-size:6.5pt;font-weight:600;display:inline-block;white-space:nowrap;}
+    .exp  {background:#fee2e2;color:#991b1b;text-align:center;border-radius:2px;padding:1px 3px;font-size:6.5pt;font-weight:600;display:inline-block;white-space:nowrap;}
+    .warn {background:#fef3c7;color:#92400e;text-align:center;border-radius:2px;padding:1px 3px;font-size:6.5pt;font-weight:600;display:inline-block;white-space:nowrap;}
+    .miss {background:#fce7f3;color:#9d174d;text-align:center;border-radius:2px;padding:1px 3px;font-size:6.5pt;font-weight:600;display:inline-block;white-space:nowrap;}
+    .row-exp{background:#fff5f5;}
+    .row-miss{background:#fdf4ff;}
+    .kpi-strip{display:flex;border:0.5px solid #bbb;border-radius:4px;overflow:hidden;margin:8px 0;}
+    .kpi{flex:1;padding:6px 8px;text-align:center;border-right:0.5px solid #bbb;}
+    .kpi:last-child{border-right:none;}
+    .kpi-val{font-size:16pt;font-weight:700;}
+    .kpi-lbl{font-size:7pt;color:#555;margin-top:1px;}
+    .green{color:#166534;} .red{color:#991b1b;} .amber{color:#92400e;} .gray{color:#555;}
+    .alert{background:#fff7ed;border-left:3px solid #f59e0b;padding:6px 8px;margin:8px 0;font-size:8pt;color:#78350f;border-radius:0 3px 3px 0;}
+    .alert strong{display:block;font-size:8.5pt;margin-bottom:2px;}
+    .section-head{background:#1e293b;color:#f1f5f9;font-size:8pt;font-weight:700;padding:5px 8px;margin:12px 0 0;letter-spacing:.04em;text-transform:uppercase;}
+    .legend{display:flex;gap:14px;margin-top:8px;font-size:7pt;color:#555;flex-wrap:wrap;}
+    .legend span{display:inline-flex;align-items:center;gap:3px;}
+    .page-header{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:8px;}
+    @media print{
+      @page{margin:12mm 10mm;}
+      .no-break{page-break-inside:avoid;}
+      .page-break{page-break-before:always;}
+    }
+  `
+}
+
+type MatchRow = { resource: Resource; match: InductionPerson | null; score: number }
+
+function cellHtml(cs: CourseStatus | undefined, refDate: string, today: string): string {
+  if (!cs || cs.status === 'na') return '<td style="text-align:center;color:#aaa;">—</td>'
+  const expired  = cs.status !== 'na' && !cs.noExpiry && cs.expISO ? cs.expISO < refDate : false
+  const expToday = cs.status !== 'na' && !cs.noExpiry && cs.expISO ? cs.expISO < today   : false
+  if (expired && expToday) return `<td style="text-align:center;"><span class="exp">EXPIRED<br>${cs.exp}</span></td>`
+  if (expired)             return `<td style="text-align:center;"><span class="warn">EXPIRING<br>${cs.exp}</span></td>`
+  return `<td style="text-align:center;"><span class="ok">${cs.noExpiry ? '∞' : cs.exp}</span></td>`
+}
+
+// ── Wall sheet (landscape, 1 page) ────────────────────────────────────────
+
+function buildWallSheet(
+  rows: MatchRow[], projectName: string, refDate: string, today: string,
+  expiringOnSite: { name: string; mobOut: string; courses: string[] }[],
+  kpis: { allValid: number; someExpired: number; notFound: number },
+) {
+  const sepCols  = INDUCTION_COURSES.filter(c => SEP_SQP_KEYS.includes(c.key))
+  const otherKeys = INDUCTION_COURSES.filter(c => SITE_KEYS.includes(c.key))
+
+  const headerCells = [
+    `<th class="left sep-border-l" style="min-width:120px">Name</th>`,
+    `<th class="left" style="min-width:80px">Role</th>`,
+    `<th class="left" style="min-width:100px">Mob In → Out</th>`,
+    ...sepCols.map((c, i) =>
+      `<th${i === sepCols.length - 1 ? ' class="sep-border-r"' : ''}>${SHORT[c.key]}</th>`
+    ),
+    `<th style="color:#94a3b8;background:#334155;">Other certs</th>`,
+  ].join('')
+
+  const bodyRows = rows.map(m => {
+    const p = m.match
+    const mobStr = `${m.resource.mob_in || '—'} → ${m.resource.mob_out || '—'}`
+    if (!p) {
+      return `<tr class="row-miss">
+        <td class="left sep-border-l" style="font-weight:700">${m.resource.name}</td>
+        <td class="left" style="color:#555">${m.resource.role || '—'}</td>
+        <td class="left" style="color:#555">${mobStr}</td>
+        <td colspan="${sepCols.length + 1}" class="sep-border-r" style="color:#9d174d">
+          <span class="miss">NOT FOUND IN SYSTEM</span>
+        </td>
+      </tr>`
+    }
+    const hasExpired = INDUCTION_COURSES.some(c => {
+      const cs = p.courses[c.key]
+      return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < refDate
+    })
+    const rowClass = hasExpired ? 'row-exp' : ''
+    const sepCells = sepCols.map((c, i) =>
+      cellHtml(p.courses[c.key], refDate, today)
+        .replace('<td', `<td${i === sepCols.length - 1 ? ' class="sep-border-r"' : ''}`)
+    ).join('')
+
+    // "Other certs" summary
+    const otherValid   = otherKeys.filter(c => { const cs = p.courses[c.key]; return cs && cs.status !== 'na' && !(cs.expISO && cs.expISO < refDate) }).length
+    const otherExpired = otherKeys.filter(c => { const cs = p.courses[c.key]; return cs && cs.expISO && cs.expISO < refDate }).length
+    const otherSummary = otherValid === 0 && otherExpired === 0
+      ? '<td style="text-align:center;color:#aaa;">—</td>'
+      : `<td style="text-align:center;font-size:7pt;color:#555;">${otherValid > 0 ? `<span class="ok">${otherValid} valid</span> ` : ''}${otherExpired > 0 ? `<span class="exp">${otherExpired} exp.</span>` : ''}</td>`
+
+    return `<tr class="${rowClass}">
+      <td class="left sep-border-l" style="font-weight:700">${m.resource.name}${m.score < 1 ? `<span style="font-size:6.5pt;color:#b45309;margin-left:3px">≈ ${p.name}</span>` : ''}</td>
+      <td class="left" style="color:#555">${m.resource.role || '—'}</td>
+      <td class="left" style="color:#555;white-space:nowrap">${mobStr}</td>
+      ${sepCells}
+      ${otherSummary}
+    </tr>`
+  }).join('')
+
+  const alertHtml = expiringOnSite.length > 0
+    ? `<div class="alert"><strong>⚠ Expiring before mob-out</strong>${expiringOnSite.map(w => `${w.name} (off site ${w.mobOut}) — ${w.courses.join(', ')}`).join('<br>')}</div>`
+    : ''
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>HSE Induction Status — ${projectName}</title>
+  <style>${printCss()}</style>
+  </head><body>
+  <div class="page-header">
+    <h1>HSE Induction Status — ${projectName}</h1>
+    <div class="meta">Printed ${new Date().toLocaleDateString('en-AU')} · Ref date ${refDate} · ${rows.length} resources</div>
+  </div>
+  <div class="kpi-strip">
+    <div class="kpi"><div class="kpi-val green">${kpis.allValid}</div><div class="kpi-lbl">All valid</div></div>
+    <div class="kpi"><div class="kpi-val red">${kpis.someExpired}</div><div class="kpi-lbl">Expired</div></div>
+    <div class="kpi"><div class="kpi-val amber">${expiringOnSite.length}</div><div class="kpi-lbl">Expiring on-site</div></div>
+    <div class="kpi"><div class="kpi-val gray">${kpis.notFound}</div><div class="kpi-lbl">Not in system</div></div>
+  </div>
+  ${alertHtml}
+  <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+  <div class="legend">
+    <span><span class="ok">VALID</span> Current</span>
+    <span><span class="warn">EXPIRING</span> Expires before mob-out</span>
+    <span><span class="exp">EXPIRED</span> Already expired</span>
+    <span><span class="miss">NOT FOUND</span> No SE Learning record</span>
+    <span style="margin-left:auto;font-style:italic;">SEP/SQP columns bordered · site certs summarised</span>
+  </div>
+  </body></html>`
+}
+
+// ── HSE Officer report (multi-page, all courses) ──────────────────────────
+
+function buildHseReport(
+  rows: MatchRow[], projectName: string, refDate: string, today: string,
+  expiringOnSite: { name: string; mobOut: string; courses: string[] }[],
+  kpis: { allValid: number; someExpired: number; notFound: number },
+) {
+  // Action required rows — expired any course, or not found
+  const actionRows = rows.filter(m => {
+    if (!m.match) return true
+    return INDUCTION_COURSES.some(c => {
+      const cs = m.match!.courses[c.key]
+      return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < refDate
+    })
+  })
+
+  const actionTableRows = actionRows.flatMap(m => {
+    if (!m.match) {
+      return [`<tr class="row-miss">
+        <td class="left" style="font-weight:700;color:#7c3aed">${m.resource.name}</td>
+        <td class="left" style="color:#555">${m.resource.role || '—'}</td>
+        <td><span class="miss">Not found</span></td>
+        <td class="left" colspan="2" style="color:#9d174d">No SE Learning record matched</td>
+      </tr>`]
+    }
+    return INDUCTION_COURSES
+      .filter(c => { const cs = m.match!.courses[c.key]; return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < refDate })
+      .map(c => {
+        const cs = m.match!.courses[c.key]
+        const expToday = cs.expISO! < today
+        return `<tr class="row-exp">
+          <td class="left" style="font-weight:700">${m.resource.name}</td>
+          <td class="left" style="color:#555">${m.resource.role || '—'}</td>
+          <td><span class="${expToday ? 'exp' : 'warn'}">${expToday ? 'Expired' : 'Expiring'}</span></td>
+          <td class="left">${SHORT[c.key]}</td>
+          <td class="left" style="color:#991b1b">${cs.exp}</td>
+        </tr>`
+      })
+  }).join('')
+
+  // Full register — all courses
+  const sepCols  = INDUCTION_COURSES.filter(c => SEP_SQP_KEYS.includes(c.key))
+  const siteCols = INDUCTION_COURSES.filter(c => SITE_KEYS.includes(c.key))
+
+  const fullHeaderCells = [
+    `<th class="left" style="min-width:110px">Name</th>`,
+    `<th class="left" style="min-width:72px">Role</th>`,
+    `<th class="left" style="min-width:100px">Mob In → Out</th>`,
+    ...sepCols.map((c, i) =>
+      `<th${i === 0 ? ' class="sep-border-l"' : ''}${i === sepCols.length - 1 ? ' class="sep-border-r"' : ''}>${SHORT[c.key]}</th>`
+    ),
+    ...siteCols.map(c => `<th style="color:#94a3b8;background:#334155;">${SHORT[c.key]}</th>`),
+  ].join('')
+
+  const fullBodyRows = rows.map(m => {
+    const p = m.match
+    const mobStr = `${m.resource.mob_in || '—'} → ${m.resource.mob_out || '—'}`
+    if (!p) {
+      return `<tr class="row-miss">
+        <td class="left sep-border-l" style="font-weight:700;color:#7c3aed">${m.resource.name}</td>
+        <td class="left" style="color:#9d174d">${m.resource.role || '—'}</td>
+        <td class="left" style="color:#555">${mobStr}</td>
+        <td colspan="${sepCols.length + siteCols.length}" style="color:#9d174d">
+          <span class="miss">NOT FOUND IN SYSTEM</span>
+        </td>
+      </tr>`
+    }
+    const hasExpired = INDUCTION_COURSES.some(c => { const cs = p.courses[c.key]; return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < refDate })
+    const rowClass = hasExpired ? 'row-exp' : ''
+    const sepCells = sepCols.map((c, i) => {
+      const raw = cellHtml(p.courses[c.key], refDate, today)
+      if (i === 0) return raw.replace('<td', '<td class="sep-border-l"')
+      if (i === sepCols.length - 1) return raw.replace('<td', '<td class="sep-border-r"')
+      return raw
+    }).join('')
+    const siteCells = siteCols.map(c => cellHtml(p.courses[c.key], refDate, today)).join('')
+    return `<tr class="${rowClass}">
+      <td class="left" style="font-weight:700">${m.resource.name}${m.score < 1 ? `<span style="font-size:6.5pt;color:#b45309;margin-left:3px">≈ ${p.name}</span>` : ''}</td>
+      <td class="left" style="color:#555">${m.resource.role || '—'}</td>
+      <td class="left" style="color:#555;white-space:nowrap">${mobStr}</td>
+      ${sepCells}${siteCells}
+    </tr>`
+  }).join('')
+
+  const alertHtml = expiringOnSite.length > 0
+    ? `<div class="alert"><strong>⚠ Expiring before mob-out</strong>${expiringOnSite.map(w => `${w.name} (off site ${w.mobOut}) — ${w.courses.join(', ')}`).join('<br>')}</div>`
+    : ''
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>HSE Induction Compliance Report — ${projectName}</title>
+  <style>${printCss()}</style>
+  </head><body>
+  <div class="page-header">
+    <h1>HSE Induction Compliance Report</h1>
+    <div class="meta">${projectName} · Printed ${new Date().toLocaleDateString('en-AU')} · Ref date ${refDate}</div>
+  </div>
+  <div class="kpi-strip">
+    <div class="kpi"><div class="kpi-val green">${kpis.allValid}</div><div class="kpi-lbl">All valid</div></div>
+    <div class="kpi"><div class="kpi-val red">${kpis.someExpired}</div><div class="kpi-lbl">Expired</div></div>
+    <div class="kpi"><div class="kpi-val amber">${expiringOnSite.length}</div><div class="kpi-lbl">Expiring on-site</div></div>
+    <div class="kpi"><div class="kpi-val gray">${kpis.notFound}</div><div class="kpi-lbl">Not in system</div></div>
+  </div>
+  ${alertHtml}
+  <div class="section-head">Action required — expired or missing</div>
+  <table class="no-break"><thead><tr>
+    <th class="left">Name</th><th class="left">Role</th><th>Status</th><th class="left">Course</th><th class="left">Expired / Status</th>
+  </tr></thead><tbody>${actionTableRows || '<tr><td colspan="5" style="text-align:center;color:#555;padding:8px;">No issues — all personnel current</td></tr>'}</tbody></table>
+  <div class="page-break"></div>
+  <div class="page-header">
+    <h1>Full Induction Register</h1>
+    <div class="meta">${projectName} · Ref date ${refDate} · ${rows.length} resources</div>
+  </div>
+  <table><thead><tr>${fullHeaderCells}</tr></thead><tbody>${fullBodyRows}</tbody></table>
+  <div class="legend">
+    <span><span class="ok">VALID</span> Current</span>
+    <span><span class="warn">EXPIRING</span> Expires before mob-out</span>
+    <span><span class="exp">EXPIRED</span> Already expired</span>
+    <span><span class="miss">NOT FOUND</span> No SE Learning record</span>
+    <span style="margin-left:auto;font-style:italic;">SEP/SQP columns bordered · site certs shaded</span>
+  </div>
+  </body></html>`
+}
+
+function openPrint(html: string, landscape = false) {
+  const w = window.open('', '_blank')
+  if (!w) { alert('Allow popups to print'); return }
+  if (landscape) {
+    // inject landscape page rule before closing </style>
+    const withLandscape = html.replace('@media print{', '@media print{@page{size:A4 landscape;margin:10mm 8mm;}')
+    w.document.write(withLandscape)
+  } else {
+    w.document.write(html)
+  }
+  w.document.close()
+  w.focus()
+  setTimeout(() => { w.print(); w.close() }, 400)
+}
+
 // ── Course definitions ─────────────────────────────────────────────────────
 
 // labels must match substrings of the SE Learning export column headers (case-insensitive)
@@ -179,6 +467,18 @@ export function InductionsPanel() {
     }
   })
 
+  // ── Print handlers ────────────────────────────────────────────────────────
+
+  function doPrint(type: 'wall' | 'report') {
+    if (!activeProject || matched.length === 0) return
+    const projectName = activeProject.name || 'Project'
+    const kpis = { allValid, someExpired, notFound }
+    const html = type === 'wall'
+      ? buildWallSheet(matched, projectName, refDate, today, expiringOnSite, kpis)
+      : buildHseReport(matched, projectName, refDate, today, expiringOnSite, kpis)
+    openPrint(html, type === 'wall')
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   const BADGE = {
@@ -207,6 +507,14 @@ export function InductionsPanel() {
           {refDate !== today && (
             <button className="btn btn-xs btn-secondary" onClick={() => setRefDate(today)}>Today</button>
           )}
+          {matched.length > 0 && (<>
+            <button className="btn btn-secondary" onClick={() => doPrint('wall')} title="Print wall/noticeboard sheet (landscape)">
+              🖨 Wall Sheet
+            </button>
+            <button className="btn btn-secondary" onClick={() => doPrint('report')} title="Print full HSE officer compliance report">
+              🖨 HSE Report
+            </button>
+          </>)}
           <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
             📂 Load Induction Report
             <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
