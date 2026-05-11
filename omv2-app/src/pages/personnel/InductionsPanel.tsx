@@ -6,19 +6,22 @@ import { toast } from '../../components/ui/Toast'
 
 // ── Course definitions ─────────────────────────────────────────────────────
 
-const INDUCTION_COURSES = [
-  { key: 'sep_trades',      label: 'SE Passport (Trades)',           shortLabel: 'SEP\nTrades',  col: 2  },
-  { key: 'sep_project',     label: 'SE Passport (Project)',          shortLabel: 'SEP\nProject', col: 3  },
-  { key: 'sep_contractors', label: 'SE Passport (Contractors)',      shortLabel: 'SEP\nContract',col: 4  },
-  { key: 'sqp_gt',          label: 'Quality Passport (GT)',          shortLabel: 'SQP\nGT',      col: 5  },
-  { key: 'sqp_project',     label: 'Quality Passport (Project)',     shortLabel: 'SQP\nProject', col: 6  },
-  { key: 'sqp_trades',      label: 'Quality Passport (Trades)',      shortLabel: 'SQP\nTrades',  col: 7  },
-  { key: 'sqp_contractors', label: 'Quality Passport (Contractors)', shortLabel: 'SQP\nContr',   col: 8  },
-  { key: 'hydraulic',       label: 'Hydraulic Tensioning',           shortLabel: 'Hydraulic',    col: 10 },
-  { key: 'rad_torque',      label: 'Rad Torque Safety',              shortLabel: 'Rad\nTorque',  col: 11 },
-  { key: 'confined_space',  label: 'Confined Space',                 shortLabel: 'Confined\nSp', col: 12 },
-  { key: 'hytorc',          label: 'Hytorc Stealth',                 shortLabel: 'Hytorc',       col: 13 },
-  { key: 'grinder',         label: 'Grinder Safety',                 shortLabel: 'Grinder',      col: 14 },
+// labels must match substrings of the SE Learning export column headers (case-insensitive)
+// Preferred keywords are listed first; the first match wins. Hardcoded col fallbacks removed.
+const INDUCTION_COURSES: { key: string; labels: string[]; shortLabel: string }[] = [
+  { key: 'sep_trades',      labels: ['SIEMENS ENERGY PASSPORT (TRADES)'],                          shortLabel: 'SEP\nTrades'   },
+  { key: 'sep_project',     labels: ['SIEMENS ENERGY PASSPORT (PROJECT PERSONNEL)'],               shortLabel: 'SEP\nProject'  },
+  { key: 'sep_contractors', labels: ['SIEMENS ENERGY PASSPORT (CONTRACTORS)'],                     shortLabel: 'SEP\nContract' },
+  { key: 'sqp_gt',          labels: ['SIEMENS QUALITY PASSPORT (GT PROJECT PERSONNEL)'],           shortLabel: 'SQP\nGT'       },
+  { key: 'sqp_project',     labels: ['SIEMENS QUALITY PASSPORT (PROJECT PERSONNEL)'],              shortLabel: 'SQP\nProject'  },
+  { key: 'sqp_trades',      labels: ['SIEMENS QUALITY PASSPORT (TRADES)'],                        shortLabel: 'SQP\nTrades'   },
+  { key: 'sqp_contractors', labels: ['SIEMENS QUALITY PASSPORT (CONTRACTORS)'],                   shortLabel: 'SQP\nContr'    },
+  { key: 'hydraulic',       labels: ['HYDRAULIC TENSIONING'],                                      shortLabel: 'Hydraulic'     },
+  { key: 'rad_torque',      labels: ['RAD TORQUE SAFETY'],                                         shortLabel: 'Rad\nTorque'   },
+  // Prefer the Siemens-specific confined space column over the generic one
+  { key: 'confined_space',  labels: ['CONFINED SPACE AWARENESS (SIEMENS ENERGY)', 'CONFINED SPACE AWARENESS'], shortLabel: 'Confined\nSp' },
+  { key: 'hytorc',          labels: ['HYTORC STEALTH'],                                            shortLabel: 'Hytorc'        },
+  { key: 'grinder',         labels: ['GRINDER SAFETY'],                                            shortLabel: 'Grinder'       },
 ]
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -102,7 +105,17 @@ export function InductionsPanel() {
       if (rows.length < 2) { toast('No data in file', 'error'); return }
 
       const header = (rows[0] as string[]).map(h => String(h||'').toUpperCase().trim())
-      const colFor = (kw: string) => header.findIndex(h => h.includes(kw))
+      // Returns the first column index that matches any of the given keywords (checked in priority order)
+      const colFor = (...keywords: string[]) => {
+        for (const kw of keywords) {
+          const idx = header.findIndex(h => h.includes(kw.toUpperCase()))
+          if (idx > -1) return idx
+        }
+        return -1
+      }
+      // Pre-compute column indices once per file
+      const courseColMap: Record<string, number> = {}
+      INDUCTION_COURSES.forEach(c => { courseColMap[c.key] = colFor(...c.labels) })
 
       const people: InductionPerson[] = []
       for (let i = 1; i < rows.length; i++) {
@@ -111,8 +124,8 @@ export function InductionsPanel() {
         if (!name) continue
         const courses: Record<string, CourseStatus> = {}
         INDUCTION_COURSES.forEach(c => {
-          const colIdx = colFor(c.label.toUpperCase()) > -1 ? colFor(c.label.toUpperCase()) : c.col
-          courses[c.key] = parseCourseVal(r[colIdx], today)
+          const colIdx = courseColMap[c.key]
+          courses[c.key] = colIdx > -1 ? parseCourseVal(r[colIdx], today) : { status: 'na' }
         })
         people.push({ name, courses, company: String(r[colFor('COMPANY')]||''), role: String(r[colFor('ROLE')]||'') })
       }
