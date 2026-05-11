@@ -198,6 +198,8 @@ export async function exportTceAll(
   }[]
   const nrgInvSorted = ((nrgInvRes.data || []) as {week_ending:string|null;eur_spot_rate:number|null}[])
     .filter(i => i.week_ending).sort((a,b) => a.week_ending!.localeCompare(b.week_ending!))
+  if (!slTemplateResp.ok) throw new Error(`SL template fetch failed: ${slTemplateResp.status} ${slTemplateResp.url}`)
+  if (!fullTemplateResp.ok) throw new Error(`Full template fetch failed: ${fullTemplateResp.status} ${fullTemplateResp.url}`)
   const slTemplateBuf   = await slTemplateResp.arrayBuffer()
   const fullTemplateBuf = await fullTemplateResp.arrayBuffer()
 
