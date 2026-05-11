@@ -89,9 +89,15 @@ const OH_H: Record<string, number> = {
 const OH_D: Record<string, number> = {
   A:23,B:23,C:147,D:406,E:148,F:149,
   G:397,H:24,I:25,J:26,K:150,L:27,M:28,N:26,O:26,P:150,
-  Q:151,R:44,S:151,T:44,U:151,V:44,W:151,X:44,Y:151,Z:44,
-  AA:151,AB:44,AC:151,AD:44,AE:151,AF:44,AG:151,AH:44,AI:151,AJ:44,
-  AK:151,AL:44,AM:45,AN:44,AO:44,AP:46,AQ:46,AR:152,AS:153,AT:149,AU:149,
+  // Week hrs cols (Q,S,U...): use style 45 (numFmt=0, General — avoids date format of 151)
+  // Week cost cols (R,T,V...): use style 26 (numFmt=44, dollar accounting)
+  Q:45,R:26,S:45,T:26,U:45,V:26,W:45,X:26,Y:45,Z:26,
+  AA:45,AB:26,AC:45,AD:26,AE:45,AF:26,AG:45,AH:26,AI:45,AJ:26,
+  AK:45,AL:26,
+  // AO=Total Hrs (general), AP=Total Cost (dollar), AQ=Gang Rate (dollar)
+  AM:45,AN:26,AO:45,AP:26,AQ:26,
+  // AR=% Hrs, AS=% Cost (style 153 = numFmt=10 = percentage)
+  AR:153,AS:153,AT:149,AU:149,
 }
 const OH_COLS = [
   'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
