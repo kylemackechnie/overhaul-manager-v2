@@ -58,8 +58,8 @@ type MatchRow = { resource: Resource; match: InductionPerson | null; score: numb
 
 function cellHtml(cs: CourseStatus | undefined, refDate: string, today: string): string {
   if (!cs || cs.status === 'na') return '<td style="text-align:center;color:#aaa;">—</td>'
-  const expired  = cs.status !== 'na' && !cs.noExpiry && cs.expISO ? cs.expISO < refDate : false
-  const expToday = cs.status !== 'na' && !cs.noExpiry && cs.expISO ? cs.expISO < today   : false
+  const expired  = !cs.noExpiry && cs.expISO ? cs.expISO < refDate : false
+  const expToday = !cs.noExpiry && cs.expISO ? cs.expISO < today   : false
   if (expired && expToday) return `<td style="text-align:center;"><span class="exp">EXPIRED<br>${cs.exp}</span></td>`
   if (expired)             return `<td style="text-align:center;"><span class="warn">EXPIRING<br>${cs.exp}</span></td>`
   return `<td style="text-align:center;"><span class="ok">${cs.noExpiry ? '∞' : cs.exp}</span></td>`
