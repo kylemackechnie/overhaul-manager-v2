@@ -57,7 +57,7 @@ function AccommodationPanelDesktop() {
   const [bulkAddModal, setBulkAddModal] = useState(false)
   const [selAccom, setSelAccom] = useState<Set<string>>(new Set())
   const [bulkEditModal, setBulkEditModal] = useState(false)
-  const [bulkEditForm, setBulkEditForm] = useState({ check_in:'', check_out:'', nightly_rate:0, applyRate:false })
+  const [bulkEditForm, setBulkEditForm] = useState({ check_in:'', check_out:'', nightly_rate:0, applyRate:false, linked_po_id:'' })
   const [bulkForm, setBulkForm] = useState({ property:'', vendor:'', check_in:'', check_out:'', gm_pct:15, n:1, wbs:'' })
   const [form, setForm] = useState<AccomForm>(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -118,6 +118,7 @@ function AccommodationPanelDesktop() {
     const updates: Record<string,unknown> = {}
     if (bulkEditForm.check_in) updates.check_in = bulkEditForm.check_in
     if (bulkEditForm.check_out) updates.check_out = bulkEditForm.check_out
+    if (bulkEditForm.linked_po_id) updates.linked_po_id = bulkEditForm.linked_po_id === '__clear__' ? null : bulkEditForm.linked_po_id
     if (bulkEditForm.applyRate && bulkEditForm.nightly_rate > 0) {
       // Calc total_cost from nights × rate for each room — update individually
       for (const id of ids) {
@@ -341,7 +342,7 @@ function AccommodationPanelDesktop() {
             {selAccom.size > 0 && (
               <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',flexWrap:'wrap'}}>
                 <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{selAccom.size} selected</span>
-                <button className="btn btn-sm" onClick={()=>{setBulkEditForm({check_in:'',check_out:'',nightly_rate:0,applyRate:false});setBulkEditModal(true)}}>✏ Edit Dates</button>
+                <button className="btn btn-sm" onClick={()=>{setBulkEditForm({check_in:'',check_out:'',nightly_rate:0,applyRate:false,linked_po_id:''});setBulkEditModal(true)}}>✏ Edit Dates</button>
                 <button className="btn btn-sm" style={{color:'var(--red)',borderColor:'var(--red)'}} onClick={bulkDeleteAccom}>🗑 Delete Selected</button>
                 <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelAccom(new Set())}>✕ Clear</button>
               </div>
@@ -600,6 +601,18 @@ function AccommodationPanelDesktop() {
                   </div>
                 </div>
               )}
+              <div style={{marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--border)'}}>
+                <div className="fg">
+                  <label>Purchase Order</label>
+                  <select className="input" value={bulkEditForm.linked_po_id} onChange={e=>setBulkEditForm(f=>({...f,linked_po_id:e.target.value}))}>
+                    <option value="">— Leave unchanged —</option>
+                    <option value="__clear__">✕ Clear PO</option>
+                    {pos.map(po => (
+                      <option key={po.id} value={po.id}>{po.po_number}{po.vendor ? ` · ${po.vendor}` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div style={{marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--border)'}}>
                 <label style={{display:'flex',gap:'8px',alignItems:'center',fontSize:'12px',marginBottom:'6px'}}>
                   <input type="checkbox" checked={bulkEditForm.applyRate} onChange={e=>setBulkEditForm(f=>({...f,applyRate:e.target.checked}))} />
