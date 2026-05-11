@@ -4,7 +4,7 @@ title: Projects & Switching
 category: Getting Started
 order: 40
 summary: Every cost line, timesheet, and resource belongs to one project. Switch via the header pill, manage details in Project Settings, and group projects under Sites.
-relatedPanels: [project-settings, sites]
+relatedPanels: [project-settings]
 ---
 
 # Projects & Switching
@@ -59,12 +59,6 @@ Open it via the **⚙ gear icon** on the header project pill, or via the **Proje
 - **Wet Hire Shift Patterns** — for wet hire calendars
 
 Project-level WBS is the project root code; the broader WBS structure (sub-codes for each cost line) lives in the **WBS panel** under Cost Tracking.
-
-## Sites
-
-The **Sites** panel (admin-only, accessed via the File menu or User Management) manages the master list of sites. Each site has a name, client, and address. Sites group projects in the Project Picker and appear in cost reports.
-
-Sites with active projects can't be deleted — the panel shows project counts so you can see what's blocking. Sites with zero projects can be deleted freely.
 
 ## Project lifecycle
 

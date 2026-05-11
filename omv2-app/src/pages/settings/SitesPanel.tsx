@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import { HelpButton } from '../../components/HelpButton'
 import type { Site } from '../../types'
 
 const EMPTY = { name: '', client: '', address: '' }
@@ -66,10 +65,7 @@ export function SitesPanel() {
     <div style={{ padding: '24px', maxWidth: '700px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Sites</h1>
-            <HelpButton panelId="sites" />
-          </div>
+          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Sites</h1>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{sites.length} sites configured</p>
         </div>
         {isAdmin && <button className="btn btn-primary" onClick={openNew}>+ Add Site</button>}
