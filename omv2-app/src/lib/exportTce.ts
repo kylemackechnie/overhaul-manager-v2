@@ -239,15 +239,17 @@ export async function exportTceAll(
   const slRows:string[]=[]; let slRowNum=2
   for(const{hdr,dets}of groupLines(lines.filter(l=>l.source==='skilled'))){
     const hRow=slRowNum++; const detRows=dets.map(()=>slRowNum++)
+    // Full template SL layout: A=Service Order, D=Work Order, F=Scope No,
+    // G=Description, H=Scope Type, I=Task Resp, K=Comment, M=Est Hrs,
+    // N=Gang Rate, O=Est Total, W/X…AQ/AR=weeks
     const hc:Record<string,CellDef>={
-      A:{type:'s',value:strIdx(hdr.contract_scope||'')},B:{type:'s',value:strIdx('')},
-      C:{type:'s',value:strIdx('')},D:{type:'s',value:strIdx('')},
-      E:{type:'s',value:strIdx('')},F:{type:'s',value:strIdx('')},
-      G:{type:'s',value:strIdx(hdr.item_id||'')},
-      H:{type:'s',value:strIdx(hdr.description||'')},
-      I:{type:'s',value:strIdx(hdr.line_type==='group'?'H':hdr.line_type||'')},
-      J:{type:'s',value:strIdx((hdr.details as Record<string,unknown>)?.task_responsibility as string||'')},
-      K:{type:'s',value:strIdx(hdr.notes||'')},L:{type:'',value:null},
+      A:{type:'s',value:strIdx(hdr.contract_scope||'')},B:{type:'',value:null},
+      C:{type:'',value:null},D:{type:'s',value:strIdx(hdr.work_order||'')},
+      E:{type:'',value:null},F:{type:'s',value:strIdx(hdr.item_id||'')},
+      G:{type:'s',value:strIdx(hdr.description||'')},
+      H:{type:'s',value:strIdx(hdr.line_type==='group'?'H':hdr.line_type||'')},
+      I:{type:'s',value:strIdx((hdr.details as Record<string,unknown>)?.task_responsibility as string||'')},
+      J:{type:'',value:null},K:{type:'s',value:strIdx(hdr.notes||'')},L:{type:'',value:null},
     }
     if(detRows.length>0){
       const r0=detRows[0],r1=detRows[detRows.length-1]
@@ -263,13 +265,13 @@ export async function exportTceAll(
     for(let i=0;i<dets.length;i++){
       const d=dets[i],dr=detRows[i]
       const dc:Record<string,CellDef>={
-        A:{type:'s',value:strIdx(d.contract_scope||'')},B:{type:'s',value:strIdx(d.work_order||'')},
-        C:{type:'s',value:strIdx('')},D:{type:'s',value:strIdx('')},
-        E:{type:'s',value:strIdx('')},F:{type:'s',value:strIdx('')},
-        G:{type:'s',value:strIdx(d.item_id||'')},H:{type:'s',value:strIdx(d.description||'')},
-        I:{type:'s',value:strIdx(d.line_type||'')},
-        J:{type:'s',value:strIdx((d.details as Record<string,unknown>)?.task_responsibility as string||'')},
-        K:{type:'s',value:strIdx(d.notes||'')},L:{type:'',value:null},
+        A:{type:'s',value:strIdx(d.contract_scope||'')},B:{type:'',value:null},
+        C:{type:'',value:null},D:{type:'s',value:strIdx(d.work_order||'')},
+        E:{type:'',value:null},F:{type:'s',value:strIdx(d.item_id||'')},
+        G:{type:'s',value:strIdx(d.description||'')},
+        H:{type:'s',value:strIdx(d.line_type||'')},
+        I:{type:'s',value:strIdx((d.details as Record<string,unknown>)?.task_responsibility as string||'')},
+        J:{type:'',value:null},K:{type:'s',value:strIdx(d.notes||'')},L:{type:'',value:null},
         M:{type:d.estimated_qty?'n':'',value:d.estimated_qty||null},
         N:{type:d.tce_rate?'n':'',value:d.tce_rate||null},
         O:{type:d.tce_total?'n':'',value:d.tce_total||null},
