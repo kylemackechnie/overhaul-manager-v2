@@ -161,7 +161,7 @@ function buildHseReport(
   expiringOnSite: { name: string; mobOut: string; courses: string[] }[],
   kpis: { allValid: number; someExpired: number; notFound: number },
 ) {
-  // Action required rows — expired any course, or not found
+  // Action required: expired vs today OR expiring before refDate, OR not found
   const actionRows = rows.filter(m => {
     if (!m.match) return true
     return INDUCTION_COURSES.some(c => {
@@ -179,19 +179,21 @@ function buildHseReport(
         <td class="left" colspan="2" style="color:#9d174d">No SE Learning record matched</td>
       </tr>`]
     }
-    return INDUCTION_COURSES
-      .filter(c => { const cs = m.match!.courses[c.key]; return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < refDate })
-      .map(c => {
-        const cs = m.match!.courses[c.key]
-        const expToday = cs.expISO! < today
-        return `<tr class="row-exp">
-          <td class="left" style="font-weight:700">${m.resource.name}</td>
-          <td class="left" style="color:#555">${m.resource.role || '—'}</td>
-          <td><span class="${expToday ? 'exp' : 'warn'}">${expToday ? 'Expired' : 'Expiring'}</span></td>
-          <td class="left">${SHORT[c.key]}</td>
-          <td class="left" style="color:#991b1b">${cs.exp}</td>
-        </tr>`
-      })
+    const expiredCourses = INDUCTION_COURSES.filter(c => {
+      const cs = m.match!.courses[c.key]
+      return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < refDate
+    })
+    return expiredCourses.map(c => {
+      const cs = m.match!.courses[c.key]
+      const alreadyGone = cs.expISO! < today
+      return `<tr class="row-exp">
+        <td class="left" style="font-weight:700">${m.resource.name}</td>
+        <td class="left" style="color:#555">${m.resource.role || '—'}</td>
+        <td style="text-align:center"><span class="${alreadyGone ? 'exp' : 'warn'}">${alreadyGone ? 'EXPIRED' : 'EXPIRING'}</span></td>
+        <td class="left">${SHORT[c.key]}</td>
+        <td class="left" style="color:#991b1b">${cs.exp}</td>
+      </tr>`
+    })
   }).join('')
 
   // Full register — all courses
@@ -238,13 +240,40 @@ function buildHseReport(
     </tr>`
   }).join('')
 
-  const alertHtml = expiringOnSite.length > 0
-    ? `<div class="alert"><strong>⚠ Expiring before mob-out</strong>${expiringOnSite.map(w => `${w.name} (off site ${w.mobOut}) — ${w.courses.join(', ')}`).join('<br>')}</div>`
+  // Already-expired compact list: any cert where expISO < today
+  const alreadyExpiredLines = rows.flatMap(m => {
+    if (!m.match) return []
+    const expCourses = INDUCTION_COURSES
+      .filter(c => { const cs = m.match!.courses[c.key]; return cs && cs.status !== 'na' && !cs.noExpiry && cs.expISO && cs.expISO < today })
+      .map(c => `${SHORT[c.key]} (${m.match!.courses[c.key]?.exp})`)
+    return expCourses.length ? [`${m.resource.name} — ${expCourses.join(', ')}`] : []
+  })
+
+  // Not-found compact list
+  const notFoundLines = rows.filter(m => !m.match).map(m => m.resource.name)
+
+  const alreadyExpiredHtml = alreadyExpiredLines.length > 0
+    ? `<div class="alert alert-red"><strong>🚫 Already expired — must not be on site</strong>${alreadyExpiredLines.join('<br>')}</div>`
+    : ''
+
+  const expiringOnSiteHtml = expiringOnSite.length > 0
+    ? `<div class="alert"><strong>⚠ Expiring before mob-out — action required</strong>${expiringOnSite.map(w => `${w.name} (off site ${w.mobOut}) — ${w.courses.join(', ')}`).join('<br>')}</div>`
+    : ''
+
+  const notFoundHtml = notFoundLines.length > 0
+    ? `<div class="alert alert-purple"><strong>❓ Not found in SE Learning system</strong>${notFoundLines.join('<br>')}</div>`
     : ''
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>HSE Induction Compliance Report — ${projectName}</title>
-  <style>${printCss()}</style>
+  <style>${printCss()}
+    .alert-red{background:#fff5f5;border-left-color:#dc2626;color:#7f1d1d;}
+    .alert-red strong{color:#7f1d1d;}
+    .alert-purple{background:#fdf4ff;border-left-color:#9333ea;color:#581c87;}
+    .alert-purple strong{color:#581c87;}
+    .two-col{display:flex;gap:12px;}
+    .two-col>div{flex:1;}
+  </style>
   </head><body>
   <div class="page-header">
     <h1>HSE Induction Compliance Report</h1>
@@ -256,11 +285,15 @@ function buildHseReport(
     <div class="kpi"><div class="kpi-val amber">${expiringOnSite.length}</div><div class="kpi-lbl">Expiring on-site</div></div>
     <div class="kpi"><div class="kpi-val gray">${kpis.notFound}</div><div class="kpi-lbl">Not in system</div></div>
   </div>
-  ${alertHtml}
-  <div class="section-head">Action required — expired or missing</div>
+  ${alreadyExpiredHtml}
+  <div class="two-col">
+    <div>${expiringOnSiteHtml}</div>
+    <div>${notFoundHtml}</div>
+  </div>
+  <div class="section-head">Action required — all issues</div>
   <table class="no-break"><thead><tr>
-    <th class="left">Name</th><th class="left">Role</th><th>Status</th><th class="left">Course</th><th class="left">Expired / Status</th>
-  </tr></thead><tbody>${actionTableRows || '<tr><td colspan="5" style="text-align:center;color:#555;padding:8px;">No issues — all personnel current</td></tr>'}</tbody></table>
+    <th class="left">Name</th><th class="left">Role</th><th>Status</th><th class="left">Course</th><th class="left">Expiry date</th>
+  </tr></thead><tbody>${actionTableRows || '<tr><td colspan="5" style="text-align:center;color:#166534;padding:8px;">✓ No issues — all personnel current at ref date</td></tr>'}</tbody></table>
   <div class="page-break"></div>
   <div class="page-header">
     <h1>Full Induction Register</h1>
