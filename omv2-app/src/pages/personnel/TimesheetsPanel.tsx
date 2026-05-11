@@ -1745,7 +1745,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           )
         )
         // Only show for NRG-style timesheets (trades, management, seag, subcon)
-        const isTceType = ['trades','management','seag','subcon'].includes(dupModal.type || '')
+        const isTceType = ['trades','mgmt','seag','subcon'].includes(dupModal.type || '')
         const showTceOption = hasTce && isTceType
         return (
           <div className="modal-overlay">
