@@ -528,9 +528,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           const d = new Date(ds + 'T12:00:00'); d.setDate(d.getDate() + 7)
           const newDs = d.toISOString().slice(0, 10)
           newDays[newDs] = { ...(cell as object), dayType: autoType(newDs, holidays) }
-          // Clear both WO allocation types — they are date-specific and don't carry forward
+          // Clear WO allocations (date-specific) but keep nrgWoAllocations (TCE scope tags carry forward)
           delete (newDays[newDs] as Record<string,unknown>).woAllocations
-          delete (newDays[newDs] as Record<string,unknown>).nrgWoAllocations
         })
         return { ...m, days: newDays }
       } else if (mode === 'standard' && std) {
