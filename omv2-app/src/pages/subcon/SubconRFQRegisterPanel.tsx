@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { RfqResponseModal } from '../../components/subcon/RfqResponseModal'
 import { VendorsSentModal } from '../../components/subcon/VendorsSentModal'
 import { getQuotePdfSignedUrl, deleteQuotePdf, formatFileSize } from '../../lib/quotePdfStorage'
+import { HelpButton } from '../../components/HelpButton'
 import type { RfqDocument, RfqResponse, RfqResponseLabour, RfqEquipRow, RateCard } from '../../types'
 
 const STAGES = ['draft', 'issued', 'responses_in', 'awarded', 'contracted', 'cancelled'] as const
@@ -383,7 +384,10 @@ export function SubconRFQRegisterPanel() {
     <div style={{ padding: '24px', maxWidth: '1280px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>RFQ Register</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>RFQ Register</h1>
+            <HelpButton panelId="subcon-rfq-register" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>Track RFQs from issue through vendor responses to PO award</p>
         </div>
         <button className="btn btn-primary" onClick={() => setActivePanel('subcon-rfq-doc')}>+ New RFQ</button>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 import type { RfqLabourRow, RfqEquipRow, Resource } from '../../types'
 
 const STAGE_COLOR: Record<string, string> = { draft: '#94a3b8', issued: '#3b82f6', responses_in: '#f59e0b', awarded: '#059669', contracted: '#7c3aed', cancelled: '#e11d48' }
@@ -315,7 +316,10 @@ ${notes ? `<div class="notes-box"><div class="notes-title">Additional Requiremen
     <div style={{ padding: '24px', maxWidth: '1200px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>RFQ Document</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>RFQ Document</h1>
+            <HelpButton panelId="subcon-rfq-doc" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>Generate a Request for Quotation to send to potential subcontractors</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>

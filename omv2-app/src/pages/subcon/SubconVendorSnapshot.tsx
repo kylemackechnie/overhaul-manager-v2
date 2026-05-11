@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { HelpButton } from '../../components/HelpButton'
 
 const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
@@ -60,7 +61,10 @@ export function SubconVendorSnapshot() {
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Vendor Snapshot</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Vendor Snapshot</h1>
+            <HelpButton panelId="subcon-vendor-snapshot" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>Cost summary by vendor across labour and equipment</p>
         </div>
         <div style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'var(--mono)', color: '#7c3aed' }}>{fmt(grandTotal)}</div>
