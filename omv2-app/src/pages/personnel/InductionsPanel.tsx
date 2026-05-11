@@ -6,13 +6,16 @@ import { toast } from '../../components/ui/Toast'
 
 // ── Print helpers ──────────────────────────────────────────────────────────
 
-const SEP_SQP_KEYS = ['sep_trades','sep_project','sep_contractors','sqp_gt','sqp_project','sqp_trades','sqp_contractors']
+const SEP_SQP_KEYS = ['sep_trades','sep_project','sep_contractors','sqp_gt','sqp_gt_contr','sqp_project','sqp_trades','sqp_contractors']
 const SITE_KEYS    = ['hydraulic','rad_torque','confined_space','hytorc','grinder']
+const HRWL_KEYS    = ['white_card','cs_licence','gas_test','work_permit','breathing_app','cs_rescue','wah_licence']
 
 const SHORT: Record<string,string> = {
   sep_trades:'SEP Trades', sep_project:'SEP Project', sep_contractors:'SEP Contr.',
-  sqp_gt:'SQP GT', sqp_project:'SQP Project', sqp_trades:'SQP Trades', sqp_contractors:'SQP Contr.',
+  sqp_gt:'SQP GT', sqp_gt_contr:'SQP GT Contr.', sqp_project:'SQP Project', sqp_trades:'SQP Trades', sqp_contractors:'SQP Contr.',
   hydraulic:'Hydraulic', rad_torque:'Rad Torque', confined_space:'Confined Sp.', hytorc:'Hytorc', grinder:'Grinder',
+  white_card:'White Card', cs_licence:'CS Licence', gas_test:'Gas Test Atm.', work_permit:'Issue Work Permit',
+  breathing_app:'Breathing Apparatus', cs_rescue:'CS Rescue', wah_licence:'WAH Licence',
 }
 
 function printCss() {
@@ -72,8 +75,8 @@ function buildWallSheet(
   expiringOnSite: { name: string; mobOut: string; courses: string[] }[],
   kpis: { allValid: number; someExpired: number; notFound: number },
 ) {
-  const sepCols  = INDUCTION_COURSES.filter(c => SEP_SQP_KEYS.includes(c.key))
-  const otherKeys = INDUCTION_COURSES.filter(c => SITE_KEYS.includes(c.key))
+  const sepCols      = INDUCTION_COURSES.filter(c => SEP_SQP_KEYS.includes(c.key))
+  const otherKeys    = INDUCTION_COURSES.filter(c => SITE_KEYS.includes(c.key) || HRWL_KEYS.includes(c.key))
 
   const headerCells = [
     `<th class="left sep-border-l" style="min-width:120px">Name</th>`,
@@ -199,6 +202,7 @@ function buildHseReport(
   // Full register — all courses
   const sepCols  = INDUCTION_COURSES.filter(c => SEP_SQP_KEYS.includes(c.key))
   const siteCols = INDUCTION_COURSES.filter(c => SITE_KEYS.includes(c.key))
+  const hrwlCols = INDUCTION_COURSES.filter(c => HRWL_KEYS.includes(c.key))
 
   const fullHeaderCells = [
     `<th class="left" style="min-width:110px">Name</th>`,
@@ -208,6 +212,9 @@ function buildHseReport(
       `<th${i === 0 ? ' class="sep-border-l"' : ''}${i === sepCols.length - 1 ? ' class="sep-border-r"' : ''}>${SHORT[c.key]}</th>`
     ),
     ...siteCols.map(c => `<th style="color:#94a3b8;background:#334155;">${SHORT[c.key]}</th>`),
+    ...hrwlCols.map((c, i) =>
+      `<th style="color:#fbbf24;background:#292524;"${i === 0 ? ' class="sep-border-l"' : ''}${i === hrwlCols.length - 1 ? ' class="sep-border-r"' : ''}>${SHORT[c.key]}</th>`
+    ),
   ].join('')
 
   const fullBodyRows = rows.map(m => {
@@ -218,7 +225,7 @@ function buildHseReport(
         <td class="left sep-border-l" style="font-weight:700;color:#7c3aed">${m.resource.name}</td>
         <td class="left" style="color:#9d174d">${m.resource.role || '—'}</td>
         <td class="left" style="color:#555">${mobStr}</td>
-        <td colspan="${sepCols.length + siteCols.length}" style="color:#9d174d">
+        <td colspan="${sepCols.length + siteCols.length + hrwlCols.length}" style="color:#9d174d">
           <span class="miss">NOT FOUND IN SYSTEM</span>
         </td>
       </tr>`
@@ -232,11 +239,17 @@ function buildHseReport(
       return raw
     }).join('')
     const siteCells = siteCols.map(c => cellHtml(p.courses[c.key], refDate, today)).join('')
+    const hrwlCells = hrwlCols.map((c, i) => {
+      const raw = cellHtml(p.courses[c.key], refDate, today)
+      if (i === 0) return raw.replace('<td', '<td class="sep-border-l"')
+      if (i === hrwlCols.length - 1) return raw.replace('<td', '<td class="sep-border-r"')
+      return raw
+    }).join('')
     return `<tr class="${rowClass}">
       <td class="left" style="font-weight:700">${m.resource.name}${m.score < 1 ? `<span style="font-size:6.5pt;color:#b45309;margin-left:3px">≈ ${p.name}</span>` : ''}</td>
       <td class="left" style="color:#555">${m.resource.role || '—'}</td>
       <td class="left" style="color:#555;white-space:nowrap">${mobStr}</td>
-      ${sepCells}${siteCells}
+      ${sepCells}${siteCells}${hrwlCells}
     </tr>`
   }).join('')
 
@@ -329,20 +342,31 @@ function openPrint(html: string, landscape = false) {
 
 // labels must match substrings of the SE Learning export column headers (case-insensitive)
 // Preferred keywords are listed first; the first match wins. Hardcoded col fallbacks removed.
-const INDUCTION_COURSES: { key: string; labels: string[]; shortLabel: string }[] = [
-  { key: 'sep_trades',      labels: ['SIEMENS ENERGY PASSPORT (TRADES)'],                          shortLabel: 'SEP\nTrades'   },
-  { key: 'sep_project',     labels: ['SIEMENS ENERGY PASSPORT (PROJECT PERSONNEL)'],               shortLabel: 'SEP\nProject'  },
-  { key: 'sep_contractors', labels: ['SIEMENS ENERGY PASSPORT (CONTRACTORS)'],                     shortLabel: 'SEP\nContract' },
-  { key: 'sqp_gt',          labels: ['SIEMENS QUALITY PASSPORT (GT PROJECT PERSONNEL)'],           shortLabel: 'SQP\nGT'       },
-  { key: 'sqp_project',     labels: ['SIEMENS QUALITY PASSPORT (PROJECT PERSONNEL)'],              shortLabel: 'SQP\nProject'  },
-  { key: 'sqp_trades',      labels: ['SIEMENS QUALITY PASSPORT (TRADES)'],                        shortLabel: 'SQP\nTrades'   },
-  { key: 'sqp_contractors', labels: ['SIEMENS QUALITY PASSPORT (CONTRACTORS)'],                   shortLabel: 'SQP\nContr'    },
-  { key: 'hydraulic',       labels: ['HYDRAULIC TENSIONING'],                                      shortLabel: 'Hydraulic'     },
-  { key: 'rad_torque',      labels: ['RAD TORQUE SAFETY'],                                         shortLabel: 'Rad\nTorque'   },
+const INDUCTION_COURSES: { key: string; labels: string[]; shortLabel: string; isLesson?: boolean }[] = [
+  // ── Siemens passports (SEP / SQP) ──────────────────────────────────────────
+  { key: 'sep_trades',      labels: ['SIEMENS ENERGY PASSPORT (TRADES)'],                                       shortLabel: 'SEP\nTrades'    },
+  { key: 'sep_project',     labels: ['SIEMENS ENERGY PASSPORT (PROJECT PERSONNEL)'],                            shortLabel: 'SEP\nProject'   },
+  { key: 'sep_contractors', labels: ['SIEMENS ENERGY PASSPORT (CONTRACTORS)'],                                  shortLabel: 'SEP\nContract'  },
+  { key: 'sqp_gt',          labels: ['SIEMENS QUALITY PASSPORT (GT PROJECT PERSONNEL)'],                        shortLabel: 'SQP\nGT'        },
+  { key: 'sqp_gt_contr',    labels: ['SIEMENS QUALITY PASSPORT (GT CONTRACTORS)'],                              shortLabel: 'SQP\nGT Contr.' },
+  { key: 'sqp_project',     labels: ['SIEMENS QUALITY PASSPORT (PROJECT PERSONNEL)'],                           shortLabel: 'SQP\nProject'   },
+  { key: 'sqp_trades',      labels: ['SIEMENS QUALITY PASSPORT (TRADES)'],                                      shortLabel: 'SQP\nTrades'    },
+  { key: 'sqp_contractors', labels: ['SIEMENS QUALITY PASSPORT (CONTRACTORS)'],                                 shortLabel: 'SQP\nContr'     },
+  // ── Site-specific tool / procedural certs ──────────────────────────────────
+  { key: 'hydraulic',       labels: ['HYDRAULIC TENSIONING'],                                                   shortLabel: 'Hydraulic'      },
+  { key: 'rad_torque',      labels: ['RAD TORQUE SAFETY'],                                                      shortLabel: 'Rad\nTorque'    },
   // Prefer the Siemens-specific confined space column over the generic one
-  { key: 'confined_space',  labels: ['CONFINED SPACE AWARENESS (SIEMENS ENERGY)', 'CONFINED SPACE AWARENESS'], shortLabel: 'Confined\nSp' },
-  { key: 'hytorc',          labels: ['HYTORC STEALTH'],                                            shortLabel: 'Hytorc'        },
-  { key: 'grinder',         labels: ['GRINDER SAFETY'],                                            shortLabel: 'Grinder'       },
+  { key: 'confined_space',  labels: ['CONFINED SPACE AWARENESS (SIEMENS ENERGY)', 'CONFINED SPACE AWARENESS'], shortLabel: 'Confined\nSp'   },
+  { key: 'hytorc',          labels: ['HYTORC STEALTH'],                                                         shortLabel: 'Hytorc'         },
+  { key: 'grinder',         labels: ['GRINDER SAFETY'],                                                         shortLabel: 'Grinder'        },
+  // ── High-risk work licences (SE Qualification Uploads — lessons file) ──────
+  { key: 'white_card',    labels: ['WHITE CARD (NO EXPIRY)', 'WHITE CARD'],                                    shortLabel: 'White\nCard',    isLesson: true },
+  { key: 'cs_licence',    labels: ['CONFINED SPACE (REFRESH EVERY 2 YEARS)', 'CONFINED SPACE RESCUE'],         shortLabel: 'CS\nLicence',    isLesson: true },
+  { key: 'gas_test',      labels: ['GAS TEST ATMOSPHERE'],                                                     shortLabel: 'Gas Test\nAtm.', isLesson: true },
+  { key: 'work_permit',   labels: ['ISSUE WORK PERMIT'],                                                       shortLabel: 'Issue\nPermit',  isLesson: true },
+  { key: 'breathing_app', labels: ['OPERATE BREATHING APPARATUS'],                                             shortLabel: 'Breathing\nApp', isLesson: true },
+  { key: 'cs_rescue',     labels: ['CONFINED SPACE RESCUE'],                                                   shortLabel: 'CS\nRescue',     isLesson: true },
+  { key: 'wah_licence',   labels: ['WORKING AT HEIGHT (REFRESH EVERY 2 YRS)', 'WORKING AT HEIGHT'],            shortLabel: 'WAH\nLicence',   isLesson: true },
 ]
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -386,13 +410,28 @@ function parseCourseVal(val: unknown, today: string): CourseStatus {
   return { status: expISO < today ? 'expired' : 'valid', pass: m[1], exp: m[2], expISO }
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
+function parseLessonVal(val: unknown, today: string): CourseStatus {
+  const str = val ? String(val).trim() : ''
+  if (!str) return { status: 'na' }
+  // "Does Not Expiry" or bogus far-future dates (year < 100 or > 2100) → no expiry
+  if (/does not expir/i.test(str)) return { status: 'valid', exp: 'No expiry', expISO: '9999-12-31', noExpiry: true }
+  const m = str.match(/Exp:\s*([\d-]+)/i)
+  if (!m) return { status: 'na' }
+  const expISO = toISO(m[1])
+  if (!expISO) return { status: 'na' }
+  // Treat bogus years (0001–1900 or 9000+) as no-expiry
+  const year = parseInt(expISO.slice(0, 4), 10)
+  if (year < 1900 || year > 2200) return { status: 'valid', exp: 'No expiry', expISO: '9999-12-31', noExpiry: true }
+  return { status: expISO < today ? 'expired' : 'valid', exp: m[1], expISO }
+}
 
 export function InductionsPanel() {
   const { activeProject, setActiveProject } = useAppStore()
   const [resources, setResources]         = useState<Resource[]>([])
   const [inductionData, setInductionData] = useState<InductionPerson[]>([])
-  const [fileName, setFileName]           = useState('')
+  const [lessonsData, setLessonsData]     = useState<InductionPerson[]>([])
+  const [coursesFile, setCoursesFile]     = useState('')
+  const [lessonsFile, setLessonsFile]     = useState('')
   const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))
   const today = new Date().toISOString().slice(0,10)
 
@@ -401,23 +440,30 @@ export function InductionsPanel() {
     supabase.from('resources').select('id,name,role,mob_in,mob_out,company')
       .eq('project_id', activeProject.id)
       .then(({ data }) => setResources(data || []))
-    // Restore persisted induction data
     if (activeProject.induction_data?.length) {
       setInductionData(activeProject.induction_data as unknown as InductionPerson[])
       if (activeProject.induction_upload_time) {
-        setFileName(`Last uploaded: ${new Date(activeProject.induction_upload_time).toLocaleString('en-AU')}`)
+        setCoursesFile(`Last uploaded: ${new Date(activeProject.induction_upload_time).toLocaleString('en-AU')}`)
       }
     } else {
       setInductionData([])
-      setFileName('')
+      setCoursesFile('')
+    }
+    if ((activeProject as Record<string,unknown>).lessons_data) {
+      setLessonsData((activeProject as Record<string,unknown>).lessons_data as InductionPerson[])
+      if ((activeProject as Record<string,unknown>).lessons_upload_time) {
+        setLessonsFile(`Last uploaded: ${new Date(String((activeProject as Record<string,unknown>).lessons_upload_time)).toLocaleString('en-AU')}`)
+      }
+    } else {
+      setLessonsData([])
+      setLessonsFile('')
     }
   }, [activeProject?.id])
 
   // ── File parse ───────────────────────────────────────────────────────────
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>, fileType: 'courses' | 'lessons') {
     const file = e.target.files?.[0]; if (!file) return
-    setFileName(file.name)
     const buf = await file.arrayBuffer()
     try {
       const wb = XLSX.read(buf, { type: 'array' })
@@ -426,7 +472,6 @@ export function InductionsPanel() {
       if (rows.length < 2) { toast('No data in file', 'error'); return }
 
       const header = (rows[0] as string[]).map(h => String(h||'').toUpperCase().trim())
-      // Returns the first column index that matches any of the given keywords (checked in priority order)
       const colFor = (...keywords: string[]) => {
         for (const kw of keywords) {
           const idx = header.findIndex(h => h.includes(kw.toUpperCase()))
@@ -434,9 +479,14 @@ export function InductionsPanel() {
         }
         return -1
       }
-      // Pre-compute column indices once per file
+
+      // Determine which courses to parse from this file
+      const relevantCourses = fileType === 'lessons'
+        ? INDUCTION_COURSES.filter(c => c.isLesson)
+        : INDUCTION_COURSES.filter(c => !c.isLesson)
+
       const courseColMap: Record<string, number> = {}
-      INDUCTION_COURSES.forEach(c => { courseColMap[c.key] = colFor(...c.labels) })
+      relevantCourses.forEach(c => { courseColMap[c.key] = colFor(...c.labels) })
 
       const people: InductionPerson[] = []
       for (let i = 1; i < rows.length; i++) {
@@ -444,21 +494,38 @@ export function InductionsPanel() {
         const name = String(r[0]||'').trim()
         if (!name) continue
         const courses: Record<string, CourseStatus> = {}
-        INDUCTION_COURSES.forEach(c => {
+        relevantCourses.forEach(c => {
           const colIdx = courseColMap[c.key]
-          courses[c.key] = colIdx > -1 ? parseCourseVal(r[colIdx], today) : { status: 'na' }
+          if (colIdx < 0) { courses[c.key] = { status: 'na' }; return }
+          courses[c.key] = fileType === 'lessons'
+            ? parseLessonVal(r[colIdx], today)
+            : parseCourseVal(r[colIdx], today)
         })
         people.push({ name, courses, company: String(r[colFor('COMPANY')]||''), role: String(r[colFor('ROLE')]||'') })
       }
-      setInductionData(people)
-      // Persist to project so it survives panel navigation
+
       const uploadTime = new Date().toISOString()
-      supabase.from('projects')
-        .update({ induction_data: people, induction_upload_time: uploadTime })
-        .eq('id', activeProject!.id)
-        .then(() => {
-          if (activeProject) setActiveProject({ ...activeProject, induction_data: people as unknown as typeof activeProject.induction_data, induction_upload_time: uploadTime })
-        })
+
+      if (fileType === 'courses') {
+        setInductionData(people)
+        setCoursesFile(file.name)
+        supabase.from('projects')
+          .update({ induction_data: people, induction_upload_time: uploadTime })
+          .eq('id', activeProject!.id)
+          .then(() => {
+            if (activeProject) setActiveProject({ ...activeProject, induction_data: people as unknown as typeof activeProject.induction_data, induction_upload_time: uploadTime })
+          })
+      } else {
+        setLessonsData(people)
+        setLessonsFile(file.name)
+        supabase.from('projects')
+          .update({ lessons_data: people, lessons_upload_time: uploadTime } as Record<string, unknown>)
+          .eq('id', activeProject!.id)
+          .then(() => {
+            if (activeProject) setActiveProject({ ...activeProject, lessons_data: people as unknown as typeof activeProject.induction_data, lessons_upload_time: uploadTime } as typeof activeProject)
+          })
+      }
+
       toast(`Loaded ${people.length} people from ${file.name}`, 'success')
     } catch {
       toast('Failed to parse file', 'error')
@@ -466,11 +533,34 @@ export function InductionsPanel() {
     e.target.value = ''
   }
 
-  // ── Matching ─────────────────────────────────────────────────────────────
+  // ── Matching — merge courses + lessons by name ────────────────────────────
+
+  // Build a merged lookup: for each person in courses data, find best lessons match and merge HRWL keys
+  const mergedData: InductionPerson[] = inductionData.map(person => {
+    let bestLesson: InductionPerson | null = null, bestScore = 0
+    lessonsData.forEach(lp => {
+      const s = nameSimilarity(person.name, lp.name)
+      if (s > bestScore) { bestScore = s; bestLesson = lp }
+    })
+    if (!bestLesson || bestScore < 0.8) return person
+    const mergedCourses = { ...person.courses }
+    HRWL_KEYS.forEach(k => {
+      const lc = (bestLesson as InductionPerson).courses[k]
+      if (lc && lc.status !== 'na') mergedCourses[k] = lc
+    })
+    return { ...person, courses: mergedCourses }
+  })
+
+  // Also include lessons-only people (in lessons but not in courses) so they can match resources
+  const lessonsOnlyData: InductionPerson[] = lessonsData.filter(lp => {
+    return !inductionData.some(cp => nameSimilarity(cp.name, lp.name) >= 0.8)
+  })
+
+  const allInductionData = [...mergedData, ...lessonsOnlyData]
 
   const matched = resources.map(r => {
     let best: InductionPerson | null = null, bestScore = 0
-    inductionData.forEach(p => {
+    allInductionData.forEach(p => {
       const s = nameSimilarity(r.name, p.name)
       if (s > bestScore) { bestScore = s; best = p }
     })
@@ -540,7 +630,7 @@ export function InductionsPanel() {
           {refDate !== today && (
             <button className="btn btn-xs btn-secondary" onClick={() => setRefDate(today)}>Today</button>
           )}
-          {matched.length > 0 && (<>
+          {allInductionData.length > 0 && (<>
             <button className="btn btn-secondary" onClick={() => doPrint('wall')} title="Print wall/noticeboard sheet (landscape)">
               🖨 Wall Sheet
             </button>
@@ -548,18 +638,27 @@ export function InductionsPanel() {
               🖨 HSE Report
             </button>
           </>)}
-          <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
-            📂 Load Induction Report
-            <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
+          <label className="btn btn-secondary" style={{ cursor: 'pointer' }} title="SE Learning → Courses export (.xlsx)">
+            📂 Courses
+            <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => handleFile(e, 'courses')} />
+          </label>
+          <label className="btn btn-primary" style={{ cursor: 'pointer' }} title="SE Learning → Lessons export (.xlsx)">
+            📂 Lessons
+            <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => handleFile(e, 'lessons')} />
           </label>
         </div>
       </div>
 
       {/* File info */}
-      {fileName && <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '12px' }}>Loaded: {fileName} · {inductionData.length} people</div>}
+      {(coursesFile || lessonsFile) && (
+        <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          {coursesFile && <span>📋 Courses: {coursesFile} · {inductionData.length} people</span>}
+          {lessonsFile && <span>🎓 Lessons: {lessonsFile} · {lessonsData.length} people</span>}
+        </div>
+      )}
 
       {/* KPIs */}
-      {resources.length > 0 && inductionData.length > 0 && (
+      {resources.length > 0 && allInductionData.length > 0 && (
         <div className="kpi-grid" style={{ marginBottom: '16px' }}>
           <div className="kpi-card" style={{ borderTopColor: 'var(--green)' }}>
             <div className="kpi-val" style={{ color: 'var(--green)' }}>{allValid}</div>
@@ -598,14 +697,14 @@ export function InductionsPanel() {
       {resources.length === 0 && (
         <div className="empty-state"><div className="icon">👥</div><h3>No resources</h3><p>Add people to Resources first.</p></div>
       )}
-      {resources.length > 0 && inductionData.length === 0 && (
+      {resources.length > 0 && inductionData.length === 0 && lessonsData.length === 0 && (
         <div className="empty-state"><div className="icon">📄</div><h3>No induction data</h3>
-          <p>Export from SE Learning and load the .xlsx file above. The parser detects columns automatically.</p>
+          <p>Load the Courses export and/or the Lessons export from SE Learning. Both files will be merged automatically.</p>
         </div>
       )}
 
       {/* Table */}
-      {resources.length > 0 && inductionData.length > 0 && (
+      {resources.length > 0 && allInductionData.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
             <thead>
