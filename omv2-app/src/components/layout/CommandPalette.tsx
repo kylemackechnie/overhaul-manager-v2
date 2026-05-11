@@ -195,20 +195,29 @@ const ACTIONS: ActionEntry[] = [
 ]
 
 // ─── Fuzzy matcher ────────────────────────────────────────────────────────────
+//
+// Substring-only. We deliberately don't do subsequence matching (where
+// 'craig' could match 'C[ost T]r[ack]i[n]g' as scattered letters) because
+// it produces false positives for record-name queries like person names.
+// Page entries compensate by carrying a `keywords` field for common
+// abbreviations (po, eac, tce, etc.) that the bare label doesn't cover.
+//
+// Scoring: a substring at position 0 (prefix) scores highest, falling off
+// as the substring sits deeper in the haystack.
 
 function fuzzy(haystack: string, pattern: string): { match: boolean; score: number } {
   if (!pattern) return { match: true, score: 0 }
   const s = haystack.toLowerCase()
   const p = pattern.toLowerCase()
   const subIdx = s.indexOf(p)
-  if (subIdx >= 0) return { match: true, score: 1000 + (100 - Math.min(subIdx, 99)) }
-  // Subsequence match — characters of pattern appear in order somewhere in haystack
-  let i = 0
-  for (let j = 0; j < s.length && i < p.length; j++) {
-    if (s[j] === p[i]) i++
-  }
-  if (i === p.length) return { match: true, score: 100 - Math.max(0, s.length - p.length) }
-  return { match: false, score: 0 }
+  if (subIdx < 0) return { match: false, score: 0 }
+  // Prefix match (position 0): 2000
+  // Word-start match (after space/dash): 1500
+  // Anywhere else: 1000 minus how deep
+  if (subIdx === 0) return { match: true, score: 2000 }
+  const prevCh = s[subIdx - 1]
+  if (prevCh === ' ' || prevCh === '-' || prevCh === '_') return { match: true, score: 1500 }
+  return { match: true, score: 1000 - Math.min(subIdx, 100) }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -252,12 +261,14 @@ export function CommandPalette({ open, onClose }: Props) {
     const result: CmdSection[] = []
 
     // ── Pages ───────────────────────────────────────────────────────────────
+    // We match against (label, keywords) only — NOT module name. Module
+    // names are short generic words (e.g. "Cost Tracking", "Personnel")
+    // that produce too many false positives.
     const pageHits = NAV_PAGES
       .map(p => {
         const labelScore = fuzzy(p.label, ql).score
-        const kwScore    = p.keywords ? fuzzy(p.keywords, ql).score : 0
-        const moduleScore = fuzzy(p.module, ql).score * 0.3
-        const score = Math.max(labelScore, kwScore, moduleScore)
+        const kwScore    = p.keywords ? fuzzy(p.keywords, ql).score * 0.9 : 0
+        const score = Math.max(labelScore, kwScore)
         return score > 0 ? { ...p, score } : null
       })
       .filter((x): x is NavPage & { score: number } => x !== null)
