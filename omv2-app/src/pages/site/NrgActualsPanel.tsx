@@ -287,57 +287,69 @@ export function NrgActualsPanel() {
     const fmtP = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
     const TH = (s: string, right = false) =>
-      `<th style="background:#f1f5f9;border:1px solid #cbd5e1;padding:5px 8px;font-size:9px;text-transform:uppercase;text-align:${right?'right':'left'};color:#475569;font-weight:700">${s}</th>`
-    const TD = (s: string, right = false, bold = false) =>
-      `<td style="border:1px solid #e2e8f0;padding:4px 8px;font-size:10px;vertical-align:top;${right?'text-align:right;font-family:monospace;':''}${bold?'font-weight:700;':''}">${s}</td>`
+      `<th style="background:#f1f5f9;border:1px solid #cbd5e1;padding:5px 8px;font-size:9px;text-transform:uppercase;text-align:${right?'right':'left'};color:#475569;font-weight:700;white-space:nowrap">${s}</th>`
+    const TD = (s: string, right = false, bold = false, color = '') =>
+      `<td style="border:1px solid #e2e8f0;padding:4px 8px;font-size:10px;vertical-align:middle;${right?'text-align:right;font-family:monospace;':''}${bold?'font-weight:700;':''}${color?`color:${color};`:''}">${s}</td>`
 
     const pctBar = (pct: number | null) => {
       if (pct === null) return '—'
       const color = pct > 100 ? '#dc2626' : pct > 80 ? '#d97706' : '#16a34a'
-      return `<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;background:#e2e8f0;border-radius:3px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pct)}%;background:${color};border-radius:3px"></div></div><span style="font-family:monospace;font-size:9px;color:${color};font-weight:700">${Math.round(pct)}%</span></div>`
+      return `<span style="font-family:monospace;font-size:9px;color:${color};font-weight:700">${Math.round(pct)}%</span>`
     }
 
-    const bySource: Record<string, typeof displayed> = {}
-    for (const row of displayed) {
-      const src = row.line.source === 'skilled' ? 'Skilled Labour' : 'Overhead'
-      if (!bySource[src]) bySource[src] = []
-      bySource[src].push(row)
-    }
+    const colHeaders = [
+      TH('Item ID'), TH('Source'), TH('Description'), TH('Work Order'),
+      TH('Est. Hrs', true), TH('Act. Hrs', true), TH('TCE', true),
+      TH('Actuals', true),
+      ...(weekFilter ? [TH('This Week', true)] : []),
+      TH('Remaining', true), TH('% Used'),
+    ]
 
-    const colHeaders = weekFilter
-      ? [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('Est. Hrs', true), TH('Act. Hrs', true), TH('TCE Value', true), TH('Actuals', true), TH('This Week', true), TH('Remaining', true), TH('% Used')]
-      : [TH('Description'), TH('Work Order'), TH('Contract Scope'), TH('Est. Hrs', true), TH('Act. Hrs', true), TH('TCE Value', true), TH('Actuals', true), TH('Remaining', true), TH('% Used')]
-
-    const sectionHTML = Object.entries(bySource).map(([srcLabel, rows]) => {
-      const srcTce = rows.reduce((s, x) => s + x.tce, 0)
-      const srcAct = rows.reduce((s, x) => s + x.actuals, 0)
-      const rowsHTML = rows.map(({ line, actuals, tce, pct, weekActuals }) => {
-        const rem = tce - actuals
-        const estHrs = line.estimated_qty ? line.estimated_qty.toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'
-        const actHrs = line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'
-        const cells = weekFilter
-          ? [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(estHrs,true), TD(actHrs,true), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(weekActuals||0),true), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
-          : [TD(line.description||''), TD(line.work_order||'—'), TD(line.contract_scope||'—'), TD(estHrs,true), TD(actHrs,true), TD(fmtP(tce),true), TD(fmtP(actuals),true,actuals>0), TD(fmtP(rem),true,rem<0), TD(pctBar(pct))]
-        return `<tr>${cells.join('')}</tr>`
-      }).join('')
-      const footCols = weekFilter ? 9 : 8
-      return `<div style="margin-bottom:24px;page-break-inside:avoid">
-        <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;padding:6px 0;border-bottom:2px solid #e2e8f0">${srcLabel} <span style="font-weight:400;font-size:10px;color:#64748b">— TCE: ${fmtP(srcTce)} · Actuals: ${fmtP(srcAct)} · Remaining: ${fmtP(srcTce-srcAct)}</span></div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
-          <thead><tr>${colHeaders.join('')}</tr></thead>
-          <tbody>${rowsHTML}</tbody>
-          <tfoot><tr>
-            <td colspan="${footCols}" style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8">Subtotal — ${srcLabel}</td>
-            <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-family:monospace;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8">${fmtP(srcAct)}</td>
-          </tr></tfoot>
-        </table>
-      </div>`
+    const rowsHTML = tableRows.map(row => {
+      if (row.kind === 'header') {
+        const { line, groupTce, groupActuals, groupWeekActuals } = row
+        const groupRem = groupTce - groupActuals
+        const extraCols = weekFilter ? 1 : 0
+        const blankCols = 4 + extraCols  // blank cells after Remaining + % Used
+        return `<tr style="background:#e0e7ff;color:#3730a3;border-bottom:2px solid #c7d2fe">
+          <td style="font-family:monospace;font-size:11px;font-weight:700;padding:6px 8px;white-space:nowrap;border:1px solid #c7d2fe">▼ ${line.item_id||''}</td>
+          <td style="border:1px solid #c7d2fe"></td>
+          <td colspan="2" style="font-weight:700;font-size:11px;padding:6px 8px;border:1px solid #c7d2fe">${line.description||''}</td>
+          <td colspan="2" style="border:1px solid #c7d2fe"></td>
+          <td style="text-align:right;font-family:monospace;font-weight:700;font-size:11px;padding:6px 8px;border:1px solid #c7d2fe">${groupTce ? fmtP(groupTce) : '—'}</td>
+          <td style="text-align:right;font-family:monospace;font-weight:700;font-size:11px;padding:6px 8px;color:#4f46e5;border:1px solid #c7d2fe">${groupActuals ? fmtP(groupActuals) : '—'}</td>
+          ${weekFilter ? `<td style="text-align:right;font-family:monospace;font-weight:700;font-size:11px;padding:6px 8px;color:#1e40af;border:1px solid #c7d2fe">${groupWeekActuals ? fmtP(groupWeekActuals) : '—'}</td>` : ''}
+          <td style="text-align:right;font-family:monospace;font-weight:700;font-size:11px;padding:6px 8px;${groupRem<0?'color:#dc2626;':''}border:1px solid #c7d2fe">${fmtP(groupRem)}</td>
+          <td colspan="${blankCols}" style="border:1px solid #c7d2fe"></td>
+        </tr>`
+      }
+      const { line, actuals, tce, pct, weekActuals } = row
+      const rem = tce - actuals
+      const estHrs = line.estimated_qty ? line.estimated_qty.toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'
+      const actHrs = line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'
+      const srcBg = line.line_type === 'Fixed Price' ? '#ede9fe' : line.source === 'skilled' ? '#dbeafe' : '#f3f4f6'
+      const srcCol = line.line_type === 'Fixed Price' ? '#6b21a8' : line.source === 'skilled' ? '#1e40af' : '#64748b'
+      const srcLabel = line.line_type === 'Fixed Price' ? 'Fixed Price' : line.source
+      return `<tr>
+        ${TD(`<span style="font-family:monospace;font-size:10px;color:#64748b;padding-left:16px">${line.item_id||'—'}</span>`)}
+        <td style="border:1px solid #e2e8f0;padding:4px 8px"><span style="font-size:9px;padding:1px 4px;border-radius:3px;background:${srcBg};color:${srcCol};font-weight:700;text-transform:uppercase">${srcLabel}</span></td>
+        ${TD(line.description||'—', false, true)}
+        ${TD(line.work_order||'—')}
+        ${TD(estHrs, true)}
+        ${TD(actHrs, true)}
+        ${TD(fmtP(tce), true, true)}
+        ${TD(fmtP(actuals), true, actuals > 0, actuals > 0 ? '' : '#94a3b8')}
+        ${weekFilter ? TD(fmtP(weekActuals||0), true, false, weekActuals > 0 ? '#1e40af' : '#94a3b8') : ''}
+        ${TD(fmtP(rem), true, false, rem < 0 ? '#dc2626' : '')}
+        <td style="border:1px solid #e2e8f0;padding:4px 8px">${pctBar(pct)}</td>
+      </tr>`
     }).join('')
 
     const totAct2 = displayed.reduce((s, x) => s + x.actuals, 0)
     const totTce2 = displayed.reduce((s, x) => s + x.tce, 0)
     const totPct2 = totTce2 > 0 ? (totAct2/totTce2*100) : null
     const totColor = totPct2 && totPct2 > 100 ? '#dc2626' : totPct2 && totPct2 > 80 ? '#d97706' : '#16a34a'
+    const footColSpan = weekFilter ? 9 : 8
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>NRG Actuals — ${projName}</title>
 <style>body{font-family:-apple-system,Arial,sans-serif;margin:0;padding:24px;color:#0f172a}@media print{button{display:none!important}body{padding:12px}@page{size:A4 landscape;margin:10mm}}.kpi{display:inline-block;border:1px solid #e2e8f0;border-radius:6px;padding:10px 16px;margin-right:10px;margin-bottom:10px;min-width:130px}.kpi-val{font-size:18px;font-weight:700;font-family:monospace}.kpi-lbl{font-size:10px;color:#64748b;margin-top:2px}</style>
@@ -351,7 +363,17 @@ export function NrgActualsPanel() {
   <div class="kpi"><div class="kpi-val" style="color:${totColor}">${fmtP(totTce2-totAct2)}</div><div class="kpi-lbl">Remaining</div></div>
   ${totPct2 !== null ? `<div class="kpi"><div class="kpi-val" style="color:${totColor}">${Math.round(totPct2)}%</div><div class="kpi-lbl">% TCE Used</div></div>` : ''}
 </div>
-${sectionHTML}
+<table style="width:100%;border-collapse:collapse;font-size:10px">
+  <thead><tr>${colHeaders.join('')}</tr></thead>
+  <tbody>${rowsHTML}</tbody>
+  <tfoot><tr>
+    <td colspan="${footColSpan}" style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8">TOTAL (${displayed.length} lines)</td>
+    <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-family:monospace;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8">${fmtP(totAct2)}</td>
+    ${weekFilter ? `<td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-family:monospace;font-size:10px;background:#dbeafe;color:#1e40af;border-top:2px solid #94a3b8">${fmtP(displayed.reduce((s,x)=>s+(x.weekActuals||0),0))}</td>` : ''}
+    <td style="border:1px solid #e2e8f0;padding:5px 8px;text-align:right;font-weight:700;font-family:monospace;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8;color:${totColor}">${fmtP(totTce2-totAct2)}</td>
+    <td style="border:1px solid #e2e8f0;padding:5px 8px;font-size:10px;background:#f8fafc;border-top:2px solid #94a3b8;font-weight:700;color:${totColor}">${totPct2!==null?Math.round(totPct2)+'%':'—'}</td>
+  </tr></tfoot>
+</table>
 </body></html>`
 
     const win = window.open('', '_blank', 'width=1200,height=820')
