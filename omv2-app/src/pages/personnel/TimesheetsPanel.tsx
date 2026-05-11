@@ -780,12 +780,17 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       opts.push({ key: `wo:${wo}`, label: `[WO] ${wo} — ${ls[0]?.description?.slice(0,40)||''}${extra}` })
     })
 
-    // Tier 2: Skilled labour WITHOUT a Work Order (fallback, direct item_id; exclude fixed unit types)
+    // Tier 2: Skilled labour WITHOUT a Work Order (fallback, direct item_id)
     tceLines.filter(l => l.source === 'skilled' && !l.work_order && !isGroupHeader(l.item_id) && !isFixedUnit(l)).forEach(l => {
       opts.push({ key: `tce:${l.item_id}`, label: `[SL] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
     })
 
-    // Overhead and Fixed Price/Fixed Hours lines intentionally excluded — bulk TCE scope is skilled labour only
+    // Tier 3: Overhead lines (not WO-tracked, allocate by item_id; exclude fixed unit types)
+    tceLines.filter(l => l.source === 'overhead' && !isGroupHeader(l.item_id) && !isFixedUnit(l)).forEach(l => {
+      opts.push({ key: `tce:${l.item_id}`, label: `[OH] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
+    })
+
+    // Fixed Price/Fixed Hours lines excluded — not allocatable labour
 
     return opts
   }
