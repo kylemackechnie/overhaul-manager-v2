@@ -37,7 +37,8 @@ function toDriveStep(step: TourStep): DriveStep {
     popover: {
       title: step.title,
       description: step.body,
-      side: mapPlacement(step.placement),
+      side: step.side,
+      align: step.align,
     },
   }
   if (step.target) {
@@ -45,12 +46,6 @@ function toDriveStep(step: TourStep): DriveStep {
     driveStep.element = step.target
   }
   return driveStep
-}
-
-function mapPlacement(p?: TourStep['placement']): DriveStep['popover'] extends infer P ? (P extends { side?: infer S } ? S : never) : never {
-  // driver.js uses `side` instead of `placement`. Direct passthrough — same string set.
-  // The 'mid-center' value is driver.js's centered fallback; we accept it here for clarity.
-  return (p ?? undefined) as never
 }
 
 /**

@@ -15,16 +15,18 @@ export interface TourStep {
   /**
    * CSS selector for the element to highlight.
    * Standard pattern: '[data-tour="anchor-id"]'.
-   * If the target doesn't exist when the step is reached, the step is shown
-   * centered with no element highlight (driver.js falls back to overlay-only).
+   * If the target doesn't exist or is omitted, the step is shown as a
+   * centered popover with no element highlight.
    */
   target?: string
   /** Short heading shown in the popover. */
   title: string
   /** Body text shown below the title. Plain text only — no markdown. */
   body: string
-  /** Where to place the popover relative to the target. Defaults to driver.js auto. */
-  placement?: 'top' | 'right' | 'bottom' | 'left' | 'top-start' | 'top-end' | 'right-start' | 'right-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'over' | 'mid-center'
+  /** Which side of the target the popover sits. Default: driver.js auto. */
+  side?: 'top' | 'right' | 'bottom' | 'left' | 'over'
+  /** Alignment along the chosen side. Default: 'center'. */
+  align?: 'start' | 'center' | 'end'
   /**
    * Optional hook called when this step is shown. Useful for opening
    * a menu, switching tabs, etc. so the next target is visible.

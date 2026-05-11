@@ -1,8 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import { marked } from 'marked'
 import { ALL_ARTICLES, getCategories, type Article } from '../help/articles/_index'
+import { getTour } from '../help/tours/_index'
+import { runTour } from '../help/tours/runner'
 import { useHelpNews } from '../hooks/useHelpNews'
+import { useAppStore } from '../store/appStore'
 import { WhatsNewTab } from './WhatsNewTab'
+import { WalkthroughsTab } from './WalkthroughsTab'
 
 type HelpTab = 'reference' | 'walkthroughs' | 'whats-new'
 
@@ -75,7 +79,7 @@ export function HelpPanel() {
         />
       )}
 
-      {tab === 'walkthroughs' && <WalkthroughsTabPlaceholder />}
+      {tab === 'walkthroughs' && <WalkthroughsTab />}
       {tab === 'whats-new' && <WhatsNewTab />}
     </div>
   )
@@ -190,6 +194,9 @@ function ReferenceTab({ search, onSearchChange, categories, selected, selectedSl
 
 function ArticleView({ article }: { article: Article }) {
   const html = useMemo(() => marked.parse(article.body) as string, [article.body])
+  const setActivePanel = useAppStore(s => s.setActivePanel)
+  const relatedTour = article.relatedTour ? getTour(article.relatedTour) : undefined
+
   return (
     <div className="help-article" style={{ maxWidth: '720px' }}>
       <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
@@ -200,7 +207,7 @@ function ArticleView({ article }: { article: Article }) {
         // Safe to dangerouslySetInnerHTML here — same trust model as any other source code.
         dangerouslySetInnerHTML={{ __html: html }}
       />
-      {article.relatedTour && (
+      {relatedTour && (
         <div style={{
           marginTop: '24px', padding: '12px 16px',
           background: 'var(--accent-light)', border: '1px solid var(--accent)',
@@ -210,17 +217,25 @@ function ArticleView({ article }: { article: Article }) {
           <div style={{ fontSize: '13px' }}>
             <div style={{ fontWeight: 600, color: 'var(--accent)' }}>Interactive walkthrough available</div>
             <div style={{ color: 'var(--text2)', fontSize: '12px', marginTop: '2px' }}>
-              Step through this workflow with on-screen guidance
+              {relatedTour.description ?? 'Step through this workflow with on-screen guidance'}
+              {relatedTour.estimatedSeconds && ` (~${relatedTour.estimatedSeconds}s)`}
             </div>
           </div>
           <button
             className="btn btn-primary"
-            disabled
-            title="Walkthrough engine arriving in next commit"
+            onClick={() => runTour(relatedTour, { setActivePanel })}
           >
             ▶ Run walkthrough
           </button>
         </div>
+      )}
+      {article.relatedTour && !relatedTour && (
+        // Author referenced a tour that doesn't exist — surface in dev only
+        import.meta.env.DEV && (
+          <div style={{ marginTop: '16px', padding: '8px 12px', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '4px', fontSize: '12px', color: '#92400e' }}>
+            ⚠ Article references missing tour: <code>{article.relatedTour}</code>
+          </div>
+        )
       )}
     </div>
   )
@@ -230,16 +245,6 @@ function EmptyArticleState() {
   return (
     <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
       Select an article from the sidebar.
-    </div>
-  )
-}
-
-function WalkthroughsTabPlaceholder() {
-  return (
-    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
-      <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎯</div>
-      <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text2)' }}>Walkthroughs coming soon</div>
-      <div>Interactive guided tours will appear here.</div>
     </div>
   )
 }
