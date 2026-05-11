@@ -183,22 +183,20 @@ export function NrgTcePanel() {
   const toggleCollapse = (id: string) =>
     setCollapsed(s => { const ns = new Set(s); ns.has(id) ? ns.delete(id) : ns.add(id); return ns })
 
-  /** Sum of open (non-cancelled, non-closed) PO values linked to this TCE line */
+  /** Sum of open PO values + linked variation sell totals for this TCE line */
   function lineCommitted(itemId: string | null): number {
     if (!itemId) return 0
-    return pos
+    const poTotal = pos
       .filter(p => p.tce_item_id === itemId && p.status !== 'cancelled' && p.status !== 'closed')
       .reduce((s, p) => s + (p.po_value || 0), 0)
+    const vnTotal = variations
+      .filter(v => v.tce_link === itemId)
+      .reduce((s, v) => s + (v.sell_total || 0), 0)
+    return poTotal + vnTotal
   }
 
   function lineActualCost(l: NrgTceLine): number {
     if (l.line_type === 'Fixed Price') return l.tce_total || 0
-    // Variation lines: use VN sell_total (planned sell) from all linked variations
-    if (l.source === 'variation' && l.item_id) {
-      return variations
-        .filter(v => v.tce_link === l.item_id)
-        .reduce((s, v) => s + (v.sell_total || 0), 0)
-    }
     const isLabour = l.line_type === 'Labour' || l.source === 'skilled'
     if (isLabour && l.item_id) {
       // Read from stored timesheet_cost_lines (same source as NRG Actuals + NRG Invoice)
