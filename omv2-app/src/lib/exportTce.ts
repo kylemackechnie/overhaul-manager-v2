@@ -65,6 +65,21 @@ const SL_WEEK_PAIRS: [string,string][] = [
 ]
 const SL_TOT_HRS='AS', SL_TOT_COST='AT', SL_GANG='AU', SL_PCT_HRS='AV', SL_PCT_COST='AW'
 
+// Subheader row for SL sheet (injected as row 2; style 42 = full template OH header style)
+// Maps column → label. Week cols generated dynamically.
+const SL_SUBHEADER_STATIC: Record<string, string> = {
+  A:'Service Order Number/Release', D:'Work Order and Work Order Task Combined',
+  F:'Scope No.', G:'Unit 2 2026 Turbine Scope Development - Activity description',
+  H:'Scope Type', I:'Task responsibility (Contractor/NRGGOS/Others)',
+  K:'Comment', L:'',
+  M:'Estimated Hours', N:'Gang rate $/hr', O:'Estimated Total Cost',
+  P:'', Q:'Notes (TCE)', R:'Adjusted Estimated Hours', S:'Adj Gang rate $/hr',
+  T:'Adjusted Estimated Total Cost (excl.GST)', U:'Adj Notes', V:'',
+  AS:'Total - Actual Hours', AT:'Total - Actual Total Cost', AU:'Total - Actual Gang Rate',
+  AV:'Percentage of Hours Complete', AW:'Percentage of Cost Used',
+  AX:'Task Complete', AY:'Forecast Cost for Completion of Project',
+}
+
 // ── Overheads styles (full template sheet2) ───────────────────────────────
 const OH_H: Record<string, number> = {
   A:142,B:142,C:142,D:143,E:144,F:135,
@@ -133,6 +148,27 @@ function buildSLRow(rowNum: number, isH: boolean, cells: Record<string,CellDef>)
   const parts = SL_COLS.map(col => makeCell(col, rowNum, isH?SL_H[col]:SL_D[col], cells[col]??{type:'',value:null}))
   return `<row r="${rowNum}" spans="1:53" s="${isH?304:457}" customFormat="1" ht="15.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
 }
+function buildSLSubheaderRow(): string {
+  // Style 439 = full template subheader style (blue bg, bold, wrap) — use OH row2 style 42
+  const HDR_S = 439  // subheader cell style in full template SL sheet
+  const ROW_S = 290  // row-level style for subheader rows in full template
+  const cells: string[] = SL_COLS.map(col => {
+    const ref = `${col}2`
+    // Find week index for this column
+    const weekIdx = SL_WEEK_PAIRS.findIndex(([wh, wc]) => wh === col || wc === col)
+    let label = ''
+    if (weekIdx >= 0) {
+      const isHrs = SL_WEEK_PAIRS[weekIdx][0] === col
+      label = `Week ${weekIdx+1} - Actual ${isHrs ? 'Hours' : 'Total Cost'}`
+    } else {
+      label = SL_SUBHEADER_STATIC[col] ?? ''
+    }
+    if (!label) return `<c r="${ref}" s="${HDR_S}"/>`
+    return `<c r="${ref}" s="${HDR_S}" t="inlineStr"><is><t>${label}</t></is></c>`
+  })
+  return `<row r="2" spans="1:53" s="${ROW_S}" customFormat="1" ht="63" x14ac:dyDescent="0.25">${cells.join('')}</row>`
+}
+
 function buildOHRow(rowNum: number, isH: boolean, cells: Record<string,CellDef>): string {
   const parts = OH_COLS.map(col => makeCell(col, rowNum, isH?OH_H[col]:OH_D[col], cells[col]??{type:'',value:null}))
   return `<row r="${rowNum}" spans="1:47" s="${isH?146:148}" customFormat="1" ht="12.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
@@ -236,7 +272,7 @@ export async function exportTceAll(
   }
 
   // ── Skilled Labour rows (data from row 2, 1 header) ────────────────────
-  const slRows:string[]=[]; let slRowNum=2
+  const slRows:string[]=[]; let slRowNum=3
   for(const{hdr,dets}of groupLines(lines.filter(l=>l.source==='skilled'))){
     const hRow=slRowNum++; const detRows=dets.map(()=>slRowNum++)
     // Full template SL layout: A=Service Order, D=Work Order, F=Scope No,
@@ -363,7 +399,13 @@ export async function exportTceAll(
       .replace(dimRe,`ref="A1:${lastRow}"`)
   }
 
-  zip.file('xl/worksheets/sheet3.xml', spliceSheet(sl3Xml,  1, slRows,  `BA${slRowNum-1}`,  /ref="A1:BA\d+"/))
+  // SL: keep row 1 (section labels), inject custom subheader as row 2, data from row 3
+  const slSubheader = buildSLSubheaderRow()
+  const sl1 = sl3Xml.match(/<row r="1"[^>]*>.*?<\/row>/s)?.[0] || ''
+  const updatedSL = sl3Xml
+    .replace(/<sheetData>.*?<\/sheetData>/s, `<sheetData>${sl1}${slSubheader}${slRows.join('')}</sheetData>`)
+    .replace(/ref="A1:BA\d+"/, `ref="A1:BA${slRowNum-1}"`)
+  zip.file('xl/worksheets/sheet3.xml', updatedSL)
   zip.file('xl/worksheets/sheet2.xml', spliceSheet(oh2Xml,  2, ohRows,  `AU${ohRowNum-1}`,  /ref="A1:BC\d+"/))
   zip.file('xl/worksheets/sheet4.xml', spliceSheet(var4Xml, 1, varRows, `AM${varRowNum-1}`, /ref="A1:AM\d+"/))
 
