@@ -46,6 +46,7 @@ export function NrgActualsPanel() {
   const [expenses, setExpenses] = useState<NrgExpenseMin[]>([])
   const [variations, setVariations] = useState<NrgVariationMin[]>([])
   const [nrgInvoices, setNrgInvoices] = useState<{id:string;week_ending:string|null;eur_spot_rate:number|null}[]>([])
+  const [pos, setPos] = useState<{tce_item_id:string|null;po_value:number;status:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -80,7 +81,7 @@ export function NrgActualsPanel() {
       }
     }
 
-    const [clRes, invRes, expRes, varRes, nrgInvRes] = await Promise.all([
+    const [clRes, invRes, expRes, varRes, nrgInvRes, poRes] = await Promise.all([
       // Read from the pre-calculated cost lines table (approved only).
       // Include work_date so we can aggregate by week for the "this week" column.
       supabase.from('timesheet_cost_lines')
@@ -91,6 +92,7 @@ export function NrgActualsPanel() {
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total,approved_date').eq('project_id', pid),
       supabase.from('nrg_customer_invoices').select('id,week_ending,eur_spot_rate').eq('project_id', pid).order('week_ending'),
+      supabase.from('purchase_orders').select('tce_item_id,po_value,status').eq('project_id', pid),
     ])
     setLines(tceLines)
 
@@ -149,11 +151,19 @@ export function NrgActualsPanel() {
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
     setExpenses((expRes.data || []) as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
+    setPos((poRes.data || []) as {tce_item_id:string|null;po_value:number;status:string}[])
     setLoading(false)
   }
 
   // Skip group headers (3-segment IDs)
   const isGroupHeader = (id: string | null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
+
+  function lineCommitted(itemId: string | null): number {
+    if (!itemId) return 0
+    return pos
+      .filter(p => p.tce_item_id === itemId && p.status !== 'cancelled' && p.status !== 'closed')
+      .reduce((s, p) => s + (p.po_value || 0), 0)
+  }
 
   // ─── Weekly slice ────────────────────────────────────────────────────────
   // Build the list of weeks we have any data in — Monday-anchored.
@@ -482,14 +492,21 @@ ${sectionHTML}
                       <th style={{ width: '70px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Source</th>
                       <th style={{ position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Description</th>
                       <th style={{ width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Work Order</th>
+                      <th style={{ width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Contract Sc.</th>
+                      <th style={{ width: '72px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Unit</th>
                       <th style={{ textAlign: 'right', width: '72px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Est. Hrs</th>
                       <th style={{ textAlign: 'right', width: '72px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Act. Hrs</th>
+                      <th style={{ textAlign: 'right', width: '66px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>TCE Rate</th>
                       <th style={{ textAlign: 'right', width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>TCE</th>
+                      <th style={{ textAlign: 'right', width: '80px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Committed</th>
                       <th style={{ textAlign: 'right', width: '90px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Actuals</th>
                       {weekFilter && <th style={{ textAlign: 'right', width: '80px', background: '#eff6ff', position: 'sticky', top: 0, zIndex: 10 }}>This Wk</th>}
                       <th style={{ textAlign: 'right', width: '80px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Rem.</th>
+                      <th style={{ width: '28px', textAlign: 'center', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>KPI</th>
                       <th style={{ width: '110px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Progress</th>
                       <th style={{ width: '85px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Status</th>
+                      <th style={{ width: '80px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>Type</th>
+                      <th style={{ width: '80px', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>WBS</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -511,16 +528,29 @@ ${sectionHTML}
                           </td>
                           <td style={{ fontWeight: 500, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.description}>{line.description || '—'}</td>
                           <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>{line.work_order || '—'}</td>
+                          <td style={{ fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {line.contract_scope ? <span style={{ background: '#ede9fe', color: '#6b21a8', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>{line.contract_scope}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}
+                          </td>
+                          <td style={{ fontSize: '11px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{line.unit_type || '—'}</td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--text3)', fontSize: '11px' }}>
                             {line.estimated_qty ? line.estimated_qty.toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'}
                           </td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: line.item_id && hoursByItem[line.item_id] ? 'var(--text)' : 'var(--text3)' }}>
                             {line.item_id && hoursByItem[line.item_id] ? hoursByItem[line.item_id].toLocaleString('en-AU', { maximumFractionDigits: 1 }) : '—'}
                           </td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>
+                            {line.tce_rate ? fmt(line.tce_rate) : '—'}
+                          </td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(tce)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', color: lineCommitted(line.item_id) > 0 ? '#d97706' : 'var(--text3)' }}>
+                            {lineCommitted(line.item_id) > 0 ? fmt(lineCommitted(line.item_id)) : '—'}
+                          </td>
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: actuals > 0 ? 'var(--text)' : actuals < 0 ? 'var(--red)' : 'var(--text3)' }}>{fmt(actuals)}</td>
                           {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', background: '#eff6ff', color: weekActuals > 0 ? '#1e40af' : 'var(--text3)' }}>{fmt(weekActuals)}</td>}
                           <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: rem < 0 ? 'var(--red)' : 'var(--text2)' }}>{fmt(rem)}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            {line.kpi_included ? <span style={{ fontSize: '12px' }}>✓</span> : <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>}
+                          </td>
                           <td>
                             {pctNum !== null ? (
                               <div>
@@ -532,24 +562,31 @@ ${sectionHTML}
                             ) : <span style={{ fontSize: '11px', color: 'var(--text3)' }}>—</span>}
                           </td>
                           <td><span className="badge" style={badge}>{badge.label}</span></td>
+                          <td style={{ fontSize: '10px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{line.line_type || '—'}</td>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>{line.wbs_code || '—'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: 'var(--bg3)', fontWeight: 700 }}>
-                      <td colSpan={4} style={{ padding: '8px 12px' }}>TOTAL ({displayed.length})</td>
+                      <td colSpan={6} style={{ padding: '8px 12px' }}>TOTAL ({displayed.length})</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--text3)', fontSize: '11px' }}>
                         {displayed.reduce((s,x) => s + (x.line.estimated_qty || 0), 0).toLocaleString('en-AU', { maximumFractionDigits: 1 })}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', fontSize: '11px' }}>
                         {displayed.reduce((s,x) => s + (x.line.item_id ? (hoursByItem[x.line.item_id] || 0) : 0), 0).toLocaleString('en-AU', { maximumFractionDigits: 1 })}
                       </td>
+                      <td style={{ padding: '8px 12px' }} />
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s,x)=>s+x.tce,0))}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: '#d97706' }}>
+                        {fmt(displayed.reduce((s,x)=>s+lineCommitted(x.line.item_id),0))}
+                      </td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(displayed.reduce((s,x)=>s+x.actuals,0))}</td>
                       {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', background: '#dbeafe', color: '#1e40af' }}>{fmt(displayed.reduce((s,x)=>s+(x.weekActuals||0),0))}</td>}
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: displayed.reduce((s,x)=>s+x.tce-x.actuals,0)<0?'var(--red)':'var(--text)' }}>{fmt(displayed.reduce((s,x)=>s+x.tce-x.actuals,0))}</td>
-                      <td colSpan={2} style={{ fontSize: '11px', color: 'var(--text2)', padding: '8px 12px' }}>
+                      <td style={{ padding: '8px 12px' }} />
+                      <td colSpan={3} style={{ fontSize: '11px', color: 'var(--text2)', padding: '8px 12px' }}>
                         {(() => { const t=displayed.reduce((s,x)=>s+x.tce,0); const a=displayed.reduce((s,x)=>s+x.actuals,0); return t>0?Math.round(a/t*100)+'% used':'—' })()}
                       </td>
                     </tr>
