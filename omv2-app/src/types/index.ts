@@ -124,6 +124,12 @@ export interface UserPrefs {
 
   // ── Saved views ───────────────────────────────────────────────────────────
   saved_views?: Record<string, { name: string; filters: Record<string, unknown> }[]>
+
+  // ── Help & Guide ──────────────────────────────────────────────────────────
+  /** Set true once user has seen (and skipped or completed) the first-run welcome modal. */
+  help_first_run_completed?: boolean
+  /** Tour IDs the user has completed (clicked Done, not skipped). Future use: badge/checkmark on completed tours. */
+  help_completed_tours?: string[]
 }
 
 export interface AppUser {

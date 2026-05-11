@@ -12,6 +12,7 @@ import { ProjectPicker } from './components/layout/ProjectPicker'
 import { CommandPalette } from './components/layout/CommandPalette'
 import { ToastContainer } from './components/ui/Toast'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
+import { FirstRunWelcomeModal } from './components/FirstRunWelcomeModal'
 import { HelpPanel } from './pages/HelpPanel'
 import { DashboardPanel } from './pages/dashboard/DashboardPanel'
 import { PlaceholderPanel } from './pages/PlaceholderPanel'
@@ -360,6 +361,7 @@ function AppInner() {
 
       <ToastContainer />
       <PWAUpdatePrompt />
+      <FirstRunWelcomeModal />
     </div>
   )
 }
