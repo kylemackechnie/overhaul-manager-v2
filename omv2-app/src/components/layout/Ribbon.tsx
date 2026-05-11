@@ -2,7 +2,6 @@ import { useAppStore } from '../../store/appStore'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useState, useEffect, useCallback } from 'react'
-import { GlobalSearch } from '../GlobalSearch'
 import { usePermissions } from '../../lib/permissions'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import type { Module } from '../../lib/permissions'
@@ -429,9 +428,6 @@ export function Ribbon() {
             {activeProject.name}
           </span>
         </div>
-
-        {/* Global Search */}
-        <GlobalSearch />
 
         {/* User */}
         <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
