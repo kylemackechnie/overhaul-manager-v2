@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { HelpButton } from '../../components/HelpButton'
 import { buildForecast, weekKey, bucketTotal } from '../../engines/forecastEngine'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
 
@@ -95,7 +96,10 @@ export function SCurvePanel() {
     <div style={{ padding:'24px', maxWidth:'1200px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
         <div>
-          <h1 style={{ fontSize:'18px', fontWeight:700 }}>S-Curve</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize:'18px', fontWeight:700, margin: 0 }}>S-Curve</h1>
+            <HelpButton panelId="cost-scurve" />
+          </div>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>Cumulative {mode === 'sell' ? 'revenue' : 'cost'} forecast vs actuals</p>
         </div>
         <div style={{ display:'flex', gap:'8px' }}>

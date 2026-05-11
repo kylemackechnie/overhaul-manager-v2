@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { calcRentalCost } from '../../lib/calculations'
 import { fxRate } from '../../lib/currency'
+import { HelpButton } from '../../components/HelpButton'
 import type {
   HireItem, Car, Accommodation, Expense, BackOfficeHour,
   ToolingCosting, GlobalTV, GlobalDepartment, Invoice,
@@ -403,7 +404,10 @@ export function CostRegisterPanel() {
   return (
     <div style={{ padding: '24px', maxWidth: '1400px' }}>
       <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Cost Register</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Cost Register</h1>
+          <HelpButton panelId="cost-register" />
+        </div>
         <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
           Raw ledger of every cost item — actuals incurred and committed bookings, expanded to daily rows
         </p>

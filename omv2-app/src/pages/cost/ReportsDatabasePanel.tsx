@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { HelpButton } from '../../components/HelpButton'
 import { toast } from '../../components/ui/Toast'
 
 interface SavedReport {
@@ -107,7 +108,10 @@ export function ReportsDatabasePanel() {
     <div style={{ padding: '24px', maxWidth: '900px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Reports Database</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Reports Database</h1>
+            <HelpButton panelId="reports-db" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{reports.length} saved reports</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type WbsAggregateRow, type SeSupportEntry } from '../../engines/wbsAggregator'
+import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
   HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine } from '../../types'
 
@@ -335,7 +336,10 @@ export function CostReportPanel() {
     <div style={{ padding:'24px', maxWidth:'1400px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
         <div>
-          <h1 style={{ fontSize:'18px', fontWeight:700 }}>Cost Summary Report</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize:'18px', fontWeight:700, margin: 0 }}>Cost Summary Report</h1>
+            <HelpButton panelId="cost-report" />
+          </div>
           <p style={{ fontSize:'12px', color:'var(--text3)', marginTop:'2px' }}>
             Cost vs Sell by WBS code
             {weekFilter && (

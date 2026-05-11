@@ -6,6 +6,7 @@ import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 import { buildForecast } from '../../engines/forecastEngine'
+import { HelpButton } from '../../components/HelpButton'
 import type { PoBucket } from '../../engines/forecastEngine'
 import type { PurchaseOrder, Resource, RateCard, HireItem, Car, Accommodation, Invoice, Project } from '../../types'
 
@@ -664,6 +665,10 @@ export function POsPanel() {
 
   return (
     <div style={{padding:'20px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px'}}>
+        <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>Purchase Orders</h1>
+        <HelpButton panelId="purchase-orders" />
+      </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'10px',marginBottom:'16px'}}>
         {[
           {label:'Active POs',value:String(pos.filter(p=>p.status==='active'||p.status==='raised').length),color:'var(--accent)'},

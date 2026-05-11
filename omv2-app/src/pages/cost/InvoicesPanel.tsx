@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { SavedViewsBar } from '../../components/ui/SavedViewsBar'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
@@ -487,7 +488,10 @@ export function InvoicesPanel() {
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px',flexWrap:'wrap',gap:'8px'}}>
         <div>
-          <h1 style={{fontSize:'20px',fontWeight:700}}>Invoices</h1>
+          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <h1 style={{fontSize:'20px',fontWeight:700,margin:0}}>Invoices</h1>
+            <HelpButton panelId="invoices" />
+          </div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
             {invoices.length} invoice{invoices.length!==1?'s':''} · {fmtK(invoices.reduce((s,i)=>s+(i.amount||0),0))} total
           </p>

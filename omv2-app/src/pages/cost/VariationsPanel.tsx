@@ -15,6 +15,7 @@ import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 import type { Variation, VariationLine, NrgTceLine, RateCard } from '../../types'
 
 const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
@@ -480,7 +481,10 @@ export function VariationsPanel() {
     <div style={{padding:'24px',maxWidth:'1000px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
         <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>Contract Variations</h1>
+          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>Contract Variations</h1>
+            <HelpButton panelId="variations" />
+          </div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
             {variations.length} variations · {fmt(totalApproved)} approved · {fmt(totalSubmitted)} pending
           </p>

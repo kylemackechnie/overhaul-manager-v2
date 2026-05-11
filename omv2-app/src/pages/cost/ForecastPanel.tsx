@@ -9,6 +9,7 @@ import {
 import type { ForecastData, DayPerson } from '../../engines/forecastEngine'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
+import { HelpButton } from '../../components/HelpButton'
 import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from 'recharts'
 
 type Period = 'week' | 'month'
@@ -318,7 +319,10 @@ export function ForecastPanel() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#8b5cf6', margin: 0 }}>📈 Project Forecast</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#8b5cf6', margin: 0 }}>📈 Project Forecast</h1>
+            <HelpButton panelId="cost-forecast" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', margin: '2px 0 0 0' }}>Day-by-day cost estimate from planned resources, hire, tooling &amp; accommodation</p>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>

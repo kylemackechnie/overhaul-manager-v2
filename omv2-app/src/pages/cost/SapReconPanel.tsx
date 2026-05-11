@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -229,7 +230,10 @@ export function SapReconPanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>🔍 SAP Reconciliation</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>🔍 SAP Reconciliation</h1>
+            <HelpButton panelId="sap-recon" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             Compare SAP cost exports against internally tracked costs
           </p>

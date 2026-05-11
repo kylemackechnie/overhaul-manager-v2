@@ -7,6 +7,7 @@ import {
   convertToBase,
   type CurrencyMode,
 } from '../../lib/currency'
+import { HelpButton } from '../../components/HelpButton'
 
 // Siemens Energy logo SVG
 const SE_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 343" style="width:140px;display:block">
@@ -514,7 +515,10 @@ ${sections.join('\n')}
     <div style={{ padding: '24px', maxWidth: '800px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Customer Report</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Customer Report</h1>
+            <HelpButton panelId="cost-customer-report" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {activeProject?.name} · Full sell-side cost report
             {weekFilter && (
