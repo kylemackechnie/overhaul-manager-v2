@@ -33,6 +33,12 @@ interface AppStore {
   setPendingPoId: (id: string | null) => void
   activePOManagerId: string | null
   setActivePOManagerId: (id: string | null) => void
+
+  // Help & Guide navigation intent — set by HelpButton click, consumed by HelpPanel on mount
+  helpTargetSlug: string | null
+  setHelpTargetSlug: (slug: string | null) => void
+  helpTourId: string | null
+  setHelpTourId: (id: string | null) => void
 }
 
 export const useAppStore = create<AppStore>()(
@@ -72,6 +78,11 @@ export const useAppStore = create<AppStore>()(
       setPendingPoId: (id) => set({ pendingPoId: id }),
       activePOManagerId: null,
       setActivePOManagerId: (id) => set({ activePOManagerId: id }),
+
+      helpTargetSlug: null,
+      setHelpTargetSlug: (slug) => set({ helpTargetSlug: slug }),
+      helpTourId: null,
+      setHelpTourId: (id) => set({ helpTourId: id }),
     }),
     {
       name: 'omv2-app-store',

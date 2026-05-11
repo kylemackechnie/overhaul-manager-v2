@@ -22,6 +22,36 @@ export function HelpPanel() {
   const selected = useMemo(() => ALL_ARTICLES.find(a => a.slug === selectedSlug), [selectedSlug])
   const { unreadCount } = useHelpNews()
 
+  // Consume cross-panel navigation intents on mount:
+  //   - helpTargetSlug → preselect an article (and switch to Reference tab)
+  //   - helpTourId → kick off a tour immediately
+  // Both are single-use: read once, then clear so re-opening Help doesn't re-trigger.
+  const setActivePanel = useAppStore(s => s.setActivePanel)
+  const helpTargetSlug = useAppStore(s => s.helpTargetSlug)
+  const setHelpTargetSlug = useAppStore(s => s.setHelpTargetSlug)
+  const helpTourId = useAppStore(s => s.helpTourId)
+  const setHelpTourId = useAppStore(s => s.setHelpTourId)
+
+  useEffect(() => {
+    if (helpTargetSlug) {
+      const exists = ALL_ARTICLES.some(a => a.slug === helpTargetSlug)
+      if (exists) {
+        setSelectedSlug(helpTargetSlug)
+        setTab('reference')
+      }
+      setHelpTargetSlug(null)
+    }
+    if (helpTourId) {
+      const tour = getTour(helpTourId)
+      if (tour) {
+        runTour(tour, { setActivePanel })
+      }
+      setHelpTourId(null)
+    }
+    // Run once per mount — intents are transient by design
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Filter sidebar by search query (matches title or category)
   const filteredCategories = useMemo(() => {
     if (!search.trim()) return categories

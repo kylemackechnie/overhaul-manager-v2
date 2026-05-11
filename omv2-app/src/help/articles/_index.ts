@@ -9,6 +9,7 @@
 //   order: 20
 //   relatedTour: tce-register-tour     (optional)
 //   relatedPanels: [nrg-tce, tce-forecast]    (optional)
+//   summary: One-line description for tooltips     (optional — auto-derived from first paragraph if omitted)
 //   ---
 
 export interface ArticleMeta {
@@ -18,10 +19,13 @@ export interface ArticleMeta {
   order: number
   relatedTour?: string
   relatedPanels?: string[]
+  summary?: string
 }
 
 export interface Article extends ArticleMeta {
   body: string
+  /** Short blurb suitable for tooltips. From `summary:` frontmatter if provided, else first paragraph of body. */
+  summary: string
 }
 
 // Tiny YAML-ish frontmatter parser. Supports string, number, and string-array values.
@@ -49,6 +53,38 @@ function parseFrontmatter(raw: string): { meta: Partial<ArticleMeta>; body: stri
   return { meta: meta as Partial<ArticleMeta>, body }
 }
 
+/**
+ * Derive a short summary from article body — first non-heading paragraph,
+ * truncated to ~180 chars. Used when frontmatter doesn't provide `summary:`.
+ *
+ * Strips markdown bold/italic/code formatting so the result reads cleanly in
+ * tooltips, but keeps it cheap — not a full markdown-to-text converter.
+ */
+function deriveSummary(body: string): string {
+  // Split on blank lines, find first paragraph that isn't a heading
+  const paras = body.split(/\r?\n\r?\n/)
+  for (const p of paras) {
+    const trimmed = p.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    // Strip basic markdown formatting for plain-text display
+    const clean = trimmed
+      .replace(/\*\*([^*]+)\*\*/g, '$1')   // bold
+      .replace(/\*([^*]+)\*/g, '$1')       // italic
+      .replace(/`([^`]+)`/g, '$1')         // inline code
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → text only
+      .replace(/\s+/g, ' ')                // collapse whitespace
+      .trim()
+    if (clean.length <= 180) return clean
+    // Cut at last sentence boundary or word boundary under 180 chars
+    const truncated = clean.slice(0, 180)
+    const lastSentence = truncated.lastIndexOf('. ')
+    if (lastSentence > 100) return truncated.slice(0, lastSentence + 1)
+    const lastSpace = truncated.lastIndexOf(' ')
+    return truncated.slice(0, lastSpace) + '…'
+  }
+  return ''
+}
+
 // Vite glob import — eager + raw so we get the file contents at build time.
 const rawArticles = import.meta.glob('./*.md', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>
 
@@ -63,6 +99,8 @@ for (const path in rawArticles) {
     }
     continue
   }
+  const bodyTrimmed = body.trim()
+  const summary = meta.summary ? String(meta.summary) : deriveSummary(bodyTrimmed)
   articles.push({
     slug: String(meta.slug),
     title: String(meta.title),
@@ -70,7 +108,8 @@ for (const path in rawArticles) {
     order: typeof meta.order === 'number' ? meta.order : 999,
     relatedTour: meta.relatedTour ? String(meta.relatedTour) : undefined,
     relatedPanels: Array.isArray(meta.relatedPanels) ? meta.relatedPanels.map(String) : undefined,
-    body: body.trim(),
+    body: bodyTrimmed,
+    summary,
   })
 }
 

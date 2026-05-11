@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../../../lib/supabase'
 import { useAppStore } from '../../../../store/appStore'
 import { AlertBanner } from '../../primitives'
+import { HelpButton } from '../../../HelpButton'
 
 const todayStr = new Date().toISOString().slice(0, 10)
 const next7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
@@ -52,7 +53,10 @@ export function MainDashboardHeader() {
       }}
     >
       <div>
-        <h1 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '4px' }}>{activeProject.name}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{activeProject.name}</h1>
+          <HelpButton panelId="dashboard" />
+        </div>
         <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
           {activeProject.wbs && <span>{activeProject.wbs}</span>}
           {activeProject.start_date && (
