@@ -202,7 +202,7 @@ export function NrgInvoicingPanel() {
   function lineActualInPeriodEurAware(line: NrgTceLine, fromWE: string, toWE: string): number {
     if (!toWE) return 0
     if (line.line_type === 'Fixed Price') return 0
-    const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
+    const isLabour = (line.line_type || '').includes('Labour') || line.source === 'skilled'
     if (!isLabour) {
       // Non-labour: unchanged
       let total = 0

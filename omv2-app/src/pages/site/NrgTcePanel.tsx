@@ -197,7 +197,7 @@ export function NrgTcePanel() {
 
   function lineActualCost(l: NrgTceLine): number {
     if (l.line_type === 'Fixed Price') return l.tce_total || 0
-    const isLabour = l.line_type === 'Labour' || l.source === 'skilled'
+    const isLabour = (l.line_type || '').includes('Labour') || l.source === 'skilled'
     if (isLabour && l.item_id) {
       // Read from stored timesheet_cost_lines (same source as NRG Actuals + NRG Invoice)
       // This avoids rate card drift from live recalculation

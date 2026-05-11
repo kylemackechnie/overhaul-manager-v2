@@ -220,12 +220,13 @@ export function NrgActualsPanel() {
         // The user can interpret this as "100% of the cost is recognised".
         return { line: l, actuals: tce, tce, pct: tce > 0 ? 100 : null, weekActuals: weekFilter ? tce : 0 }
       }
-      const labour = (l.item_id ? labourByItem[l.item_id]?.sell || 0 : 0)
+      const isLabour = (l.line_type || '').includes('Labour') || l.source === 'skilled'
+      const labour = (isLabour && l.item_id ? labourByItem[l.item_id]?.sell || 0 : 0)
       const nonLabour = nrgInvoiceActual(l.item_id, invoices, expenses, variations)
       const actuals = labour + nonLabour
       const pct = tce > 0 ? (actuals / tce) * 100 : null
       // Weekly slice
-      const weekLabour = weekFilter && l.item_id ? (labourByItemWeekly[l.item_id]?.sell || 0) : 0
+      const weekLabour = (isLabour && weekFilter && l.item_id) ? (labourByItemWeekly[l.item_id]?.sell || 0) : 0
       const weekNonLabour = weekFilter
         ? nrgInvoiceActualForWeek(l.item_id, invoices, expenses, variations, weekStart, weekEnd)
         : 0

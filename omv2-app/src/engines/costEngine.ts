@@ -805,7 +805,7 @@ export function nrgLineActual(
   // value is the contract amount, full stop.
   if (line.line_type === 'Fixed Price') return line.tce_total || 0
 
-  const isLabour = line.line_type === 'Labour' || line.source === 'skilled'
+  const isLabour = (line.line_type || '').includes('Labour') || line.source === 'skilled'
 
   if (!isLabour) {
     return nrgInvoiceActual(line.item_id, invoices, expenses, variations)
