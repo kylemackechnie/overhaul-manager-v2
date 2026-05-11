@@ -693,7 +693,7 @@ export function nrgInvoiceActual(
   itemId: string | null,
   invoices: NrgInvoiceMin[],
   expenses: NrgExpenseMin[],
-  variations: NrgVariationMin[]
+  _variations?: NrgVariationMin[]
 ): number {
   if (!itemId) return 0
 
