@@ -248,22 +248,19 @@ export function NrgActualsPanel() {
     | { kind: 'header'; line: NrgTceLine; groupTce: number; groupActuals: number; groupWeekActuals: number }
     | { kind: 'leaf'; line: NrgTceLine; actuals: number; tce: number; pct: number | null; weekActuals: number }
 
-  const groupHeaders = lines.filter(l => isGroupHeader(l.item_id, l.line_type))
-  const displayedIds = new Set(displayed.map(x => x.line.item_id))
+  // Build render list mirroring TCE register's visibleRows approach:
+  // walk `lines` in sort_order, keep headers in place, collect subtotals from displayed leaves.
+  const displayedSet = new Set(displayed.map(x => x.line.id))
 
   const tableRows: RenderRow[] = []
-  // Walk in original `lines` order to preserve TCE register ordering
   for (const l of lines) {
     if (isGroupHeader(l.item_id, l.line_type)) {
-      // Collect direct children: prefer parent_id match, fall back to item_id prefix
+      // Only show header if at least one displayed leaf belongs to it
       const children = displayed.filter(x => {
         if (x.line.parent_id) return x.line.parent_id === l.item_id
-        return (x.line.item_id || '').startsWith((l.item_id || '') + '.') &&
-          !groupHeaders.some(h => h !== l && isGroupHeader(h.item_id, h.line_type) &&
-            (x.line.item_id || '').startsWith((h.item_id || '') + '.') &&
-            (h.item_id || '').startsWith((l.item_id || '') + '.'))
+        return (x.line.item_id || '').startsWith((l.item_id || '') + '.')
       })
-      if (children.length === 0) continue  // no visible children → skip header
+      if (children.length === 0) continue
       tableRows.push({
         kind: 'header',
         line: l,
@@ -271,8 +268,8 @@ export function NrgActualsPanel() {
         groupActuals: children.reduce((s, x) => s + x.actuals, 0),
         groupWeekActuals: children.reduce((s, x) => s + (x.weekActuals || 0), 0),
       })
-    } else if (displayedIds.has(l.item_id)) {
-      const row = displayed.find(x => x.line.item_id === l.item_id)
+    } else if (displayedSet.has(l.id)) {
+      const row = displayed.find(x => x.line.id === l.id)
       if (row) tableRows.push({ kind: 'leaf', ...row })
     }
   }
