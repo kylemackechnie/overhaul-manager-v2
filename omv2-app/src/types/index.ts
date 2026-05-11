@@ -185,6 +185,8 @@ export interface Project {
   mika_data: MikaRow[] | null
   induction_data: InductionPerson[] | null
   induction_upload_time: string | null
+  lessons_data: InductionPerson[] | null
+  lessons_upload_time: string | null
   co2_config: Co2Config
   sap_reconciliation: SapReconState
   pm_user_id: string | null

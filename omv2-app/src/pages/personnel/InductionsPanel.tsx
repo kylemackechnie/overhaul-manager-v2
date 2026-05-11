@@ -449,10 +449,10 @@ export function InductionsPanel() {
       setInductionData([])
       setCoursesFile('')
     }
-    if ((activeProject as Record<string,unknown>).lessons_data) {
-      setLessonsData((activeProject as Record<string,unknown>).lessons_data as InductionPerson[])
-      if ((activeProject as Record<string,unknown>).lessons_upload_time) {
-        setLessonsFile(`Last uploaded: ${new Date(String((activeProject as Record<string,unknown>).lessons_upload_time)).toLocaleString('en-AU')}`)
+    if (activeProject.lessons_data?.length) {
+      setLessonsData(activeProject.lessons_data as unknown as InductionPerson[])
+      if (activeProject.lessons_upload_time) {
+        setLessonsFile(`Last uploaded: ${new Date(activeProject.lessons_upload_time).toLocaleString('en-AU')}`)
       }
     } else {
       setLessonsData([])
@@ -519,10 +519,10 @@ export function InductionsPanel() {
         setLessonsData(people)
         setLessonsFile(file.name)
         supabase.from('projects')
-          .update({ lessons_data: people, lessons_upload_time: uploadTime } as Record<string, unknown>)
+          .update({ lessons_data: people, lessons_upload_time: uploadTime })
           .eq('id', activeProject!.id)
           .then(() => {
-            if (activeProject) setActiveProject({ ...activeProject, lessons_data: people as unknown as typeof activeProject.induction_data, lessons_upload_time: uploadTime } as typeof activeProject)
+            if (activeProject) setActiveProject({ ...activeProject, lessons_data: people as unknown as InductionPerson[], lessons_upload_time: uploadTime })
           })
       }
 
