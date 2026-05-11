@@ -5,6 +5,7 @@ category: Personnel
 order: 10
 summary: The people on the job. Each resource has a name, role, category, mobilisation dates, shift, specialisation, and allowance flags. Statuses are auto-derived from dates.
 relatedPanels: [hr-resources, hr-utilisation]
+relatedTour: resources-panel-tour
 ---
 
 # Resources & Roles

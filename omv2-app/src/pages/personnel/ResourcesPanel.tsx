@@ -540,7 +540,7 @@ export function ResourcesPanel() {
     ) : (<>
     <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px',flexWrap:'wrap'}}>
         {/* Title block */}
-        <div style={{display:'flex',flexDirection:'column',gap:'1px',flexShrink:0}}>
+        <div data-tour="resources-title" style={{display:'flex',flexDirection:'column',gap:'1px',flexShrink:0}}>
           <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
             <span style={{fontSize:'14px',fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}}>Resources</span>
             <HelpButton panelId="hr-resources" />
@@ -551,14 +551,14 @@ export function ResourcesPanel() {
         <div style={{width:'0.5px',height:'28px',background:'var(--border)',flexShrink:0}} />
 
         {/* Search */}
-        <div style={{position:'relative',flex:'0 0 180px'}}>
+        <div data-tour="resources-search" style={{position:'relative',flex:'0 0 180px'}}>
           <span style={{position:'absolute',left:'7px',top:'50%',transform:'translateY(-50%)',fontSize:'13px',color:'var(--text3)',pointerEvents:'none'}}>⌕</span>
           <input className="input" style={{width:'100%',paddingLeft:'24px',height:'28px',fontSize:'12px'}}
             placeholder="Search name, role, company…" value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
 
         {/* Category pills */}
-        <div style={{display:'flex',gap:'4px',alignItems:'center',flexWrap:'wrap'}}>
+        <div data-tour="resources-category-pills" style={{display:'flex',gap:'4px',alignItems:'center',flexWrap:'wrap'}}>
           {(['all',...CATEGORIES] as string[]).map(cat => {
             const label = cat === 'all' ? 'All' : cat === 'management' ? 'Mgmt' : cat === 'subcontractor' ? 'Subcon' : cat === 'seag' ? 'SE AG' : cat.charAt(0).toUpperCase()+cat.slice(1)
             const count = cat === 'all' ? resources.length : catCounts[cat] || 0
@@ -573,7 +573,7 @@ export function ResourcesPanel() {
         </div>
 
         {/* Status filter */}
-        <select className="input" style={{height:'28px',fontSize:'11px',padding:'2px 6px',width:'auto'}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+        <select data-tour="resources-status-filter" className="input" style={{height:'28px',fontSize:'11px',padding:'2px 6px',width:'auto'}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
           <option value="all">All statuses</option>
           {Object.entries(STATUS_STYLE).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
@@ -585,14 +585,14 @@ export function ResourcesPanel() {
           <button className="btn btn-sm" onClick={exportCSV} title="Export CSV" style={{height:'28px',padding:'0 8px'}}>
             <span style={{fontSize:'13px'}}>↓</span>
           </button>
-          <button className="btn btn-sm" onClick={() => setShowImport(s => !s)} title="Import CSV" style={{height:'28px',padding:'0 8px'}}>
+          <button data-tour="resources-import" className="btn btn-sm" onClick={() => setShowImport(s => !s)} title="Import CSV" style={{height:'28px',padding:'0 8px'}}>
             <span style={{fontSize:'13px'}}>↑</span>
           </button>
-          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title={`Column visibility${hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ''}`} style={{height:'28px',padding:'0 8px',position:'relative'}}>
+          <button data-tour="resources-columns" className="btn btn-sm" onClick={() => setShowColPicker(true)} title={`Column visibility${hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ''}`} style={{height:'28px',padding:'0 8px',position:'relative'}}>
             <span style={{fontSize:'13px'}}>⊞</span>
             {hiddenCols.size > 0 && <span style={{position:'absolute',top:'-4px',right:'-4px',background:'var(--accent)',color:'#fff',borderRadius:'50%',width:'14px',height:'14px',fontSize:'9px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700}}>{hiddenCols.size}</span>}
           </button>
-          <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')} style={{height:'28px',padding:'0 10px',fontSize:'12px'}}>+ Add person</button>
+          <button data-tour="resources-add-person" className="btn btn-primary" onClick={openNew} disabled={!canWrite('personnel')} style={{height:'28px',padding:'0 10px',fontSize:'12px'}}>+ Add person</button>
         </div>
       </div>
 
@@ -644,7 +644,7 @@ export function ResourcesPanel() {
               </div>
             ) : null
           })()}
-          <div className="card" style={{padding:0,marginBottom:'16px'}}>
+          <div data-tour="resources-table" className="card" style={{padding:0,marginBottom:'16px'}}>
             <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'calc(100vh - 280px)'}} onScroll={e => {
               const el = e.currentTarget
               const mirror = el.parentElement?.querySelector('.scroll-mirror') as HTMLElement | null
@@ -837,15 +837,16 @@ export function ResourcesPanel() {
           </div>
 
           {/* On-site Gantt calendar */}
-          <ResourceCalendar
-            resources={filtered}
-            onSave={async (id, field, value) => { await saveInline(id, field, value) }}
-            onOpenEdit={r => { setForm({...r}); setModal(r) }}
-            selected={selected}
-            onBulkEdit={() => setBulkModal(true)}
-            onClearSelected={() => setSelected(new Set())}
-          />
-        </>
+          <div data-tour="resources-calendar">
+            <ResourceCalendar
+              resources={filtered}
+              onSave={async (id, field, value) => { await saveInline(id, field, value) }}
+              onOpenEdit={r => { setForm({...r}); setModal(r) }}
+              selected={selected}
+              onBulkEdit={() => setBulkModal(true)}
+              onClearSelected={() => setSelected(new Set())}
+            />
+          </div>        </>
       )}
     </>)}
 
