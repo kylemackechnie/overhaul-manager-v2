@@ -193,11 +193,11 @@ export function NrgTcePanel() {
 
   function lineActualCost(l: NrgTceLine): number {
     if (l.line_type === 'Fixed Price') return l.tce_total || 0
-    // Variation lines: use VN cost_total (planned/committed cost) from all linked variations
+    // Variation lines: use VN sell_total (planned sell) from all linked variations
     if (l.source === 'variation' && l.item_id) {
       return variations
         .filter(v => v.tce_link === l.item_id)
-        .reduce((s, v) => s + (v.cost_total || 0), 0)
+        .reduce((s, v) => s + (v.sell_total || 0), 0)
     }
     const isLabour = l.line_type === 'Labour' || l.source === 'skilled'
     if (isLabour && l.item_id) {
