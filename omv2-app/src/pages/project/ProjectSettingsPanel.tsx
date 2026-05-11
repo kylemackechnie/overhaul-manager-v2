@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { useTimesheetPermissions } from '../../lib/permissions'
+import { HelpButton } from '../../components/HelpButton'
 
 const DAYS = ['mon','tue','wed','thu','fri','sat','sun']
 const DAY_LABELS: Record<string,string> = { mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun' }
@@ -226,7 +227,10 @@ export function ProjectSettingsPanel() {
   return (
     <div style={{padding:'24px',maxWidth:'760px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px'}}>
-        <h1 style={{fontSize:'18px',fontWeight:700}}>Project Settings</h1>
+        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+          <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>Project Settings</h1>
+          <HelpButton panelId="project-settings" />
+        </div>
         <button className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null} Save Settings
         </button>
