@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { marked } from 'marked'
 import { ALL_ARTICLES, getCategories, type Article } from '../help/articles/_index'
+import { useHelpNews } from '../hooks/useHelpNews'
+import { WhatsNewTab } from './WhatsNewTab'
 
 type HelpTab = 'reference' | 'walkthroughs' | 'whats-new'
 
@@ -14,6 +16,7 @@ export function HelpPanel() {
 
   const categories = useMemo(() => getCategories(), [])
   const selected = useMemo(() => ALL_ARTICLES.find(a => a.slug === selectedSlug), [selectedSlug])
+  const { unreadCount } = useHelpNews()
 
   // Filter sidebar by search query (matches title or category)
   const filteredCategories = useMemo(() => {
@@ -53,7 +56,12 @@ export function HelpPanel() {
       <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--border)', marginBottom: '16px' }}>
         <HelpTabButton label="📖 Reference" active={tab === 'reference'} onClick={() => setTab('reference')} />
         <HelpTabButton label="🎯 Walkthroughs" active={tab === 'walkthroughs'} onClick={() => setTab('walkthroughs')} />
-        <HelpTabButton label="📰 What's New" active={tab === 'whats-new'} onClick={() => setTab('whats-new')} />
+        <HelpTabButton
+          label="📰 What's New"
+          badge={unreadCount > 0 ? unreadCount : undefined}
+          active={tab === 'whats-new'}
+          onClick={() => setTab('whats-new')}
+        />
       </div>
 
       {tab === 'reference' && (
@@ -68,12 +76,12 @@ export function HelpPanel() {
       )}
 
       {tab === 'walkthroughs' && <WalkthroughsTabPlaceholder />}
-      {tab === 'whats-new' && <WhatsNewTabPlaceholder />}
+      {tab === 'whats-new' && <WhatsNewTab />}
     </div>
   )
 }
 
-function HelpTabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function HelpTabButton({ label, active, onClick, badge }: { label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
     <button
       onClick={onClick}
@@ -87,9 +95,26 @@ function HelpTabButton({ label, active, onClick }: { label: string; active: bool
         fontSize: '13px',
         fontWeight: active ? 600 : 500,
         marginBottom: '-1px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
       }}
     >
       {label}
+      {badge !== undefined && (
+        <span style={{
+          background: 'var(--accent)',
+          color: '#fff',
+          fontSize: '10px',
+          fontWeight: 700,
+          padding: '1px 6px',
+          borderRadius: '10px',
+          minWidth: '16px',
+          textAlign: 'center',
+        }}>
+          {badge}
+        </span>
+      )}
     </button>
   )
 }
@@ -215,16 +240,6 @@ function WalkthroughsTabPlaceholder() {
       <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎯</div>
       <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text2)' }}>Walkthroughs coming soon</div>
       <div>Interactive guided tours will appear here.</div>
-    </div>
-  )
-}
-
-function WhatsNewTabPlaceholder() {
-  return (
-    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
-      <div style={{ fontSize: '32px', marginBottom: '12px' }}>📰</div>
-      <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text2)' }}>What's New coming soon</div>
-      <div>Release notes and tips will appear here.</div>
     </div>
   )
 }

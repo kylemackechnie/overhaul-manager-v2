@@ -143,6 +143,28 @@ export interface AppUser {
   preferences?: UserPrefs
 }
 
+// Help & Guide — What's New posts
+export type HelpNewsCategory = 'update' | 'tip' | 'announcement'
+
+export interface HelpNews {
+  id: string
+  title: string
+  body_md: string
+  category: HelpNewsCategory
+  pinned: boolean
+  published: boolean
+  published_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface HelpDismissal {
+  app_user_id: string
+  news_id: string
+  dismissed_at: string
+}
+
 export interface Site {
   id: string
   name: string
