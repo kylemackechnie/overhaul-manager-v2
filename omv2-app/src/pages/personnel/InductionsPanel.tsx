@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -433,13 +433,16 @@ export function InductionsPanel() {
   const [coursesFile, setCoursesFile]     = useState('')
   const [lessonsFile, setLessonsFile]     = useState('')
   const [refDate, setRefDate]             = useState(() => new Date().toISOString().slice(0,10))
+  const [loading, setLoading]             = useState(false)
   const today = new Date().toISOString().slice(0,10)
+
+  // Session cache: avoid re-fetching resources every time the panel is opened
+  const resourceCache = useRef<Record<string, Resource[]>>({})
 
   useEffect(() => {
     if (!activeProject) return
-    supabase.from('resources').select('id,name,role,mob_in,mob_out,company')
-      .eq('project_id', activeProject.id)
-      .then(({ data }) => setResources(data || []))
+
+    // Restore induction/lessons from activeProject (already in memory — instant)
     if (activeProject.induction_data?.length) {
       setInductionData(activeProject.induction_data as unknown as InductionPerson[])
       if (activeProject.induction_upload_time) {
@@ -457,6 +460,21 @@ export function InductionsPanel() {
     } else {
       setLessonsData([])
       setLessonsFile('')
+    }
+
+    // Resources: use session cache if available, otherwise fetch once
+    if (resourceCache.current[activeProject.id]) {
+      setResources(resourceCache.current[activeProject.id])
+    } else {
+      setLoading(true)
+      supabase.from('resources').select('id,name,role,mob_in,mob_out,company')
+        .eq('project_id', activeProject.id)
+        .then(({ data }) => {
+          const r = data || []
+          resourceCache.current[activeProject.id] = r
+          setResources(r)
+          setLoading(false)
+        })
     }
   }, [activeProject?.id])
 
@@ -657,6 +675,19 @@ export function InductionsPanel() {
         </div>
       )}
 
+      {/* Loading */}
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', gap: '16px' }}>
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '50%',
+            border: '3px solid var(--border)', borderTopColor: 'var(--purple)',
+            animation: 'spin 0.7s linear infinite',
+          }} />
+          <div style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading resources…</div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      )}
+
       {/* KPIs */}
       {resources.length > 0 && allInductionData.length > 0 && (
         <div className="kpi-grid" style={{ marginBottom: '16px' }}>
@@ -694,10 +725,10 @@ export function InductionsPanel() {
       )}
 
       {/* Empty states */}
-      {resources.length === 0 && (
+      {!loading && resources.length === 0 && (
         <div className="empty-state"><div className="icon">👥</div><h3>No resources</h3><p>Add people to Resources first.</p></div>
       )}
-      {resources.length > 0 && inductionData.length === 0 && lessonsData.length === 0 && (
+      {!loading && resources.length > 0 && allInductionData.length === 0 && lessonsData.length === 0 && (
         <div className="empty-state"><div className="icon">📄</div><h3>No induction data</h3>
           <p>Load the Courses export and/or the Lessons export from SE Learning. Both files will be merged automatically.</p>
         </div>
