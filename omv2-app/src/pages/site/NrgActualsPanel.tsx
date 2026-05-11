@@ -241,6 +241,38 @@ export function NrgActualsPanel() {
   else if (filter === 'no_actuals') displayed = displayed.filter(x => x.actuals === 0)
   else if (filter === 'with_actuals') displayed = displayed.filter(x => x.actuals !== 0)
 
+  // Build render list: interleave group header rows before their children.
+  // A header is only shown if at least one of its children survives the filter.
+  type RenderRow =
+    | { kind: 'header'; line: NrgTceLine; groupTce: number; groupActuals: number; groupWeekActuals: number }
+    | { kind: 'leaf'; line: NrgTceLine; actuals: number; tce: number; pct: number | null; weekActuals: number }
+
+  const groupHeaders = lines.filter(l => isGroupHeader(l.item_id))
+  const displayedIds = new Set(displayed.map(x => x.line.item_id))
+
+  const tableRows: RenderRow[] = []
+  // Walk in original `lines` order to preserve TCE register ordering
+  for (const l of lines) {
+    if (isGroupHeader(l.item_id)) {
+      // Collect children of this header that are in `displayed`
+      const children = displayed.filter(x =>
+        (x.line.item_id || '').startsWith((l.item_id || '') + '.') &&
+        !groupHeaders.some(h => h !== l && (x.line.item_id || '').startsWith((h.item_id || '') + '.') && (h.item_id || '').startsWith((l.item_id || '') + '.'))
+      )
+      if (children.length === 0) continue  // no visible children → skip header
+      tableRows.push({
+        kind: 'header',
+        line: l,
+        groupTce: children.reduce((s, x) => s + x.tce, 0),
+        groupActuals: children.reduce((s, x) => s + x.actuals, 0),
+        groupWeekActuals: children.reduce((s, x) => s + (x.weekActuals || 0), 0),
+      })
+    } else if (displayedIds.has(l.item_id)) {
+      const row = displayed.find(x => x.line.item_id === l.item_id)
+      if (row) tableRows.push({ kind: 'leaf', ...row })
+    }
+  }
+
   const totTce = withActuals.reduce((s, x) => s + x.tce, 0)
   const totAct = withActuals.reduce((s, x) => s + x.actuals, 0)
   const totPct = totTce > 0 ? (totAct / totTce) * 100 : null
@@ -510,14 +542,36 @@ ${sectionHTML}
                     </tr>
                   </thead>
                   <tbody>
-                    {displayed.map(({ line, actuals, tce, pct, weekActuals }) => {
+                    {tableRows.map((row, i) => {
+                      if (row.kind === 'header') {
+                        const { line, groupTce, groupActuals, groupWeekActuals } = row
+                        const groupRem = groupTce - groupActuals
+                        const TOTAL_COLS = 19 + (weekFilter ? 1 : 0)
+                        return (
+                          <tr key={line.id || i} style={{ background: '#e0e7ff', color: '#3730a3', borderBottom: '1px solid #c7d2fe' }}>
+                            <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: 700, paddingLeft: '10px', whiteSpace: 'nowrap' }}>
+                              ▼ {line.item_id}
+                            </td>
+                            <td />
+                            <td colSpan={2} style={{ fontWeight: 700, fontSize: '12px' }}>{line.description}</td>
+                            <td colSpan={5} />
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '12px' }}>{groupTce ? fmt(groupTce) : '—'}</td>
+                            <td />
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '12px', color: '#4f46e5' }}>{groupActuals !== 0 ? fmt(groupActuals) : '—'}</td>
+                            {weekFilter && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '12px', background: '#dbeafe', color: '#1e40af' }}>{groupWeekActuals !== 0 ? fmt(groupWeekActuals) : '—'}</td>}
+                            <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '12px', color: groupRem < 0 ? 'var(--red)' : '#3730a3' }}>{fmt(groupRem)}</td>
+                            <td colSpan={TOTAL_COLS - 13 - (weekFilter ? 1 : 0)} />
+                          </tr>
+                        )
+                      }
+                      const { line, actuals, tce, pct, weekActuals } = row
                       const rem = tce - actuals
                       const pctNum = pct !== null ? Math.round(pct) : null
                       const barColor = pctNum === null ? 'var(--text3)' : pctNum > 100 ? 'var(--red)' : pctNum > 80 ? 'var(--amber)' : 'var(--green)'
                       const badge = statusBadge(pct, actuals > 0)
                       return (
                         <tr key={line.id}>
-                          <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{line.item_id || '—'}</td>
+                          <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)', paddingLeft: '20px' }}>{line.item_id || '—'}</td>
                           <td>
                             <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '3px',
                               background: line.line_type === 'Fixed Price' ? '#ede9fe' : line.source === 'skilled' ? '#dbeafe' : '#f3f4f6',
