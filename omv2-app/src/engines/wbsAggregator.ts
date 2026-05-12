@@ -18,7 +18,6 @@
  * panel and go stale.
  */
 
-import { calcRentalCost } from '../lib/calculations'
 import { fxRate } from '../lib/currency'
 import type {
   Project, RateCard, Resource, WeeklyTimesheet,
@@ -162,11 +161,12 @@ const LABOUR_KEYS = new Set<keyof WbsAggregateRow>(['labourTrades','labourMgmt',
 export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate {
   const {
     project,
-    toolingCostings, globalTVs, globalDepartments,
-    hireItems, cars, accommodation, expenses,
+    expenses,
     backOfficeHours, variations, variationLines,
-    activeProjectId,
   } = input
+  // Inputs still accepted on the interface for caller-side simplicity but no
+  // longer consumed here — booking-as-actual writes were removed; tooling
+  // rental + freight moved to buildForecast.
 
   const result: WbsAggregate = {}
 
@@ -197,93 +197,22 @@ export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate 
     row.items.push({ category, label, cost, sell })
   }
 
-  // ── Rental Tooling — always recompute live ────────────────────────────────
-  // For each costing on this project (own or cross-project with a split here),
-  // produce per-WBS cost/sell using calcRentalCost over the relevant date range.
-  const tvByNo = Object.fromEntries(globalTVs.map(tv => [tv.tv_no, tv]))
-  const deptById = Object.fromEntries(globalDepartments.map(d => [d.id, d]))
-
-  for (const tc of toolingCostings) {
-    const tv = tvByNo[tc.tv_no]
-    if (!tv) continue
-    const dept = tv.department_id ? deptById[tv.department_id] : null
-    if (!dept) continue
-
-    // Department rate config — convert to the shape calcRentalCost expects.
-    const rates = dept.rates as Record<string, unknown>
-    const deptCalc = {
-      rental_pct: Number(rates.rentalPct || 0),
-      rate_unit: ((rates.rateUnit as string) || 'weekly') as 'weekly' | 'daily' | 'monthly',
-      gm_pct: Number(rates.gmPct || 0),
-    }
-    const replVal = Number(tv.replacement_value_eur || 0)
-    if (!replVal) continue
-
-    const fx = tc.fx_rate || fxRate(project, 'EUR') || 1.65
-    const splits = tc.splits || []
-    const tcLabel = `TV${tc.tv_no} ${tv.header_name || ''}`.trim()
-
-    if (splits.length > 0) {
-      // Per-split calc: each project / standby leg charges its own WBS.
-      for (const sp of splits) {
-        if (!sp.startDate || !sp.endDate) continue
-        // Standby splits don't count toward project cost — they're a separate cost centre.
-        if (sp.type !== 'project') continue
-        // Only include splits that belong to the active project (cross-project splits flow in here).
-        if (sp.projectId && sp.projectId !== activeProjectId && tc.project_id !== activeProjectId) {
-          // owner project sees its own row only when project_id === active
-          // cross-project rows are only fetched at the caller — but be defensive
-        }
-        const calc = calcRentalCost(replVal, {
-          charge_start: sp.startDate,
-          charge_end: sp.endDate,
-          sell_override_eur: tc.sell_override_eur ?? null,
-        }, deptCalc)
-        if (!calc) continue
-        let cost = calc.cost
-        let sell = calc.sell
-        // Standby discount handled here for completeness even though we filter standby above —
-        // leaving the branch for when we widen to standby cost-centre tracking later.
-        if (sp.type === 'project' && sp.discountPct) {
-          const factor = 1 - (sp.discountPct / 100)
-          cost *= factor
-          sell *= factor
-        }
-        // Convert EUR → base currency
-        add(sp.wbs, cost * fx, sell * fx, 'tooling', `${tcLabel} (${sp.startDate}→${sp.endDate})`)
-      }
-    } else if (tc.project_id === activeProjectId) {
-      // No splits — single charge against the costing's own WBS, but only for the owning project.
-      if (!tc.charge_start || !tc.charge_end) continue
-      const calc = calcRentalCost(replVal, {
-        charge_start: tc.charge_start,
-        charge_end: tc.charge_end,
-        sell_override_eur: tc.sell_override_eur ?? null,
-      }, deptCalc)
-      if (!calc) continue
-      add(tc.wbs, calc.cost * fx, calc.sell * fx, 'tooling', tcLabel)
-    }
-
-    // Tooling freight — import / export legs, only into the project that owns each leg.
-    if (tc.import_cost_eur && tc.import_wbs && (!tc.import_project_id || tc.import_project_id === activeProjectId)) {
-      add(tc.import_wbs, (tc.import_cost_eur || 0) * fx, (tc.import_sell_eur || tc.import_cost_eur || 0) * fx, 'tooling', `${tcLabel} freight in`)
-    }
-    if (tc.export_cost_eur && tc.export_wbs && (!tc.export_project_id || tc.export_project_id === activeProjectId)) {
-      add(tc.export_wbs, (tc.export_cost_eur || 0) * fx, (tc.export_sell_eur || tc.export_cost_eur || 0) * fx, 'tooling', `${tcLabel} freight out`)
-    }
-  }
+  // ── Rental Tooling ────────────────────────────────────────────────────────
+  // Tooling costings (rental + import/export freight) are NOT actuals —
+  // they're plan (handled by buildForecast which now writes both the
+  // calcRentalCost daily spread AND single-day freight events to byDay/byWbs).
+  // Once an invoice posts against a tooling PO, the approved-invoices loop
+  // below credits Actuals normally.
+  // (Live-calc logic and TV/department resolution previously lived here;
+  // moved to buildForecast as the single source of truth.)
 
   // ── Hardware Carts ────────────────────────────────────────────────────────
   // Not yet a V2 table — bucket exists for parity with HTML, no-op for now.
 
   // ── Equipment Hire ────────────────────────────────────────────────────────
-  for (const h of hireItems) {
-    const wbs = h.wbs
-    if (!wbs) continue
-    const cost = Number(h.hire_cost || 0)
-    const sell = Number(h.customer_total || h.hire_cost || 0)
-    add(wbs, cost, sell, 'hire', `${h.hire_type || 'hire'}: ${h.name || h.vendor || '—'}`)
-  }
+  // Hire bookings are NOT actuals — they're plan (handled by buildForecast)
+  // and committed (handled by poCommitmentsEngine when linked to a PO).
+  // Real hire actuals flow through the approved-invoices loop below.
 
   // ── Labour: read from pre-calculated timesheet_cost_lines ─────────────────
   // Single source of truth — written by writeTimesheetCostLines() on every
@@ -332,20 +261,14 @@ export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate 
   }
 
   // ── Cars ──────────────────────────────────────────────────────────────────
-  for (const c of cars) {
-    if (!c.wbs) continue
-    const cost = Number(c.total_cost || 0)
-    const sell = Number(c.customer_total || c.total_cost || 0)
-    add(c.wbs, cost, sell, 'cars', `Car: ${c.vehicle_type || c.vendor || c.rego || '—'}`)
-  }
+  // Car bookings are NOT actuals — same principle as hire. Plan via
+  // buildForecast, committed via poCommitmentsEngine, actuals only on
+  // approved invoice.
 
   // ── Accommodation ─────────────────────────────────────────────────────────
-  for (const a of accommodation) {
-    if (!a.wbs) continue
-    const cost = Number(a.total_cost || 0)
-    const sell = Number(a.customer_total || a.total_cost || 0)
-    add(a.wbs, cost, sell, 'accom', `Accom: ${a.property || '—'}`)
-  }
+  // Accommodation bookings are NOT actuals — same principle as hire/cars.
+  // Plan via buildForecast, committed via poCommitmentsEngine, actuals only
+  // on approved invoice.
 
   // ── Expenses ──────────────────────────────────────────────────────────────
   // Non-chargeable expenses → sell = 0 (cost still tracked).

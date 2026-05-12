@@ -638,6 +638,29 @@ export function buildForecast(
       for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
       addToWbs(tcTopWbs, (tc.cost_eur || 0) * eurRateForWbs)
     }
+
+    // ── Tooling freight — import on charge_start, export on charge_end ──
+    // Freight values are entered as EUR estimates; they become Actual when
+    // an invoice arrives. byDay shows them as a one-off cost on the relevant
+    // day so the Forecast page picks them up. byWbs uses import_wbs /
+    // export_wbs which can differ from the rental wbs.
+    const importCostEur = Number(tc.import_cost_eur) || 0
+    if (importCostEur && tc.import_wbs && tc.charge_start) {
+      const importSellEur = Number(tc.import_sell_eur) || importCostEur
+      const day = ensure(tc.charge_start)
+      day.tooling.cost += importCostEur
+      day.tooling.sell += importSellEur
+      addToWbs(tc.import_wbs, importCostEur * eurRateForWbs)
+    }
+    const exportCostEur = Number(tc.export_cost_eur) || 0
+    const exportAnchor = tc.charge_end || tc.charge_start
+    if (exportCostEur && tc.export_wbs && exportAnchor) {
+      const exportSellEur = Number(tc.export_sell_eur) || exportCostEur
+      const day = ensure(exportAnchor)
+      day.tooling.cost += exportCostEur
+      day.tooling.sell += exportSellEur
+      addToWbs(tc.export_wbs, exportCostEur * eurRateForWbs)
+    }
   }
 
   // ── Subcontractor PO costs ────────────────────────────────────────────────
