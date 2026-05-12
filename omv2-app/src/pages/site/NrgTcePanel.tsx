@@ -70,6 +70,8 @@ export function NrgTcePanel() {
   const [modal, setModal] = useState<null | 'new' | NrgTceLine>(null)
   const [drillLine, setDrillLine] = useState<NrgTceLine | null>(null)
   const [drillType, setDrillType] = useState<'actual' | 'committed'>('actual')
+  const [drillAllowances, setDrillAllowances] = useState<{work_date:string;person_name:string;role:string;category:string;sell_allowances:number}[]>([])
+  const [drillAllowancesLoading, setDrillAllowancesLoading] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [exportingTce, setExportingTce] = useState(false)
@@ -119,6 +121,33 @@ export function NrgTcePanel() {
   const { widths: cw, onResizeStart, thRef } = useResizableColumns('nrg-tce', TCE_COL_DEFAULTS)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+
+  // Fetch allowance-only cost line rows when the actuals drill-down opens for a labour line.
+  // These are zero-hour rows the timesheet engine writes for LAHA / meal / travel / FSA /
+  // camp allowances against an allowance TCE item — the per-day labour table can't show
+  // them (it filters out 0-hour days), so we surface them in a separate section.
+  useEffect(() => {
+    if (!drillLine || !activeProject) { setDrillAllowances([]); return }
+    const isLabour = drillLine.line_type === 'Labour' || drillLine.source === 'skilled'
+    if (!isLabour || !drillLine.item_id) { setDrillAllowances([]); return }
+    let cancelled = false
+    setDrillAllowancesLoading(true)
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('timesheet_cost_lines')
+        .select('work_date,person_name,role,category,sell_allowances')
+        .eq('project_id', activeProject.id)
+        .eq('tce_item_id', drillLine.item_id)
+        .eq('timesheet_status', 'approved')
+        .gt('sell_allowances', 0)
+        .order('work_date')
+      if (cancelled) return
+      if (error) { setDrillAllowances([]); setDrillAllowancesLoading(false); return }
+      setDrillAllowances((data || []) as {work_date:string;person_name:string;role:string;category:string;sell_allowances:number}[])
+      setDrillAllowancesLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [drillLine, activeProject?.id])
 
   async function load() {
     setLoading(true)
@@ -1002,30 +1031,76 @@ export function NrgTcePanel() {
                       }
                     }
                   }
-                  if (!rows.length) return <div style={{ color:'var(--text3)', fontSize:'13px' }}>No approved timesheet allocations found.</div>
-                  return <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
-                    <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
-                      {['Date','Person','Role','Hours','Cost'].map(h => (
-                        <th key={h} style={{ textAlign: h === 'Hours' || h === 'Cost' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {rows.sort((a,b) => a.workDate.localeCompare(b.workDate) || a.person.localeCompare(b.person)).map((r,i) => (
-                        <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
-                          <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{new Date(r.workDate+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
-                          <td style={{ padding:'7px 8px', fontWeight:500 }}>{r.person}</td>
-                          <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{r.role}</td>
-                          <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)' }}>{r.hours.toFixed(2)}h</td>
-                          <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'var(--green)' }}>{fmt2(r.cost)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
-                      <td colSpan={3} style={{ padding:'8px' }}>Total</td>
-                      <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)' }}>{rows.reduce((s,r)=>s+r.hours,0).toFixed(2)}h</td>
-                      <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>{fmt2(rows.reduce((s,r)=>s+r.cost,0))}</td>
-                    </tr></tfoot>
-                  </table>
+                  const hasHours = rows.length > 0
+                  const hasAllowances = drillAllowances.length > 0
+                  const allowanceTotal = drillAllowances.reduce((s, a) => s + (Number(a.sell_allowances) || 0), 0)
+
+                  if (!hasHours && !hasAllowances && !drillAllowancesLoading)
+                    return <div style={{ color:'var(--text3)', fontSize:'13px' }}>No approved timesheet allocations found.</div>
+
+                  return <>
+                    {hasHours && (
+                      <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
+                        <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
+                          {['Date','Person','Role','Hours','Cost'].map(h => (
+                            <th key={h} style={{ textAlign: h === 'Hours' || h === 'Cost' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {rows.sort((a,b) => a.workDate.localeCompare(b.workDate) || a.person.localeCompare(b.person)).map((r,i) => (
+                            <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+                              <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{new Date(r.workDate+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
+                              <td style={{ padding:'7px 8px', fontWeight:500 }}>{r.person}</td>
+                              <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{r.role}</td>
+                              <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)' }}>{r.hours.toFixed(2)}h</td>
+                              <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'var(--green)' }}>{fmt2(r.cost)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
+                          <td colSpan={3} style={{ padding:'8px' }}>Total</td>
+                          <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)' }}>{rows.reduce((s,r)=>s+r.hours,0).toFixed(2)}h</td>
+                          <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>{fmt2(rows.reduce((s,r)=>s+r.cost,0))}</td>
+                        </tr></tfoot>
+                      </table>
+                    )}
+
+                    {drillAllowancesLoading && (
+                      <div style={{ marginTop: hasHours ? 16 : 0, color:'var(--text3)', fontSize:'12px' }}>
+                        <span className="spinner" style={{ verticalAlign:'middle', marginRight:6 }} /> Loading allowances…
+                      </div>
+                    )}
+
+                    {hasAllowances && (
+                      <div style={{ marginTop: hasHours ? 16 : 0 }}>
+                        <div style={{ fontSize:'11px', fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>
+                          Allowances ({drillAllowances.length} {drillAllowances.length === 1 ? 'row' : 'rows'})
+                        </div>
+                        <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
+                          <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
+                            {['Date','Person','Role','Category','Amount'].map(h => (
+                              <th key={h} style={{ textAlign: h === 'Amount' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {drillAllowances.map((a, i) => (
+                              <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+                                <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{a.work_date ? new Date(a.work_date+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'}) : '—'}</td>
+                                <td style={{ padding:'7px 8px', fontWeight:500 }}>{a.person_name || '—'}</td>
+                                <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{a.role || '—'}</td>
+                                <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{a.category || '—'}</td>
+                                <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'var(--green)' }}>{fmt2(Number(a.sell_allowances) || 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
+                            <td colSpan={4} style={{ padding:'8px' }}>Total</td>
+                            <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>{fmt2(allowanceTotal)}</td>
+                          </tr></tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </>
                 }
 
                 // Non-labour: invoices + expenses + variations
