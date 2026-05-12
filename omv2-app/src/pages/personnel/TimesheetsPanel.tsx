@@ -1083,7 +1083,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   return (
     <div style={{ padding: '24px', maxWidth: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-        <div>
+        <div data-tour="timesheets-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{TYPE_LABELS[type]} Timesheets</h1>
             <HelpButton panelId={`hr-timesheets-${type === 'mgmt' ? 'mgmt' : type === 'seag' ? 'seag' : type === 'subcon' ? 'subcon' : 'trades'}`} />
@@ -1114,7 +1114,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               <button className="btn btn-sm" onClick={backfillCostLines} title="Recalculate cost lines for all approved timesheets (fixes missing actuals in MIKA/WBS view)">↺ Recalculate</button>
             )}
           </>}
-          <button className="btn btn-primary" onClick={() => setShowNewModal(true)} disabled={!canWrite('personnel')}>+ New Week</button>
+          <button data-tour="timesheets-new-week" className="btn btn-primary" onClick={() => setShowNewModal(true)} disabled={!canWrite('personnel')}>+ New Week</button>
         </div>
       </div>
 
@@ -1132,7 +1132,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             }, { hours: 0, sell: 0, cost: 0 })
             const approved = sheets.filter(s => s.status === 'approved').length
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '14px' }}>
+              <div data-tour="timesheets-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '14px' }}>
                 {[
                   { label: 'Weeks', value: sheets.length, color: TYPE_COLOR[type] },
                   { label: 'Approved', value: `${approved}/${sheets.length}`, color: 'var(--green)' },
@@ -1147,7 +1147,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               </div>
             )
           })()}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div data-tour="timesheets-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {sheets.map(s => {
               const sc = STATUS_COLORS[s.status] || STATUS_COLORS.draft
               const { hours, sell, cost } = weekTotals(s)

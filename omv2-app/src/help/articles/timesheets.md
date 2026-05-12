@@ -5,6 +5,7 @@ category: Personnel
 order: 30
 summary: Four timesheet variants (Trades / Mgmt / SE AG / Subcon), same workflow. Weekly Monday-start sheets with per-person per-day hours, Draft → Submitted → Approved status flow, payroll import from TasTK or UKG, and approved sheets write to timesheet_cost_lines as the source of truth for labour actuals.
 relatedPanels: [hr-timesheets-trades, hr-timesheets-mgmt, hr-timesheets-seag, hr-timesheets-subcon]
+relatedTour: timesheets-tour
 ---
 
 # Timesheets
