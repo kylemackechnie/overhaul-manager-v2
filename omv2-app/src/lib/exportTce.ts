@@ -33,6 +33,7 @@
 
 import JSZip from 'jszip'
 import { supabase } from './supabase'
+import { addDays } from './dates'
 import type { NrgTceLine } from '../types'
 
 // ── Skilled Labour styles (full template sheet3) ───────────────────────────
@@ -236,21 +237,19 @@ export async function exportTceAll(
   }
 
   // Period-bucketed non-labour costs (supplier invoices + expenses) tagged to TCE items.
-  // For each cost date D, find its NATURAL owning period (prevWE, toWE] using the full
-  // list of customer invoices in the DB (nrgInvSorted) — not the user's selected subset.
-  // This mirrors NrgInvoicingPanel.inPeriod()'s convention. If the cost's natural
-  // owning WE isn't in the user's export selection, the cost is dropped entirely
-  // (we don't fold prior-period data into the nearest selected column).
-  const allCustomerWEs = nrgInvSorted.map(i => i.week_ending!)
+  // Each selected WE column represents a Mon-Sun week ending on that date. A cost
+  // with date D lands in column WE if D is in the 7-day window (WE-7, WE] — i.e.
+  // the Monday-to-Sunday week ending on WE. Costs outside any selected week are
+  // dropped. If a user wants a fortnightly column they create two weekly invoices.
   const nonLabourByItemWeek:Record<string,Record<string,number>>={}
   function periodWE(date:string|null):string|null{
     if(!date) return null
     const d=date.slice(0,10)
-    let owningWE:string|null=null
-    for(const we of allCustomerWEs){ if(we>=d){ owningWE=we; break } }
-    if(!owningWE) return null              // date is after the last customer invoice
-    if(!weSet.has(owningWE)) return null   // owning period isn't selected for this export
-    return owningWE
+    for(const we of orderedWeeks){
+      const fromExclusive=addDays(we,-7)
+      if(d>fromExclusive && d<=we) return we
+    }
+    return null
   }
   for(const inv of supplierInvoices){
     if(!inv.tce_item_id) continue
