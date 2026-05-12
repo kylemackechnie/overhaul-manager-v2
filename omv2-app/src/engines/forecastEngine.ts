@@ -803,3 +803,141 @@ export function bucketTotalBase(b: DayBucket, eurRate: number): { cost: number; 
   return { cost, sell }
 }
 
+
+/**
+ * buildForecastByWbs — compute planned total cost per WBS code.
+ *
+ * Same source data as buildForecast but grouped by resource/booking wbs field
+ * instead of day. Used to feed MIKA Forecast TC column so it reflects the
+ * OMV2 engine rather than the stale SAP-imported value.
+ *
+ * Returns a flat map of wbs → planned cost (AUD). Parent WBS rollup is done
+ * in the caller (MikaPanel) using the same rollup() function as actuals/committed.
+ */
+export function buildForecastByWbs(
+  resources: Resource[],
+  rateCards: RateCard[],
+  hireItems: HireItem[],
+  cars: Car[],
+  accom: Accommodation[],
+  expenses: Expense[],
+  purchaseOrders: PurchaseOrder[],
+  invoices: Invoice[],
+  stdHours: { day: Record<string,number>; night: Record<string,number> },
+  publicHolidays: { date: string }[],
+  fxRates: { code: string; rate: number }[],
+): Record<string, number> {
+  const byWbs: Record<string, number> = {}
+  const holidays = new Set(publicHolidays.map(h => h.date))
+
+  function add(wbs: string, cost: number) {
+    if (!wbs || !cost) return
+    byWbs[wbs] = (byWbs[wbs] || 0) + cost
+  }
+
+  function toBaseLocal(amount: number, currency?: string): number {
+    if (!amount) return 0
+    if (!currency || currency === 'AUD') return amount
+    const r = fxRates.find(f => f.code === currency)?.rate || 1
+    return amount * r
+  }
+
+  function costForSplitLocal(split: Record<string, number>, rates: Record<string,number>): number {
+    let total = 0
+    for (const [band, hrs] of Object.entries(split)) if (hrs && rates[band]) total += hrs * rates[band]
+    return total
+  }
+
+  // ── Resources ──────────────────────────────────────────────────────────────
+  for (const r of resources) {
+    const wbs = (r as Resource & { wbs?: string }).wbs || ''
+    if (!r.mob_in) continue
+    const rc = rateCards.find(rc2 => rc2.role.toLowerCase() === r.role.toLowerCase())
+    if (!rc) continue
+    const rcCost = (rc.rates as { cost?: Record<string,number> })?.cost || {}
+    const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
+    const catKey = r.category === 'trades' ? 'trades' : r.category === 'seag' ? 'seag' : 'mgmt'
+    const mobOut = (r as Resource & { mob_out?: string }).mob_out || r.mob_in
+    const days = dateRange(r.mob_in, mobOut)
+    const isEur = catKey === 'seag'
+    const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
+
+    let resourceCost = 0
+    for (const d of days) {
+      const dow = dayOfWeek(d)
+      const dayType = getDayType(d, holidays)
+      const shift = resolveShift(r, d)
+      if (shift === 'day' || shift === 'both') {
+        const h = stdHours.day?.[dow] ?? 0
+        if (h > 0) resourceCost += costForSplitLocal(splitHours(h, dayType, 'day', rcRegime), rcCost)
+      }
+      if (shift === 'night' || shift === 'both') {
+        const h = stdHours.night?.[dow] ?? 0
+        if (h > 0) resourceCost += costForSplitLocal(splitHours(h, dayType, 'night', rcRegime), rcCost)
+      }
+    }
+    // Convert EUR resources to AUD
+    if (isEur) resourceCost *= eurRate
+    add(wbs, resourceCost)
+  }
+
+  // ── Hire items ─────────────────────────────────────────────────────────────
+  for (const h of hireItems) {
+    const wbs = (h as HireItem & { wbs?: string }).wbs || ''
+    add(wbs, toBaseLocal(Number(h.hire_cost) || 0, (h as HireItem & {currency?:string}).currency))
+  }
+
+  // ── Cars ───────────────────────────────────────────────────────────────────
+  for (const c of cars) {
+    const wbs = (c as Car & { wbs?: string }).wbs || ''
+    add(wbs, Number(c.total_cost) || 0)
+  }
+
+  // ── Accommodation ──────────────────────────────────────────────────────────
+  for (const a of accom) {
+    const wbs = (a as Accommodation & { wbs?: string }).wbs || ''
+    add(wbs, Number(a.total_cost) || 0)
+  }
+
+  // ── Expenses ───────────────────────────────────────────────────────────────
+  for (const e of expenses) {
+    const wbs = (e as Expense & { wbs?: string }).wbs || ''
+    add(wbs, Number(e.cost_ex_gst) || 0)
+  }
+
+  // ── Standalone POs (not linked to bookings/resources) ────────────────────
+  const linkedPoIds = new Set<string>()
+  for (const h of hireItems) {
+    const lpi = (h as HireItem & { linked_po_id?: string }).linked_po_id
+    if (lpi) linkedPoIds.add(lpi)
+  }
+  for (const c of cars) {
+    const lpi = (c as Car & { linked_po_id?: string }).linked_po_id
+    if (lpi) linkedPoIds.add(lpi)
+  }
+  for (const a of accom) {
+    const lpi = (a as Accommodation & { linked_po_id?: string }).linked_po_id
+    if (lpi) linkedPoIds.add(lpi)
+  }
+  const resourcePoIds = new Set(resources
+    .map(r => (r as Resource & { linked_po_id?: string }).linked_po_id)
+    .filter(Boolean) as string[])
+
+  const invoicedByPo: Record<string, number> = {}
+  for (const inv of invoices) {
+    if (inv.po_id && inv.status === 'approved')
+      invoicedByPo[inv.po_id] = (invoicedByPo[inv.po_id] || 0) + (Number(inv.amount) || 0)
+  }
+
+  for (const po of purchaseOrders) {
+    if (!['raised', 'active'].includes(po.status)) continue
+    if (linkedPoIds.has(po.id) || resourcePoIds.has(po.id)) continue
+    const wbs = (po as PurchaseOrder & { wbs?: string; sap_wbs?: string }).sap_wbs
+      || (po as PurchaseOrder & { wbs?: string }).wbs || ''
+    const remaining = Math.max(0, (Number(po.po_value) || 0) - (invoicedByPo[po.id] || 0))
+    const audRemaining = toBaseLocal(remaining, po.currency)
+    add(wbs, audRemaining)
+  }
+
+  return byWbs
+}

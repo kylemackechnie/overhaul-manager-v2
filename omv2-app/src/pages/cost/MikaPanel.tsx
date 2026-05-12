@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
+import { buildForecastByWbs } from '../../engines/forecastEngine'
 import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCommitmentsEngine'
 import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
@@ -177,17 +178,31 @@ export function MikaPanel() {
 
       const actualsByWbs: Record<string, number> = {}
       const committedRolled: Record<string, number> = {}
-      const forecastRolled: Record<string, number> = {}
       for (const [code, row] of Object.entries(agg)) {
         if (row.total) rollup(actualsByWbs, code, row.total)
       }
       for (const [code, val] of Object.entries(committedByWbs)) {
         if (val) rollup(committedRolled, code, val)
       }
-      // Roll up forecast_tc from DB lines — MIKA only stores forecast at leaf level,
-      // parent rows have 0. Rollup gives parent rows the sum of all child forecasts.
-      for (const r of rows) {
-        if (r.forecast_tc) rollup(forecastRolled, r.wbs, r.forecast_tc)
+      // Forecast: use OMV2 engine output keyed by WBS (not stale SAP-imported forecast_tc)
+      const stdHours = (activeProject?.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day: {}, night: {} }
+      const fxRates = (activeProject?.currency_rates as { code: string; rate: number }[]) || []
+      const forecastByWbs = buildForecastByWbs(
+        (resourcesR.data || []) as Parameters<typeof buildForecastByWbs>[0],
+        (rateCardsR.data || []) as Parameters<typeof buildForecastByWbs>[1],
+        (hireR.data || []) as Parameters<typeof buildForecastByWbs>[2],
+        (carsR.data || []) as Parameters<typeof buildForecastByWbs>[3],
+        (accomR.data || []) as Parameters<typeof buildForecastByWbs>[4],
+        (expensesR.data || []) as Parameters<typeof buildForecastByWbs>[5],
+        poList,
+        invoiceList,
+        stdHours,
+        ((holsR.data || []) as {date:string}[]),
+        fxRates,
+      )
+      const forecastRolled: Record<string, number> = {}
+      for (const [code, val] of Object.entries(forecastByWbs)) {
+        if (val) rollup(forecastRolled, code, val)
       }
 
       const dbLines: MikaLine[] = rows.map(r => ({
