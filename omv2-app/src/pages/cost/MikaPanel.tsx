@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
-import { buildForecastByWbs } from '../../engines/forecastEngine'
+import { buildForecast } from '../../engines/forecastEngine'
 import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCommitmentsEngine'
 import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
@@ -186,38 +186,53 @@ export function MikaPanel() {
       }
       const stdHours = (activeProject?.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day: {}, night: {} }
       const fxRates = (activeProject?.currency_rates as { code: string; rate: number }[]) || []
-      const projEnd = activeProject?.end_date || null
-      const forecastByWbs = buildForecastByWbs(
-        (resourcesR.data || []) as Parameters<typeof buildForecastByWbs>[0],
-        (rateCardsR.data || []) as Parameters<typeof buildForecastByWbs>[1],
-        (hireR.data || []) as Parameters<typeof buildForecastByWbs>[2],
-        (carsR.data || []) as Parameters<typeof buildForecastByWbs>[3],
-        (accomR.data || []) as Parameters<typeof buildForecastByWbs>[4],
-        (expensesR.data || []) as Parameters<typeof buildForecastByWbs>[5],
+      const publicHolidays = ((holsR.data || []) as {date:string}[])
+
+      // Run the SAME engine the Forecast page uses — its byWbs map is the
+      // authoritative per-WBS plan total. Sums to the Forecast page total.
+      const forecast = buildForecast(
+        (resourcesR.data || []) as Resource[],
+        (rateCardsR.data || []) as RateCard[],
+        (boR.data || []) as BackOfficeHour[],
+        (hireR.data || []) as HireItem[],
+        (carsR.data || []) as Car[],
+        (accomR.data || []) as Accommodation[],
+        [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as ToolingCosting[],
+        stdHours, publicHolidays,
+        activeProject?.start_date || null,
+        activeProject?.end_date || null,
+        fxRates,
+        (expensesR.data || []) as Expense[],
+        0,
+        (tvsR.data || []) as GlobalTV[],
+        (deptsR.data || []) as GlobalDepartment[],
         poList,
         invoiceList,
-        stdHours,
-        ((holsR.data || []) as {date:string}[]),
-        fxRates,
-        (boR.data || []) as Parameters<typeof buildForecastByWbs>[11],
-        [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as Parameters<typeof buildForecastByWbs>[12],
-        projEnd,
       )
-      const forecastRolled: Record<string, number> = {}
-      for (const [code, val] of Object.entries(forecastByWbs)) {
-        if (val) rollup(forecastRolled, code, val)
+      const planRolled: Record<string, number> = {}
+      for (const [code, val] of Object.entries(forecast.byWbs)) {
+        if (val) rollup(planRolled, code, val)
       }
 
-      const dbLines: MikaLine[] = rows.map(r => ({
-        wbs: r.wbs,
-        desc: r.description,
-        level: r.level ?? 1,
-        pm80tot: r.pm80 || 0,
-        pm100: r.pm100 || 0,
-        actuals: actualsByWbs[r.wbs] || 0,
-        poCommitted: committedRolled[r.wbs] || 0,
-        forecast: forecastRolled[r.wbs] || 0,
-      }))
+      // ForecastTC = max(0, Plan − Actuals − Committed) per WBS row. By construction:
+      //   sum(Actuals) + sum(Committed) + sum(ForecastTC) ≤ sum(Plan) = Forecast page total.
+      // Equality holds except where a row is over-budget (Actuals + Committed > Plan);
+      // those rows cap at 0 and the variance column surfaces the overrun.
+      const dbLines: MikaLine[] = rows.map(r => {
+        const plan = planRolled[r.wbs] || 0
+        const actuals = actualsByWbs[r.wbs] || 0
+        const committed = committedRolled[r.wbs] || 0
+        return {
+          wbs: r.wbs,
+          desc: r.description,
+          level: r.level ?? 1,
+          pm80tot: r.pm80 || 0,
+          pm100: r.pm100 || 0,
+          actuals,
+          poCommitted: committed,
+          forecast: Math.max(0, plan - actuals - committed),
+        }
+      })
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
     }
   }

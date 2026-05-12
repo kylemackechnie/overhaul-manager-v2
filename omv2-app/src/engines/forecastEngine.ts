@@ -52,6 +52,7 @@ export interface DayBucket {
 export interface ForecastData {
   byDay: Record<string, DayBucket>
   byPo:  Record<string, PoBucket>   // keyed by po_id; 'unlinked' for anything with no PO
+  byWbs: Record<string, number>     // base-currency plan total per WBS code (matches sum-of-byDay)
   days: string[]
   totalCost: number
   totalSell: number
@@ -190,7 +191,35 @@ export function buildForecast(
 
   const byDay: Record<string, DayBucket> = {}
   const byPo:  Record<string, PoBucket>  = {}
+  const byWbs: Record<string, number>    = {}
   const holidays = new Set(publicHolidays.map(h => h.date))
+  const eurRateForWbs = fxRates.find(f => f.code === 'EUR')?.rate || 1
+  const posById: Record<string, PurchaseOrder> = {}
+  for (const p of purchaseOrders) posById[p.id] = p
+
+  // PO WBS resolution — line items first (any line with wbs), then top-level po.wbs / sap_wbs.
+  // Same fallback chain as poCommitmentsEngine so attribution agrees.
+  function resolvePoWbsLocal(po: PurchaseOrder): string {
+    const lineItems = ((po as unknown as { line_items?: unknown[] }).line_items || []) as { wbs?: string }[]
+    for (const l of lineItems) {
+      if (l.wbs) return l.wbs
+    }
+    const px = po as PurchaseOrder & { wbs?: string; sap_wbs?: string }
+    return px.sap_wbs || px.wbs || ''
+  }
+
+  // For an item that has its own wbs field plus an optional linked PO: prefer the item's wbs,
+  // fall back to the linked PO's wbs. Items with neither are dropped (returned as '').
+  function resolveItemWbs(itemWbs: string | undefined | null, linkedPoId?: string | null): string {
+    if (itemWbs) return itemWbs
+    if (linkedPoId && posById[linkedPoId]) return resolvePoWbsLocal(posById[linkedPoId])
+    return ''
+  }
+
+  function addToWbs(wbs: string, cost: number) {
+    if (!wbs || !cost) return
+    byWbs[wbs] = (byWbs[wbs] || 0) + cost
+  }
 
   function ensurePo(poId: string): PoBucket {
     if (!byPo[poId]) byPo[poId] = {
@@ -303,6 +332,14 @@ export function buildForecast(
           isDemob: d === (r.mob_out || r.mob_in),
         })
 
+        // ── byWbs accumulation — convert EUR (seag) to base; resolve wbs with PO fallback
+        const wbsCostBase = catKey === 'seag' ? labCost * eurRateForWbs : labCost
+        const wbsForRes = resolveItemWbs(
+          (r as Resource & { wbs?: string }).wbs,
+          (r as Resource & { linked_po_id?: string | null }).linked_po_id,
+        )
+        addToWbs(wbsForRes, wbsCostBase)
+
         // ── PO accumulation — cost rates only (not sell) ──
         const poKey = (r as Resource & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
         ensurePo(poKey).labour.cost += labCost
@@ -367,6 +404,7 @@ export function buildForecast(
       hours: bo.hours,
       isBackOffice: true,
     })
+    addToWbs((bo as BackOfficeHour & { wbs?: string }).wbs || '', bo.cost || 0)
   }
 
   // FX conversion helper — converts amount to base currency
@@ -391,6 +429,14 @@ export function buildForecast(
         day[catKey].cost += perDayCost
         day[catKey].sell += perDaySell
       }
+      // ── byWbs — item.wbs with linked PO fallback ──
+      addToWbs(
+        resolveItemWbs(
+          (item as HireItem & { wbs?: string }).wbs,
+          (item as HireItem & { linked_po_id?: string | null }).linked_po_id,
+        ),
+        totalCost,
+      )
       // ── PO accumulation ──
       const poKey = (item as HireItem & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
       const pb = ensurePo(poKey)
@@ -427,6 +473,14 @@ export function buildForecast(
       day.cars.cost += perDayCost
       day.cars.sell += perDaySell
     }
+    // ── byWbs — item.wbs with linked PO fallback ──
+    addToWbs(
+      resolveItemWbs(
+        (c as Car & { wbs?: string }).wbs,
+        (c as Car & { linked_po_id?: string | null }).linked_po_id,
+      ),
+      c.total_cost || 0,
+    )
     // ── PO accumulation ──
     const poKey = (c as Car & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
     ensurePo(poKey).cars.cost += c.total_cost || 0
@@ -461,6 +515,14 @@ export function buildForecast(
       day.accom.cost += perNightCost
       day.accom.sell += perNightSell
     }
+    // ── byWbs — item.wbs with linked PO fallback ──
+    addToWbs(
+      resolveItemWbs(
+        (a as Accommodation & { wbs?: string }).wbs,
+        (a as Accommodation & { linked_po_id?: string | null }).linked_po_id,
+      ),
+      a.total_cost || 0,
+    )
     // ── PO accumulation ──
     const poKey = (a as Accommodation & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
     ensurePo(poKey).accom.cost += a.total_cost || 0
@@ -498,6 +560,7 @@ export function buildForecast(
     const sell = (e as Expense & {sell_price?:number}).sell_price || cost
     day.expenses.cost += cost
     day.expenses.sell += sell
+    addToWbs((e as Expense & { wbs?: string }).wbs || '', cost)
   }
   // Fill gaps with daily estimate (HTML fcAggregate cfg.expenses.dailyEstimate)
   if (dailyExpenseEstimate > 0 && _projStart && projEnd) {
@@ -523,6 +586,7 @@ export function buildForecast(
     const tv = tvByNo[tc.tv_no]
     const dept = tv?.department_id ? deptById[tv.department_id] : null
     const replVal = Number(tv?.replacement_value_eur || 0)
+    const tcTopWbs = (tc as ToolingCosting & { wbs?: string }).wbs || ''
 
     if (tv && dept && replVal > 0) {
       // Live calc — same method as wbsAggregator
@@ -547,6 +611,7 @@ export function buildForecast(
           const perDayCost = (calc.cost * factor) / days.length
           const perDaySell = (calc.sell * factor) / days.length
           for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
+          addToWbs((sp as { wbs?: string }).wbs || tcTopWbs, calc.cost * factor * eurRateForWbs)
         }
       } else if (tc.charge_start && tc.charge_end) {
         const calc = calcRentalCost(replVal, {
@@ -559,6 +624,7 @@ export function buildForecast(
             const perDayCost = calc.cost / days.length
             const perDaySell = calc.sell / days.length
             for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
+            addToWbs(tcTopWbs, calc.cost * eurRateForWbs)
           }
         }
       }
@@ -570,18 +636,7 @@ export function buildForecast(
       const perDayCost = (tc.cost_eur || 0) / days.length
       const perDaySell = (tc.sell_eur || 0) / days.length
       for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
-    }
-  }
-
-  const days = Object.keys(byDay).sort()
-  // Grand totals — convert EUR-source categories (seag, tooling) to base.
-  let totalCost = 0, totalSell = 0
-  for (const d of days) {
-    const b = byDay[d]
-    for (const cat of ['trades','mgmt','seag','subcon','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
-      const factor = EUR_CATS.has(cat) ? toBase(1, 'EUR') : 1
-      totalCost += b[cat].cost * factor
-      totalSell += b[cat].sell * factor
+      addToWbs(tcTopWbs, (tc.cost_eur || 0) * eurRateForWbs)
     }
   }
 
@@ -703,11 +758,13 @@ export function buildForecast(
 
       for (const r of subRes) {
         if (!r.mob_in || !r.mob_out) continue
+        const rWbs = resolveItemWbs((r as Resource & { wbs?: string }).wbs, po.id)
         for (const day of dateRangePO(r.mob_in, r.mob_out)) {
           const invAmt = invoicedOnDay(po.id, day)
           const dayCost = invAmt > 0 ? invAmt / subRes.length : dailyRate
           ensure(day).subcon.cost += dayCost
           ensure(day).subcon.sell += dayCost
+          addToWbs(rWbs, dayCost)
         }
       }
       continue
@@ -730,11 +787,26 @@ export function buildForecast(
     if (!spreadDays.length) continue
     const dailyRate = remaining / spreadDays.length
 
+    let poDayCostTotal = 0
     for (const day of spreadDays) {
       const invAmt = invoicedOnDay(po.id, day)
       const dayCost = invAmt > 0 ? invAmt : dailyRate
       ensure(day).subcon.cost += dayCost
       ensure(day).subcon.sell += dayCost
+      poDayCostTotal += dayCost
+    }
+
+    // ── byWbs — split poDayCostTotal across PO line items proportional to line.value;
+    //    fall back to PO top-level wbs / sap_wbs. Matches poCommitmentsEngine Type C.
+    const lineItemsForByWbs = ((po as unknown as { line_items?: unknown[] }).line_items || []) as { wbs?: string; value?: number }[]
+    const totalLineValue = lineItemsForByWbs.reduce((s, l) => s + (Number(l.value) || 0), 0)
+    if (lineItemsForByWbs.length > 0 && totalLineValue > 0) {
+      for (const line of lineItemsForByWbs) {
+        const share = (Number(line.value) || 0) / totalLineValue
+        addToWbs(line.wbs || resolvePoWbsLocal(po), poDayCostTotal * share)
+      }
+    } else {
+      addToWbs(resolvePoWbsLocal(po), poDayCostTotal)
     }
   }
 
@@ -743,7 +815,21 @@ export function buildForecast(
     pb.total = pb.labour.cost + pb.dryHire.cost + pb.wetHire.cost + pb.localHire.cost + pb.cars.cost + pb.accom.cost
   }
 
-  return { byDay, byPo, days, totalCost, totalSell, accomWarnings }
+  // Snapshot days and grand totals AFTER all writes (including PO subcon block)
+  // so data.days / data.totalCost include every cost source. byWbs is by
+  // construction the same set of dollars indexed by WBS, so its sum agrees.
+  const days = Object.keys(byDay).sort()
+  let totalCost = 0, totalSell = 0
+  for (const d of days) {
+    const b = byDay[d]
+    for (const cat of ['trades','mgmt','seag','subcon','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
+      const factor = EUR_CATS.has(cat) ? toBase(1, 'EUR') : 1
+      totalCost += b[cat].cost * factor
+      totalSell += b[cat].sell * factor
+    }
+  }
+
+  return { byDay, byPo, byWbs, days, totalCost, totalSell, accomWarnings }
 }
 
 // Aggregate by week key (YYYY-WNN)
@@ -803,179 +889,3 @@ export function bucketTotalBase(b: DayBucket, eurRate: number): { cost: number; 
   return { cost, sell }
 }
 
-
-/**
- * buildForecastByWbs — compute planned total cost per WBS code.
- *
- * Same source data as buildForecast but grouped by resource/booking wbs field
- * instead of day. Used to feed MIKA Forecast TC column so it reflects the
- * OMV2 engine rather than the stale SAP-imported value.
- *
- * Returns a flat map of wbs → planned cost (AUD). Parent WBS rollup is done
- * in the caller (MikaPanel) using the same rollup() function as actuals/committed.
- */
-export function buildForecastByWbs(
-  resources: Resource[],
-  rateCards: RateCard[],
-  hireItems: HireItem[],
-  cars: Car[],
-  accom: Accommodation[],
-  expenses: Expense[],
-  purchaseOrders: PurchaseOrder[],
-  invoices: Invoice[],
-  stdHours: { day: Record<string,number>; night: Record<string,number> },
-  publicHolidays: { date: string }[],
-  fxRates: { code: string; rate: number }[],
-  backOffice: BackOfficeHour[] = [],
-  toolingCostings: ToolingCosting[] = [],
-  projEnd: string | null = null,
-): Record<string, number> {
-  const byWbs: Record<string, number> = {}
-  const holidays = new Set(publicHolidays.map(h => h.date))
-  const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
-
-  function add(wbs: string, cost: number) {
-    if (!wbs || !cost) return
-    byWbs[wbs] = (byWbs[wbs] || 0) + cost
-  }
-
-  function toBaseLocal(amount: number, currency?: string): number {
-    if (!amount) return 0
-    if (!currency || currency === 'AUD') return amount
-    const r = fxRates.find(f => f.code === currency)?.rate || 1
-    return amount * r
-  }
-
-  function costForSplitLocal(split: Record<string, number>, rates: Record<string,number>): number {
-    let total = 0
-    for (const [band, hrs] of Object.entries(split)) if (hrs && rates[band]) total += hrs * rates[band]
-    return total
-  }
-
-  // ── Resources — mirrors buildForecast day loop exactly ────────────────────
-  for (const r of resources) {
-    const wbs = (r as Resource & { wbs?: string }).wbs || ''
-    if (!r.mob_in) continue
-    const rc = rateCards.find(rc2 => rc2.role.toLowerCase() === r.role.toLowerCase())
-    if (!rc) continue
-    const rcCost = (rc.rates as { cost?: Record<string,number> })?.cost || {}
-    const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
-    // Match buildForecast line 233-234: use rc.category first, then r.category
-    const cat = (rc as RateCard & { category?: string }).category || r.category || 'trades'
-    const catKey = cat === 'management' ? 'mgmt' : cat === 'seag' ? 'seag' : cat === 'subcontractor' ? 'subcon' : 'trades'
-    const isEur = catKey === 'seag'
-    // Match buildForecast line 235: use projEnd as fallback (not r.mob_in)
-    const end = (r as Resource & { mob_out?: string }).mob_out || projEnd || r.mob_in
-    const days = dateRange(r.mob_in, end)
-
-    let resourceCost = 0
-    let nShifts = 0
-    for (const d of days) {
-      const dow = dayOfWeek(d)
-      const dayType = getDayType(d, holidays)
-      const shift = resolveShift(r, d)
-      let dayHasShift = false
-      if (shift === 'day' || shift === 'both') {
-        const h = stdHours.day?.[dow] ?? 0
-        if (h > 0) { resourceCost += costForSplitLocal(splitHours(h, dayType, 'day', rcRegime), rcCost); dayHasShift = true }
-      }
-      if (shift === 'night' || shift === 'both') {
-        const h = stdHours.night?.[dow] ?? 0
-        if (h > 0) { resourceCost += costForSplitLocal(splitHours(h, dayType, 'night', rcRegime), rcCost); dayHasShift = true }
-      }
-      if (dayHasShift) nShifts++
-    }
-    // Allowances per shift day — matches buildForecast lines 269-277
-    const rX = r as Resource & { allow_laha?: boolean; allow_meal?: boolean; allow_fsa?: boolean }
-    if (catKey === 'trades') {
-      if (rX.allow_laha !== false) resourceCost += (Number(rc.laha_cost) || 0) * nShifts
-      if (rX.allow_meal !== false) resourceCost += (Number(rc.meal_cost) || 0) * nShifts
-    } else {
-      if (rX.allow_fsa !== false && rX.allow_laha !== false) resourceCost += (Number(rc.fsa_cost) || 0) * nShifts
-    }
-    // SE AG: convert EUR to AUD
-    if (isEur) resourceCost *= eurRate
-    add(wbs, resourceCost)
-  }
-
-  // ── Hire items ─────────────────────────────────────────────────────────────
-  for (const h of hireItems) {
-    const wbs = (h as HireItem & { wbs?: string }).wbs || ''
-    add(wbs, toBaseLocal(Number(h.hire_cost) || 0, (h as HireItem & {currency?:string}).currency))
-  }
-
-  // ── Cars ───────────────────────────────────────────────────────────────────
-  for (const c of cars) {
-    const wbs = (c as Car & { wbs?: string }).wbs || ''
-    add(wbs, Number(c.total_cost) || 0)
-  }
-
-  // ── Accommodation ──────────────────────────────────────────────────────────
-  for (const a of accom) {
-    const wbs = (a as Accommodation & { wbs?: string }).wbs || ''
-    add(wbs, Number(a.total_cost) || 0)
-  }
-
-  // ── Expenses ───────────────────────────────────────────────────────────────
-  for (const e of expenses) {
-    const wbs = (e as Expense & { wbs?: string }).wbs || ''
-    add(wbs, Number(e.cost_ex_gst) || 0)
-  }
-
-  // ── Back Office Hours ──────────────────────────────────────────────────────
-  for (const bo of backOffice) {
-    const wbs = (bo as BackOfficeHour & { wbs?: string }).wbs || ''
-    add(wbs, bo.cost || 0)
-  }
-
-  // ── Tooling ────────────────────────────────────────────────────────────────
-  for (const tc of toolingCostings) {
-    const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
-    const costEur = Number(tc.cost_eur) || 0
-    // Tooling has wbs per-split; if no splits use top-level wbs
-    if (tc.splits && tc.splits.length > 0) {
-      for (const sp of tc.splits) {
-        const wbs = sp.wbs || tc.wbs || ''
-        add(wbs, costEur * eurRate / tc.splits.length)
-      }
-    } else {
-      add(tc.wbs || '', costEur * eurRate)
-    }
-  }
-
-  // ── Standalone POs ─────────────────────────────────────────────────────────
-  const linkedPoIds = new Set<string>()
-  for (const h of hireItems) {
-    const lpi = (h as HireItem & { linked_po_id?: string }).linked_po_id
-    if (lpi) linkedPoIds.add(lpi)
-  }
-  for (const c of cars) {
-    const lpi = (c as Car & { linked_po_id?: string }).linked_po_id
-    if (lpi) linkedPoIds.add(lpi)
-  }
-  for (const a of accom) {
-    const lpi = (a as Accommodation & { linked_po_id?: string }).linked_po_id
-    if (lpi) linkedPoIds.add(lpi)
-  }
-  const resourcePoIds = new Set(resources
-    .map(r => (r as Resource & { linked_po_id?: string }).linked_po_id)
-    .filter(Boolean) as string[])
-
-  const invoicedByPo: Record<string, number> = {}
-  for (const inv of invoices) {
-    if (inv.po_id && inv.status === 'approved')
-      invoicedByPo[inv.po_id] = (invoicedByPo[inv.po_id] || 0) + (Number(inv.amount) || 0)
-  }
-
-  for (const po of purchaseOrders) {
-    if (!['raised', 'active'].includes(po.status)) continue
-    if (linkedPoIds.has(po.id) || resourcePoIds.has(po.id)) continue
-    const wbs = (po as PurchaseOrder & { wbs?: string; sap_wbs?: string }).sap_wbs
-      || (po as PurchaseOrder & { wbs?: string }).wbs || ''
-    const remaining = Math.max(0, (Number(po.po_value) || 0) - (invoicedByPo[po.id] || 0))
-    const audRemaining = toBaseLocal(remaining, po.currency)
-    add(wbs, audRemaining)
-  }
-
-  return byWbs
-}

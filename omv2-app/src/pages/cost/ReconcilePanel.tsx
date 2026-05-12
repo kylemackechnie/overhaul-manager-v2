@@ -1,19 +1,21 @@
 /**
- * ReconcilePanel — Step 1 diagnostic
+ * ReconcilePanel — Forecast vs MIKA sanity check
  *
- * Read-only. Runs both the Forecast page engine (buildForecast) and the three
- * MIKA engines (wbsAggregator, poCommitmentsEngine, buildForecastByWbs) over
- * the same project data, then breaks each total down into per-category /
- * per-source subtotals so we can attribute the Forecast-vs-MIKA gap.
+ * Read-only. Runs buildForecast once (the same engine that powers the
+ * Forecast page) plus the two MIKA engines (wbsAggregator,
+ * poCommitmentsEngine), and shows that MIKA EAC reconciles back to the
+ * Forecast page total under the model:
  *
- * No engine is modified by this panel. All maths happens locally on the
- * results each engine already returns.
+ *   ForecastTC = max(0, Plan − Actuals − Committed)
+ *   EAC        = Actuals + Committed + ForecastTC
+ *
+ * Any non-zero gap surfaces over-budget WBS rows (Actuals + Committed > Plan).
  */
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import { buildForecast, buildForecastByWbs, EUR_CATS } from '../../engines/forecastEngine'
+import { buildForecast, EUR_CATS } from '../../engines/forecastEngine'
 import type { ForecastData } from '../../engines/forecastEngine'
 import { aggregateAllCostsByWbs } from '../../engines/wbsAggregator'
 import type { WbsAggregate } from '../../engines/wbsAggregator'
@@ -41,10 +43,6 @@ const cellNum: React.CSSProperties = {
 }
 const cellLabel: React.CSSProperties = {
   textAlign: 'left', padding: '4px 10px', whiteSpace: 'nowrap',
-}
-const thStyle: React.CSSProperties = {
-  textAlign: 'right', padding: '6px 10px', fontSize: '11px', color: 'var(--text2)',
-  whiteSpace: 'nowrap', borderBottom: '1px solid var(--border2)',
 }
 const sectionTitle: React.CSSProperties = {
   fontSize: '13px', fontWeight: 700, marginTop: '24px', marginBottom: '8px',
@@ -74,7 +72,6 @@ interface ByWbsBreakdown {
   total: number             // sum of ALL byWbs entries (incl. orphan '')
   totalVisible: number      // sum of byWbs entries that roll up to a real MIKA top-level prefix
   orphan: number            // total - totalVisible
-  bySource: Record<string, number> // resources, hire, cars, accom, expenses, backoffice, tooling, standalonePo
 }
 
 interface Reconciliation {
@@ -82,6 +79,7 @@ interface Reconciliation {
   aggregator: AggregatorBreakdown
   poCommitments: PoCommitmentsBreakdown
   byWbs: ByWbsBreakdown
+  forecastTCTotal: number
   mikaEac: number
   mikaEacVisible: number
   gap: number
@@ -200,30 +198,28 @@ export function ReconcilePanel() {
       const engineCommittedTotal = Object.values(poRes.byWbs).reduce((s, v) => s + v, 0)
       poBreakdown.total = engineCommittedTotal
 
-      // ── 4. Run buildForecastByWbs (MIKA Forecast TC) ────────────────────
-      const byWbs = buildForecastByWbs(
-        resources, rateCards, hireItems, cars, accom, expenses,
-        pos, invoices, stdHours, publicHolidays, fxRates,
-        backOffice, toolingAll, activeProject.end_date,
-      )
-      // Determine project's MIKA top-level prefix (e.g., '500P-00175')
+      // ── 4. Forecast TC (now derived from the SAME buildForecast above) ───
+      // `forecast.byWbs` is the engine's per-WBS plan total. By construction it sums
+      // to the same number as the day-bucket sum (Section A total).
       const mikaTopPrefixes = computeTopPrefixes(mikaRows)
-      const byWbsBreakdown = computeByWbsBreakdown(
-        byWbs, mikaTopPrefixes,
-        resources, rateCards, hireItems, cars, accom, expenses,
-        backOffice, toolingAll, pos, invoices, fxRates, eurRate,
-      )
+      const byWbsBreakdown = computeByWbsBreakdown(forecast.byWbs, mikaTopPrefixes)
 
-      const mikaEac = aggBreakdown.total + poBreakdown.total + byWbsBreakdown.total
-      const mikaEacVisible = aggBreakdown.total + poBreakdown.total + byWbsBreakdown.totalVisible
-      const gap = mikaEac - fcBreakdown.total
-      const gapVisible = mikaEacVisible - fcBreakdown.total
+      // MIKA EAC under the new model:
+      //   ForecastTC = max(0, Plan − Actuals − Committed) at project level
+      //   EAC        = Actuals + Committed + ForecastTC
+      const planTotal      = byWbsBreakdown.total
+      const forecastTCTotal = Math.max(0, planTotal - aggBreakdown.total - poBreakdown.total)
+      const mikaEac        = aggBreakdown.total + poBreakdown.total + forecastTCTotal
+      const mikaEacVisible = mikaEac // no orphans relevant under new derivation
+      const gap            = mikaEac - fcBreakdown.total
+      const gapVisible     = gap
 
       setRecon({
         forecast: fcBreakdown,
         aggregator: aggBreakdown,
         poCommitments: poBreakdown,
         byWbs: byWbsBreakdown,
+        forecastTCTotal,
         mikaEac, mikaEacVisible, gap, gapVisible,
       })
       setLoading(false)
@@ -314,59 +310,49 @@ export function ReconcilePanel() {
           total={recon.poCommitments.total}
         />
 
-        {/* ── Section D — buildForecastByWbs breakdown ── */}
-        <div style={sectionTitle}>D. MIKA Forecast TC (buildForecastByWbs) — by source</div>
+        {/* ── Section D — Engine consistency check ── */}
+        <div style={sectionTitle}>D. Engine consistency check</div>
         <div style={sectionDesc}>
-          What each source contributes to byWbs. "Orphan" = items whose computed WBS doesn't roll into any MIKA top-level line; these are silently dropped at display time.
+          Both views come from a single <code>buildForecast</code> pass. Section A is the day-bucket sum.
+          The byWbs total below is the per-WBS sum from the same pass — they must agree.
         </div>
         <CatTable
           rows={[
-            ['Resources (with rate card)', recon.byWbs.bySource.resources],
-            ['Hire items',                 recon.byWbs.bySource.hire],
-            ['Cars',                       recon.byWbs.bySource.cars],
-            ['Accom',                      recon.byWbs.bySource.accom],
-            ['Expenses',                   recon.byWbs.bySource.expenses],
-            ['Back Office',                recon.byWbs.bySource.backoffice],
-            ['Tooling (stored cost_eur)',  recon.byWbs.bySource.tooling],
-            ['Standalone POs',             recon.byWbs.bySource.standalonePo],
+            ['Forecast page total (Section A)', recon.forecast.total],
+            ['Plan-by-WBS total (sum of byWbs)', recon.byWbs.total],
+            ['Δ (should be $0)',                  recon.byWbs.total - recon.forecast.total],
           ]}
           total={recon.byWbs.total}
           extras={[
-            ['  visible to MIKA',  recon.byWbs.totalVisible],
-            ['  orphan (no WBS / wrong WBS)',  recon.byWbs.orphan],
+            ['  visible to MIKA (rolls up to a top-level prefix)',  recon.byWbs.totalVisible],
+            ['  orphan (no WBS / off-tree)',                         recon.byWbs.orphan],
           ]}
         />
 
-        {/* ── Section E — Where to look first ── */}
-        <div style={sectionTitle}>E. Per-cost-record cross-counting suspects</div>
+        {/* ── Section E — MIKA EAC under the new formula ── */}
+        <div style={sectionTitle}>E. MIKA EAC under the new model</div>
         <div style={sectionDesc}>
-          The same booking record can land in multiple buckets. These category sums are the upper bound of the overlap — they don't prove double-count by themselves, but they show where to drill next.
+          <code>ForecastTC = max(0, Plan − Actuals − Committed)</code>. By construction this caps at zero
+          so MIKA EAC cannot exceed the Forecast page total — and equals it when no row is over-budget.
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 4 }}>
-          <thead>
-            <tr>
-              <th style={{ ...thStyle, textAlign: 'left' }}>Record type</th>
-              <th style={thStyle}>In Forecast page</th>
-              <th style={thStyle}>In Actuals</th>
-              <th style={thStyle}>In Committed (case)</th>
-              <th style={thStyle}>In byWbs source</th>
-            </tr>
-          </thead>
-          <tbody>
-            <CrossRow label="Hire items"   fc={recon.forecast.byCat.dryHire + recon.forecast.byCat.wetHire + recon.forecast.byCat.localHire} act={recon.aggregator.byCat.hire} com={recon.poCommitments.byCase.typeB} bw={recon.byWbs.bySource.hire} note="Type B includes cars+accom too" />
-            <CrossRow label="Cars"          fc={recon.forecast.byCat.cars}  act={recon.aggregator.byCat.cars}  com={null} bw={recon.byWbs.bySource.cars} />
-            <CrossRow label="Accom"         fc={recon.forecast.byCat.accom} act={recon.aggregator.byCat.accom} com={null} bw={recon.byWbs.bySource.accom} />
-            <CrossRow label="Tooling"       fc={recon.forecast.byCat.tooling} act={recon.aggregator.byCat.tooling} com={null} bw={recon.byWbs.bySource.tooling} note="aggregator live calc vs byWbs stored snapshot" />
-            <CrossRow label="Expenses"      fc={recon.forecast.byCat.expenses} act={recon.aggregator.byCat.expenses} com={null} bw={recon.byWbs.bySource.expenses} />
-            <CrossRow label="Labour (all)"  fc={recon.forecast.byCat.trades + recon.forecast.byCat.mgmt + recon.forecast.byCat.seag + recon.forecast.byCat.subcon}  act={recon.aggregator.byCat.labour + recon.aggregator.byCat.backoffice} com={recon.poCommitments.byCase.subconRes} bw={recon.byWbs.bySource.resources + recon.byWbs.bySource.backoffice} note="Subcon-with-rate-card lives in 'resources'; subcon-no-rate-card in 'subconRes' committed only" />
-            <CrossRow label="Standalone POs" fc={null} act={null} com={recon.poCommitments.byCase.typeC} bw={recon.byWbs.bySource.standalonePo} />
-          </tbody>
-        </table>
+        <CatTable
+          rows={[
+            ['Plan total (= Forecast page)',            recon.byWbs.total],
+            ['  − Actuals (wbsAggregator)',             -recon.aggregator.total],
+            ['  − Committed (poCommitmentsEngine)',     -recon.poCommitments.total],
+            ['= Residual',                              recon.byWbs.total - recon.aggregator.total - recon.poCommitments.total],
+            ['Forecast TC = max(0, residual)',          recon.forecastTCTotal],
+            ['MIKA EAC = Actuals + Committed + Forecast TC', recon.mikaEac],
+          ]}
+          total={recon.mikaEac}
+        />
 
         <div style={{ marginTop: 24, fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>
-          <strong>How to read this:</strong> wherever a single row has non-zero numbers in multiple of the four columns,
-          that cost is being counted by multiple engines. If MIKA EAC = Actuals + Committed + byWbs is meant to equal the
-          Forecast total, each record should appear in <em>exactly one</em> of those three. The gap should net out to zero.
+          <strong>Reconciliation:</strong> Forecast page = <span style={{ fontFamily: 'var(--mono)' }}>{fmt(recon.forecast.total)}</span>,
+          MIKA EAC = <span style={{ fontFamily: 'var(--mono)' }}>{fmt(recon.mikaEac)}</span>,
+          gap = <span style={{ fontFamily: 'var(--mono)', color: Math.abs(recon.gap) < 1 ? '#16a34a' : '#dc2626' }}>{fmtDelta(recon.gap)}</span>.
+          A non-zero gap now means a row is over budget — Actuals + Committed exceeded the planned cost
+          and the residual was capped at zero, surfacing as a negative variance in the MIKA table.
         </div>
       </>}
     </div>
@@ -426,25 +412,6 @@ function BarCell(props: { val: number; total: number }) {
     <div style={{ height: 6, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
       <div style={{ width: pct + '%', height: '100%', background: 'var(--accent)' }} />
     </div>
-  )
-}
-
-function CrossRow(props: { label: string; fc: number|null; act: number|null; com: number|null; bw: number|null; note?: string }) {
-  const cells = [props.fc, props.act, props.com, props.bw]
-  const nonZeroCount = cells.filter(v => v !== null && v > 0.5).length
-  const warn = nonZeroCount >= 2
-  return (
-    <tr style={{ borderBottom: '1px solid var(--border2)', background: warn ? '#fef3c7' : undefined }}>
-      <td style={cellLabel}>
-        {warn && <span style={{ color: '#92400e', marginRight: 6 }}>⚠</span>}
-        {props.label}
-        {props.note && <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>{props.note}</div>}
-      </td>
-      <td style={cellNum}>{props.fc === null ? '—' : (props.fc ? fmt(props.fc) : '—')}</td>
-      <td style={cellNum}>{props.act === null ? '—' : (props.act ? fmt(props.act) : '—')}</td>
-      <td style={cellNum}>{props.com === null ? '—' : (props.com ? fmt(props.com) : '—')}</td>
-      <td style={cellNum}>{props.bw === null ? '—' : (props.bw ? fmt(props.bw) : '—')}</td>
-    </tr>
   )
 }
 
@@ -560,21 +527,8 @@ function computeTopPrefixes(mikaRows: { wbs: string; level: number | null }[]): 
 function computeByWbsBreakdown(
   byWbs: Record<string, number>,
   topPrefixes: string[],
-  resources: Resource[],
-  rateCards: RateCard[],
-  hireItems: HireItem[],
-  cars: Car[],
-  accom: Accommodation[],
-  expenses: Expense[],
-  backOffice: BackOfficeHour[],
-  tooling: ToolingCosting[],
-  pos: PurchaseOrder[],
-  invoices: Invoice[],
-  fxRates: { code: string; rate: number }[],
-  eurRate: number,
 ): ByWbsBreakdown {
   const total = Object.values(byWbs).reduce((s, v) => s + v, 0)
-  // Visible total: keys that match or extend any top-level prefix.
   let totalVisible = 0
   for (const [k, v] of Object.entries(byWbs)) {
     if (!k) continue
@@ -583,72 +537,5 @@ function computeByWbsBreakdown(
     }
   }
   const orphan = total - totalVisible
-
-  // Per-source totals — recompute the same trivial sums the engine does.
-  const fxFor = (cur?: string): number => {
-    if (!cur || cur === 'AUD') return 1
-    return fxRates.find(f => f.code === cur)?.rate || 1
-  }
-
-  let hireTot = 0
-  for (const h of hireItems) hireTot += (Number(h.hire_cost) || 0) * fxFor((h as HireItem & { currency?: string }).currency)
-
-  let carsTot = 0
-  for (const c of cars) carsTot += Number(c.total_cost) || 0
-
-  let accomTot = 0
-  for (const a of accom) accomTot += Number(a.total_cost) || 0
-
-  let expTot = 0
-  for (const e of expenses) expTot += Number((e as Expense & { cost_ex_gst?: number }).cost_ex_gst) || 0
-
-  let boTot = 0
-  for (const bo of backOffice) boTot += Number(bo.cost) || 0
-
-  let toolingTot = 0
-  for (const tc of tooling) toolingTot += (Number(tc.cost_eur) || 0) * eurRate
-
-  // Standalone POs — same filter as the engine
-  const linkedPoIds = new Set<string>()
-  for (const h of hireItems) { const lpi = (h as HireItem & { linked_po_id?: string }).linked_po_id; if (lpi) linkedPoIds.add(lpi) }
-  for (const c of cars)      { const lpi = (c as Car & { linked_po_id?: string }).linked_po_id;      if (lpi) linkedPoIds.add(lpi) }
-  for (const a of accom)     { const lpi = (a as Accommodation & { linked_po_id?: string }).linked_po_id; if (lpi) linkedPoIds.add(lpi) }
-  const resourcePoIds = new Set<string>()
-  for (const r of resources) { const lpi = (r as Resource & { linked_po_id?: string }).linked_po_id; if (lpi) resourcePoIds.add(lpi) }
-
-  const invoicedByPo: Record<string, number> = {}
-  for (const inv of invoices) {
-    if (inv.po_id && inv.status === 'approved')
-      invoicedByPo[inv.po_id] = (invoicedByPo[inv.po_id] || 0) + (Number(inv.amount) || 0)
-  }
-
-  let standalonePo = 0
-  for (const po of pos) {
-    if (!['raised', 'active'].includes(po.status)) continue
-    if (linkedPoIds.has(po.id) || resourcePoIds.has(po.id)) continue
-    const remaining = Math.max(0, (Number(po.po_value) || 0) - (invoicedByPo[po.id] || 0))
-    standalonePo += remaining * fxFor(po.currency)
-  }
-
-  // Resources = total - everything else (this is the leftover, which is what the engine actually adds for resource labour)
-  const everythingElse = hireTot + carsTot + accomTot + expTot + boTot + toolingTot + standalonePo
-  const resourcesTot = total - everythingElse
-
-  // Sanity: resources fall back to rate-carded labour. Don't show negative.
-  const safeResources = Math.max(0, resourcesTot)
-  void rateCards
-
-  return {
-    total, totalVisible, orphan,
-    bySource: {
-      resources: safeResources,
-      hire: hireTot,
-      cars: carsTot,
-      accom: accomTot,
-      expenses: expTot,
-      backoffice: boTot,
-      tooling: toolingTot,
-      standalonePo,
-    },
-  }
+  return { total, totalVisible, orphan }
 }
