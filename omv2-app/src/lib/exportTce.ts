@@ -226,9 +226,27 @@ export async function exportTceAll(
   const varWeeks=orderedWeeks.slice(0,12)
   const weSet=new Set(orderedWeeks)
 
+  // Classify each TCE item exactly like NrgInvoicingPanel.lineActualInPeriodEurAware():
+  // - Fixed Price items: panel returns 0 → we skip cost_lines AND invoices/expenses
+  // - Labour items (line_type contains 'Labour' OR source === 'skilled'): cost_lines + invoices + expenses
+  // - Non-labour items (everything else, e.g. 'Invoice / Receipt'): invoices + expenses ONLY.
+  // This last rule is the important one — non-labour overhead items like Accommodation
+  // or LAHA can have allowance entries written to timesheet_cost_lines by the
+  // timesheet engine (zero-hour rows with sell_allowances > 0). The panel ignores
+  // those for non-labour lines; we must too, otherwise the column total overshoots.
+  const itemIsFixedPrice: Record<string, boolean> = {}
+  const itemIsLabour: Record<string, boolean> = {}
+  for (const l of lines) {
+    if (!l.item_id) continue
+    itemIsFixedPrice[l.item_id] = l.line_type === 'Fixed Price'
+    itemIsLabour[l.item_id] = (l.line_type || '').includes('Labour') || l.source === 'skilled'
+  }
+
   const byItemWeek:Record<string,Record<string,{hours:number;sell:number}>>= {}
   for (const r of costLines) {
     if(!r.tce_item_id||!weSet.has(r.week_ending)) continue
+    if(itemIsFixedPrice[r.tce_item_id]) continue   // panel returns 0 for fixed-price
+    if(!itemIsLabour[r.tce_item_id]) continue      // panel skips cost_lines for non-labour items
     const b=byItemWeek[r.tce_item_id]??={}
     const w=b[r.week_ending]??={hours:0,sell:0}
     w.hours+=r.allocated_hours||0
@@ -253,6 +271,7 @@ export async function exportTceAll(
   }
   for(const inv of supplierInvoices){
     if(!inv.tce_item_id) continue
+    if(itemIsFixedPrice[inv.tce_item_id]) continue   // panel returns 0 for fixed-price
     const we=periodWE(inv.invoice_date)
     if(!we) continue
     const b=nonLabourByItemWeek[inv.tce_item_id]??={}
@@ -260,6 +279,7 @@ export async function exportTceAll(
   }
   for(const exp of expenseItems){
     if(!exp.tce_item_id) continue
+    if(itemIsFixedPrice[exp.tce_item_id]) continue   // panel returns 0 for fixed-price
     const we=periodWE(exp.date)
     if(!we) continue
     const sell=Number(exp.sell_price), cost=Number(exp.cost_ex_gst)
