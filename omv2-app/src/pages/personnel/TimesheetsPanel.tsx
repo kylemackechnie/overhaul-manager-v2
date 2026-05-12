@@ -10,7 +10,7 @@ import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
 import { PayrollImportModal } from '../../components/PayrollImportModal'
 import { HelpButton } from '../../components/HelpButton'
-import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry } from '../../types'
+import type { WeeklyTimesheet, Resource, RateCard, PurchaseOrder, DayEntry, CrewMember } from '../../types'
 
 // Group-header rows in NRG TCE have item_ids like "2.02.4" (3 segments).
 // Real bookable lines have 4+ segments. Used by allocation pickers to filter
@@ -523,6 +523,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       if (!res) return m
       return {
         ...m,
+        days: m.days as Record<string, DayEntry>,
         name: res.name,
         role: res.role,
         wbs: res.wbs || m.wbs,
