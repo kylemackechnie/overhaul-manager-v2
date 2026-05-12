@@ -527,7 +527,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         role: res.role,
         wbs: res.wbs || m.wbs,
         mealBreakAdj: res.meal_break_adj ?? m.mealBreakAdj,
-      }
+      } as CrewMember
     })
   }
 
