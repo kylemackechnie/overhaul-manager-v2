@@ -185,7 +185,7 @@ export async function exportTceAll(
   lines: NrgTceLine[],
   orderedWeeks: string[],
 ) {
-  const [clRes, varRes, nrgInvRes, templateResp] = await Promise.all([
+  const [clRes, varRes, nrgInvRes, supInvRes, expRes, templateResp] = await Promise.all([
     supabase.from('timesheet_cost_lines')
       .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances')
       .eq('project_id', projectId).eq('timesheet_status', 'approved'),
@@ -193,6 +193,10 @@ export async function exportTceAll(
       .eq('project_id', projectId),
     supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
       .eq('project_id', projectId).order('week_ending'),
+    supabase.from('invoices').select('tce_item_id,invoice_date,amount')
+      .eq('project_id', projectId).neq('status', 'rejected'),
+    supabase.from('expenses').select('tce_item_id,date,sell_price,cost_ex_gst,amount')
+      .eq('project_id', projectId),
     fetch('/tce_full_template.xlsx'),
   ])
 
@@ -206,6 +210,8 @@ export async function exportTceAll(
   }[]
   const nrgInvSorted = ((nrgInvRes.data||[]) as {week_ending:string|null;eur_spot_rate:number|null}[])
     .filter(i=>i.week_ending).sort((a,b)=>a.week_ending!.localeCompare(b.week_ending!))
+  const supplierInvoices = (supInvRes.data||[]) as {tce_item_id:string|null;invoice_date:string|null;amount:number|null}[]
+  const expenseItems = (expRes.data||[]) as {tce_item_id:string|null;date:string|null;sell_price:number|null;cost_ex_gst:number|null;amount:number|null}[]
 
   const spotRateByWE: Record<string,number|null> = {}
   for (const i of nrgInvSorted) {
@@ -228,6 +234,36 @@ export async function exportTceAll(
     const eur=r.sell_labour_eur||0
     w.sell+=eur>0?(spotRate(r.week_ending)??1)*eur+(r.sell_allowances||0):(r.sell_labour||0)+(r.sell_allowances||0)
   }
+
+  // Period-bucketed non-labour costs (supplier invoices + expenses) tagged to TCE items.
+  // For a date D, find the smallest selected orderedWeek WE such that WE >= D, mirroring
+  // NrgInvoicingPanel.inPeriod()'s (prevWE, toWE] convention. Dates after the last
+  // selected week fall outside any period and are silently dropped (matches labour
+  // behaviour, which is filtered to weSet — see top of this function).
+  const nonLabourByItemWeek:Record<string,Record<string,number>>={}
+  function periodWE(date:string|null):string|null{
+    if(!date) return null
+    const d=date.slice(0,10)
+    for(const we of orderedWeeks) if(we>=d) return we
+    return null
+  }
+  for(const inv of supplierInvoices){
+    if(!inv.tce_item_id) continue
+    const we=periodWE(inv.invoice_date)
+    if(!we) continue
+    const b=nonLabourByItemWeek[inv.tce_item_id]??={}
+    b[we]=(b[we]||0)+(Number(inv.amount)||0)
+  }
+  for(const exp of expenseItems){
+    if(!exp.tce_item_id) continue
+    const we=periodWE(exp.date)
+    if(!we) continue
+    const sell=Number(exp.sell_price), cost=Number(exp.cost_ex_gst)
+    const amt=(!isNaN(sell)&&sell!==0)?sell:((!isNaN(cost)&&cost!==0)?cost:(Number(exp.amount)||0))
+    const b=nonLabourByItemWeek[exp.tce_item_id]??={}
+    b[we]=(b[we]||0)+amt
+  }
+
   const varByItem:Record<string,number>={}
   for (const v of variations) if(v.tce_link) varByItem[v.tce_link]=(varByItem[v.tce_link]||0)+(v.sell_total||0)
 
@@ -262,15 +298,18 @@ export async function exportTceAll(
     }
     if(cur)g.push(cur); return g
   }
-  function weekCells(itemId:string|null,weekPairs:[string,string][],weeks:string[],cells:Record<string,CellDef>):{totHrs:number;totSell:number}{
+  function weekCells(itemId:string|null,weekPairs:[string,string][],weeks:string[],cells:Record<string,CellDef>,includeNonLabour:boolean=false):{totHrs:number;totSell:number}{
     let totHrs=0,totSell=0
     const wd=itemId?(byItemWeek[itemId]||{})  :{}
+    const nlwd:Record<string,number>=itemId&&includeNonLabour?(nonLabourByItemWeek[itemId]||{}):{}
     for(let wi=0;wi<weekPairs.length;wi++){
       const[wh,wc]=weekPairs[wi],we=weeks[wi]
       const data=we?(wd[we]||{hours:0,sell:0}):{hours:0,sell:0}
+      const nonLabour=we?(nlwd[we]||0):0
+      const sellTotal=data.sell+nonLabour
       cells[wh]={type:data.hours?'n':'',value:data.hours||null}
-      cells[wc]={type:data.sell?'n':'',value:data.sell||null}
-      totHrs+=data.hours||0;totSell+=data.sell||0
+      cells[wc]={type:sellTotal?'n':'',value:sellTotal||null}
+      totHrs+=data.hours||0;totSell+=sellTotal
     }
     return{totHrs,totSell}
   }
@@ -318,7 +357,7 @@ export async function exportTceAll(
         P:{type:'',value:null},Q:{type:'',value:null},R:{type:'',value:null},
         S:{type:'',value:null},T:{type:'',value:null},U:{type:'',value:null},V:{type:'',value:null},
       }
-      const{totHrs,totSell}=weekCells(d.item_id,SL_WEEK_PAIRS,slWeeks,dc)
+      const{totHrs,totSell}=weekCells(d.item_id,SL_WEEK_PAIRS,slWeeks,dc,true)
       const varAmt=d.item_id?(varByItem[d.item_id]||0):0
       const fHrs=totHrs,fCost=totSell+varAmt
       dc[SL_TOT_HRS]={type:fHrs?'n':'',value:fHrs||null}
@@ -361,7 +400,7 @@ export async function exportTceAll(
         K:{type:'',value:null},L:{type:'',value:null},M:{type:'',value:null},
         N:{type:'',value:null},O:{type:'',value:null},P:{type:'',value:null},
       }
-      const{totHrs,totSell}=weekCells(d.item_id,OH_WEEK_PAIRS,ohWeeks,dc)
+      const{totHrs,totSell}=weekCells(d.item_id,OH_WEEK_PAIRS,ohWeeks,dc,true)
       dc['AM']={type:'',value:null};dc['AN']={type:'',value:null}
       dc['AO']={type:totHrs?'n':'',value:totHrs||null}
       dc['AP']={type:totSell?'n':'',value:totSell||null}
