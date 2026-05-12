@@ -56,6 +56,9 @@ export function MikaPanel() {
   const [saving, setSaving] = useState(false)
   const [variations, setVariations] = useState<{ status: string; line_items: unknown[] }[]>([])
   const [poWarnings, setPoWarnings] = useState<PoCommitmentWarning[]>([])
+  const [wbsAgg, setWbsAgg] = useState<import('../../engines/wbsAggregator').WbsAggregate>({})
+  const [committedMap, setCommittedMap] = useState<Record<string, number>>({})
+  const [drillCell, setDrillCell] = useState<{ wbs: string; col: 'actuals' | 'committed' | 'forecast' | 'eac' } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -158,6 +161,8 @@ export function MikaPanel() {
         (activeProject || {}) as unknown as Parameters<typeof buildPoCommitments>[6],
       )
       setPoWarnings(warnings)
+      setWbsAgg(agg)
+      setCommittedMap(committedByWbs)
 
       // Parent-prefix rollup for both actuals and committed
       function rollup(map: Record<string, number>, code: string, value: number) {
@@ -553,10 +558,10 @@ export function MikaPanel() {
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: vn.approved > 0 ? '#d97706' : 'var(--text3)' }}>{vn.approved > 0 ? fmt(vn.approved) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: vn.pending > 0 ? '#d97706' : 'var(--text3)' }}>{vn.pending > 0 ? fmt(vn.pending) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: hasVns ? 700 : bold }}>{hasVns ? fmt(revisedBudget) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)' }}>{l.actuals ? fmt(l.actuals) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: l.poCommitted ? '#f97316' : 'var(--text3)' }}>{l.poCommitted ? fmt(l.poCommitted) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--amber)' }}>{l.forecast ? fmt(l.forecast) : '—'}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: 600 }}>{fmt(eac)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)', cursor: l.actuals ? 'pointer' : 'default', textDecoration: l.actuals ? 'underline dotted' : 'none' }} onClick={() => l.actuals && setDrillCell({ wbs: l.wbs, col: 'actuals' })}>{l.actuals ? fmt(l.actuals) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: l.poCommitted ? '#f97316' : 'var(--text3)', cursor: l.poCommitted ? 'pointer' : 'default', textDecoration: l.poCommitted ? 'underline dotted' : 'none' }} onClick={() => l.poCommitted && setDrillCell({ wbs: l.wbs, col: 'committed' })}>{l.poCommitted ? fmt(l.poCommitted) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--amber)', cursor: l.forecast ? 'pointer' : 'default', textDecoration: l.forecast ? 'underline dotted' : 'none' }} onClick={() => l.forecast && setDrillCell({ wbs: l.wbs, col: 'forecast' })}>{l.forecast ? fmt(l.forecast) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: 600, cursor: eac ? 'pointer' : 'default', textDecoration: eac ? 'underline dotted' : 'none' }} onClick={() => eac && setDrillCell({ wbs: l.wbs, col: 'eac' })}>{fmt(eac)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance >= 0 ? 'var(--green)' : 'var(--red)' }}>{l.pm100 ? fmt(variance) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: pct > 100 ? 'var(--red)' : pct > 85 ? 'var(--amber)' : 'var(--text2)' }}>{l.pm100 ? fmtPct(pct) : '—'}</td>
                       </tr>
@@ -576,6 +581,162 @@ export function MikaPanel() {
           <p>Upload a MIKA CSV above to get started.</p>
         </div>
       )}
+
+      {/* Drill-down modal */}
+      {drillCell && (() => {
+        const { wbs, col } = drillCell
+        const fmtD = (n: number) => '$' + Math.abs(n).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+        // Collect all agg rows for this WBS and its descendants
+        const matchingAgg = Object.entries(wbsAgg).filter(([code]) =>
+          code === wbs || code.startsWith(wbs + '.')
+        )
+
+        // Category labels for display
+        const CAT_LABELS: Record<string, string> = {
+          labourTrades: 'Labour — Trades', labourMgmt: 'Labour — Management',
+          labourSeag: 'Labour — SE AG', labourSubcon: 'Labour — Subcon',
+          hire: 'Hire', tooling: 'Tooling', hardware: 'Hardware',
+          cars: 'Cars / Vehicles', accom: 'Accommodation',
+          expenses: 'Expenses', backoffice: 'Back Office',
+          se_support: 'SE Support', variations: 'Variations', invoices: 'Invoices',
+        }
+        const CAT_KEYS = Object.keys(CAT_LABELS) as (keyof typeof CAT_LABELS)[]
+
+        // Aggregate actuals by category across all matching rows
+        const actualsByCat: Record<string, number> = {}
+        const allItems: { label: string; category: string; cost: number }[] = []
+        for (const [, row] of matchingAgg) {
+          for (const key of CAT_KEYS) {
+            const val = row[key as keyof typeof row] as number
+            if (val) actualsByCat[key] = (actualsByCat[key] || 0) + val
+          }
+          for (const item of row.items || []) {
+            allItems.push({ label: item.label, category: String(item.category), cost: item.cost })
+          }
+        }
+
+        // Forecast: collect contributing MIKA leaf rows
+        const mikaLines = mika?.lines || []
+        const forecastRows = mikaLines.filter(l =>
+          (l.wbs === wbs || l.wbs.startsWith(wbs + '.')) && l.forecast > 0
+        )
+        const forecastTotal = forecastRows.reduce((s, l) => s + l.forecast, 0)
+
+        // Committed: find leaf entries from committedMap
+        const committedRows = Object.entries(committedMap).filter(([code]) =>
+          code === wbs || code.startsWith(wbs + '.')
+        )
+        const committedTotal = committedRows.reduce((s, [, v]) => s + v, 0)
+
+        const actualsTotal = matchingAgg.reduce((s, [, r]) => s + r.total, 0)
+        const eacTotal = actualsTotal + committedTotal + forecastTotal
+
+        const colTitle = { actuals: 'PTD Actuals', committed: 'PO Committed', forecast: 'Forecast TC', eac: 'EAC (Calc)' }[col]
+
+        return (
+          <div className="modal-overlay" onClick={() => setDrillCell(null)}>
+            <div className="modal" style={{ maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <h2 style={{ fontSize: '14px', marginBottom: '2px' }}>{wbs}</h2>
+                  <div style={{ fontSize: '12px', color: 'var(--text3)' }}>{colTitle} breakdown</div>
+                </div>
+                <button className="btn-close" onClick={() => setDrillCell(null)}>×</button>
+              </div>
+              <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
+
+                {/* PTD Actuals section */}
+                {(col === 'actuals' || col === 'eac') && actualsTotal > 0 && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                      PTD Actuals — {fmtD(actualsTotal)}
+                    </div>
+                    {CAT_KEYS.filter(k => (actualsByCat[k] || 0) > 0).map(k => {
+                      const catItems = allItems.filter(i => i.category === k)
+                      return (
+                        <div key={k} style={{ marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 600, padding: '4px 8px', background: 'var(--bg2)', borderRadius: '4px' }}>
+                            <span>{CAT_LABELS[k]}</span>
+                            <span style={{ fontFamily: 'var(--mono)' }}>{fmtD(actualsByCat[k])}</span>
+                          </div>
+                          {catItems.map((item, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text2)', padding: '2px 8px 2px 20px' }}>
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px' }}>{item.label}</span>
+                              <span style={{ fontFamily: 'var(--mono)', flexShrink: 0 }}>{fmtD(item.cost)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                    {Object.keys(actualsByCat).length === 0 && <div style={{ fontSize: '12px', color: 'var(--text3)' }}>No actuals data</div>}
+                  </div>
+                )}
+
+                {/* PO Committed section */}
+                {(col === 'committed' || col === 'eac') && committedTotal > 0 && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                      PO Committed — {fmtD(committedTotal)}
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg2)' }}>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>WBS</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 600, fontFamily: 'var(--mono)' }}>Committed</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {committedRows.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([code, val]) => (
+                          <tr key={code} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '4px 8px', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{code}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#f97316' }}>{fmtD(val)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Forecast TC section */}
+                {(col === 'forecast' || col === 'eac') && forecastTotal > 0 && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                      Forecast TC — {fmtD(forecastTotal)}
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg2)' }}>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>WBS</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>Description</th>
+                          <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 600, fontFamily: 'var(--mono)' }}>Forecast</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {forecastRows.sort((a, b) => b.forecast - a.forecast).map(l => (
+                          <tr key={l.wbs} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '4px 8px', color: 'var(--text3)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{l.wbs}</td>
+                            <td style={{ padding: '4px 8px', color: 'var(--text2)' }}>{l.desc}</td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--amber)' }}>{fmtD(l.forecast)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* EAC total */}
+                {col === 'eac' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 8px', background: 'var(--bg2)', borderRadius: '6px', fontWeight: 700, fontSize: '13px' }}>
+                    <span style={{ color: '#7c3aed' }}>EAC Total</span>
+                    <span style={{ fontFamily: 'var(--mono)', color: '#7c3aed' }}>{fmtD(eacTotal)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
