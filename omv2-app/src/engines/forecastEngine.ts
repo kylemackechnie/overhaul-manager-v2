@@ -578,7 +578,7 @@ export function buildForecast(
   let totalCost = 0, totalSell = 0
   for (const d of days) {
     const b = byDay[d]
-    for (const cat of ['trades','mgmt','seag','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
+    for (const cat of ['trades','mgmt','seag','subcon','dryHire','wetHire','localHire','tooling','cars','accom','expenses'] as const) {
       const factor = EUR_CATS.has(cat) ? toBase(1, 'EUR') : 1
       totalCost += b[cat].cost * factor
       totalSell += b[cat].sell * factor
