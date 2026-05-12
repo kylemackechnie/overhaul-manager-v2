@@ -575,7 +575,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     const { error } = await supabase.from('weekly_timesheets').insert({
       project_id: src.project_id, type: src.type, week_start: newStart,
       wbs: src.wbs, notes: src.notes, regime: src.regime, status: 'draft',
-      vendor: src.vendor, po_id: src.po_id, crew: syncCrew(newCrew),
+      vendor: src.vendor, po_id: src.po_id, crew: syncCrew(newCrew as CrewMember[]),
     })
     if (error) { toast(error.message, 'error'); return }
     toast('Week duplicated', 'success'); setDupModal(null); load()
