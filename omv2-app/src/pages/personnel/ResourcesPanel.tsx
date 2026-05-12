@@ -56,6 +56,7 @@ const EMPTY: Partial<Resource> = {
   allow_laha:false, allow_fsa:false, allow_meal:false,
   company:'', phone:'', email:'', notes:'', flights:'',
   linked_po_id:null, rate_card_id:null,
+  flags: {},
 }
 
 function resourceStatus(r: Resource): 'onsite'|'incoming'|'upcoming'|'departed'|'future'|'unknown' {
@@ -240,6 +241,12 @@ export function ResourcesPanel() {
       company: form.company||'', phone: form.phone||'', email: form.email||'',
       linked_po_id: form.linked_po_id||null, rate_card_id: form.rate_card_id||null, notes: form.notes||'',
       flights: (form as Partial<Resource> & {flights?:string}).flights||'',
+      flags: {
+        ...(form.flags||{}),
+        car_required: !!((form.flags||{} as Record<string,unknown>).car_required),
+        flight_required: !!((form.flags||{} as Record<string,unknown>).flight_required),
+        accom_required: !!((form.flags||{} as Record<string,unknown>).accom_required),
+      },
       person_id: personId,
     }
     const isNew = modal === 'new'
@@ -804,9 +811,9 @@ export function ResourcesPanel() {
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>}
-                      {isVisible('car') && <td style={{fontSize:'11px',color:car?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:'—'}</td>}
-                      {isVisible('flights') && <td style={{fontSize:'11px',color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.flights||'—'}</td>}
-                      {isVisible('room') && <td style={{fontSize:'11px',color:room?'var(--mod-hr)':'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:'—'}</td>}
+                      {isVisible('car') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined,color:car?'var(--mod-hr)':((r.flags as Record<string,unknown>)?.car_required&&!car)?'var(--amber)':'var(--text3)'}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:((r.flags as Record<string,unknown>)?.car_required?'⚠ REQUIRED':'—')}</td>}
+                      {isVisible('flights') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:r.flights?'var(--text2)':((r.flags as Record<string,unknown>)?.flight_required&&!r.flights)?'var(--amber)':'var(--text3)'}}>{r.flights||(((r.flags as Record<string,unknown>)?.flight_required)?'⚠ REQUIRED':'—')}</td>}
+                      {isVisible('room') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined,color:room?'var(--mod-hr)':((r.flags as Record<string,unknown>)?.accom_required&&!room)?'var(--amber)':'var(--text3)'}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:((r.flags as Record<string,unknown>)?.accom_required?'⚠ REQUIRED':'—')}</td>}
                       {isVisible('wbs') && <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>}
                       {isVisible('po') && <td style={{minWidth:'110px'}}>
                         {r.category==='subcontractor' ? (
@@ -978,6 +985,24 @@ export function ResourcesPanel() {
                   </select>
                 </div>
               )}
+              <div>
+                <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Logistics Requirements</div>
+                <div style={{display:'flex',gap:'20px',flexWrap:'wrap'}}>
+                  {([
+                    {key:'car_required',  label:'🚗 Car Required'},
+                    {key:'flight_required',label:'✈️ Flight Required'},
+                    {key:'accom_required', label:'🏨 Accom Required'},
+                  ] as {key:string;label:string}[]).map(({key,label}) => (
+                    <label key={key} style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px'}}>
+                      <input type="checkbox"
+                        checked={!!((form.flags||{} as Record<string,unknown>)[key])}
+                        onChange={e=>setForm(f=>({...f,flags:{...(f.flags||{}), [key]:e.target.checked}}))}
+                        style={{accentColor:'var(--amber)'}} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div>
                 <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Allowances</div>
                 <div style={{display:'flex',gap:'20px',flexWrap:'wrap'}}>
