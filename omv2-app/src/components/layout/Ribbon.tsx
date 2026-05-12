@@ -62,6 +62,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📈', label: 'Forecast', panel: 'cost-forecast' },
         { icon: '📉', label: 'S-Curve', panel: 'cost-scurve' },
         { icon: '📊', label: 'MIKA', panel: 'cost-mika' },
+        { icon: '🔍', label: 'Reconcile', panel: 'cost-reconcile' },
       ]},
       { label: 'Records', buttons: [
         { icon: '🧾', label: 'Expenses', panel: 'expenses' },

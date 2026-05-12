@@ -21,6 +21,7 @@ import { CostDashboardPanel } from './pages/cost/CostDashboardPanel'
 import { CustomerReportPanel } from './pages/cost/CustomerReportPanel'
 import { ForecastPanel } from './pages/cost/ForecastPanel'
 import { MikaPanel } from './pages/cost/MikaPanel'
+import { ReconcilePanel } from './pages/cost/ReconcilePanel'
 import { PrePlanningReportPanel } from './pages/cost/PrePlanningReportPanel'
 import { SubconVendorSnapshot } from './pages/subcon/SubconVendorSnapshot'
 import { SubconRFQRegisterPanel } from './pages/subcon/SubconRFQRegisterPanel'
@@ -427,6 +428,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'cost-customer-report':  return <CustomerReportPanel />
     case 'cost-forecast':         return <ForecastPanel />
     case 'cost-mika':            return <MikaPanel />
+    case 'cost-reconcile':       return <ReconcilePanel />
     case 'pre-planning-report':  return <PrePlanningReportPanel />
     case 'cost-scurve':           return <SCurvePanel />
     case 'cost-report':           return <CostReportPanel />
@@ -559,6 +561,7 @@ const MOBILE_OPTIMISED: Set<string> = new Set([
 const PANEL_FRIENDLY_NAMES: Record<string, string> = {
   'cost-forecast':    'Forecast',
   'cost-mika':        'MIKA',
+  'cost-reconcile':   'Forecast vs MIKA',
   'cost-scurve':      'S-Curve',
   'cost-report':      'Cost Report',
   'sap-recon':        'SAP Reconciliation',
