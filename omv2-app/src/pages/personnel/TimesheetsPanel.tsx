@@ -255,12 +255,12 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
     const dayBreaks = days.map(d => {
       const ds = d.toISOString().slice(0,10)
       const cell = (m.days||{})[ds] as {hours?:number;dayType?:string;shiftType?:string;laha?:boolean;meal?:boolean;fsa?:boolean;camp?:boolean}|undefined
-      if (!cell?.hours) return { split:{} as Record<string,number>, sell:{} as Record<string,number>, hours:0, totalSell:0, allowances:[] as {label:string;sell:number}[] }
+      if (!cell) return { split:{} as Record<string,number>, sell:{} as Record<string,number>, hours:0, totalSell:0, allowances:[] as {label:string;sell:number}[] }
       const adjH = (m.mealBreakAdj && !isMgmt && (cell?.hours||0) > 10) ? 0.5 : 0
-      const effH = cell.hours + adjH
-      const sp = splitHours(effH, cell.dayType||'weekday', cell.shiftType||'day', rc.regime) as unknown as Record<string,number>
+      const effH = (cell.hours||0) + adjH
+      const sp = effH > 0 ? splitHours(effH, cell.dayType||'weekday', cell.shiftType||'day', rc.regime) as unknown as Record<string,number> : {} as Record<string,number>
       const sellMap: Record<string,number> = {}
-      for (const rt of RATE_TYPES) { sellMap[rt.key] = (sp[rt.key]||0) * (parseFloat(String(rates[rt.key]||0))||0) }
+      if (effH > 0) { for (const rt of RATE_TYPES) { sellMap[rt.key] = (sp[rt.key]||0) * (parseFloat(String(rates[rt.key]||0))||0) } }
       const totalSell = Object.values(sellMap).reduce((s,v) => s+v, 0)
       const allowances: {label:string;sell:number}[] = []
       if (cell.laha) allowances.push({ label: isMgmt?'FSA':'LAHA', sell: parseFloat(String(isMgmt?rcAny.fsa_sell:rcAny.laha_sell))||0 })
