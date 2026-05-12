@@ -127,7 +127,7 @@ export function ResourcesPanel() {
   const [sortCol, setSortCol] = useState<SortCol>((prefs.res_sort_col as SortCol | undefined) ?? 'name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState(false)
-  const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', specialisation:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false })
+  const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', specialisation:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false, car_required:false, flight_required:false, accom_required:false, applyCarReq:false, applyFlightReq:false, applyAccomReq:false })
   const [sortAsc, setSortAsc] = useState(prefs.res_sort_asc ?? true)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
@@ -177,10 +177,26 @@ export function ResourcesPanel() {
     if (bulkForm.applyLaha) updates.allow_laha = bulkForm.allow_laha
     if (bulkForm.applyMeal) updates.allow_meal = bulkForm.allow_meal
     if (bulkForm.applyFsa)  updates.allow_fsa  = bulkForm.allow_fsa
-    if (!Object.keys(updates).length) { toast('No changes to apply', 'info'); return }
+    const anyFlagUpdate = bulkForm.applyCarReq || bulkForm.applyFlightReq || bulkForm.applyAccomReq
+    const nonFlagKeys = Object.keys(updates).length
+    if (!nonFlagKeys && !anyFlagUpdate) { toast('No changes to apply', 'info'); return }
     const ids = [...selected]
-    const { error } = await supabase.from('resources').update(updates).in('id', ids)
-    if (error) { toast(error.message, 'error'); return }
+    // Non-flag fields: single bulk update
+    if (nonFlagKeys) {
+      const { error } = await supabase.from('resources').update(updates).in('id', ids)
+      if (error) { toast(error.message, 'error'); return }
+    }
+    // Flag fields: per-resource merge to preserve existing JSONB keys
+    if (anyFlagUpdate) {
+      const flagPatch: Record<string,boolean> = {}
+      if (bulkForm.applyCarReq)    flagPatch.car_required    = bulkForm.car_required
+      if (bulkForm.applyFlightReq) flagPatch.flight_required = bulkForm.flight_required
+      if (bulkForm.applyAccomReq)  flagPatch.accom_required  = bulkForm.accom_required
+      for (const r of resources.filter(r => selected.has(r.id))) {
+        const merged = { ...(r.flags||{}), ...flagPatch }
+        await supabase.from('resources').update({ flags: merged }).eq('id', r.id)
+      }
+    }
     toast(`Updated ${ids.length} resources`, 'success')
     setSelected(new Set()); setBulkModal(false); load()
   }
@@ -636,7 +652,7 @@ export function ResourcesPanel() {
           {selected.size > 0 && (
             <div style={{display:'flex',gap:'8px',alignItems:'center',padding:'8px 12px',background:'rgba(15,118,110,.08)',border:'1px solid rgba(15,118,110,.2)',borderRadius:'6px',marginBottom:'10px',flexWrap:'wrap'}}>
               <span style={{fontSize:'12px',fontWeight:600,color:'var(--mod-hr)'}}>{selected.size} selected</span>
-              <button className="btn btn-sm" onClick={()=>{setBulkForm({role:'',company:'',category:'',mob_in:'',mob_out:'',shift:'',wbs:'',specialisation:'',allow_laha:false,allow_meal:false,allow_fsa:false,applyLaha:false,applyMeal:false,applyFsa:false});setBulkModal(true)}}>✏ Edit Role/Shift</button>
+              <button className="btn btn-sm" onClick={()=>{setBulkForm({role:'',company:'',category:'',mob_in:'',mob_out:'',shift:'',wbs:'',specialisation:'',allow_laha:false,allow_meal:false,allow_fsa:false,applyLaha:false,applyMeal:false,applyFsa:false,car_required:false,flight_required:false,accom_required:false,applyCarReq:false,applyFlightReq:false,applyAccomReq:false});setBulkModal(true)}}>✏ Edit Role/Shift</button>
               <button className="btn btn-sm" style={{color:'var(--red)',borderColor:'var(--red)'}} onClick={bulkDelete}>🗑 Delete Selected</button>
               <button className="btn btn-sm" style={{color:'var(--text3)'}} onClick={()=>setSelected(new Set())}>✕ Clear</button>
             </div>
@@ -1100,6 +1116,21 @@ export function ResourcesPanel() {
                   </div>
                 )
               })}
+              <div style={{marginTop:'12px',fontSize:'12px',fontWeight:600,color:'var(--text2)',marginBottom:'6px'}}>Logistics Requirements</div>
+              {([
+                {applyKey:'applyCarReq',   valKey:'car_required',    label:'🚗 Car Required'},
+                {applyKey:'applyFlightReq',valKey:'flight_required',  label:'✈️ Flight Required'},
+                {applyKey:'applyAccomReq', valKey:'accom_required',   label:'🏨 Accom Required'},
+              ] as {applyKey:string;valKey:string;label:string}[]).map(({applyKey,valKey,label}) => (
+                <div key={valKey} style={{display:'flex',alignItems:'center',gap:'10px',marginTop:'6px'}}>
+                  <input type="checkbox" checked={(bulkForm as Record<string,unknown>)[applyKey] as boolean} onChange={e=>setBulkForm(f=>({...f,[applyKey]:e.target.checked}))} />
+                  <span style={{fontSize:'12px',color:'var(--text2)'}}>Update {label}:</span>
+                  <label style={{display:'flex',alignItems:'center',gap:'4px',fontSize:'12px',cursor:'pointer'}}>
+                    <input type="checkbox" checked={(bulkForm as Record<string,unknown>)[valKey] as boolean} disabled={!(bulkForm as Record<string,unknown>)[applyKey]} onChange={e=>setBulkForm(f=>({...f,[valKey]:e.target.checked}))} style={{accentColor:'var(--amber)'}} />
+                    Required
+                  </label>
+                </div>
+              ))}
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={()=>setBulkModal(false)}>Cancel</button>
