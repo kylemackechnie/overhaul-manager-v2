@@ -236,16 +236,21 @@ export async function exportTceAll(
   }
 
   // Period-bucketed non-labour costs (supplier invoices + expenses) tagged to TCE items.
-  // For a date D, find the smallest selected orderedWeek WE such that WE >= D, mirroring
-  // NrgInvoicingPanel.inPeriod()'s (prevWE, toWE] convention. Dates after the last
-  // selected week fall outside any period and are silently dropped (matches labour
-  // behaviour, which is filtered to weSet — see top of this function).
+  // For each cost date D, find its NATURAL owning period (prevWE, toWE] using the full
+  // list of customer invoices in the DB (nrgInvSorted) — not the user's selected subset.
+  // This mirrors NrgInvoicingPanel.inPeriod()'s convention. If the cost's natural
+  // owning WE isn't in the user's export selection, the cost is dropped entirely
+  // (we don't fold prior-period data into the nearest selected column).
+  const allCustomerWEs = nrgInvSorted.map(i => i.week_ending!)
   const nonLabourByItemWeek:Record<string,Record<string,number>>={}
   function periodWE(date:string|null):string|null{
     if(!date) return null
     const d=date.slice(0,10)
-    for(const we of orderedWeeks) if(we>=d) return we
-    return null
+    let owningWE:string|null=null
+    for(const we of allCustomerWEs){ if(we>=d){ owningWE=we; break } }
+    if(!owningWE) return null              // date is after the last customer invoice
+    if(!weSet.has(owningWE)) return null   // owning period isn't selected for this export
+    return owningWE
   }
   for(const inv of supplierInvoices){
     if(!inv.tce_item_id) continue
