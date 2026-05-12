@@ -826,6 +826,8 @@ export function buildForecastByWbs(
   stdHours: { day: Record<string,number>; night: Record<string,number> },
   publicHolidays: { date: string }[],
   fxRates: { code: string; rate: number }[],
+  backOffice: BackOfficeHour[] = [],
+  toolingCostings: ToolingCosting[] = [],
 ): Record<string, number> {
   const byWbs: Record<string, number> = {}
   const holidays = new Set(publicHolidays.map(h => h.date))
@@ -863,18 +865,29 @@ export function buildForecastByWbs(
     const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
 
     let resourceCost = 0
+    let nShifts = 0
     for (const d of days) {
       const dow = dayOfWeek(d)
       const dayType = getDayType(d, holidays)
       const shift = resolveShift(r, d)
+      let dayHasShift = false
       if (shift === 'day' || shift === 'both') {
         const h = stdHours.day?.[dow] ?? 0
-        if (h > 0) resourceCost += costForSplitLocal(splitHours(h, dayType, 'day', rcRegime), rcCost)
+        if (h > 0) { resourceCost += costForSplitLocal(splitHours(h, dayType, 'day', rcRegime), rcCost); dayHasShift = true }
       }
       if (shift === 'night' || shift === 'both') {
         const h = stdHours.night?.[dow] ?? 0
-        if (h > 0) resourceCost += costForSplitLocal(splitHours(h, dayType, 'night', rcRegime), rcCost)
+        if (h > 0) { resourceCost += costForSplitLocal(splitHours(h, dayType, 'night', rcRegime), rcCost); dayHasShift = true }
       }
+      if (dayHasShift) nShifts++
+    }
+    // Allowances — mirrors buildForecast lines 269-277
+    const rX = r as Resource & { allow_laha?: boolean; allow_meal?: boolean; allow_fsa?: boolean }
+    if (catKey === 'trades') {
+      if (rX.allow_laha !== false) resourceCost += (Number(rc.laha_cost) || 0) * nShifts
+      if (rX.allow_meal !== false) resourceCost += (Number(rc.meal_cost) || 0) * nShifts
+    } else {
+      if (rX.allow_fsa !== false && rX.allow_laha !== false) resourceCost += (Number(rc.fsa_cost) || 0) * nShifts
     }
     // Convert EUR resources to AUD
     if (isEur) resourceCost *= eurRate
@@ -905,7 +918,28 @@ export function buildForecastByWbs(
     add(wbs, Number(e.cost_ex_gst) || 0)
   }
 
-  // ── Standalone POs (not linked to bookings/resources) ────────────────────
+  // ── Back Office Hours ──────────────────────────────────────────────────────
+  for (const bo of backOffice) {
+    const wbs = (bo as BackOfficeHour & { wbs?: string }).wbs || ''
+    add(wbs, bo.cost || 0)
+  }
+
+  // ── Tooling ────────────────────────────────────────────────────────────────
+  for (const tc of toolingCostings) {
+    const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
+    const costEur = Number(tc.cost_eur) || 0
+    // Tooling has wbs per-split; if no splits use top-level wbs
+    if (tc.splits && tc.splits.length > 0) {
+      for (const sp of tc.splits) {
+        const wbs = sp.wbs || tc.wbs || ''
+        add(wbs, costEur * eurRate / tc.splits.length)
+      }
+    } else {
+      add(tc.wbs || '', costEur * eurRate)
+    }
+  }
+
+  // ── Standalone POs ─────────────────────────────────────────────────────────
   const linkedPoIds = new Set<string>()
   for (const h of hireItems) {
     const lpi = (h as HireItem & { linked_po_id?: string }).linked_po_id

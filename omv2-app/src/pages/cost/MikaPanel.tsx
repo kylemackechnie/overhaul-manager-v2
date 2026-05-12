@@ -199,6 +199,8 @@ export function MikaPanel() {
         stdHours,
         ((holsR.data || []) as {date:string}[]),
         fxRates,
+        (boR.data || []) as Parameters<typeof buildForecastByWbs>[11],
+        [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as Parameters<typeof buildForecastByWbs>[12],
       )
       const forecastRolled: Record<string, number> = {}
       for (const [code, val] of Object.entries(forecastByWbs)) {
