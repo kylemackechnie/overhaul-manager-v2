@@ -172,11 +172,17 @@ export function MikaPanel() {
 
       const actualsByWbs: Record<string, number> = {}
       const committedRolled: Record<string, number> = {}
+      const forecastRolled: Record<string, number> = {}
       for (const [code, row] of Object.entries(agg)) {
         if (row.total) rollup(actualsByWbs, code, row.total)
       }
       for (const [code, val] of Object.entries(committedByWbs)) {
         if (val) rollup(committedRolled, code, val)
+      }
+      // Roll up forecast_tc from DB lines — MIKA only stores forecast at leaf level,
+      // parent rows have 0. Rollup gives parent rows the sum of all child forecasts.
+      for (const r of rows) {
+        if (r.forecast_tc) rollup(forecastRolled, r.wbs, r.forecast_tc)
       }
 
       const dbLines: MikaLine[] = rows.map(r => ({
@@ -187,7 +193,7 @@ export function MikaPanel() {
         pm100: r.pm100 || 0,
         actuals: actualsByWbs[r.wbs] || 0,
         poCommitted: committedRolled[r.wbs] || 0,
-        forecast: r.forecast_tc || 0,
+        forecast: forecastRolled[r.wbs] || 0,
       }))
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
     }
