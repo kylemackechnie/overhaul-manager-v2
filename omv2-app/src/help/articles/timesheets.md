@@ -125,6 +125,27 @@ Both imports respect the week start — only entries for the active week are imp
 
 **⏭ Next Week** saves the current week and creates the next one with the same crew (but no hours). Fast way to roll a stable crew forward week after week. If a week already exists for that date and type, it switches to that one instead.
 
+## Duplicate Week
+
+The **⧉ Duplicate** button on a sheet row opens a modal with three fill modes:
+
+- **Copy hours from previous week** — same hours, day types, shifts, and allowances. Dates shift forward 7 days. The default.
+- **Use standard hours from Project Settings** — each person gets the configured shift pattern. Only enabled when Project Settings → Standard Hours has values.
+- **Blank — zero hours** — keep the crew list but start empty.
+
+On NRG projects with TCE scope tracking, a **Copy TCE scope allocations** checkbox appears below the fill modes. When ticked, the new week carries forward which TCE scope each person's hours are tagged to. Useful when the work continues on the same scope week-over-week.
+
+## Sync Crew
+
+The **🔄 Sync Crew** button (per-sheet on the list view) refreshes the crew on a sheet from the current resource list. It updates each crew member's name, role, WBS, and meal break adjustment to match what's on the resource record now.
+
+Useful after:
+
+- A bulk role rename or WBS update on Resources
+- Importing a roster that changed someone's company or role
+
+Hours and allowance entries are preserved — only the metadata fields are refreshed.
+
 ## Recalculate
 
 If the MIKA / WBS / Cost Report view is showing missing labour actuals — a known symptom of partial deploys or schema changes — the **↺ Recalculate** button rebuilds `timesheet_cost_lines` for all approved timesheets on the project. Only shows when there's at least one approved sheet to rebuild.

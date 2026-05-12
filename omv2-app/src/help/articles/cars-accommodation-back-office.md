@@ -93,10 +93,12 @@ Used for charging back SE AG involvement (engineering support, specialist consul
 
 ## How these feed cost reports
 
-All three modules flow into the WBS aggregator (the engine behind Cost Summary, MIKA EAC, and the Cost Register):
+The three modules feed cost reporting differently:
 
-- **Cars** and **Accommodation** are **date-range items** — when the Cost Report's week filter is set, they're pro-rated by the number of days the booking covers within the window
-- **Back Office Hours** are **date-stamped** — they're filtered to the week window, not pro-rated
-- **SE Support Costs** are date-stamped, billed in EUR — the Customer Report's currency mode controls how they're displayed
+**Back Office Hours and SE Support Costs are immediate actuals.** Once you log a back office entry or an SE Support charge, it flows directly into PTD Actuals on MIKA and into the Cost Summary Report. Back Office Hours show under the `backoffice` module; SE Support shows under `se_support`. Both are date-stamped and filtered to the current week when the Cost Summary has a week filter set.
 
-Pro-rating matters for accurate per-week reporting. A 4-week accommodation booking spanning weeks 1-4 will show 25% of the cost in each week's snapshot, even though the booking record is a single row.
+**Cars and Accommodation are bookings, not actuals.** Adding a car or accommodation booking creates a planning record only — the cost lives on the Forecast page until the supplier invoices through. When the matching supplier invoice is approved (under Cost Tracking → Invoices), the cost flips to actual and appears under the `invoices` bucket on MIKA and the Cost Summary.
+
+This is consistent with how MIKA tracks SAP-side spend — bookings are intent, invoices are spend. If you want to see what's committed but not yet invoiced (i.e. the booking value), look at the Forecast panel or the Cost Register; if you want to see what's actually been spent, look at MIKA's PTD Actuals or the Cost Summary.
+
+**SE Support** charges remain in EUR for SE AG-supplied work. The Customer Report's currency mode controls whether they're displayed as EUR or converted to base currency.

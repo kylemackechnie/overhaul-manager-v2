@@ -46,6 +46,7 @@ const NAV_PAGES: NavPage[] = [
   { icon: '💰', label: 'Cost Dashboard',          panel: 'cost-dashboard',     module: 'Cost Tracking' },
   { icon: '📊', label: 'MIKA Cost Plan',          panel: 'cost-mika',          module: 'Cost Tracking', keywords: 'eac estimate at completion pm80 pm100' },
   { icon: '📈', label: 'Forecast',                 panel: 'cost-forecast',      module: 'Cost Tracking', keywords: 'eac' },
+  { icon: '🔍', label: 'Forecast vs MIKA Reconcile',panel: 'cost-reconcile',     module: 'Cost Tracking', keywords: 'diagnostic eac variance' },
   { icon: '📉', label: 'S-Curve',                  panel: 'cost-scurve',        module: 'Cost Tracking', keywords: 'cumulative cost' },
   { icon: '📄', label: 'Purchase Orders',          panel: 'purchase-orders',    module: 'Cost Tracking', keywords: 'po contracts committed' },
   { icon: '💳', label: 'Invoices',                 panel: 'invoices',           module: 'Cost Tracking' },

@@ -4,7 +4,7 @@ title: Forecast & EAC
 category: Cost Tracking
 order: 20
 summary: Two views of the same engine — the Forecast panel projects day-by-day cost forward from planned resources and hire; the MIKA panel rolls that into the integrated Estimate At Completion alongside actuals and committed costs.
-relatedPanels: [cost-forecast, cost-mika]
+relatedPanels: [cost-forecast, cost-mika, cost-reconcile]
 ---
 
 # Forecast & EAC
@@ -72,9 +72,9 @@ The EAC lives on the **MIKA panel** because it integrates the forecast with ever
 | Approved VNs | Sum of approved variations on this WBS |
 | Pending VNs | Sum of submitted-but-not-yet-approved variations |
 | Revised Budget | PM100 + Approved VNs |
-| PTD Actuals | What's been spent so far (from MIKA + live cost lines) |
+| PTD Actuals | Realised cost only — approved timesheets, approved invoices, expenses, back office hours, approved variation lines |
 | PO Committed | Open commitments from active POs |
-| Forecast TC | Forecast To Complete from the forecast engine |
+| Forecast TC | Forecast To Complete — computed live by the same `buildForecast` engine that powers the Forecast panel |
 | EAC (calc) | **Actuals + PO Committed + Forecast TC** |
 | Variance | Revised Budget − EAC |
 | % Spent | Actuals ÷ Revised Budget |
@@ -88,6 +88,16 @@ EAC = PTD Actuals + PO Committed + Forecast To Complete
 This is what the project is *projected to cost in total* — money already spent, money committed to be spent (POs), plus the remaining forward forecast.
 
 Compare EAC against the **Revised Budget** (PM100 plus approved variations) to get the variance. A red variance means you're projected to over-run; green means you're under.
+
+### How Forecast TC is computed
+
+Forecast TC at the WBS leaf is built from the live forecast engine — the same one that drives the Forecast panel. This means MIKA's Forecast TC always matches what you'd see on Forecast. The system explicitly does **not** use the `forecast_tc` columns from the MIKA CSV import (those represent the SAP-side forecast and go stale immediately).
+
+Forecast TC values roll up from leaf WBS lines to parent rows automatically, so summary lines (L2 / L3) show the cumulative forecast for everything underneath.
+
+### Drill-down
+
+Click any cost value in the MIKA table — Actuals, PO Committed, Forecast TC, or EAC — to open a breakdown modal showing the contributing cost lines grouped by category. See the [MIKA Cost Plan & WBS](mika-cost-plan-and-wbs) article.
 
 ### KPI summary
 
@@ -111,3 +121,22 @@ Search by WBS code or description; filter by level (L2 Top / L3 Summary / L4 Det
 If a PO is missing its WBS code or forecast start/end dates, it's **excluded** from EAC commitments — there's nowhere for it to spread to. The MIKA panel surfaces a yellow warning strip listing the first three problems with a count of the rest. Fix the POs (Cost Tracking → POs) and the EAC updates automatically.
 
 Similarly, if rate cards aren't set up for roles used in timesheets, labour cost will read as $0 in the forecast and EAC. The Cost Summary Report flags this too.
+
+## Forecast vs MIKA reconciliation
+
+The **Reconcile** panel (Cost Tracking → Reconcile) is a read-only diagnostic that compares the Forecast page total against the MIKA EAC under the model:
+
+```
+ForecastTC = max(0, Plan − Actuals − Committed)
+EAC        = Actuals + Committed + ForecastTC
+```
+
+It runs `buildForecast` once and the two MIKA engines (`wbsAggregator`, `poCommitmentsEngine`) and checks that everything reconciles back. Any non-zero gap is surfaced, along with over-budget WBS rows (where Actuals + Committed already exceed Plan).
+
+Use it when:
+
+- The Forecast page total and the MIKA EAC don't visibly agree
+- A WBS line on MIKA shows numbers that look mathematically inconsistent
+- After importing or making bulk edits — quick sanity check before reporting
+
+In a healthy project the panel shows zeros all the way down. Non-zero values usually point at over-budget WBS lines that are being clamped to zero in the Forecast TC calculation.

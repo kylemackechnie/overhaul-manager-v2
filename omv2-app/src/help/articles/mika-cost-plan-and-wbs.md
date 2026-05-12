@@ -38,6 +38,22 @@ When MIKA data exists, the panel shows:
 
 The full EAC formula (`Actuals + PO Committed + Forecast`) and how variations feed the revised budget are covered in the **Forecast & EAC** article.
 
+## Drill-down
+
+Click any cost value in the MIKA table — PTD Actuals, PO Committed, Forecast TC, or EAC — to open a breakdown modal for that WBS line. The modal shows the contributing cost lines grouped by category (labour, hire, cars, accommodation, tooling, expenses, etc.) with each line item listed individually. Useful for tracing back to the source when a number looks off.
+
+## What counts as Actuals
+
+PTD Actuals on MIKA reflects **realised cost only** — money that has actually been spent or is owed:
+
+- Approved timesheets (labour cost from `timesheet_cost_lines`)
+- Approved invoices for hire, cars, accommodation, tooling rental, and freight (booking the item is plan, not actual — the invoice flips it to actual)
+- Expenses (booked as actuals on entry)
+- Approved variation lines that have been delivered
+- Back office hours
+
+Bookings for hire, cars, accommodation, and tooling do **not** count as actuals until invoiced. The booking value sits in Plan / Forecast TC until the supplier invoice is approved, then moves into PTD Actuals. This was a deliberate change to align with how SAP tracks spend.
+
 ## Data quality warnings
 
 A yellow strip at the top of the MIKA table flags cost items missing a WBS code or forecast dates — these are excluded from EAC calcs. The first three are listed inline; the rest are summarised as "…and N more". Useful for catching incomplete data before reporting on it.
@@ -48,7 +64,7 @@ The **WBS list** (Cost Tracking → WBS or Project → WBS) is a simplified flat
 
 - WBS Code, Description
 - PM80 Budget, PM100 Budget (from MIKA)
-- Actuals (computed live from all cost lines via the WBS aggregator)
+- Actuals (computed live from the same sources as MIKA — approved timesheets, invoices, expenses, etc. — see "What counts as Actuals" above)
 - Variance — green if PM100 > Actuals, red if over
 
 Use it for quick reference or to spot-check budget levels without the full MIKA detail. Same data, less noise.

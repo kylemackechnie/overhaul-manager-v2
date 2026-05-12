@@ -104,6 +104,18 @@ The Calendar groups by category and includes a headcount summary row at the top 
 
 LAHA, Meal, and FSA flags are set per resource and drive how timesheets calculate allowances. The Timesheets panel has a "🏷 Allowances" button that applies these defaults to the current week's hours — useful when filling in a fresh week.
 
+## Logistics required flags
+
+Each resource also carries three logistics flags — **car required**, **flight required**, **accommodation required** — that record whether the person needs each thing for their engagement. They don't book anything automatically; they're the planning intent.
+
+The Cars / Flights / Accommodation columns on the Resources table use these flags as a cross-check:
+
+- If the flag is set AND there's a matching booking — green/grey row showing the booking details
+- If the flag is set AND there's no booking yet — amber **⚠ REQUIRED** indicator
+- If the flag isn't set AND there's no booking — em-dash, no warning
+
+Useful for catching gaps before mobilisation. The bulk edit modal can set or clear these flags across many rows at once (each flag has its own "apply" checkbox so you can update some flags without touching the others).
+
 ## Utilisation
 
 The separate **Utilisation panel** (Personnel → Utilisation) is a cross-project monthly heatmap showing where each person was deployed. Useful for resource managers across multiple projects — see at a glance who's been working where, when they were idle, and whether anyone's been double-booked.

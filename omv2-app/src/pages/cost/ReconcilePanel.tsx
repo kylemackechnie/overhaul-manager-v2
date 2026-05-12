@@ -20,6 +20,7 @@ import type { ForecastData } from '../../engines/forecastEngine'
 import { aggregateAllCostsByWbs } from '../../engines/wbsAggregator'
 import type { WbsAggregate } from '../../engines/wbsAggregator'
 import { buildPoCommitments } from '../../engines/poCommitmentsEngine'
+import { HelpButton } from '../../components/HelpButton'
 import type {
   Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation,
   ToolingCosting, Expense, GlobalTV, GlobalDepartment,
@@ -234,7 +235,10 @@ export function ReconcilePanel() {
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <div style={{ marginBottom: 4 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Forecast vs MIKA Reconciliation</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Forecast vs MIKA Reconciliation</h1>
+          <HelpButton panelId="cost-reconcile" />
+        </div>
         <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
           Step-1 diagnostic. Read-only. Runs both engines side-by-side on the same data so we can attribute the gap.
         </p>

@@ -25,11 +25,17 @@ All five read from the same underlying data; they're different lenses on it.
 
 Open via **Cost Tracking → Reports** (the summary report). Shows cost-vs-sell by WBS code.
 
+### What's included
+
+Actuals only — the same set MIKA uses for PTD Actuals (approved timesheets, approved invoices, expenses, back office hours, approved variation lines). Bookings for hire, cars, accommodation, and tooling don't show on the Cost Summary until the supplier invoices have been approved. Their plan value lives on the Forecast page.
+
+This is by design: the Cost Summary answers "what has the project actually cost so far?" which is different from "what's the project planned to cost?" (Forecast) or "what's the project projected to cost in total?" (EAC on MIKA).
+
 ### View options
 
-- **View dropdown** — "Project to date" (default) or a specific Mon–Sun week. Selecting a week pro-rates date-range items (hire, cars, accommodation, tooling) by days in the window; date-stamped sources (timesheets, expenses, back office, variations) are filtered to within the window.
+- **View dropdown** — "Project to date" (default) or a specific Mon–Sun week. Selecting a week filters date-stamped sources (timesheets, expenses, back office, approved invoices, variations) to within the window.
 - **↻ Refresh** — re-pulls everything
-- **🖨 Print by Module** — printable version grouped by cost module (labour / hire / tooling / etc.)
+- **🖨 Print by Module** — printable version grouped by cost module (labour / invoices / variations / etc.)
 - **🖨 Print by WBS** — printable version grouped by WBS code
 - **⬇ Export CSV** — full data as CSV
 

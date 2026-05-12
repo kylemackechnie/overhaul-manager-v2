@@ -131,6 +131,12 @@ Each variation also has a **cause** to document why it was needed:
 
 Variation lines have their own WBS code and pull from the project's rate cards. The line totals roll up to a header sell and cost total. The header shows totals at a glance: approved $ and pending $.
 
+### Credits and givebacks
+
+Variation lines accept **negative hours and quantities** for credits or givebacks — when scope is removed, a deliverable is descoped, or a credit is owed to the client. Enter the hours or quantity as a negative number and the line totals (cost and sell) come out negative too. The variation header sums correctly, so a mixed-sign variation (some additions, some credits) gives you the net effect in one document.
+
+Use this for client-initiated descopes or any case where a previously approved variation needs to be partially reversed without raising a separate credit note.
+
 ### Outputs
 
 - **🖨 Print Register** — prints all variations as a summary report for client meetings

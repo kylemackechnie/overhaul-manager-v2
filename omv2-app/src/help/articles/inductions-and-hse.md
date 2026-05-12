@@ -31,7 +31,7 @@ Both contribute to the matching. Upload one or both, depending on what's require
 
 ### Reference date
 
-The **Ref date** at the top defaults to today. Change it to assess compliance at a specific point — past or future. Useful for:
+The **Ref date** at the top defaults to today. Change it to assess compliance at a specific point — past or future. Your selection is saved per project, so you can keep a future date set for the upcoming mobilisation week and have it stay there between sessions. Useful for:
 
 - Checking if your incoming crew will be ready for mobilisation week
 - Auditing what compliance looked like at a past milestone
