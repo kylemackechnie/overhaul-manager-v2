@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { applyEscalationFactor, calcYoyChange } from '../../lib/calculations'
+import { HelpButton } from '../../components/HelpButton'
 
 interface EscalationYear {
   id?: string
@@ -84,7 +85,10 @@ export function HardwareEscalationPanel() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '900px' }}>
-      <h1 style={{ fontSize: '18px', fontWeight: 707, marginBottom: '4px' }}>Hardware Escalation</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Hardware Escalation</h1>
+        <HelpButton panelId="hardware-escalation" />
+      </div>
       <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '20px' }}>
         Year-on-year price escalation factors from SE Germany contract updates.
         Applied to transfer prices when projecting future order costs.

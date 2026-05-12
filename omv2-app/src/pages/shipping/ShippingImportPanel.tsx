@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -679,7 +680,10 @@ export function ShippingImportPanel() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '1100px' }}>
-      <h1 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '4px' }}>📥 WOSIT Import</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>📥 WOSIT Import</h1>
+        <HelpButton panelId="shipping-import" />
+      </div>
       <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '20px' }}>
         Upload three WOSIT export sheets from SAP. Creates import shipment records and populates tooling &amp; spare parts modules.
       </p>

@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { parseHardwareContract } from '../../lib/hardwareContractImport'
 import type { ContractImportResult } from '../../lib/hardwareContractImport'
+import { HelpButton } from '../../components/HelpButton'
 
 const fmt = (n: number) => '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -85,7 +86,10 @@ export function HardwareImportPanel() {
   return (
     <div style={{ padding: '24px', maxWidth: '960px' }}>
       <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Import Hardware Contract</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Import Hardware Contract</h1>
+          <HelpButton panelId="hardware-import" />
+        </div>
         <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
           Upload the Excel contract file from Germany (OPSA/SPASS format). Reads the Master tab — metadata from header rows, part lines from row 19+.
         </p>

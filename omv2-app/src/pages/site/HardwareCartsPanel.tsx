@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 
 interface Cart {
   id: string; name: string; description: string; totalCost: number; customerTotal: number; status: string; items: CartItem[]
@@ -52,7 +53,10 @@ export function HardwareCartsPanel() {
     <div style={{padding:'24px',maxWidth:'900px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
         <div>
-          <h1 style={{fontSize:'18px',fontWeight:700}}>Hardware Carts</h1>
+          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+            <h1 style={{fontSize:'18px',fontWeight:700,margin:0}}>Hardware Carts</h1>
+            <HelpButton panelId="hardware-carts" />
+          </div>
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>{carts.length} carts · {fmt(totalValue)} total</p>
         </div>
         <button className="btn btn-primary" onClick={()=>setModal('new')}>+ New Cart</button>

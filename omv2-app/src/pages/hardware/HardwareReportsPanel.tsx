@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
+import { HelpButton } from '../../components/HelpButton'
 
 interface HardwareContract {
   id: string; vendor: string; status: string; value: number | null; currency: string
@@ -81,7 +82,10 @@ export function HardwareReportsPanel() {
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Hardware Reports</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Hardware Reports</h1>
+            <HelpButton panelId="hardware-reports" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {contracts.length} contracts · {allLines.length} lines · Transfer {fmtAmt(totalTransfer)} · Customer {fmtAmt(totalCustomer)}
           </p>

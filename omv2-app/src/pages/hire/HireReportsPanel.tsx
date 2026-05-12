@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
+import { HelpButton } from '../../components/HelpButton'
 
 interface HireItem {
   id: string; name: string; vendor: string; hire_type: string
@@ -73,7 +74,10 @@ export function HireReportsPanel() {
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Hire Reports</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Hire Reports</h1>
+            <HelpButton panelId="hire-reports" />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {items.length} items · Cost {fmt(totalCost)} · Sell {fmt(totalSell)} · GM {fmtPct(gm)}
           </p>

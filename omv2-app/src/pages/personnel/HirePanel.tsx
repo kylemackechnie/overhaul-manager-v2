@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
+import { HelpButton } from '../../components/HelpButton'
 import type { HireItem, PurchaseOrder } from '../../types'
 
 type HireType = 'dry' | 'wet' | 'local'
@@ -317,7 +318,10 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 700 }}>{TYPE_ICONS[hireType]} {TYPE_LABELS[hireType]}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{TYPE_ICONS[hireType]} {TYPE_LABELS[hireType]}</h1>
+            <HelpButton panelId={hireType === 'wet' ? 'hire-wet' : hireType === 'local' ? 'hire-local' : 'hire-dry'} />
+          </div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
             {items.length} items · Cost {fmt(totalCost)} · Sell {fmt(totalSell)}
           </p>
