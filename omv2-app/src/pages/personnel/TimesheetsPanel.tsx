@@ -515,6 +515,37 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [dupMode, setDupMode] = useState<'copy'|'standard'|'blank'>('copy')
   const [dupCopyTce, setDupCopyTce] = useState(true)
 
+  // Sync crew member fields from current resource list (name, role, wbs, mealBreakAdj)
+  // Returns updated crew array — only touches members that have a matching resource by personId
+  function syncCrew(crew: WeeklyTimesheet['crew']): WeeklyTimesheet['crew'] {
+    return crew.map(m => {
+      const res = resources.find(r => r.id === m.personId)
+      if (!res) return m
+      return {
+        ...m,
+        name: res.name,
+        role: res.role,
+        wbs: res.wbs || m.wbs,
+        mealBreakAdj: res.meal_break_adj ?? m.mealBreakAdj,
+      }
+    })
+  }
+
+  async function syncTimesheetCrew(s: WeeklyTimesheet) {
+    const synced = syncCrew(s.crew)
+    const changed = synced.some((m, i) =>
+      m.name !== s.crew[i].name || m.role !== s.crew[i].role ||
+      m.wbs !== s.crew[i].wbs || m.mealBreakAdj !== s.crew[i].mealBreakAdj
+    )
+    if (!changed) { toast('Already up to date', 'success'); return }
+    const { error } = await supabase.from('weekly_timesheets').update({ crew: synced }).eq('id', s.id)
+    if (error) { toast(error.message, 'error'); return }
+    // Update local state
+    setSheets(prev => prev.map(t => t.id === s.id ? { ...t, crew: synced } : t))
+    if (activeWeek?.id === s.id) setActiveWeek(w => w ? { ...w, crew: synced } : w)
+    toast('Crew synced from resources', 'success')
+  }
+
   async function confirmDuplicate(src: WeeklyTimesheet, mode: 'copy'|'standard'|'blank', copyTce: boolean) {
     const ws = new Date(src.week_start + 'T12:00:00')
     ws.setDate(ws.getDate() + 7)
@@ -543,7 +574,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     const { error } = await supabase.from('weekly_timesheets').insert({
       project_id: src.project_id, type: src.type, week_start: newStart,
       wbs: src.wbs, notes: src.notes, regime: src.regime, status: 'draft',
-      vendor: src.vendor, po_id: src.po_id, crew: newCrew,
+      vendor: src.vendor, po_id: src.po_id, crew: syncCrew(newCrew),
     })
     if (error) { toast(error.message, 'error'); return }
     toast('Week duplicated', 'success'); setDupModal(null); load()
@@ -1150,6 +1181,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       {s.status === 'approved' && tsPerms.canUnlock && (
                         <button className="btn btn-sm" style={{color:'var(--orange,#f97316)',fontSize:'10px'}} title="Unlock timesheet" onClick={() => unlockTimesheet(s)}>🔓 Unlock</button>
                       )}
+                      <button className="btn btn-sm" title="Sync crew from resources (name, role, WBS, MBA)" onClick={() => syncTimesheetCrew(s)}>🔄</button>
                       <button className="btn btn-sm" title="Duplicate week" onClick={() => duplicateWeek(s)}>⧉</button>
                       {s.status !== 'approved' && <button className="btn btn-sm" style={{ color: 'var(--red)' }} onClick={() => del(s)}>✕</button>}
                     </div>
