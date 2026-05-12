@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
-import { buildForecast } from '../../engines/forecastEngine'
+import { buildForecastByWbs } from '../../engines/forecastEngine'
 import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCommitmentsEngine'
 import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
@@ -184,102 +184,25 @@ export function MikaPanel() {
       for (const [code, val] of Object.entries(committedByWbs)) {
         if (val) rollup(committedRolled, code, val)
       }
-      // Run the full forecast engine (same as ForecastPanel) then extract WBS-keyed totals.
-      // This guarantees MIKA Forecast TC = Forecast panel total cost exactly.
       const stdHours = (activeProject?.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day: {}, night: {} }
       const fxRates = (activeProject?.currency_rates as { code: string; rate: number }[]) || []
       const projEnd = activeProject?.end_date || null
-      const forecastResult = buildForecast(
-        (resourcesR.data || []) as Parameters<typeof buildForecast>[0],
-        (rateCardsR.data || []) as Parameters<typeof buildForecast>[1],
-        (boR.data || []) as Parameters<typeof buildForecast>[2],
-        (hireR.data || []) as Parameters<typeof buildForecast>[3],
-        (carsR.data || []) as Parameters<typeof buildForecast>[4],
-        (accomR.data || []) as Parameters<typeof buildForecast>[5],
-        [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as Parameters<typeof buildForecast>[6],
-        stdHours,
-        ((holsR.data || []) as {date:string}[]),
-        activeProject?.start_date || null,
-        projEnd,
-        fxRates,
-        (expensesR.data || []) as Parameters<typeof buildForecast>[12],
-        0,
-        (tvsR.data || []) as Parameters<typeof buildForecast>[14],
-        (deptsR.data || []) as Parameters<typeof buildForecast>[15],
+      const forecastByWbs = buildForecastByWbs(
+        (resourcesR.data || []) as Parameters<typeof buildForecastByWbs>[0],
+        (rateCardsR.data || []) as Parameters<typeof buildForecastByWbs>[1],
+        (hireR.data || []) as Parameters<typeof buildForecastByWbs>[2],
+        (carsR.data || []) as Parameters<typeof buildForecastByWbs>[3],
+        (accomR.data || []) as Parameters<typeof buildForecastByWbs>[4],
+        (expensesR.data || []) as Parameters<typeof buildForecastByWbs>[5],
         poList,
         invoiceList,
+        stdHours,
+        ((holsR.data || []) as {date:string}[]),
+        fxRates,
+        (boR.data || []) as Parameters<typeof buildForecastByWbs>[11],
+        [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as Parameters<typeof buildForecastByWbs>[12],
+        projEnd,
       )
-
-      // Build WBS-keyed forecast from engine output.
-      // Resources: use wbs from resource record, totalCost from byPo people.
-      const resourceList = (resourcesR.data || []) as (typeof resourcesR.data & { wbs?: string }[]) & { id: string; wbs?: string }[]
-      const wbsById: Record<string, string> = {}
-      for (const r of resourceList as { id: string; wbs?: string }[]) {
-        if (r.wbs) wbsById[r.id] = r.wbs
-      }
-
-      const forecastByWbs: Record<string, number> = {}
-      const addFc = (wbs: string, cost: number) => {
-        if (!wbs || !cost) return
-        forecastByWbs[wbs] = (forecastByWbs[wbs] || 0) + cost
-      }
-
-      // Labour — per person totalCost from byPo, mapped to resource wbs
-      for (const poBucket of Object.values(forecastResult.byPo)) {
-        for (const person of poBucket.labour.people) {
-          const wbs = wbsById[person.resourceId] || ''
-          addFc(wbs, person.totalCost)
-        }
-      }
-
-      // Non-labour: sum daily buckets by category and map to item wbs
-      // Hire items — costs already in forecastResult.totalCost via dryHire/wetHire/localHire
-      for (const h of (hireR.data || []) as { hire_cost?: number; wbs?: string; currency?: string }[]) {
-        const fx = h.currency && h.currency !== 'AUD' ? (fxRates.find(f => f.code === h.currency)?.rate || 1) : 1
-        addFc(h.wbs || '', (Number(h.hire_cost) || 0) * fx)
-      }
-      for (const c of (carsR.data || []) as { total_cost?: number; wbs?: string }[]) {
-        addFc(c.wbs || '', Number(c.total_cost) || 0)
-      }
-      for (const a of (accomR.data || []) as { total_cost?: number; wbs?: string }[]) {
-        addFc(a.wbs || '', Number(a.total_cost) || 0)
-      }
-      for (const e of (expensesR.data || []) as { cost_ex_gst?: number; wbs?: string }[]) {
-        addFc(e.wbs || '', Number(e.cost_ex_gst) || 0)
-      }
-
-      // Tooling: sum from the engine's byDay (EUR cats already handled by engine)
-      // Use the engine totalCost minus all non-tooling categories to get tooling total,
-      // then distribute by tooling costing wbs splits
-      const allTc = [...(tcOwnedR.data || []), ...(tcCrossR.data || [])] as { wbs?: string; cost_eur?: number; splits?: { wbs?: string; type?: string }[]; fx_rate?: number }[]
-      const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
-      for (const tc of allTc) {
-        const costEur = Number(tc.cost_eur) || 0
-        const splits = tc.splits?.filter(s => s.type === 'project') || []
-        if (splits.length > 0) {
-          for (const sp of splits) addFc(sp.wbs || tc.wbs || '', (costEur * eurRate) / splits.length)
-        } else {
-          addFc(tc.wbs || '', costEur * eurRate)
-        }
-      }
-
-      // Standalone PO remainder
-      const linkedPoIds = new Set<string>()
-      for (const h of (hireR.data || []) as { linked_po_id?: string }[]) if (h.linked_po_id) linkedPoIds.add(h.linked_po_id)
-      for (const c of (carsR.data || []) as { linked_po_id?: string }[]) if (c.linked_po_id) linkedPoIds.add(c.linked_po_id)
-      for (const a of (accomR.data || []) as { linked_po_id?: string }[]) if (a.linked_po_id) linkedPoIds.add(a.linked_po_id)
-      const resourcePoIds = new Set((resourceList as { linked_po_id?: string }[]).map(r => r.linked_po_id).filter(Boolean) as string[])
-      const invoicedByPo: Record<string, number> = {}
-      for (const inv of invoiceList) { if (inv.po_id && inv.status === 'approved') invoicedByPo[inv.po_id] = (invoicedByPo[inv.po_id] || 0) + (Number(inv.amount) || 0) }
-      for (const po of poList) {
-        if (!['raised','active'].includes(po.status)) continue
-        if (linkedPoIds.has(po.id) || resourcePoIds.has(po.id)) continue
-        const wbs = (po as typeof po & { sap_wbs?: string }).sap_wbs || (po as typeof po & { wbs?: string }).wbs || ''
-        const fx = po.currency && po.currency !== 'AUD' ? (fxRates.find(f => f.code === po.currency)?.rate || 1) : 1
-        const remaining = Math.max(0, (Number(po.po_value) || 0) * fx - (invoicedByPo[po.id] || 0))
-        addFc(wbs, remaining)
-      }
-
       const forecastRolled: Record<string, number> = {}
       for (const [code, val] of Object.entries(forecastByWbs)) {
         if (val) rollup(forecastRolled, code, val)

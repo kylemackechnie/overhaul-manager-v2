@@ -828,9 +828,11 @@ export function buildForecastByWbs(
   fxRates: { code: string; rate: number }[],
   backOffice: BackOfficeHour[] = [],
   toolingCostings: ToolingCosting[] = [],
+  projEnd: string | null = null,
 ): Record<string, number> {
   const byWbs: Record<string, number> = {}
   const holidays = new Set(publicHolidays.map(h => h.date))
+  const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
 
   function add(wbs: string, cost: number) {
     if (!wbs || !cost) return
@@ -850,7 +852,7 @@ export function buildForecastByWbs(
     return total
   }
 
-  // ── Resources ──────────────────────────────────────────────────────────────
+  // ── Resources — mirrors buildForecast day loop exactly ────────────────────
   for (const r of resources) {
     const wbs = (r as Resource & { wbs?: string }).wbs || ''
     if (!r.mob_in) continue
@@ -858,11 +860,13 @@ export function buildForecastByWbs(
     if (!rc) continue
     const rcCost = (rc.rates as { cost?: Record<string,number> })?.cost || {}
     const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
-    const catKey = r.category === 'trades' ? 'trades' : r.category === 'seag' ? 'seag' : 'mgmt'
-    const mobOut = (r as Resource & { mob_out?: string }).mob_out || r.mob_in
-    const days = dateRange(r.mob_in, mobOut)
+    // Match buildForecast line 233-234: use rc.category first, then r.category
+    const cat = (rc as RateCard & { category?: string }).category || r.category || 'trades'
+    const catKey = cat === 'management' ? 'mgmt' : cat === 'seag' ? 'seag' : cat === 'subcontractor' ? 'subcon' : 'trades'
     const isEur = catKey === 'seag'
-    const eurRate = fxRates.find(f => f.code === 'EUR')?.rate || 1
+    // Match buildForecast line 235: use projEnd as fallback (not r.mob_in)
+    const end = (r as Resource & { mob_out?: string }).mob_out || projEnd || r.mob_in
+    const days = dateRange(r.mob_in, end)
 
     let resourceCost = 0
     let nShifts = 0
@@ -881,7 +885,7 @@ export function buildForecastByWbs(
       }
       if (dayHasShift) nShifts++
     }
-    // Allowances — mirrors buildForecast lines 269-277
+    // Allowances per shift day — matches buildForecast lines 269-277
     const rX = r as Resource & { allow_laha?: boolean; allow_meal?: boolean; allow_fsa?: boolean }
     if (catKey === 'trades') {
       if (rX.allow_laha !== false) resourceCost += (Number(rc.laha_cost) || 0) * nShifts
@@ -889,7 +893,7 @@ export function buildForecastByWbs(
     } else {
       if (rX.allow_fsa !== false && rX.allow_laha !== false) resourceCost += (Number(rc.fsa_cost) || 0) * nShifts
     }
-    // Convert EUR resources to AUD
+    // SE AG: convert EUR to AUD
     if (isEur) resourceCost *= eurRate
     add(wbs, resourceCost)
   }
