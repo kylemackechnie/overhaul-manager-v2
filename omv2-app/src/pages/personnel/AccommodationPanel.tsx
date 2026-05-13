@@ -73,11 +73,11 @@ function AccommodationPanelDesktop() {
     const [acData, resData, poData] = await Promise.all([
       supabase.from('accommodation').select('*').eq('project_id', pid).order('check_in'),
       supabase.from('resources').select('id,name,role,mob_in,mob_out').eq('project_id', pid).order('name'),
-      supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).neq('status','cancelled').order('po_number'),
+      supabase.from('purchase_orders').select('id,po_number,vendor,line_items').eq('project_id', pid).neq('status','cancelled').order('po_number'),
     ])
     setAccomList((acData.data || []) as Accommodation[])
     setResources((resData.data || []) as Resource[])
-    setPos((poData.data || []) as PurchaseOrder[])
+    setPos((poData.data || []) as unknown as PurchaseOrder[])
     const wbsRes = await supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order')
     setWbsList((wbsRes.data||[]) as {id:string,code:string,name:string}[])
     setLoading(false)
@@ -190,6 +190,17 @@ function AccommodationPanelDesktop() {
   async function save() {
     if (!form.property.trim()) return toast('Property name required', 'error')
     setSaving(true)
+    // Auto-fill wbs from linked PO's first line item with wbs, but only when the
+    // existing record's wbs is blank. AccomForm itself doesn't expose wbs, so we
+    // do this at save time rather than on PO change.
+    const existingWbs = modal && modal !== 'new' ? ((modal as Accommodation).wbs || '') : ''
+    let resolvedWbs: string | undefined
+    if (form.linked_po_id && !existingWbs) {
+      const po = pos.find(p => p.id === form.linked_po_id)
+      const lineItems = ((po as PurchaseOrder & { line_items?: { wbs?: string }[] })?.line_items) || []
+      const found = lineItems.find(l => l.wbs)?.wbs
+      if (found) resolvedWbs = found
+    }
     const payload = {
       project_id: activeProject!.id,
       property: form.property, room: form.room, vendor: form.vendor,
@@ -197,6 +208,7 @@ function AccommodationPanelDesktop() {
       nights: form.nights, total_cost: form.total_cost, customer_total: form.customer_total,
       gm_pct: form.gm_pct, inclusive: form.inclusive, linked_po_id: form.linked_po_id || null,
       notes: form.notes, occupants: form.occupant_ids,
+      ...(resolvedWbs !== undefined ? { wbs: resolvedWbs } : {}),
     }
     if (modal === 'new') {
       const { error } = await supabase.from('accommodation').insert(payload)

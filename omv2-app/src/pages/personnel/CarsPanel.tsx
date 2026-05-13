@@ -122,7 +122,7 @@ function CarsPanelDesktop() {
     const [carData, resData, poData, wbsRes, vendorRes, rateRes, locRes] = await Promise.all([
       supabase.from('cars').select('*').eq('project_id', pid).order('created_at'),
       supabase.from('resources').select('id,name,role,mob_in,mob_out').eq('project_id', pid).order('name'),
-      supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).neq('status','cancelled').order('po_number'),
+      supabase.from('purchase_orders').select('id,po_number,vendor,line_items').eq('project_id', pid).neq('status','cancelled').order('po_number'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('vendors').select('*').eq('is_active', true).order('name'),
       supabase.from('hertz_vehicle_rates').select('*').eq('is_active', true).order('sort_order').order('sipp_code'),
@@ -130,7 +130,7 @@ function CarsPanelDesktop() {
     ])
     setCars((carData.data || []) as Car[])
     setResources((resData.data || []) as Resource[])
-    setPos((poData.data || []) as PurchaseOrder[])
+    setPos((poData.data || []) as unknown as PurchaseOrder[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
     setVendors((vendorRes.data || []) as Vendor[])
     setHertzRates((rateRes.data || []) as HertzVehicleRate[])
@@ -779,7 +779,19 @@ function CarsPanelDesktop() {
               {/* PO link */}
               <div className="fg">
                 <label>Link to Purchase Order <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>— third-party car hire must have a PO</span></label>
-                <select className="input" value={form.linked_po_id} onChange={e => setForm(f => ({ ...f, linked_po_id: e.target.value }))}>
+                <select className="input" value={form.linked_po_id} onChange={e => {
+                  const newPoId = e.target.value
+                  setForm(f => {
+                    // Auto-fill wbs from PO's first line item with wbs, but only when wbs is currently blank.
+                    if (newPoId && !f.wbs) {
+                      const po = pos.find(p => p.id === newPoId)
+                      const lineItems = ((po as PurchaseOrder & { line_items?: { wbs?: string }[] })?.line_items) || []
+                      const resolved = lineItems.find(l => l.wbs)?.wbs || ''
+                      if (resolved) return { ...f, linked_po_id: newPoId, wbs: resolved }
+                    }
+                    return { ...f, linked_po_id: newPoId }
+                  })
+                }}>
                   <option value="">— No PO linked —</option>
                   {pos.map(po => <option key={po.id} value={po.id}>{po.po_number || '—'} {po.vendor}</option>)}
                 </select>

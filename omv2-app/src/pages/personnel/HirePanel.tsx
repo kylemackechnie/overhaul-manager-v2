@@ -81,11 +81,11 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
     const pid = activeProject!.id
     const [hireData, poData, resData] = await Promise.all([
       supabase.from('hire_items').select('*').eq('project_id', pid).eq('hire_type', hireType).order('created_at'),
-      supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).neq('status', 'cancelled').order('po_number'),
+      supabase.from('purchase_orders').select('id,po_number,vendor,line_items').eq('project_id', pid).neq('status', 'cancelled').order('po_number'),
       supabase.from('resources').select('id,name,mob_in,mob_out').eq('project_id', pid).order('name'),
     ])
     setItems((hireData.data || []) as HireItem[])
-    setPos((poData.data || []) as PurchaseOrder[])
+    setPos((poData.data || []) as unknown as PurchaseOrder[])
     setResources((resData.data || []) as {id:string;name:string;mob_in:string|null;mob_out:string|null}[])
     setLoading(false)
   }
@@ -632,7 +632,19 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               <div className="fg-row">
                 <div className="fg">
                   <label>Linked PO</label>
-                  <select className="input" value={form.linked_po_id} onChange={e => setForm(f => ({ ...f, linked_po_id: e.target.value }))}>
+                  <select className="input" value={form.linked_po_id} onChange={e => {
+                    const newPoId = e.target.value
+                    setForm(f => {
+                      // Auto-fill wbs from PO's first line item with wbs, but only when wbs is currently blank.
+                      if (newPoId && !f.wbs) {
+                        const po = pos.find(p => p.id === newPoId)
+                        const lineItems = ((po as PurchaseOrder & { line_items?: { wbs?: string }[] })?.line_items) || []
+                        const resolved = lineItems.find(l => l.wbs)?.wbs || ''
+                        if (resolved) return { ...f, linked_po_id: newPoId, wbs: resolved }
+                      }
+                      return { ...f, linked_po_id: newPoId }
+                    })
+                  }}>
                     <option value="">— No PO —</option>
                     {pos.map(po => <option key={po.id} value={po.id}>{po.po_number || '—'} {po.vendor}</option>)}
                   </select>
