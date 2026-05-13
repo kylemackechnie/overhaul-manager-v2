@@ -12,6 +12,8 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { HelpButton } from '../../components/HelpButton'
 import {
   calculateHertzCost,
+  getRateTier,
+  getRateForTier,
   locationTypeLabel,
 } from '../../lib/hertzPricing'
 
@@ -142,7 +144,7 @@ function CarsPanelDesktop() {
   }
 
   function calcCosts(f: CarForm): CarForm {
-    // Hertz auto-pricing: use the engine if a rate has been selected
+    // Hertz auto-pricing: full engine path requires rate + dates + location_type
     if (isHertzVendor(f) && f.hertz_rate_id && f.start_date && f.end_date && f.location_type) {
       const rate = hertzRates.find(r => r.id === f.hertz_rate_id)
       if (rate) {
@@ -173,6 +175,24 @@ function CarsPanelDesktop() {
           total_cost,
           customer_total,
         }
+      }
+    }
+    // Hertz with rate but no location_type yet: still snap to the correct tier
+    // from the dates so the daily rate stays meaningful while the user fills in
+    // the rest of the form.
+    if (isHertzVendor(f) && f.hertz_rate_id && f.start_date && f.end_date) {
+      const rate = hertzRates.find(r => r.id === f.hertz_rate_id)
+      if (rate) {
+        const days = Math.max(1, daysBetween(f.start_date, f.end_date))
+        const tier = getRateTier(days)
+        const dailyRate = getRateForTier(rate, tier)
+        // Still run the manual formula for the cost so any % LF the user typed
+        // in directly is honoured.
+        const base = dailyRate * days
+        const withFees = base * (1 + (f.location_fee_pct || 0) / 100) + (f.one_way_fee || 0)
+        const total_cost = parseFloat(withFees.toFixed(2))
+        const customer_total = calcCustomerPrice(total_cost, f.gm_pct)
+        return { ...f, daily_rate: dailyRate, tier_applied: tier, total_cost, customer_total }
       }
     }
     // Manual / non-Hertz path: existing formula
