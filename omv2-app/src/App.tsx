@@ -107,6 +107,9 @@ import { CrewConfirmationPanel } from './pages/resources/CrewConfirmationPanel'
 import { ResourceManagerInductionsPanel } from './pages/resources/ResourceManagerInductionsPanel'
 import { AvailabilityTimelinePanel } from './pages/resources/AvailabilityTimelinePanel'
 import { DemandSupplyPanel } from './pages/resources/DemandSupplyPanel'
+import { AssetBoardPanel } from './pages/resources/AssetBoardPanel'
+import { AssetTimelinePanel } from './pages/resources/AssetTimelinePanel'
+import { ToolingDemandPanel } from './pages/resources/ToolingDemandPanel'
 import { UtilisationPanel } from './pages/personnel/UtilisationPanel'
 import { MigrationPanel } from './pages/settings/MigrationPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
@@ -299,7 +302,7 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
       >
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'resource-assets', 'resource-asset-timeline', 'resource-tooling-demand', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
           <MobilePanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -529,6 +532,9 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'resource-inductions':      return <ResourceManagerInductionsPanel />
     case 'resource-timeline':       return <AvailabilityTimelinePanel />
     case 'resource-demand':         return <DemandSupplyPanel />
+    case 'resource-assets':         return <AssetBoardPanel />
+    case 'resource-asset-timeline': return <AssetTimelinePanel />
+    case 'resource-tooling-demand': return <ToolingDemandPanel />
     case 'rate-defaults':         return <GlobalRateDefaultsPanel />
     case 'payroll-rules':         return <PayrollRulesPanel />
     case 'hertz-rates':           return <HertzRatesPanel />

@@ -18,6 +18,24 @@ const ADMIN_ITEMS = [
     panel: 'resource-crew-confirm',
   },
   {
+    icon: '🧰',
+    label: 'Asset Board',
+    description: 'All 131 SEA-owned assets by status — Available / On Site / In Transit / In Service. Click an asset to update status, calibration dates, or assign to a project.',
+    panel: 'resource-assets',
+  },
+  {
+    icon: '📅',
+    label: 'Asset Timeline',
+    description: 'Cross-project Gantt of SEA asset deployments across 2026. Free gaps show available windows for assignment.',
+    panel: 'resource-asset-timeline',
+  },
+  {
+    icon: '🔧',
+    label: 'Tooling Demand',
+    description: 'Tooling requirements from the crew plan vs assigned assets. Open slots show a red chip — click to assign a specific asset.',
+    panel: 'resource-tooling-demand',
+  },
+  {
     icon: '📊',
     label: 'Demand vs Supply',
     description: 'Crew plan slots vs filled resources across all projects. Open slots show a red chip — click to assign a person directly.',
