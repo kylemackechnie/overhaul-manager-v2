@@ -194,113 +194,294 @@ function BoardSection({ title, dot, count, children }: {
 
 // ── Asset Edit Modal ──────────────────────────────────────────────────────────
 
-function AssetModal({ asset, projects, onSave, onClose }: {
+// ── Deployment year bar (mini Gantt) ─────────────────────────────────────────
+
+function YearBar({ start, end, label, color }: { start: string; end: string; label: string; color: string }) {
+  const WIN_START = new Date('2026-01-01').getTime()
+  const WIN_END   = new Date('2026-12-31').getTime()
+  const WIN_DAYS  = Math.round((WIN_END - WIN_START) / 86400000) + 1
+  const s = Math.max(WIN_START, new Date(start).getTime())
+  const e = Math.min(WIN_END,   new Date(end || '2026-12-31').getTime())
+  const leftPct  = ((s - WIN_START) / 86400000 / WIN_DAYS) * 100
+  const widthPct = Math.max(1, (Math.round((e - s) / 86400000) / WIN_DAYS) * 100)
+  return (
+    <div style={{ position: 'relative', height: 20, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+      {/* Month ticks */}
+      {[0,1,2,3,4,5,6,7,8,9,10,11].map(m => (
+        <div key={m} style={{ position: 'absolute', left: `${(m/12)*100}%`, top: 0, bottom: 0, width: 1, background: 'var(--border)', opacity: 0.5 }} />
+      ))}
+      {/* Deployment bar */}
+      <div style={{ position: 'absolute', left: `${leftPct}%`, width: `${widthPct}%`, top: 2, bottom: 2, background: color, borderRadius: 2, display: 'flex', alignItems: 'center', paddingLeft: 4, overflow: 'hidden' }}>
+        {widthPct > 8 && <span style={{ fontSize: 9, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap' }}>{label}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ── Asset Drawer ──────────────────────────────────────────────────────────────
+
+const PROJ_COLORS = ['#00898a','#0369a1','#7c3aed','#d97706','#dc2626','#059669','#0891b2','#4f46e5']
+
+function AssetDrawer({ asset, projects, onSave, onClose }: {
   asset: Asset; projects: Project[]
   onSave: (updates: Partial<Asset>, deploymentProjectId?: string, deploymentStart?: string, deploymentEnd?: string) => Promise<void>
   onClose: () => void
 }) {
+  const [allDeployments, setAllDeployments] = useState<{
+    id: string; project_id: string; project_name: string; start_date: string; end_date: string | null; wbs: string | null; weekly_rate: number | null; daily_rate: number | null; charge_unit: string | null
+  }[]>([])
+  const [loadingDepls, setLoadingDepls] = useState(true)
   const [form, setForm] = useState({
-    status:           asset.status,
-    calibration_due:  asset.calibration_due ?? '',
-    service_due:      asset.service_due ?? '',
-    home_location:    asset.home_location ?? '',
-    notes:            asset.notes ?? '',
+    status:          asset.status,
+    calibration_due: asset.calibration_due ?? '',
+    service_due:     asset.service_due ?? '',
+    home_location:   asset.home_location ?? '',
+    notes:           asset.notes ?? '',
   })
   const [deployProj, setDeployProj] = useState('')
   const [deployStart, setDeployStart] = useState('')
   const [deployEnd, setDeployEnd] = useState('')
   const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState<'plan' | 'edit'>('plan')
+
+  useEffect(() => {
+    supabase
+      .from('sea_asset_deployments')
+      .select('id, project_id, start_date, end_date, wbs, weekly_rate, daily_rate, charge_unit, projects:project_id(name)')
+      .eq('sea_asset_id', asset.id)
+      .order('start_date')
+      .then(({ data }) => {
+        setAllDeployments(((data || []) as Record<string, unknown>[]).map(d => {
+          const proj = d.projects as { name: string } | null
+          return {
+            id:           d.id as string,
+            project_id:   d.project_id as string,
+            project_name: proj?.name ?? 'Unknown',
+            start_date:   d.start_date as string,
+            end_date:     d.end_date as string | null,
+            wbs:          d.wbs as string | null,
+            weekly_rate:  d.weekly_rate as number | null,
+            daily_rate:   d.daily_rate as number | null,
+            charge_unit:  d.charge_unit as string | null,
+          }
+        }))
+        setLoadingDepls(false)
+      })
+  }, [asset.id])
 
   async function handleSave() {
     setSaving(true)
     await onSave(
       { ...form, calibration_due: form.calibration_due || null, service_due: form.service_due || null, home_location: form.home_location || null, notes: form.notes || null } as Partial<Asset>,
-      deployProj || undefined,
-      deployStart || undefined,
-      deployEnd || undefined,
+      deployProj || undefined, deployStart || undefined, deployEnd || undefined,
     )
     setSaving(false)
   }
 
+  function fmtDate(d: string | null) {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' })
+  }
+
+  const catColor = CAT_COLORS[asset.category ?? ''] ?? 'var(--text3)'
+
   return (
     <>
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 1000 }} onClick={onClose} />
-      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 480, maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-md)', zIndex: 1001 }}>
-        <div style={{ padding: '14px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{asset.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--mono)' }}>{asset.asset_tag}</div>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={onClose} />
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 440,
+        background: 'var(--bg)', borderLeft: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-md)', zIndex: 201,
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '14px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{asset.name}</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--accent)' }}>{asset.asset_tag}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: catColor + '22', color: catColor, border: `1px solid ${catColor}44` }}>
+                  {(asset.category ?? '').split(' ')[0]}
+                </span>
+                {asset.weekly_rate && <span style={{ fontSize: 10, color: 'var(--text3)' }}>${asset.weekly_rate.toLocaleString()}/wk</span>}
+              </div>
+            </div>
+            <button className="btn btn-sm btn-secondary" onClick={onClose}>✕</button>
           </div>
-          <button className="btn btn-sm btn-secondary" onClick={onClose}>✕</button>
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 2, marginTop: 12, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 2 }}>
+            {([['plan', '📅 Year Plan'], ['edit', '⚙ Edit / Assign']] as [string, string][]).map(([v, label]) => (
+              <button key={v} onClick={() => setActiveTab(v as 'plan' | 'edit')}
+                style={{ flex: 1, padding: '4px 0', fontSize: 11, fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
+                  background: activeTab === v ? 'var(--bg2)' : 'transparent',
+                  color: activeTab === v ? 'var(--accent)' : 'var(--text3)',
+                  boxShadow: activeTab === v ? 'var(--shadow)' : 'none',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* Status */}
-          <div>
-            <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Status</label>
-            <select className="input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-              <option value="available">Available</option>
-              <option value="in_transit">In Transit</option>
-              <option value="in_service">In Service / Calibration</option>
-            </select>
-          </div>
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
 
-          {/* Dates */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Calibration Due</label>
-              <input className="input" type="date" value={form.calibration_due} onChange={e => setForm(f => ({ ...f, calibration_due: e.target.value }))} />
-            </div>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Service Due</label>
-              <input className="input" type="date" value={form.service_due} onChange={e => setForm(f => ({ ...f, service_due: e.target.value }))} />
-            </div>
-          </div>
+          {activeTab === 'plan' ? (
+            <>
+              {/* Mini month ruler */}
+              <div style={{ display: 'flex', marginBottom: 6 }}>
+                <div style={{ flex: 1, display: 'flex' }}>
+                  {['J','F','M','A','M','J','J','A','S','O','N','D'].map(m => (
+                    <div key={m} style={{ flex: 1, textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{m}</div>
+                  ))}
+                </div>
+              </div>
 
-          <div>
-            <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Home Location</label>
-            <input className="input" value={form.home_location} onChange={e => setForm(f => ({ ...f, home_location: e.target.value }))} placeholder="e.g. Dandenong Warehouse Bay 3" />
-          </div>
+              {/* Year plan */}
+              {loadingDepls ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text3)', fontSize: 12 }}>
+                  <span className="spinner" style={{ width: 14, height: 14 }} /> Loading deployments…
+                </div>
+              ) : allDeployments.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📅</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', marginBottom: 4 }}>No deployments in 2026</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>Use the Edit / Assign tab to assign to a project.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {allDeployments.map((d, i) => {
+                    const color = PROJ_COLORS[i % PROJ_COLORS.length]
+                    return (
+                      <div key={d.id}>
+                        <YearBar
+                          start={d.start_date}
+                          end={d.end_date ?? '2026-12-31'}
+                          label={d.project_name.replace(/\d{4}/g, '').replace(/Outage/i,'').trim().slice(0, 16)}
+                          color={color}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
-          <div>
-            <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Notes</label>
-            <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes" />
-          </div>
-
-          {/* Assign to project */}
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Assign to Project</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <select className="input" value={deployProj} onChange={e => setDeployProj(e.target.value)}>
-                <option value="">— Select project (optional) —</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              {deployProj && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <div>
-                    <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Start Date</label>
-                    <input className="input" type="date" value={deployStart} onChange={e => setDeployStart(e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>End Date</label>
-                    <input className="input" type="date" value={deployEnd} onChange={e => setDeployEnd(e.target.value)} />
+              {/* Deployment table */}
+              {!loadingDepls && allDeployments.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 8 }}>Deployment History</div>
+                  <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                    {allDeployments.map((d, i) => {
+                      const color = PROJ_COLORS[i % PROJ_COLORS.length]
+                      const rate = d.weekly_rate ? `$${d.weekly_rate.toLocaleString()}/wk` : d.daily_rate ? `$${d.daily_rate.toLocaleString()}/day` : null
+                      return (
+                        <div key={d.id} style={{ padding: '10px 12px', borderBottom: i < allDeployments.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                          <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, background: color, flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{d.project_name}</div>
+                            <div style={{ display: 'flex', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
+                                {fmtDate(d.start_date)} → {fmtDate(d.end_date)}
+                              </span>
+                              {rate && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{rate}</span>}
+                              {d.wbs && <span style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{d.wbs}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>Creates a deployment record. The PM also sees it in their Equipment → SEA Local Tooling tab.</div>
+
+              {/* Calibration status */}
+              <div style={{ marginTop: 20, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px 14px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 8 }}>Compliance</div>
+                {[
+                  { label: 'Calibration Due', val: asset.calibration_due },
+                  { label: 'Service Due', val: asset.service_due },
+                  { label: 'Home Location', val: asset.home_location },
+                ].map(({ label, val }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+                    <span style={{ color: 'var(--text2)' }}>{label}</span>
+                    <span style={{ fontFamily: val && !label.includes('Location') ? 'var(--mono)' : undefined, color: 'var(--text3)' }}>{val || '—'}</span>
+                  </div>
+                ))}
+                {asset.notes && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>{asset.notes}</div>
+                )}
+              </div>
+            </>
+          ) : (
+            // ── Edit / Assign tab ─────────────────────────────────────────────
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+              <div>
+                <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Status</label>
+                <select className="input" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                  <option value="available">Available</option>
+                  <option value="in_transit">In Transit</option>
+                  <option value="in_service">In Service / Calibration</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Calibration Due</label>
+                  <input className="input" type="date" value={form.calibration_due} onChange={e => setForm(f => ({ ...f, calibration_due: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Service Due</label>
+                  <input className="input" type="date" value={form.service_due} onChange={e => setForm(f => ({ ...f, service_due: e.target.value }))} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Home Location</label>
+                <input className="input" value={form.home_location} onChange={e => setForm(f => ({ ...f, home_location: e.target.value }))} placeholder="e.g. Dandenong Warehouse Bay 3" />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Notes</label>
+                <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes" />
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Assign to Project</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <select className="input" value={deployProj} onChange={e => setDeployProj(e.target.value)}>
+                    <option value="">— Select project (optional) —</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  {deployProj && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Start Date</label>
+                        <input className="input" type="date" value={deployStart} onChange={e => setDeployStart(e.target.value)} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>End Date</label>
+                        <input className="input" type="date" value={deployEnd} onChange={e => setDeployEnd(e.target.value)} />
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Creates a deployment record. PM sees it in Equipment → SEA Local Tooling.</div>
+                </div>
+              </div>
+
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                {saving ? <span className="spinner" style={{ width: 13, height: 13 }} /> : null} Save changes
+              </button>
             </div>
-          </div>
-        </div>
-        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? <span className="spinner" style={{ width: 13, height: 13 }} /> : null} Save
-          </button>
-          <button className="btn btn-sm btn-secondary" onClick={onClose}>Cancel</button>
+          )}
         </div>
       </div>
     </>
   )
 }
+
+// ── Main Panel ────────────────────────────────────────────────────────────────
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
@@ -492,7 +673,7 @@ export function AssetBoardPanel() {
       </div>
 
       {editAsset && (
-        <AssetModal
+        <AssetDrawer
           asset={editAsset}
           projects={projects}
           onSave={handleSave}
