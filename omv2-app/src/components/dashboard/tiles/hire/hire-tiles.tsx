@@ -110,7 +110,7 @@ function makeTypeTile(type: string, icon: string, label: string, panel: string):
 
 export const DrySummaryTile = makeTypeTile('dry', '🚜', 'Dry Hire', 'hire-dry')
 export const WetSummaryTile = makeTypeTile('wet', '🏗️', 'Wet Hire', 'hire-wet')
-export const LocalSummaryTile = makeTypeTile('local', '🧰', 'Local Equipment', 'hire-local')
+export const LocalSummaryTile = makeTypeTile('local', '🧰', 'SEA Local Tooling', 'hire-local')
 
 // ── GM bar tile ───────────────────────────────────────────────────────────────
 

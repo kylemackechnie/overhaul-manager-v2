@@ -163,7 +163,7 @@ const RIBBON_MODULES: RibbonTab[] = [
   {
     key: 'tooling', label: 'Tooling', module: 'tooling' as Module,
     groups: [
-      { label: 'SE AG Tooling', buttons: [
+      { label: 'SEA Local Tooling', buttons: [
         { icon: '🔩', label: 'Dashboard', panel: 'tooling-dashboard' },
         { icon: '🧰', label: 'TV Register', panel: 'tooling-tvs' },
         { icon: '📦', label: 'Kollos', panel: 'tooling-kollos' },
@@ -176,7 +176,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📊', label: 'Dashboard', panel: 'hire-dashboard' },
         { icon: '🚜', label: 'Dry Hire', panel: 'hire-dry' },
         { icon: '🏗️', label: 'Wet Hire', panel: 'hire-wet' },
-        { icon: '🧰', label: 'Local Hire', panel: 'hire-local' },
+        { icon: '🧰', label: 'SEA Local Tooling', panel: 'hire-local' },
         { icon: '📄', label: 'Hire Reports', panel: 'hire-reports' },
       ]},
     ],

@@ -7,7 +7,7 @@ import type { HireItem, PurchaseOrder } from '../../types'
 import { SE_STANDARD_TOOLS, SE_TOOL_CATEGORIES } from '../../data/seStandardTools'
 
 type HireType = 'dry' | 'wet' | 'local'
-const TYPE_LABELS: Record<HireType, string> = { dry: 'Dry Hire', wet: 'Wet Hire', local: 'Local Equipment' }
+const TYPE_LABELS: Record<HireType, string> = { dry: 'Dry Hire', wet: 'Wet Hire', local: 'SEA Local Tooling' }
 const TYPE_ICONS: Record<HireType, string> = { dry: '🚜', wet: '🏗️', local: '🧰' }
 
 type HireForm = {
@@ -325,7 +325,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1000px' }}>
+    <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

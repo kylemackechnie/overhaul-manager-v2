@@ -91,7 +91,7 @@ const NAV_PAGES: NavPage[] = [
   { icon: '📊', label: 'Hire Dashboard',           panel: 'hire-dashboard',     module: 'Logistics' },
   { icon: '🚜', label: 'Dry Hire',                 panel: 'hire-dry',           module: 'Logistics' },
   { icon: '🏗️', label: 'Wet Hire',                 panel: 'hire-wet',           module: 'Logistics' },
-  { icon: '🧰', label: 'Local Equipment Hire',     panel: 'hire-local',         module: 'Logistics' },
+  { icon: '🧰', label: 'SEA Local Tooling',     panel: 'hire-local',         module: 'Logistics' },
   { icon: '📑', label: 'Hire Reports',             panel: 'hire-reports',       module: 'Logistics' },
   { icon: '📊', label: 'Shipping Dashboard',       panel: 'shipping-dashboard', module: 'Logistics' },
   { icon: '📦', label: 'Inbound Shipping',         panel: 'shipping-inbound',   module: 'Logistics', keywords: 'shipments import' },

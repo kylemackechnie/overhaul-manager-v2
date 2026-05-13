@@ -50,7 +50,7 @@ const SECTIONS: NavSection[] = [
       { panel: 'hire-dashboard',     icon: '📊', label: 'Hire Dashboard' },
       { panel: 'hire-dry',           icon: '🚜', label: 'Dry Hire' },
       { panel: 'hire-wet',           icon: '🏗️', label: 'Wet Hire' },
-      { panel: 'hire-local',         icon: '🧰', label: 'Local Hire' },
+      { panel: 'hire-local',         icon: '🧰', label: 'SEA Local Tooling' },
     ],
   },
   {
