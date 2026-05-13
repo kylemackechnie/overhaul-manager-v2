@@ -827,29 +827,6 @@ export function InvoicesPanel() {
                   </div>
                 </div>
               )}
-              {/* Chargeable to customer */}
-              <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',marginBottom:'4px'}}>
-                <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px',fontWeight:500,margin:0}}>
-                  <input type="checkbox" checked={form.chargeable} onChange={e=>{
-                    const ch = e.target.checked
-                    setForm(f=>({...f, chargeable:ch, sell_price: ch ? f.sell_price : '0', gm_pct: ch ? f.gm_pct : '0'}))
-                  }} style={{width:'15px',height:'15px'}} />
-                  Chargeable to customer
-                </label>
-                {!form.chargeable && <span style={{fontSize:'11px',color:'var(--text3)',fontStyle:'italic'}}>Not passed on — no margin, excluded from customer price &amp; TCE</span>}
-              </div>
-              {form.chargeable && (
-                <div className="fg-row">
-                  <div className="fg">
-                    <label>Sell Price (AUD)</label>
-                    <input type="number" className="input" value={form.sell_price} onChange={e=>setForm(f=>({...f,sell_price:e.target.value}))} placeholder="0.00" />
-                  </div>
-                  <div className="fg">
-                    <label>GM %</label>
-                    <input type="number" className="input" value={form.gm_pct} onChange={e=>setForm(f=>({...f,gm_pct:e.target.value}))} placeholder="0" />
-                  </div>
-                </div>
-              )}
               <div className="fg">
                 <label>TCE Item ID <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— links invoice to a TCE line for actuals</span></label>
                 {tceLines.length === 0 ? (
