@@ -18,6 +18,12 @@ const ADMIN_ITEMS = [
     panel: 'resource-crew-confirm',
   },
   {
+    icon: '📊',
+    label: 'Demand vs Supply',
+    description: 'Crew plan slots vs filled resources across all projects. Open slots show a red chip — click to assign a person directly.',
+    panel: 'resource-demand',
+  },
+  {
     icon: '📅',
     label: 'Availability Timeline',
     description: 'Cross-project Gantt by person — teal bars are OMV2 projects, grey bars are the broader register. Free gaps show available windows.',
