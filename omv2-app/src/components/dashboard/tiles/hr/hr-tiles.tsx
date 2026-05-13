@@ -283,7 +283,7 @@ function UtilisationComp({ ctx }: { ctx: DashboardContext }) {
     ]} />
 }
 export const UtilisationTile: TileComponent = {
-  def: { id: 'utilisation', icon: '📊', title: 'Utilisation', description: 'Cars and accommodation currently active today', category: 'Support', defaultSize: 'lg', defaultVisible: true, defaultVisible: false },
+  def: { id: 'utilisation', icon: '📊', title: 'Utilisation', description: 'Cars and accommodation currently active today', category: 'Support', defaultSize: 'lg', defaultVisible: true },
   Component: UtilisationComp,
 }
 
