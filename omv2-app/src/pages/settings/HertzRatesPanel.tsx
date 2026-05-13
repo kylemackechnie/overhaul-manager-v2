@@ -22,6 +22,7 @@ const PRICING_CODES = ['C', 'P', 'V', 'F', 'L', 'H', 'P1'] as const
 
 type RateForm = {
   sipp_code: string
+  class_code: string
   pricing_code: string
   vehicle_category: HertzVehicleCategory
   vehicle_type: string
@@ -45,7 +46,7 @@ type RateForm = {
 }
 
 const EMPTY_FORM: RateForm = {
-  sipp_code: '', pricing_code: 'C', vehicle_category: 'passenger',
+  sipp_code: '', class_code: '', pricing_code: 'C', vehicle_category: 'passenger',
   vehicle_type: '', vehicle_example: '',
   rate_1_2_days: 0, rate_3_6_days: 0, rate_7_29_days: 0, rate_30_plus_days: 0,
   excess_km_rate: 0.25, km_included_country: 200, km_included_remote: 100,
@@ -86,7 +87,7 @@ export function HertzRatesPanel() {
   function openEdit(r: HertzVehicleRate) {
     if (!isAdmin) return
     setForm({
-      sipp_code: r.sipp_code, pricing_code: r.pricing_code,
+      sipp_code: r.sipp_code, class_code: r.class_code, pricing_code: r.pricing_code,
       vehicle_category: r.vehicle_category, vehicle_type: r.vehicle_type,
       vehicle_example: r.vehicle_example,
       rate_1_2_days: r.rate_1_2_days, rate_3_6_days: r.rate_3_6_days,
@@ -111,6 +112,7 @@ export function HertzRatesPanel() {
     const payload = {
       ...form,
       sipp_code: form.sipp_code.trim().toUpperCase(),
+      class_code: form.class_code.trim().toUpperCase(),
       vehicle_type: form.vehicle_type.trim(),
       vehicle_example: form.vehicle_example.trim(),
       notes: form.notes.trim(),
@@ -202,6 +204,7 @@ export function HertzRatesPanel() {
           <table>
             <thead>
               <tr>
+                <th>Class</th>
                 <th>SIPP</th>
                 <th>Code</th>
                 <th>Category</th>
@@ -220,6 +223,7 @@ export function HertzRatesPanel() {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.5 }}>
+                  <td style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--accent)' }}>{r.class_code || '—'}</td>
                   <td style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{r.sipp_code}</td>
                   <td>{r.pricing_code}</td>
                   <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{vehicleCategoryLabel(r.vehicle_category)}</td>
@@ -253,7 +257,7 @@ export function HertzRatesPanel() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={13} style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)' }}>No rates match</td></tr>
+                <tr><td colSpan={14} style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)' }}>No rates match</td></tr>
               )}
             </tbody>
           </table>
@@ -264,12 +268,18 @@ export function HertzRatesPanel() {
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '760px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>🚗 {modal === 'new' ? 'New Rate' : `Edit ${form.sipp_code} — ${form.vehicle_type}`}</h3>
+              <h3>🚗 {modal === 'new' ? 'New Rate' : `Edit ${form.class_code ? form.class_code + ' · ' : ''}${form.sipp_code} — ${form.vehicle_type}`}</h3>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               {/* Identity */}
               <div className="fg-row">
+                <div className="fg">
+                  <label>Class Code</label>
+                  <input className="input" value={form.class_code} maxLength={4}
+                    onChange={e => setForm(f => ({ ...f, class_code: e.target.value.toUpperCase() }))}
+                    placeholder="J2, L6, D5..." />
+                </div>
                 <div className="fg">
                   <label>SIPP Code *</label>
                   <input className="input" value={form.sipp_code} maxLength={6}

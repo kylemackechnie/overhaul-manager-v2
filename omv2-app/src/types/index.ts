@@ -567,6 +567,7 @@ export interface Vendor {
 export interface HertzVehicleRate {
   id: string
   sipp_code: string
+  class_code: string
   pricing_code: string
   vehicle_category: HertzVehicleCategory
   vehicle_type: string

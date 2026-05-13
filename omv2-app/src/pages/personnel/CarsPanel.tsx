@@ -572,7 +572,9 @@ function CarsPanelDesktop() {
                       <select className="input" value={form.hertz_rate_id} onChange={e => selectHertzRate(e.target.value)}>
                         <option value="">— Select vehicle —</option>
                         {filteredRates.map(r => (
-                          <option key={r.id} value={r.id}>{r.sipp_code} — {r.vehicle_type} ({r.vehicle_example})</option>
+                          <option key={r.id} value={r.id}>
+                            {r.class_code ? `${r.class_code} · ` : ''}{r.sipp_code} — {r.vehicle_type} ({r.vehicle_example})
+                          </option>
                         ))}
                       </select>
                     </div>
