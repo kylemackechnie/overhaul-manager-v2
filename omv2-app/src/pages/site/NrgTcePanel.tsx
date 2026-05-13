@@ -157,7 +157,7 @@ export function NrgTcePanel() {
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
         .eq('project_id', pid).eq('status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid),
+      supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid).in('status', ['approved', 'paid']),
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date,description,vendor,expense_ref,category').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total,cost_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -1104,7 +1104,7 @@ export function NrgTcePanel() {
                 }
 
                 // Non-labour: invoices + expenses + variations
-                const lineInvoices = invoices.filter(i => i.tce_item_id === drillLine.item_id && i.status !== 'rejected')
+                const lineInvoices = invoices.filter(i => i.tce_item_id === drillLine.item_id && (i.status === 'approved' || i.status === 'paid'))
                 const lineExpenses = expenses.filter(e => e.tce_item_id === drillLine.item_id)
                 const lineVariations = variations.filter(v => v.tce_link === drillLine.item_id && v.status === 'approved')
                 const total = lineInvoices.reduce((s,i)=>s+(i.amount||0),0) + lineExpenses.reduce((s,e)=>s+(e.cost_ex_gst||e.amount||0),0) + lineVariations.reduce((s,v)=>s+(v.sell_total||0),0)

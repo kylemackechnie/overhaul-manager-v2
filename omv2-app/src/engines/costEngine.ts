@@ -698,7 +698,7 @@ export function nrgInvoiceActual(
   if (!itemId) return 0
 
   const invTotal = invoices
-    .filter(i => i.tce_item_id === itemId && i.status !== 'rejected')
+    .filter(i => i.tce_item_id === itemId && (i.status === 'approved' || i.status === 'paid'))
     .reduce((s, i) => s + (i.amount || 0), 0)
 
   const expTotal = expenses
@@ -738,7 +738,7 @@ export function nrgInvoiceActualForWeek(
   const invTotal = invoices
     .filter(i => {
       if (i.tce_item_id !== itemId) return false
-      if (i.status === 'rejected') return false
+      if (i.status !== 'approved' && i.status !== 'paid') return false
       const f = i.period_from || ''
       const t = i.period_to || ''
       if (!f || !t) return false  // no period, can't slice

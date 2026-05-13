@@ -30,7 +30,7 @@ export function NrgDashboardPanel() {
     const wos = (woRes.data || []) as { status: string }[]
     const oh = tce.filter(l => l.source === 'overhead')
     const sl = tce.filter(l => l.source === 'skilled')
-    const invActuals = inv.filter(i => i.tce_item_id && i.status !== 'rejected').reduce((a, i) => a + (i.amount || 0), 0)
+    const invActuals = inv.filter(i => i.tce_item_id && (i.status === 'approved' || i.status === 'paid')).reduce((a, i) => a + (i.amount || 0), 0)
     const expActuals = exp.filter(e => e.tce_item_id).reduce((a, e) => a + (e.cost_ex_gst || e.amount || 0), 0)
     const vnActuals = vars.filter(v => v.status === 'approved').reduce((a, v) => a + (v.sell_total || 0), 0)
     setS({
