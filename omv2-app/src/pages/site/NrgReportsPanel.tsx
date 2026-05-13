@@ -113,10 +113,12 @@ export function NrgReportsPanel() {
     setExpenses((expData.data || []) as ExpenseRow[])
 
     // Normalise invoice join
-    const rawInvs = (invData.data || []) as (InvoiceRow & { purchase_orders?: { vendor: string | null } | null })[]
+    // Supabase returns purchase_orders as array from the join; normalise to single object
+    type RawInv = Omit<InvoiceRow, 'po'> & { purchase_orders?: { vendor: string | null }[] | null }
+    const rawInvs = (invData.data || []) as unknown as RawInv[]
     setInvoices(rawInvs.map(inv => ({
       ...inv,
-      po: inv.purchase_orders ?? null,
+      po: inv.purchase_orders?.[0] ?? null,
     })))
 
     const lines = (tceData.data || []) as NrgTceLine[]
@@ -228,21 +230,12 @@ export function NrgReportsPanel() {
   function exportExpensesCSV() {
     const rows = buildExpensesRows()
     if (!rows.length) { toast('No data to export', 'info'); return }
-    downloadCSV(
-      rows.map(r => ({
-        Type: r.type,
-        Date: r.date,
-        'SPOL / ISO Filing Ref': r.ref,
-        'TCE Item ID': r.tce_item_id,
-        'TCE Description': r.tce_description,
-        Vendor: r.vendor,
-        Description: r.description,
-        'Sell Price': r.sell_price.toFixed(2),
-        'GM %': r.gm_pct.toFixed(1),
-        Chargeable: r.chargeable,
-      })),
-      `NRG_Expenses_${activeProject?.name || 'project'}`
-    )
+    const headers = ['Type','Date','SPOL / ISO Filing Ref','TCE Item ID','TCE Description','Vendor','Description','Sell Price','GM %','Chargeable']
+    const csvRows: (string | number | boolean | null | undefined)[][] = [
+      headers,
+      ...rows.map(r => [r.type, r.date, r.ref, r.tce_item_id, r.tce_description, r.vendor, r.description, r.sell_price.toFixed(2), r.gm_pct.toFixed(1), r.chargeable]),
+    ]
+    downloadCSV(csvRows, `NRG_Expenses_${activeProject?.name || 'project'}`)
     toast('Exported', 'success')
   }
 
