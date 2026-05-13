@@ -285,7 +285,7 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
       supabase.from('person_visas').select('*').eq('person_id', personId).order('from_date', { ascending: false }),
       supabase.from('person_assets').select('*').eq('person_id', personId),
       supabase.from('resources')
-        .select('id,mob_in,mob_out,role,project:projects(id,name,client)')
+        .select('id,mob_in,mob_out,role,project_id,projects(id,name,client)')
         .eq('person_id', personId)
         .order('mob_in', { ascending: false }),
     ]).then(([p, v, a, d]) => {
@@ -548,7 +548,9 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>No project deployments</div>
               </div>
             ) : deployments.map(d => {
-              const proj = d.project as { id: string; name: string; client: string | null } | null
+              const projRaw = (d as any).projects
+              const proj: { id: string; name: string; client: string | null } | null =
+                Array.isArray(projRaw) ? (projRaw[0] ?? null) : (projRaw ?? null)
               return (
                 <div
                   key={d.id}
