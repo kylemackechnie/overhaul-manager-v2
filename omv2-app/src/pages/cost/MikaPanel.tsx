@@ -392,34 +392,45 @@ export function MikaPanel() {
 
   async function saveInlineEdit(wbs: string, field: 'pm80tot' | 'pm100', rawValue: string) {
     const value = parseFloat(rawValue.replace(/[^0-9.\-]/g, '')) || 0
-    setMika(prev => {
-      if (!prev) return prev
-      // Apply the direct edit
-      let lines = prev.lines.map(l => l.wbs === wbs ? { ...l, [field]: value } : l)
-      // Re-roll parents bottom-up: sort by depth descending so children are processed before parents
-      const sorted = [...lines].sort((a, b) => b.wbs.split('.').length - a.wbs.split('.').length)
-      const map = Object.fromEntries(lines.map(l => [l.wbs, { ...l }]))
-      for (const l of sorted) {
-        const directChildren = Object.values(map).filter(c =>
-          c.wbs !== l.wbs && c.wbs.startsWith(l.wbs + '.') &&
-          c.wbs.slice(l.wbs.length + 1).split('.').length === 1
-        )
-        if (directChildren.length > 0) {
-          if (field === 'pm80tot') map[l.wbs].pm80tot = directChildren.reduce((s, c) => s + map[c.wbs].pm80tot, 0)
-          if (field === 'pm100')   map[l.wbs].pm100   = directChildren.reduce((s, c) => s + map[c.wbs].pm100,   0)
-        }
-      }
-      lines = prev.lines.map(l => map[l.wbs] || l)
-      return { ...prev, lines }
-    })
     setEditingCell(null)
+
+    // Build the full updated map with bottom-up rollup
+    const prev = mika
+    if (!prev) return
+    let lines = prev.lines.map(l => l.wbs === wbs ? { ...l, [field]: value } : l)
+    const map = Object.fromEntries(lines.map(l => [l.wbs, { ...l }]))
+    const sorted = [...lines].sort((a, b) => b.wbs.split('.').length - a.wbs.split('.').length)
+    for (const l of sorted) {
+      const directChildren = Object.values(map).filter(c =>
+        c.wbs !== l.wbs && c.wbs.startsWith(l.wbs + '.') &&
+        c.wbs.slice(l.wbs.length + 1).split('.').length === 1
+      )
+      if (directChildren.length > 0) {
+        if (field === 'pm80tot') map[l.wbs].pm80tot = directChildren.reduce((s, c) => s + map[c.wbs].pm80tot, 0)
+        if (field === 'pm100')   map[l.wbs].pm100   = directChildren.reduce((s, c) => s + map[c.wbs].pm100,   0)
+      }
+    }
+    lines = prev.lines.map(l => map[l.wbs] || l)
+
+    // Update local state
+    setMika({ ...prev, lines })
+
+    // Persist ALL changed rows to DB (the edited leaf + any ancestors whose value changed)
     const dbField = field === 'pm80tot' ? 'pm80' : 'pm100'
-    const { error } = await supabase
-      .from('mika_wbs_lines')
-      .update({ [dbField]: value })
-      .eq('project_id', activeProject!.id)
-      .eq('wbs', wbs)
-    if (error) toast(error.message, 'error')
+    const pid = activeProject!.id
+    const changed = lines.filter(l => {
+      const orig = prev.lines.find(o => o.wbs === l.wbs)
+      return orig && Math.abs((field === 'pm80tot' ? l.pm80tot : l.pm100) - (field === 'pm80tot' ? orig.pm80tot : orig.pm100)) > 0.001
+    })
+    await Promise.all(changed.map(l =>
+      supabase.from('mika_wbs_lines')
+        .update({ [dbField]: field === 'pm80tot' ? l.pm80tot : l.pm100 })
+        .eq('project_id', pid)
+        .eq('wbs', l.wbs)
+    )).then(results => {
+      const err = results.find(r => r.error)?.error
+      if (err) toast(err.message, 'error')
+    })
   }
 
   // Filtered lines
