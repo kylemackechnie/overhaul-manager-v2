@@ -85,7 +85,6 @@ const RIBBON_MODULES: RibbonTab[] = [
       { label: 'People', buttons: [
         { icon: '👥', label: 'Dashboard', panel: 'hr-dashboard' },
         { icon: '👤', label: 'Resources', panel: 'hr-resources' },
-        { icon: '📋', label: 'Directory', panel: 'hr-directory' },
         { icon: '💲', label: 'Rate Cards', panel: 'hr-ratecards' },
       ]},
       { label: 'Timesheets', buttons: [
@@ -378,6 +377,7 @@ export function Ribbon() {
               }}>
                 {[
                   { icon: '👥', label: 'User Management', panel: 'user-management' },
+                  { icon: '📋', label: 'People Directory', panel: 'hr-directory' },
                   { icon: '🌐', label: 'Global Rate Defaults', panel: 'rate-defaults' },
                   { icon: '⚖️', label: 'Payroll Rules', panel: 'payroll-rules' },
                   { icon: '🚗', label: 'Hertz Vehicle Rates', panel: 'hertz-rates' },
