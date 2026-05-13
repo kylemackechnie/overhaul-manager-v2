@@ -883,11 +883,13 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
           <div className="modal-overlay" onClick={() => setShowSEPicker(false)}>
             <div className="modal" style={{ maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <h3>🔧 SE Standard Tools <span style={{ fontWeight: 400, fontSize: '13px', color: 'var(--text3)' }}>— 2025 internal rates (AUD)</span></h3>
+                <h3>🔧 SE Standard Tools <span style={{ fontWeight: 400, fontSize: '13px', color: 'var(--text3)' }}>— 2026 project rates (AUD)</span></h3>
                 <button className="btn btn-sm" onClick={() => setShowSEPicker(false)}>✕</button>
               </div>
               <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexShrink: 0 }}>
-                <input className="input" style={{ flex: 1 }} placeholder="Search tools or IDs…"
+                <input
+                  style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', outline: 'none' }}
+                  placeholder="Search tools or IDs…"
                   value={seSearch} onChange={e => setSeSearch(e.target.value)} autoFocus />
                 <select className="input" style={{ minWidth: '200px' }} value={seCategory} onChange={e => setSeCategory(e.target.value)}>
                   <option value="">All Categories</option>
