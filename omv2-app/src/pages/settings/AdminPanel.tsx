@@ -6,6 +6,12 @@ import { useAppStore } from '../../store/appStore'
 
 const ADMIN_ITEMS = [
   {
+    icon: '✅',
+    label: 'Crew Confirmation',
+    description: 'Per-project mob readiness — flights, accommodation, car, inductions, medical status for every crew member',
+    panel: 'resource-crew-confirm',
+  },
+  {
     icon: '👥',
     label: 'Resource Board',
     description: 'Cross-project view of all people on active OMV2 projects — status, compliance, assignment',
