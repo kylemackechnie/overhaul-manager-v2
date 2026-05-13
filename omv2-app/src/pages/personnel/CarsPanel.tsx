@@ -372,6 +372,8 @@ function CarsPanelDesktop() {
       setForm(f => calcCosts({ ...f, hertz_rate_id: '', sipp_code: '', pricing_code: '', vehicle_category: '', vehicle_example: '' }))
       return
     }
+    // Default to the 7-29 day tier as the headline rate. Once dates are entered,
+    // the engine snaps to whichever tier actually applies.
     setForm(f => calcCosts({
       ...f,
       hertz_rate_id: r.id,
@@ -380,6 +382,8 @@ function CarsPanelDesktop() {
       vehicle_category: r.vehicle_category,
       vehicle_type: r.vehicle_type,
       vehicle_example: r.vehicle_example,
+      daily_rate: r.rate_7_29_days,
+      tier_applied: '7-29',
       excess_km_rate: r.excess_km_rate,
       ldl_amount: r.ldl_amount,
     }))
@@ -573,11 +577,44 @@ function CarsPanelDesktop() {
                       </select>
                     </div>
                   </div>
-                  {form.hertz_rate_id && form.ldl_amount && (
-                    <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>
-                      Pricing code <strong>{form.pricing_code}</strong> · LDL liability cap <strong>${form.ldl_amount.toLocaleString()}</strong>
-                    </div>
-                  )}
+                  {form.hertz_rate_id && (() => {
+                    const r = hertzRates.find(x => x.id === form.hertz_rate_id)
+                    if (!r) return null
+                    const activeTier = hertzBreakdown?.tier || form.tier_applied || '7-29'
+                    const tiers: Array<{ key: string; label: string; rate: number }> = [
+                      { key: '1-2',  label: '1–2 d',  rate: r.rate_1_2_days },
+                      { key: '3-6',  label: '3–6 d',  rate: r.rate_3_6_days },
+                      { key: '7-29', label: '7–29 d', rate: r.rate_7_29_days },
+                      { key: '30+',  label: '30+ d',  rate: r.rate_30_plus_days },
+                    ]
+                    return (
+                      <div style={{ marginTop: '8px', fontSize: '11px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {tiers.map(t => {
+                            const isActive = t.key === activeTier
+                            return (
+                              <div key={t.key} style={{
+                                padding: '4px 8px',
+                                border: '1px solid',
+                                borderColor: isActive ? 'var(--accent)' : 'var(--border)',
+                                background: isActive ? 'rgba(99,102,241,.10)' : 'transparent',
+                                borderRadius: '4px',
+                                fontFamily: 'var(--mono)',
+                                fontWeight: isActive ? 700 : 400,
+                              }}>
+                                {t.label} <strong>${t.rate.toFixed(2)}</strong>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div style={{ color: 'var(--text3)', marginTop: '4px' }}>
+                          Pricing code <strong>{form.pricing_code}</strong>
+                          {form.ldl_amount ? <> · LDL liability cap <strong>${form.ldl_amount.toLocaleString()}</strong></> : null}
+                          {!form.start_date || !form.end_date ? <> · <em>Enter dates to lock in the tier</em></> : null}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
 
