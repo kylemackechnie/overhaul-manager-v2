@@ -392,13 +392,27 @@ export function MikaPanel() {
 
   async function saveInlineEdit(wbs: string, field: 'pm80tot' | 'pm100', rawValue: string) {
     const value = parseFloat(rawValue.replace(/[^0-9.\-]/g, '')) || 0
-    // Update local state immediately
     setMika(prev => {
       if (!prev) return prev
-      return { ...prev, lines: prev.lines.map(l => l.wbs === wbs ? { ...l, [field]: value } : l) }
+      // Apply the direct edit
+      let lines = prev.lines.map(l => l.wbs === wbs ? { ...l, [field]: value } : l)
+      // Re-roll parents bottom-up: sort by depth descending so children are processed before parents
+      const sorted = [...lines].sort((a, b) => b.wbs.split('.').length - a.wbs.split('.').length)
+      const map = Object.fromEntries(lines.map(l => [l.wbs, { ...l }]))
+      for (const l of sorted) {
+        const directChildren = Object.values(map).filter(c =>
+          c.wbs !== l.wbs && c.wbs.startsWith(l.wbs + '.') &&
+          c.wbs.slice(l.wbs.length + 1).split('.').length === 1
+        )
+        if (directChildren.length > 0) {
+          if (field === 'pm80tot') map[l.wbs].pm80tot = directChildren.reduce((s, c) => s + map[c.wbs].pm80tot, 0)
+          if (field === 'pm100')   map[l.wbs].pm100   = directChildren.reduce((s, c) => s + map[c.wbs].pm100,   0)
+        }
+      }
+      lines = prev.lines.map(l => map[l.wbs] || l)
+      return { ...prev, lines }
     })
     setEditingCell(null)
-    // Persist to DB
     const dbField = field === 'pm80tot' ? 'pm80' : 'pm100'
     const { error } = await supabase
       .from('mika_wbs_lines')
