@@ -79,7 +79,7 @@ export function NrgInvoicingPanel() {
       supabase.from('timesheet_cost_lines')
         .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,invoice_date,amount,status,invoice_number').eq('project_id', pid).in('status', ['approved', 'paid']),
+      supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,status,invoice_number').eq('project_id', pid).in('status', ['approved', 'paid']),
       supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category').eq('project_id', pid),
     ])
     setTceLines(fetchedTceLines)
@@ -208,7 +208,7 @@ export function NrgInvoicingPanel() {
       let total = 0
       for (const inv of supplierInvoices) {
         if (inv.tce_item_id !== line.item_id) continue
-        if (!inPeriod(inv.invoice_date as string, fromWE, toWE)) continue
+        if (!inPeriod((inv.date_processed || inv.invoice_date) as string, fromWE, toWE)) continue
         total += Number(inv.amount) || 0
       }
       for (const exp of expenseItems) {
@@ -237,7 +237,7 @@ export function NrgInvoicingPanel() {
     // Also add any invoices/expenses tagged to this line (e.g. 'Labour and Invoice / Receipt' lines)
     for (const inv of supplierInvoices) {
       if (inv.tce_item_id !== line.item_id) continue
-      if (!inPeriod(inv.invoice_date as string, fromWE, toWE)) continue
+      if (!inPeriod((inv.date_processed || inv.invoice_date) as string, fromWE, toWE)) continue
       total += Number(inv.amount) || 0
     }
     for (const exp of expenseItems) {
@@ -603,7 +603,7 @@ export function NrgInvoicingPanel() {
 
         // Non-labour: supplier invoices across all item_ids
         const periodInvs = supplierInvoices
-          .filter(i => allIds.includes(i.tce_item_id as string) && inPeriod(i.invoice_date as string, fromWE, toWE))
+          .filter(i => allIds.includes(i.tce_item_id as string) && inPeriod((i.date_processed || i.invoice_date) as string, fromWE, toWE))
 
         // Non-labour: expenses across all item_ids
         const periodExps = expenseItems
@@ -708,7 +708,7 @@ export function NrgInvoicingPanel() {
                           <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)' }}>{(i.invoice_number as string) || '—'}</td>
                             <td style={{ padding: '5px 10px', fontSize: 11 }}>{(i.invoice_number as string) || '—'}</td>
-                            <td style={{ padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text2)' }}>{fmtDate(i.invoice_date as string)}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text2)' }}>{fmtDate((i.date_processed || i.invoice_date) as string)}</td>
                             <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(Number(i.amount) || 0)}</td>
                           </tr>
                         ))}

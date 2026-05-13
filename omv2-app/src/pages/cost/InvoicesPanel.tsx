@@ -81,7 +81,7 @@ interface StatusHistoryEntry { status: string; setBy: string; setAt: string; not
 interface Invoice {
   id: string; project_id: string; po_id: string|null; invoice_number: string|null
   vendor_ref: string|null; vendor_details: string|null; status: string; amount: number|null
-  expected_amount: number|null; currency: string|null; invoice_date: string|null
+  expected_amount: number|null; currency: string|null; invoice_date: string|null; date_processed: string|null
   due_date: string|null; paid_date: string|null; received_date: string|null
   period_from: string|null; period_to: string|null; source: string|null
   sap_doc_number: string|null; sap_wbs: string|null; tce_item_id: string|null
@@ -103,13 +103,13 @@ type InvForm = {
   invoice_number: string; vendor_ref: string; vendor_details: string
   po_id: string; tce_item_id: string; status: string; currency: string
   amount: string; expected_amount: string
-  invoice_date: string; due_date: string; period_from: string; period_to: string
+  invoice_date: string; due_date: string; period_from: string; period_to: string; date_processed: string
   notes: string; chargeable: boolean; sell_price: string; gm_pct: string
 }
 const EMPTY_FORM: InvForm = {
   invoice_number:'', vendor_ref:'', vendor_details:'', po_id:'', tce_item_id:'',
   status:'received', currency:'AUD', amount:'', expected_amount:'',
-  invoice_date:'', due_date:'', period_from:'', period_to:'', notes:'',
+  invoice_date:'', due_date:'', period_from:'', period_to:'', date_processed:'', notes:'',
   chargeable:true, sell_price:'', gm_pct:'0',
 }
 
@@ -286,6 +286,7 @@ export function InvoicesPanel() {
       amount: parseFloat(form.amount) || null,
       expected_amount: parseFloat(form.expected_amount) || null,
       invoice_date: form.invoice_date || null,
+      date_processed: form.date_processed || null,
       due_date: form.due_date || null,
       period_from: form.period_from || null,
       period_to: form.period_to || null,
@@ -518,7 +519,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm(EMPTY_FORM);setPendingFiles([]);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10)});setPendingFiles([]);setModal('new')}}>+ New Invoice</button>
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
@@ -564,7 +565,7 @@ export function InvoicesPanel() {
           <div style={{fontSize:'36px',marginBottom:'12px'}}>🧾</div>
           <div style={{fontSize:'16px',fontWeight:600,marginBottom:'4px'}}>No invoices yet</div>
           <div style={{fontSize:'13px',color:'var(--text3)',marginBottom:'20px'}}>Add invoices against active POs to track what's been billed.</div>
-          <button className="btn btn-primary" onClick={()=>{setForm(EMPTY_FORM);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10)});setModal('new')}}>+ New Invoice</button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
@@ -722,7 +723,9 @@ export function InvoicesPanel() {
                               tce_item_id: inv.tce_item_id||'', status: inv.status, currency: inv.currency||'AUD',
                               amount: String(inv.amount||''), expected_amount: String(inv.expected_amount||''),
                               invoice_date: inv.invoice_date||'', due_date: inv.due_date||'',
-                              period_from: inv.period_from||'', period_to: inv.period_to||'', notes: inv.notes||'',
+                              period_from: inv.period_from||'', period_to: inv.period_to||'',
+                              date_processed: inv.date_processed || inv.created_at?.slice(0,10) || '',
+                              notes: inv.notes||'',
                               chargeable: inv.chargeable !== false, sell_price: String(inv.sell_price||''), gm_pct: String(inv.gm_pct||'0'),
                             })
                             setModal(inv)
@@ -799,6 +802,12 @@ export function InvoicesPanel() {
               <div className="fg-row">
                 <div className="fg"><label>Invoice Date</label><input type="date" className="input" value={form.invoice_date} onChange={e=>setForm(f=>({...f,invoice_date:e.target.value}))} /></div>
                 <div className="fg"><label>Due Date</label><input type="date" className="input" value={form.due_date} onChange={e=>setForm(f=>({...f,due_date:e.target.value}))} /></div>
+              </div>
+              <div className="fg-row">
+                <div className="fg">
+                  <label>Date Processed <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— date entered into system, used for TCE &amp; invoicing</span></label>
+                  <input type="date" className="input" value={form.date_processed} onChange={e=>setForm(f=>({...f,date_processed:e.target.value}))} />
+                </div>
               </div>
               <div className="fg-row">
                 <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} /></div>

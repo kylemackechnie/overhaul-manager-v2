@@ -432,6 +432,7 @@ export interface Invoice {
   expected_amount: number
   currency: string
   invoice_date: string | null
+  date_processed: string | null
   received_date: string | null
   paid_date: string | null
   due_date: string | null

@@ -157,7 +157,7 @@ export function NrgTcePanel() {
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
         .eq('project_id', pid).eq('status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid).in('status', ['approved', 'paid']),
+      supabase.from('invoices').select('tce_item_id,amount,status,invoice_date,date_processed,invoice_number,vendor_ref,vendor_details').eq('project_id', pid).in('status', ['approved', 'paid']),
       supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date,description,vendor,expense_ref,category').eq('project_id', pid),
       supabase.from('variations').select('status,tce_link,sell_total,cost_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -1124,7 +1124,7 @@ export function NrgTcePanel() {
                         <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#dbeafe', color:'#1e40af', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Invoice</span></td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(i as unknown as Record<string,unknown>).invoice_number as string || '—'}</td>
                         <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(i as unknown as Record<string,unknown>).vendor_details as string || (i as unknown as Record<string,unknown>).vendor_ref as string || '—'}</td>
-                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{(i as unknown as Record<string,unknown>).invoice_date as string || '—'}</td>
+                        <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{(i as unknown as Record<string,unknown>).date_processed as string || (i as unknown as Record<string,unknown>).invoice_date as string || '—'}</td>
                         <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#1e40af' }}>{fmt(i.amount || 0)}</td>
                       </tr>
                     ))}
