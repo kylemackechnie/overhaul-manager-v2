@@ -105,6 +105,7 @@ import { AdminPanel } from './pages/settings/AdminPanel'
 import { ResourceBoardPanel } from './pages/resources/ResourceBoardPanel'
 import { CrewConfirmationPanel } from './pages/resources/CrewConfirmationPanel'
 import { ResourceManagerInductionsPanel } from './pages/resources/ResourceManagerInductionsPanel'
+import { AvailabilityTimelinePanel } from './pages/resources/AvailabilityTimelinePanel'
 import { UtilisationPanel } from './pages/personnel/UtilisationPanel'
 import { MigrationPanel } from './pages/settings/MigrationPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
@@ -297,7 +298,7 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
       >
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
           <MobilePanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -525,6 +526,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'resource-board':        return <ResourceBoardPanel />
     case 'resource-crew-confirm':   return <CrewConfirmationPanel />
     case 'resource-inductions':      return <ResourceManagerInductionsPanel />
+    case 'resource-timeline':       return <AvailabilityTimelinePanel />
     case 'rate-defaults':         return <GlobalRateDefaultsPanel />
     case 'payroll-rules':         return <PayrollRulesPanel />
     case 'hertz-rates':           return <HertzRatesPanel />

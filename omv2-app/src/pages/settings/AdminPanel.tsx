@@ -18,6 +18,12 @@ const ADMIN_ITEMS = [
     panel: 'resource-crew-confirm',
   },
   {
+    icon: '📅',
+    label: 'Availability Timeline',
+    description: 'Cross-project Gantt by person — teal bars are OMV2 projects, grey bars are the broader register. Free gaps show available windows.',
+    panel: 'resource-timeline',
+  },
+  {
     icon: '👥',
     label: 'Resource Board',
     description: 'Cross-project view of all people on active OMV2 projects — status, compliance, assignment',
