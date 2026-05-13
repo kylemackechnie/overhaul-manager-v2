@@ -62,6 +62,7 @@ const NAV_PAGES: NavPage[] = [
   { icon: '👥', label: 'HR Dashboard',             panel: 'hr-dashboard',       module: 'Personnel' },
   { icon: '👤', label: 'Resources',                panel: 'hr-resources',       module: 'Personnel', keywords: 'people crew' },
   { icon: '📋', label: 'People Directory',         panel: 'hr-directory',       module: 'Personnel', keywords: 'persons staff workforce' },
+  { icon: '📅', label: 'Resource Year View',        panel: 'hr-year-view',       module: 'Personnel', keywords: 'gantt timeline roster 2026 all projects' },
   { icon: '📊', label: 'Utilisation',              panel: 'hr-utilisation',     module: 'Personnel' },
   { icon: '💲', label: 'Rate Cards',               panel: 'hr-ratecards',       module: 'Personnel' },
   { icon: '⏱', label: 'Trades Timesheets',         panel: 'hr-timesheets-trades',module: 'Personnel' },

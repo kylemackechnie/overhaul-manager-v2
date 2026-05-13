@@ -378,6 +378,7 @@ export function Ribbon() {
                 {[
                   { icon: '👥', label: 'User Management', panel: 'user-management' },
                   { icon: '📋', label: 'People Directory', panel: 'hr-directory' },
+                  { icon: '📅', label: 'Resource Year View', panel: 'hr-year-view' },
                   { icon: '🌐', label: 'Global Rate Defaults', panel: 'rate-defaults' },
                   { icon: '⚖️', label: 'Payroll Rules', panel: 'payroll-rules' },
                   { icon: '🚗', label: 'Hertz Vehicle Rates', panel: 'hertz-rates' },

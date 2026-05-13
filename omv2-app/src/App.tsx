@@ -43,6 +43,7 @@ import { CostRegisterPanel } from './pages/cost/CostRegisterPanel'
 import { RateCardsPanel } from './pages/personnel/RateCardsPanel'
 import { ResourcesPanel } from './pages/personnel/ResourcesPanel'
 import { PersonsDirectoryPanel } from './pages/personnel/PersonsDirectoryPanel'
+import { YearViewPanel } from './pages/personnel/YearViewPanel'
 import { TimesheetsPanel } from './pages/personnel/TimesheetsPanel'
 import { CarsPanel } from './pages/personnel/CarsPanel'
 import { AccommodationPanel } from './pages/personnel/AccommodationPanel'
@@ -453,6 +454,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hr-ratecards':          return <RateCardsPanel />
     case 'hr-resources':          return <ResourcesPanel />
     case 'hr-directory':          return <PersonsDirectoryPanel />
+    case 'hr-year-view':          return <YearViewPanel />
     case 'hr-timesheets-trades':  return <TimesheetsPanel key="trades" type="trades" />
     case 'hr-timesheets-mgmt':    return <TimesheetsPanel key="mgmt" type="mgmt" />
     case 'hr-timesheets-seag':    return <TimesheetsPanel key="seag" type="seag" />
