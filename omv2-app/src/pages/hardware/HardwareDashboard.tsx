@@ -16,7 +16,6 @@ export function HardwareDashboard() {
       categories={HARDWARE_CATEGORIES}
       tileComponents={HARDWARE_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={1000}
     />
   )
 }

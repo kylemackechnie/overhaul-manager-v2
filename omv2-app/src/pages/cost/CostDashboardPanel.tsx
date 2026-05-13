@@ -18,7 +18,6 @@ export function CostDashboardPanel() {
       categories={COST_CATEGORIES}
       tileComponents={COST_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={1100}
     />
   )
 }

@@ -15,7 +15,6 @@ export function HireDashboard() {
       categories={HIRE_CATEGORIES}
       tileComponents={HIRE_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={900}
     />
   )
 }

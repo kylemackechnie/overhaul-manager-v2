@@ -69,7 +69,7 @@ export function CustomisableDashboard({
   alerts,
   quickLinks,
   gridCols = 4,
-  maxWidth = 1200,
+  maxWidth = 99999,
 }: CustomisableDashboardProps) {
   const { activeProject, currentUser, setActivePanel } = useAppStore()
   const { prefs, setPref } = useUserPrefs()

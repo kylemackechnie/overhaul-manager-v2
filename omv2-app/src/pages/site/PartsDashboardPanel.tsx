@@ -16,7 +16,6 @@ export function PartsDashboardPanel() {
       categories={PARTS_CATEGORIES}
       tileComponents={PARTS_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={960}
     />
   )
 }

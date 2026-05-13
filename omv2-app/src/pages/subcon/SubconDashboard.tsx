@@ -15,7 +15,6 @@ export function SubconDashboard() {
       categories={SUBCON_CATEGORIES}
       tileComponents={SUBCON_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={900}
     />
   )
 }

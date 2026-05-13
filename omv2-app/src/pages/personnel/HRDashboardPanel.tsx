@@ -17,7 +17,6 @@ export function HRDashboardPanel() {
       categories={HR_CATEGORIES}
       tileComponents={HR_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={1100}
     />
   )
 }

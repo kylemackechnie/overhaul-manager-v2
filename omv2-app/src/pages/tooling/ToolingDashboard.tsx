@@ -16,7 +16,6 @@ export function ToolingDashboard() {
       categories={TOOLING_CATEGORIES}
       tileComponents={TOOLING_TILE_MAP}
       quickLinks={QUICK_LINKS}
-      maxWidth={1100}
     />
   )
 }
