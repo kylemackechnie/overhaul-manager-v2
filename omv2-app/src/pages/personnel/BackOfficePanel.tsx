@@ -324,19 +324,21 @@ export function BackOfficePanel() {
         {filtered.length===0 ? (
           <div className="empty-state"><div className="icon">🏢</div><h3>No back office hours</h3><p>Log office-based hours for project management and support staff.</p></div>
         ) : (
+          <>
+            {Object.keys(byPerson).length > 1 && (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'8px',marginBottom:'12px'}}>
+                {Object.entries(byPerson).sort((a,b)=>b[1].hours-a[1].hours).map(([name, t]) => (
+                  <div key={name} className="card" style={{padding:'10px 12px',borderTop:'3px solid #0891b2'}}>
+                    <div style={{fontWeight:600,fontSize:'12px',marginBottom:'4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
+                    <div style={{fontFamily:'var(--mono)',fontSize:'13px',fontWeight:700,color:'#0891b2'}}>{t.hours.toFixed(1)}h</div>
+                    {t.cost > 0 && <div style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>${t.cost.toLocaleString('en-AU',{maximumFractionDigits:0})}</div>}
+                    {t.sell > 0 && <div style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--green)'}}>{fmt(t.sell)}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
           <div className="card" style={{padding:0,overflow:'hidden'}}>
             <table>
-              {Object.keys(byPerson).length > 1 && (
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'8px',marginBottom:'12px'}}>
-                  {Object.entries(byPerson).sort((a,b)=>b[1].hours-a[1].hours).map(([name, t]) => (
-                    <div key={name} className="card" style={{padding:'10px 12px',borderTop:'3px solid #0891b2'}}>
-                      <div style={{fontWeight:600,fontSize:'12px',marginBottom:'4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
-                      <div style={{fontFamily:'var(--mono)',fontSize:'13px',fontWeight:700,color:'#0891b2'}}>{t.hours.toFixed(1)}h</div>
-                      {t.sell > 0 && <div style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--green)'}}>{fmt(t.sell)}</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
               <thead><tr><th>Date</th><th>Name</th><th>Role</th><th style={{textAlign:'right'}}>Hours</th><th style={{textAlign:'right'}}>Cost</th><th style={{textAlign:'right'}}>Sell</th><th>WBS</th><th></th></tr></thead>
               <tbody>
                 {filtered.map(e=>(
@@ -364,6 +366,7 @@ export function BackOfficePanel() {
               </tr></tfoot>
             </table>
           </div>
+          </>
         )}
       </>}
 
