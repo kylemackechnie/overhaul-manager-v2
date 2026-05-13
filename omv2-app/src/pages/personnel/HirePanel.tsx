@@ -890,13 +890,13 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
                     onMouseLeave={e => (e.currentTarget.style.background = '')}
                     onClick={() => {
-                      setForm(f => ({
+                      setFormAndCalc(f => ({
                         ...f,
                         name: t.name,
                         tool_id: t.toolId,
                         vendor: 'Siemens Energy',
                         charge_unit: t.chargeUnit,
-                        daily_rate: t.chargeUnit === 'daily' ? t.costRate : 0,
+                        daily_rate: t.costRate,
                         weekly_rate: t.chargeUnit === 'weekly' ? t.costRate : 0,
                       }))
                       setShowSEPicker(false)
