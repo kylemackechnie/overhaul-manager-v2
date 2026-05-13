@@ -77,6 +77,8 @@ export function NrgReportsPanel() {
   const [loading, setLoading] = useState(false)
   const [expFilter, setExpFilter] = useState<'all' | 'chargeable' | 'nonchargeable'>('all')
   const [expSearch, setExpSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   useEffect(() => {
     if (activeProject) load()
@@ -171,6 +173,8 @@ export function NrgReportsPanel() {
       .filter(e => {
         if (expFilter === 'chargeable' && !e.chargeable) return false
         if (expFilter === 'nonchargeable' && e.chargeable) return false
+        if (dateFrom && e.date && e.date < dateFrom) return false
+        if (dateTo && e.date && e.date > dateTo) return false
         if (expSearch) {
           const q = expSearch.toLowerCase()
           return (
@@ -200,6 +204,8 @@ export function NrgReportsPanel() {
       .filter(i => {
         if (expFilter === 'chargeable' && !i.chargeable) return false
         if (expFilter === 'nonchargeable' && i.chargeable) return false
+        if (dateFrom && i.invoice_date && i.invoice_date < dateFrom) return false
+        if (dateTo && i.invoice_date && i.invoice_date > dateTo) return false
         if (expSearch) {
           const q = expSearch.toLowerCase()
           const vendor = i.po?.vendor || i.vendor_details || ''
@@ -338,6 +344,12 @@ export function NrgReportsPanel() {
             value={expSearch}
             onChange={e => setExpSearch(e.target.value)}
           />
+          <input type="date" className="input" style={{ width: '140px', fontSize: '12px' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="From date" />
+          <span style={{ fontSize: '12px', color: 'var(--text3)' }}>–</span>
+          <input type="date" className="input" style={{ width: '140px', fontSize: '12px' }} value={dateTo} onChange={e => setDateTo(e.target.value)} title="To date" />
+          {(dateFrom || dateTo) && (
+            <button className="btn btn-sm" onClick={() => { setDateFrom(''); setDateTo('') }} style={{ color: 'var(--text3)' }}>✕ Clear</button>
+          )}
           {(['all', 'chargeable', 'nonchargeable'] as const).map(f => (
             <button
               key={f}
