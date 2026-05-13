@@ -376,16 +376,9 @@ export function Ribbon() {
                 minWidth: '200px', zIndex: 200, overflow: 'hidden'
               }}>
                 {[
-                  { icon: '👥', label: 'User Management', panel: 'user-management' },
-                  { icon: '📋', label: 'People Directory', panel: 'hr-directory' },
+                  { icon: '📋', label: 'People Directory',   panel: 'hr-directory' },
                   { icon: '📅', label: 'Resource Year View', panel: 'hr-year-view' },
-                  { icon: '🌐', label: 'Global Rate Defaults', panel: 'rate-defaults' },
-                  { icon: '⚖️', label: 'Payroll Rules', panel: 'payroll-rules' },
-                  { icon: '🚗', label: 'Hertz Vehicle Rates', panel: 'hertz-rates' },
-                  { icon: '📍', label: 'Hertz Locations', panel: 'hertz-locations' },
-                  { icon: '📋', label: 'Audit Trail', panel: 'audit-trail' },
-                  { icon: '📑', label: 'Reports Database', panel: 'reports-db' },
-                  { icon: '🔄', label: 'Data Migration', panel: 'migration' },
+                  { icon: '⚙️', label: 'Admin',              panel: 'admin' },
                 ].map(item => (
                   <button
                     key={item.panel}
