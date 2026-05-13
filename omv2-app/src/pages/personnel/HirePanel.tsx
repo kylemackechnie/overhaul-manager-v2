@@ -63,6 +63,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   const { activeProject } = useAppStore()
   const [items, setItems] = useState<HireItem[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [wbsList, setWbsList] = useState<{code:string;name:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<null | 'new' | HireItem>(null)
   const [form, setForm] = useState<HireForm>(EMPTY)
@@ -84,14 +85,16 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [hireData, poData, resData] = await Promise.all([
+    const [hireData, poData, resData, wbsData] = await Promise.all([
       supabase.from('hire_items').select('*').eq('project_id', pid).eq('hire_type', hireType).order('created_at'),
       supabase.from('purchase_orders').select('id,po_number,vendor,line_items').eq('project_id', pid).neq('status', 'cancelled').order('po_number'),
       supabase.from('resources').select('id,name,mob_in,mob_out').eq('project_id', pid).order('name'),
+      supabase.from('wbs_list').select('code,name').eq('project_id', pid).order('sort_order'),
     ])
     setItems((hireData.data || []) as HireItem[])
     setPos((poData.data || []) as unknown as PurchaseOrder[])
     setResources((resData.data || []) as {id:string;name:string;mob_in:string|null;mob_out:string|null}[])
+    setWbsList((wbsData.data || []) as {code:string;name:string}[])
     setLoading(false)
   }
 
@@ -371,7 +374,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                     ref={el => { if (el) el.indeterminate = hireSelected.size > 0 && !items.every(h => hireSelected.has(h.id)) }}
                     onChange={e => setHireSelected(e.target.checked ? new Set(items.map(h=>h.id)) : new Set())} />
                 </th>
-                  <th>Name</th><th>Vendor</th>{hireType === 'local' && <th>Tool ID</th>}<th>Start</th><th>End</th><th>Days</th>
+                  <th>Name</th><th>Vendor</th>{hireType === 'local' && <th>Tool ID</th>}<th>WBS</th><th>Start</th><th>End</th><th>Days</th>
                   <th style={{ textAlign: 'right' }}>Rate</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
                   <th style={{ textAlign: 'right' }}>Sell</th>
@@ -388,6 +391,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                       <td style={{ fontWeight: 500 }}>{h.name}</td>
                       <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{h.vendor || '—'}</td>
                       {hireType === 'local' && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--accent)' }}>{h.tool_id || '—'}</td>}
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{(h as HireItem & {wbs?:string}).wbs || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.start_date || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.end_date || '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{d > 0 ? d : '—'}</td>
@@ -410,7 +414,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               </tbody>
               <tfoot>
                 <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
-                  <td colSpan={hireType === 'local' ? 7 : 6} style={{ padding: '8px 12px' }}>Total</td>
+                  <td colSpan={hireType === 'local' ? 8 : 7} style={{ padding: '8px 12px' }}>Total</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalCost)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{fmt(totalSell)}</td>
                   <td />
@@ -671,6 +675,13 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                   }}>
                     <option value="">— No PO —</option>
                     {pos.map(po => <option key={po.id} value={po.id}>{po.po_number || '—'} {po.vendor}</option>)}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label>WBS Code</label>
+                  <select className="input" value={form.wbs} onChange={e => setForm(f => ({ ...f, wbs: e.target.value }))}>
+                    <option value="">— No WBS —</option>
+                    {wbsList.map(w => <option key={w.code} value={w.code}>{w.code}{w.name ? ` — ${w.name}` : ''}</option>)}
                   </select>
                 </div>
               </div>
