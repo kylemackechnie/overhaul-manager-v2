@@ -6,6 +6,12 @@ import { useAppStore } from '../../store/appStore'
 
 const ADMIN_ITEMS = [
   {
+    icon: '🪪',
+    label: 'Induction Register',
+    description: 'Upload SE Learning Courses and Lessons exports to update the global compliance register for all employees',
+    panel: 'resource-inductions',
+  },
+  {
     icon: '✅',
     label: 'Crew Confirmation',
     description: 'Per-project mob readiness — flights, accommodation, car, inductions, medical status for every crew member',

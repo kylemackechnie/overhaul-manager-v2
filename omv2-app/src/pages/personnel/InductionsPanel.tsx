@@ -426,6 +426,80 @@ function parseLessonVal(val: unknown, today: string): CourseStatus {
   return { status: expISO < today ? 'expired' : 'valid', exp: m[1], expISO }
 }
 
+// ── Global register write ─────────────────────────────────────────────────
+// Called after every PM upload as a silent side-effect.
+// Also called directly from ResourceManagerInductionsPanel.
+// Upserts into induction_courses (courses file) or induction_lessons (lessons file).
+// Unique key: LOWER(person_name) + course_key — case-insensitive.
+export async function writeToGlobalRegister(
+  people: { name: string; courses: Record<string, { status: string; expISO?: string; noExpiry?: boolean }> }[],
+  fileType: 'courses' | 'lessons',
+  sourceProjectId?: string
+): Promise<{ upserted: number; matched: number }> {
+  const table = fileType === 'courses' ? 'induction_courses' : 'induction_lessons'
+  const keyField = fileType === 'courses' ? 'course_key' : 'lesson_key'
+
+  // Fetch persons for name matching (to populate person_id)
+  const { data: personsData } = await supabase
+    .from('persons')
+    .select('id, full_name')
+    .eq('active', true)
+
+  // Build a simple name → id map (lowercase)
+  const nameMap: Record<string, string> = {}
+  for (const p of (personsData || [])) {
+    nameMap[p.full_name.toLowerCase().trim()] = p.id
+  }
+
+  function matchPersonId(name: string): string | null {
+    const lc = name.toLowerCase().trim()
+    if (nameMap[lc]) return nameMap[lc]
+    // Try last-first swap or partial match
+    for (const [k, v] of Object.entries(nameMap)) {
+      const ka = k.split(' '), na = lc.split(' ')
+      if (ka.length >= 2 && na.length >= 2) {
+        if (ka[0] === na[0] && ka[ka.length-1] === na[na.length-1]) return v
+      }
+    }
+    return null
+  }
+
+  const rows: Record<string, unknown>[] = []
+  for (const person of people) {
+    const person_id = matchPersonId(person.name)
+    for (const [courseKey, cs] of Object.entries(person.courses)) {
+      if (cs.status === 'na') continue
+      rows.push({
+        person_name:       person.name.trim(),
+        person_id,
+        [keyField]:        courseKey,
+        status:            cs.status,
+        expiry_date:       cs.expISO && cs.expISO !== '9999-12-31' ? cs.expISO : null,
+        uploaded_at:       new Date().toISOString(),
+        source_project_id: sourceProjectId || null,
+      })
+    }
+  }
+
+  if (rows.length === 0) return { upserted: 0, matched: 0 }
+
+  // Upsert in batches of 500
+  const BATCH = 500
+  let upserted = 0
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH)
+    const { error } = await supabase.from(table).upsert(batch, {
+      onConflict: `person_name,${keyField}`,
+      ignoreDuplicates: false,
+    })
+    if (error) console.error(`Global register upsert error:`, error.message)
+    else upserted += batch.length
+  }
+
+  const matched = rows.filter(r => r.person_id !== null).length
+  return { upserted, matched }
+}
+
 export function InductionsPanel() {
   const { activeProject, setActiveProject } = useAppStore()
   const [resources, setResources]         = useState<Resource[]>([])
@@ -558,6 +632,9 @@ export function InductionsPanel() {
             if (activeProject) setActiveProject({ ...activeProject, lessons_data: people as unknown as InductionPerson[], lessons_upload_time: uploadTime })
           })
       }
+
+      // ── Write to global induction register (side-effect, non-blocking) ───────
+      writeToGlobalRegister(people, fileType, activeProject!.id).catch(console.error)
 
       toast(`Loaded ${people.length} people from ${file.name}`, 'success')
     } catch {
