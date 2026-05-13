@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
@@ -7,6 +7,11 @@ import type { BackOfficeHour, RateCard, WbsItem } from '../../types'
 
 type BOForm = { name:string; role:string; date:string; hours:number; cost:number; sell:number; wbs:string; notes:string }
 const EMPTY_BO: BOForm = { name:'', role:'', date:new Date().toISOString().slice(0,10), hours:0, cost:0, sell:0, wbs:'', notes:'' }
+
+// ── SAP CSV importer types ──
+interface SapRow { name: string; date: string; cost: number; hours: number; wbs: string }
+interface PersonSelection { name: string; enabled: boolean; dateFrom: string; dateTo: string; minDate: string; maxDate: string }
+interface ImportPreviewRow { name: string; date: string; hours: number; cost: number; wbs: string }
 
 interface SEEntry { id:string; project_id:string; date:string; person:string; description:string; currency:string; amount:number; gm_pct:number; sell_price:number; wbs:string }
 type SEForm = { date:string; person:string; description:string; currency:string; amount:number; gm_pct:number; sell_price:number; wbs:string }
@@ -27,6 +32,12 @@ export function BackOfficePanel() {
   const [saving, setSaving] = useState(false)
   const [seSaving, setSeSaving] = useState(false)
   const [monthFilter, setMonthFilter] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showImporter, setShowImporter] = useState(false)
+  const [importPersons, setImportPersons] = useState<PersonSelection[]>([])
+  const [importSapRows, setImportSapRows] = useState<SapRow[]>([])
+  const [importPreview, setImportPreview] = useState<ImportPreviewRow[]>([])
+  const [importSaving, setImportSaving] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -98,6 +109,147 @@ export function BackOfficePanel() {
     toast('Deleted','info'); load()
   }
 
+  // ── SAP CSV Importer ──
+  function parseSapCsv(text: string): SapRow[] {
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
+    if (lines.length < 2) return []
+    // Find header row
+    const headerLine = lines.findIndex(l => l.includes('Document Date') || l.includes('Name'))
+    if (headerLine < 0) return []
+    const headers = parseCSVLine(lines[headerLine])
+    const iName = headers.findIndex(h => h === 'Name')
+    const iDate = headers.findIndex(h => h === 'Document Date')
+    const iVal  = headers.findIndex(h => h === 'Val/COArea Crcy')
+    const iQty  = headers.findIndex(h => h.trim() === 'Total quantity') // last col (col 18)
+    const iWbs  = headers.findIndex(h => h === 'WBS Element')
+    if (iName < 0 || iDate < 0) return []
+
+    const rows: SapRow[] = []
+    for (let i = headerLine + 1; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      const cols = parseCSVLine(line)
+      const name = cols[iName]?.trim() || ''
+      const dateRaw = cols[iDate]?.trim() || ''
+      const valRaw = cols[iVal]?.trim().replace(/,/g, '') || '0'
+      const qtyRaw = cols[iQty]?.trim() || '0'
+      const wbs = cols[iWbs]?.trim() || ''
+
+      // Skip: empty name, no date, non-person rows (no space = not "First Last"), zero hours
+      if (!name || !dateRaw || !name.includes(' ')) continue
+      const hours = parseFloat(qtyRaw) || 0
+      const cost = parseFloat(valRaw) || 0
+      if (hours <= 0 && cost <= 0) continue
+
+      // Parse DD/MM/YYYY → YYYY-MM-DD
+      const parts = dateRaw.split('/')
+      if (parts.length !== 3) continue
+      const date = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`
+
+      rows.push({ name, date, cost, hours, wbs })
+    }
+    return rows
+  }
+
+  function parseCSVLine(line: string): string[] {
+    const result: string[] = []
+    let cur = '', inQuote = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') { inQuote = !inQuote }
+      else if (ch === ',' && !inQuote) { result.push(cur); cur = '' }
+      else { cur += ch }
+    }
+    result.push(cur)
+    return result
+  }
+
+  function handleSapFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      const rows = parseSapCsv(text)
+      if (!rows.length) { toast('No valid person rows found in CSV','error'); return }
+
+      // Build per-person summaries
+      const byPerson: Record<string, { dates: string[]; minDate: string; maxDate: string }> = {}
+      for (const r of rows) {
+        if (!byPerson[r.name]) byPerson[r.name] = { dates: [], minDate: r.date, maxDate: r.date }
+        byPerson[r.name].dates.push(r.date)
+        if (r.date < byPerson[r.name].minDate) byPerson[r.name].minDate = r.date
+        if (r.date > byPerson[r.name].maxDate) byPerson[r.name].maxDate = r.date
+      }
+
+      const persons: PersonSelection[] = Object.entries(byPerson).sort((a,b) => a[0].localeCompare(b[0])).map(([name, info]) => ({
+        name,
+        enabled: true,
+        dateFrom: info.minDate,
+        dateTo: info.maxDate,
+        minDate: info.minDate,
+        maxDate: info.maxDate,
+      }))
+
+      setImportSapRows(rows)
+      setImportPersons(persons)
+      setImportPreview([])
+      setShowImporter(true)
+      // Reset file input so same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+    reader.readAsText(file, 'utf-8')
+  }
+
+  function updateImportPreview(persons: PersonSelection[], rows: SapRow[]) {
+    // Aggregate: per person per date, sum cost and hours
+    const agg: Record<string, ImportPreviewRow> = {}
+    for (const p of persons) {
+      if (!p.enabled) continue
+      const personRows = rows.filter(r =>
+        r.name === p.name && r.date >= p.dateFrom && r.date <= p.dateTo
+      )
+      for (const r of personRows) {
+        const key = `${r.name}|${r.date}`
+        if (!agg[key]) agg[key] = { name: r.name, date: r.date, hours: 0, cost: 0, wbs: r.wbs }
+        agg[key].hours += r.hours
+        agg[key].cost += r.cost
+      }
+    }
+    setImportPreview(Object.values(agg).sort((a,b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name)))
+  }
+
+  function updatePersonSelection(idx: number, patch: Partial<PersonSelection>) {
+    setImportPersons(prev => {
+      const updated = prev.map((p, i) => i === idx ? { ...p, ...patch } : p)
+      updateImportPreview(updated, importSapRows)
+      return updated
+    })
+  }
+
+  async function runImport() {
+    if (!importPreview.length) return toast('Nothing selected to import','error')
+    setImportSaving(true)
+    const pid = activeProject!.id
+    const payload = importPreview.map(r => ({
+      project_id: pid,
+      name: r.name,
+      role: '',
+      date: r.date,
+      hours: parseFloat(r.hours.toFixed(2)),
+      cost: parseFloat(r.cost.toFixed(2)),
+      sell: 0,
+      wbs: r.wbs,
+      notes: 'Imported from SAP actuals CSV',
+    }))
+    const { error } = await supabase.from('back_office_hours').insert(payload)
+    if (error) { toast(error.message, 'error'); setImportSaving(false); return }
+    toast(`Imported ${payload.length} back office entries`, 'success')
+    setImportSaving(false)
+    setShowImporter(false)
+    load()
+  }
+
   function exportBoCsv() {
     const rows=[['Date','Name','Role','Hours','Cost','Sell','WBS']]
     entries.forEach(e=>rows.push([e.date,e.name,e.role||'',String(e.hours||0),String(e.cost||0),String(e.sell||0),e.wbs||'']))
@@ -144,6 +296,13 @@ export function BackOfficePanel() {
         </div>
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={tab==='bo'?exportBoCsv:exportSeCsv}>⬇ Export CSV</button>
+          {tab==='bo' && (
+            <>
+              <button className="btn btn-sm" style={{background:'#0891b2',color:'#fff',fontWeight:600}}
+                onClick={() => fileInputRef.current?.click()}>⬆ Import SAP CSV</button>
+              <input ref={fileInputRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleSapFile} />
+            </>
+          )}
           <button className="btn btn-primary" onClick={()=>tab==='bo'?(setForm(EMPTY_BO),setModal('new')):(setSeForm(EMPTY_SE),setSeModal('new'))}>+ Add Entry</button>
         </div>
       </div>
@@ -317,6 +476,134 @@ export function BackOfficePanel() {
               {seModal!=='new'&&<button className="btn" style={{color:'var(--red)',marginRight:'auto'}} onClick={()=>{delSe(seModal as SEEntry);setSeModal(null)}}>Delete</button>}
               <button className="btn" onClick={()=>setSeModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveSe} disabled={seSaving}>{seSaving?<span className="spinner" style={{width:'14px',height:'14px'}}/>:null} Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── SAP CSV IMPORTER MODAL ── */}
+      {showImporter && (
+        <div className="modal-overlay" onClick={() => setShowImporter(false)}>
+          <div className="modal" style={{maxWidth:'780px',maxHeight:'90vh',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>⬆ Import Back Office Hours from SAP CSV</h3>
+              <button className="btn btn-sm" onClick={() => setShowImporter(false)}>✕</button>
+            </div>
+
+            <div style={{overflowY:'auto',flex:1}}>
+              {/* Step 1 — person selection */}
+              <div style={{padding:'16px 20px',borderBottom:'1px solid var(--border)'}}>
+                <div style={{fontWeight:600,fontSize:'13px',marginBottom:'12px',color:'var(--text2)'}}>
+                  Step 1 — Select people and date ranges to import
+                </div>
+                <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:'12px'}}>
+                  Each person's date range defaults to their full date span in the file. Narrow it to exclude on-site periods.
+                </div>
+                <table style={{width:'100%',fontSize:'12px',borderCollapse:'collapse'}}>
+                  <thead>
+                    <tr style={{borderBottom:'1px solid var(--border)'}}>
+                      <th style={{padding:'6px 8px',textAlign:'left',fontWeight:600,width:'32px'}}></th>
+                      <th style={{padding:'6px 8px',textAlign:'left',fontWeight:600}}>Person</th>
+                      <th style={{padding:'6px 8px',textAlign:'left',fontWeight:600}}>From</th>
+                      <th style={{padding:'6px 8px',textAlign:'left',fontWeight:600}}>To</th>
+                      <th style={{padding:'6px 8px',textAlign:'right',fontWeight:600}}>Rows in file</th>
+                      <th style={{padding:'6px 8px',textAlign:'right',fontWeight:600}}>In range</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPersons.map((p, idx) => {
+                      const allRows = importSapRows.filter(r => r.name === p.name)
+                      const inRange = allRows.filter(r => r.date >= p.dateFrom && r.date <= p.dateTo)
+                      const rangeHours = inRange.reduce((s,r) => s+r.hours, 0)
+                      const rangeCost = inRange.reduce((s,r) => s+r.cost, 0)
+                      return (
+                        <tr key={p.name} style={{borderBottom:'1px solid var(--border)',background:p.enabled?'':'var(--bg3)',opacity:p.enabled?1:0.5}}>
+                          <td style={{padding:'8px'}}>
+                            <input type="checkbox" checked={p.enabled} onChange={e => updatePersonSelection(idx, {enabled: e.target.checked})} />
+                          </td>
+                          <td style={{padding:'8px',fontWeight:600}}>{p.name}</td>
+                          <td style={{padding:'8px'}}>
+                            <input type="date" className="input" style={{fontSize:'11px',padding:'3px 6px'}}
+                              value={p.dateFrom} min={p.minDate} max={p.dateTo}
+                              onChange={e => updatePersonSelection(idx, {dateFrom: e.target.value})} />
+                          </td>
+                          <td style={{padding:'8px'}}>
+                            <input type="date" className="input" style={{fontSize:'11px',padding:'3px 6px'}}
+                              value={p.dateTo} min={p.dateFrom} max={p.maxDate}
+                              onChange={e => updatePersonSelection(idx, {dateTo: e.target.value})} />
+                          </td>
+                          <td style={{padding:'8px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text3)'}}>{allRows.length}</td>
+                          <td style={{padding:'8px',textAlign:'right',fontFamily:'var(--mono)'}}>
+                            {p.enabled ? (
+                              <span>
+                                <span style={{color:'var(--accent)',fontWeight:600}}>{inRange.length}</span>
+                                <span style={{color:'var(--text3)',fontSize:'10px',marginLeft:'6px'}}>{rangeHours.toFixed(1)}h · ${rangeCost.toLocaleString('en-AU',{maximumFractionDigits:0})}</span>
+                              </span>
+                            ) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Step 2 — preview */}
+              <div style={{padding:'16px 20px'}}>
+                <div style={{fontWeight:600,fontSize:'13px',marginBottom:'8px',color:'var(--text2)'}}>
+                  Step 2 — Preview ({importPreview.length} entries to import)
+                </div>
+                {importPreview.length === 0 ? (
+                  <div style={{color:'var(--text3)',fontSize:'12px',padding:'12px 0'}}>
+                    Enable at least one person above to see the preview.
+                  </div>
+                ) : (
+                  <div style={{maxHeight:'240px',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--radius)'}}>
+                    <table style={{width:'100%',fontSize:'11px',borderCollapse:'collapse'}}>
+                      <thead style={{position:'sticky',top:0,background:'var(--bg3)'}}>
+                        <tr>
+                          <th style={{padding:'5px 8px',textAlign:'left'}}>Date</th>
+                          <th style={{padding:'5px 8px',textAlign:'left'}}>Name</th>
+                          <th style={{padding:'5px 8px',textAlign:'right'}}>Hours</th>
+                          <th style={{padding:'5px 8px',textAlign:'right'}}>Cost (AUD)</th>
+                          <th style={{padding:'5px 8px',textAlign:'left'}}>WBS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.map((r, i) => (
+                          <tr key={i} style={{borderTop:'1px solid var(--border)'}}>
+                            <td style={{padding:'4px 8px',fontFamily:'var(--mono)'}}>{r.date}</td>
+                            <td style={{padding:'4px 8px',fontWeight:500}}>{r.name}</td>
+                            <td style={{padding:'4px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>{r.hours.toFixed(2)}</td>
+                            <td style={{padding:'4px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>${r.cost.toLocaleString('en-AU',{maximumFractionDigits:0})}</td>
+                            <td style={{padding:'4px 8px',fontFamily:'var(--mono)',color:'var(--text3)',fontSize:'10px'}}>{r.wbs||'—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot style={{background:'var(--bg3)',fontWeight:600}}>
+                        <tr>
+                          <td colSpan={2} style={{padding:'5px 8px',fontSize:'11px'}}>Total</td>
+                          <td style={{padding:'5px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>{importPreview.reduce((s,r)=>s+r.hours,0).toFixed(2)}</td>
+                          <td style={{padding:'5px 8px',textAlign:'right',fontFamily:'var(--mono)'}}>
+                            ${importPreview.reduce((s,r)=>s+r.cost,0).toLocaleString('en-AU',{maximumFractionDigits:0})}
+                          </td>
+                          <td/>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+                <div style={{fontSize:'11px',color:'var(--text3)',marginTop:'8px'}}>
+                  ℹ️ Multiple SAP rows for the same person on the same date are aggregated into one entry. Hours and costs are summed. Role and sell price can be set after import.
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{flexShrink:0}}>
+              <button className="btn" onClick={() => setShowImporter(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={runImport} disabled={importSaving || importPreview.length === 0}>
+                {importSaving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null}
+                Import {importPreview.length} {importPreview.length === 1 ? 'entry' : 'entries'}
+              </button>
             </div>
           </div>
         </div>
