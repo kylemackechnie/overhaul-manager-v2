@@ -6,6 +6,12 @@ import { useAppStore } from '../../store/appStore'
 
 const ADMIN_ITEMS = [
   {
+    icon: '👥',
+    label: 'Resource Board',
+    description: 'Cross-project view of all people on active OMV2 projects — status, compliance, assignment',
+    panel: 'resource-board',
+  },
+  {
     icon: '📋',
     label: 'People Directory',
     description: 'Browse and edit all personnel records, inductions and profile details',

@@ -102,6 +102,7 @@ import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
 import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { AdminPanel } from './pages/settings/AdminPanel'
+import { ResourceBoardPanel } from './pages/resources/ResourceBoardPanel'
 import { UtilisationPanel } from './pages/personnel/UtilisationPanel'
 import { MigrationPanel } from './pages/settings/MigrationPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
@@ -294,7 +295,7 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
       >
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
           <MobilePanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -343,7 +344,7 @@ function AppInner() {
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
         {/* Profile and settings panels don't require an active project */}
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
           <PanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -519,6 +520,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
     case 'admin':                 return <AdminPanel />
+    case 'resource-board':        return <ResourceBoardPanel />
     case 'rate-defaults':         return <GlobalRateDefaultsPanel />
     case 'payroll-rules':         return <PayrollRulesPanel />
     case 'hertz-rates':           return <HertzRatesPanel />
