@@ -510,11 +510,15 @@ function CarsPanelDesktop() {
                     : c.location_fee_pct > 0
                     ? `${c.location_fee_pct}%`
                     : '—'
+                  const rate = c.hertz_rate_id ? hertzRates.find(r => r.id === c.hertz_rate_id) : null
+                  const sippDisplay = c.sipp_code
+                    ? (rate?.class_code ? `${rate.class_code} · ${c.sipp_code}` : c.sipp_code)
+                    : '—'
                   return (
                     <tr key={c.id}>
                       <td><input type="checkbox" checked={carSelected.has(c.id)} onChange={e=>setCarSelected(s=>{const n=new Set(s);e.target.checked?n.add(c.id):n.delete(c.id);return n})} /></td>
                       <td style={{ fontWeight: 500 }}>{c.vehicle_type || '—'}</td>
-                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>{c.sipp_code || '—'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>{sippDisplay}</td>
                       <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{c.vehicle_example || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.rego || '—'}</td>
                       <td>{c.vendor || '—'}</td>
