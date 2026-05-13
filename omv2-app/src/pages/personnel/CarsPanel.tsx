@@ -1,11 +1,19 @@
-import { useEffect, useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import type { Car, Resource, PurchaseOrder } from '../../types'
+import type {
+  Car, Resource, PurchaseOrder,
+  Vendor, HertzVehicleRate, HertzLocation,
+  HertzVehicleCategory, VehicleLocationType,
+} from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { HelpButton } from '../../components/HelpButton'
+import {
+  calculateHertzCost,
+  locationTypeLabel,
+} from '../../lib/hertzPricing'
 
 // Lazy-loaded — only fetched when a phone user opens this panel. Desktop
 // users never download the mobile bundle. Saves ~30 KB per panel + lets
@@ -24,6 +32,23 @@ type CarForm = {
   total_km: number
   wbs: string
   linked_po_id: string; notes: string
+  // Vendor / Hertz auto-pricing
+  vendor_id: string
+  hertz_rate_id: string
+  hertz_location_id: string
+  location_type: VehicleLocationType | ''
+  tier_applied: string
+  sipp_code: string
+  pricing_code: string
+  vehicle_category: HertzVehicleCategory | ''
+  vehicle_example: string
+  ldl_amount: number | null
+  daily_surcharge_rate: number
+  location_fee_fixed_daily: number
+  excess_km_estimate: number
+  excess_km_rate: number | null
+  ldw_daily_rate: number
+  mdw_daily_rate: number
 }
 
 const EMPTY: CarForm = {
@@ -35,6 +60,12 @@ const EMPTY: CarForm = {
   collected:false, dropped_off:false, fuel_type:'',
   total_km:0, wbs:'',
   linked_po_id:'', notes:'',
+  vendor_id:'', hertz_rate_id:'', hertz_location_id:'',
+  location_type:'', tier_applied:'',
+  sipp_code:'', pricing_code:'', vehicle_category:'', vehicle_example:'',
+  ldl_amount:null, daily_surcharge_rate:0,
+  location_fee_fixed_daily:0, excess_km_estimate:0, excess_km_rate:null,
+  ldw_daily_rate:0, mdw_daily_rate:0,
 }
 
 function daysBetween(a: string, b: string): number {
@@ -76,26 +107,75 @@ function CarsPanelDesktop() {
   const [carBulkModal, setCarBulkModal] = useState(false)
   const [carBulkForm, setCarBulkForm] = useState({ start_date:'', end_date:'', daily_rate:'', gm_pct:'' })
   const [wbsList, setWbsList] = useState<{ id: string; code: string; name: string }[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
+  const [hertzRates, setHertzRates] = useState<HertzVehicleRate[]>([])
+  const [hertzLocations, setHertzLocations] = useState<HertzLocation[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<HertzVehicleCategory | ''>('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [carData, resData, poData, wbsRes] = await Promise.all([
+    const [carData, resData, poData, wbsRes, vendorRes, rateRes, locRes] = await Promise.all([
       supabase.from('cars').select('*').eq('project_id', pid).order('created_at'),
       supabase.from('resources').select('id,name,role,mob_in,mob_out').eq('project_id', pid).order('name'),
       supabase.from('purchase_orders').select('id,po_number,vendor').eq('project_id', pid).neq('status','cancelled').order('po_number'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
+      supabase.from('vendors').select('*').eq('is_active', true).order('name'),
+      supabase.from('hertz_vehicle_rates').select('*').eq('is_active', true).order('sort_order').order('sipp_code'),
+      supabase.from('hertz_locations').select('*').eq('is_active', true).order('sort_order').order('location_name'),
     ])
     setCars((carData.data || []) as Car[])
     setResources((resData.data || []) as Resource[])
     setPos((poData.data || []) as PurchaseOrder[])
     setWbsList((wbsRes.data || []) as { id: string; code: string; name: string }[])
+    setVendors((vendorRes.data || []) as Vendor[])
+    setHertzRates((rateRes.data || []) as HertzVehicleRate[])
+    setHertzLocations((locRes.data || []) as HertzLocation[])
     setLoading(false)
   }
 
+  function isHertzVendor(form: CarForm): boolean {
+    const v = vendors.find(x => x.id === form.vendor_id)
+    return !!v && v.name === 'Hertz' && v.has_managed_rates
+  }
+
   function calcCosts(f: CarForm): CarForm {
+    // Hertz auto-pricing: use the engine if a rate has been selected
+    if (isHertzVendor(f) && f.hertz_rate_id && f.start_date && f.end_date && f.location_type) {
+      const rate = hertzRates.find(r => r.id === f.hertz_rate_id)
+      if (rate) {
+        const loc = hertzLocations.find(l => l.id === f.hertz_location_id)
+        const breakdown = calculateHertzCost({
+          rate,
+          pickupDate: f.start_date,
+          returnDate: f.end_date,
+          locationType: f.location_type as VehicleLocationType,
+          locationFeeType: loc?.fee_type,
+          locationFeeValue: loc?.fee_value,
+          estimatedKm: f.excess_km_estimate,
+          ldwDailyRate: f.ldw_daily_rate,
+          mdwDailyRate: f.mdw_daily_rate,
+          oneWayFee: f.one_way_fee,
+        })
+        const total_cost = breakdown.totalCostExGst
+        const customer_total = calcCustomerPrice(total_cost, f.gm_pct)
+        return {
+          ...f,
+          daily_rate: breakdown.dailyRate,
+          tier_applied: breakdown.tier,
+          daily_surcharge_rate: breakdown.dailySurcharge,
+          excess_km_rate: rate.excess_km_rate,
+          location_fee_pct: loc?.fee_type === 'percentage' ? (loc.fee_value || 0) : 0,
+          location_fee_fixed_daily: loc?.fee_type === 'fixed_daily' ? (loc.fee_value || 0) : 0,
+          ldl_amount: rate.ldl_amount,
+          total_cost,
+          customer_total,
+        }
+      }
+    }
+    // Manual / non-Hertz path: existing formula
     const days = daysBetween(f.start_date, f.end_date) || 1
     const base = f.daily_rate * days
     const withFees = base * (1 + (f.location_fee_pct || 0) / 100) + (f.one_way_fee || 0)
@@ -117,7 +197,17 @@ function CarsPanelDesktop() {
     setSelCars(new Set()); setBulkCarModal(false); load()
   }
 
-  function openNew() { setForm({ ...EMPTY, gm_pct: activeProject?.default_gm || 15 }); setModal('new') }
+  function openNew() {
+    const hertzId = vendors.find(v => v.name === 'Hertz')?.id || ''
+    setForm({
+      ...EMPTY,
+      gm_pct: activeProject?.default_gm || 15,
+      vendor_id: hertzId,
+      vendor: hertzId ? 'Hertz' : '',
+    })
+    setCategoryFilter('')
+    setModal('new')
+  }
   function openEdit(c: Car) {
     const flags = ((c as unknown as Record<string, unknown>).flags as Record<string, unknown>) || {}
     setForm({
@@ -136,15 +226,37 @@ function CarsPanelDesktop() {
       total_km: c.total_km || 0,
       wbs: c.wbs || '',
       linked_po_id: c.linked_po_id || '', notes: c.notes,
+      vendor_id: c.vendor_id || '',
+      hertz_rate_id: c.hertz_rate_id || '',
+      hertz_location_id: c.hertz_location_id || '',
+      location_type: c.location_type || '',
+      tier_applied: c.tier_applied || '',
+      sipp_code: c.sipp_code || '',
+      pricing_code: c.pricing_code || '',
+      vehicle_category: c.vehicle_category || '',
+      vehicle_example: c.vehicle_example || '',
+      ldl_amount: c.ldl_amount,
+      daily_surcharge_rate: c.daily_surcharge_rate || 0,
+      location_fee_fixed_daily: c.location_fee_fixed_daily || 0,
+      excess_km_estimate: c.excess_km_estimate || 0,
+      excess_km_rate: c.excess_km_rate,
+      ldw_daily_rate: c.ldw_daily_rate || 0,
+      mdw_daily_rate: c.mdw_daily_rate || 0,
     })
+    setCategoryFilter(c.vehicle_category || '')
     setModal(c)
   }
 
-  function update(field: keyof CarForm, val: string | number | boolean) {
+  function update(field: keyof CarForm, val: string | number | boolean | null) {
     setForm(f => {
       const next = { ...f, [field]: val } as CarForm
       // Re-run cost calc whenever any input that feeds it changes.
-      if (['daily_rate','gm_pct','start_date','end_date','location_fee_pct','one_way_fee'].includes(field)) {
+      const recalcFields: Array<keyof CarForm> = [
+        'daily_rate','gm_pct','start_date','end_date','location_fee_pct','one_way_fee',
+        'hertz_rate_id','hertz_location_id','location_type','excess_km_estimate',
+        'ldw_daily_rate','mdw_daily_rate','vendor_id','location_fee_fixed_daily',
+      ]
+      if (recalcFields.includes(field)) {
         return calcCosts(next)
       }
       return next
@@ -182,6 +294,22 @@ function CarsPanelDesktop() {
       wbs: form.wbs || '',
       linked_po_id: form.linked_po_id || null,
       notes: form.notes || '',
+      vendor_id: form.vendor_id || null,
+      hertz_rate_id: form.hertz_rate_id || null,
+      hertz_location_id: form.hertz_location_id || null,
+      location_type: form.location_type || null,
+      tier_applied: form.tier_applied || null,
+      sipp_code: form.sipp_code || '',
+      pricing_code: form.pricing_code || '',
+      vehicle_category: form.vehicle_category || '',
+      vehicle_example: form.vehicle_example || '',
+      ldl_amount: form.ldl_amount,
+      daily_surcharge_rate: form.daily_surcharge_rate || 0,
+      location_fee_fixed_daily: form.location_fee_fixed_daily || 0,
+      excess_km_estimate: form.excess_km_estimate || 0,
+      excess_km_rate: form.excess_km_rate,
+      ldw_daily_rate: form.ldw_daily_rate || 0,
+      mdw_daily_rate: form.mdw_daily_rate || 0,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('cars').insert(payload)
@@ -235,6 +363,80 @@ function CarsPanelDesktop() {
     setCarBulkModal(false); setCarSelected(new Set()); setCarBulkForm({ start_date:'', end_date:'', daily_rate:'', gm_pct:'' }); load()
   }
 
+  // ── Hertz helpers ─────────────────────────────────────────────────────
+  const isFormHertz = isHertzVendor(form)
+
+  function selectHertzRate(rateId: string) {
+    const r = hertzRates.find(x => x.id === rateId)
+    if (!r) {
+      setForm(f => calcCosts({ ...f, hertz_rate_id: '', sipp_code: '', pricing_code: '', vehicle_category: '', vehicle_example: '' }))
+      return
+    }
+    setForm(f => calcCosts({
+      ...f,
+      hertz_rate_id: r.id,
+      sipp_code: r.sipp_code,
+      pricing_code: r.pricing_code,
+      vehicle_category: r.vehicle_category,
+      vehicle_type: r.vehicle_type,
+      vehicle_example: r.vehicle_example,
+      excess_km_rate: r.excess_km_rate,
+      ldl_amount: r.ldl_amount,
+    }))
+  }
+
+  function selectHertzLocation(locId: string) {
+    const l = hertzLocations.find(x => x.id === locId)
+    if (!l) return
+    setForm(f => calcCosts({
+      ...f,
+      hertz_location_id: l.id,
+      pickup_loc: l.location_name + (l.address ? ` — ${l.address}` : ''),
+      location_type: l.location_type,
+      location_fee_pct: l.fee_type === 'percentage' ? (l.fee_value || 0) : 0,
+      location_fee_fixed_daily: l.fee_type === 'fixed_daily' ? (l.fee_value || 0) : 0,
+    }))
+  }
+
+  function selectVendor(vendorId: string) {
+    const v = vendors.find(x => x.id === vendorId)
+    setForm(f => calcCosts({
+      ...f,
+      vendor_id: vendorId,
+      vendor: v?.name || '',
+      // Clear Hertz-specific fields when switching away from Hertz
+      ...(v && v.name === 'Hertz' ? {} : {
+        hertz_rate_id: '', sipp_code: '', pricing_code: '', vehicle_category: '',
+        vehicle_example: '', hertz_location_id: '', tier_applied: '',
+        daily_surcharge_rate: 0, location_fee_fixed_daily: 0,
+        excess_km_estimate: 0, excess_km_rate: null,
+        ldw_daily_rate: 0, mdw_daily_rate: 0,
+        ldl_amount: null,
+      } as Partial<CarForm>),
+    }))
+  }
+
+  const filteredRates = useMemo(() => {
+    if (!categoryFilter) return hertzRates
+    return hertzRates.filter(r => r.vehicle_category === categoryFilter)
+  }, [hertzRates, categoryFilter])
+
+  const hertzBreakdown = useMemo(() => {
+    if (!isFormHertz) return null
+    const rate = hertzRates.find(r => r.id === form.hertz_rate_id)
+    if (!rate || !form.start_date || !form.end_date || !form.location_type) return null
+    const loc = hertzLocations.find(l => l.id === form.hertz_location_id)
+    return calculateHertzCost({
+      rate, pickupDate: form.start_date, returnDate: form.end_date,
+      locationType: form.location_type as VehicleLocationType,
+      locationFeeType: loc?.fee_type,
+      locationFeeValue: loc?.fee_value,
+      estimatedKm: form.excess_km_estimate,
+      ldwDailyRate: form.ldw_daily_rate, mdwDailyRate: form.mdw_daily_rate,
+      oneWayFee: form.one_way_fee,
+    })
+  }, [isFormHertz, form, hertzRates, hertzLocations])
+
   return (
     <div style={{ padding: '24px', maxWidth: '1000px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -263,31 +465,49 @@ function CarsPanelDesktop() {
             <table>
               <thead>
                 <tr><th style={{width:'32px'}}><input type="checkbox" onChange={e=>setCarSelected(e.target.checked?new Set(cars.map(c=>c.id)):new Set())} /></th>
-                  <th>Type</th><th>Rego</th><th>Vendor</th><th>Person</th>
+                  <th>Type</th>
+                  <th>SIPP</th>
+                  <th>Example</th>
+                  <th>Rego</th>
+                  <th>Vendor</th>
+                  <th>Person</th>
                   <th>Start</th><th>End</th>
+                  <th style={{ textAlign: 'right' }}>Daily</th>
+                  <th>Location Fee</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
                   <th style={{ textAlign: 'right' }}>Sell</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {cars.map(c => (
-                  <tr key={c.id}>
-                    <td><input type="checkbox" checked={carSelected.has(c.id)} onChange={e=>setCarSelected(s=>{const n=new Set(s);e.target.checked?n.add(c.id):n.delete(c.id);return n})} /></td>
-                    <td style={{ fontWeight: 500 }}>{c.vehicle_type || '—'}</td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.rego || '—'}</td>
-                    <td>{c.vendor || '—'}</td>
-                    <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{c.person_id ? resMap[c.person_id] || '—' : '—'}</td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.start_date || '—'}</td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.end_date || '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(c.total_cost || 0)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{fmt(c.customer_total || 0)}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm" onClick={() => openEdit(c)}>Edit</button>
-                      <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(c)}>✕</button>
-                    </td>
-                  </tr>
-                ))}
+                {cars.map(c => {
+                  const lf = c.location_fee_fixed_daily > 0
+                    ? `$${c.location_fee_fixed_daily}/d`
+                    : c.location_fee_pct > 0
+                    ? `${c.location_fee_pct}%`
+                    : '—'
+                  return (
+                    <tr key={c.id}>
+                      <td><input type="checkbox" checked={carSelected.has(c.id)} onChange={e=>setCarSelected(s=>{const n=new Set(s);e.target.checked?n.add(c.id):n.delete(c.id);return n})} /></td>
+                      <td style={{ fontWeight: 500 }}>{c.vehicle_type || '—'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px' }}>{c.sipp_code || '—'}</td>
+                      <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{c.vehicle_example || '—'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.rego || '—'}</td>
+                      <td>{c.vendor || '—'}</td>
+                      <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{c.person_id ? resMap[c.person_id] || '—' : '—'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.start_date || '—'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.end_date || '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{c.daily_rate ? fmt(c.daily_rate) : '—'}</td>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{lf}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(c.total_cost || 0)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--green)' }}>{fmt(c.customer_total || 0)}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-sm" onClick={() => openEdit(c)}>Edit</button>
+                        <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(c)}>✕</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -305,13 +525,61 @@ function CarsPanelDesktop() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Vendor *</label>
-                  <input className="input" value={form.vendor} onChange={e => update('vendor', e.target.value)} placeholder="Hertz, Avis, Europcar..." autoFocus />
+                  <select className="input" value={form.vendor_id} onChange={e => selectVendor(e.target.value)} autoFocus>
+                    <option value="">— Select vendor —</option>
+                    {vendors.map(v => (
+                      <option key={v.id} value={v.id}>{v.name}{v.has_managed_rates ? ' (auto-priced)' : ''}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="fg">
                   <label>Vehicle Type *</label>
-                  <input className="input" value={form.vehicle_type} onChange={e => update('vehicle_type', e.target.value)} placeholder="Toyota HiLux, Corolla..." />
+                  <input className="input" value={form.vehicle_type}
+                    onChange={e => update('vehicle_type', e.target.value)}
+                    placeholder={isFormHertz ? 'Auto-fills from SIPP selection' : 'Toyota HiLux, Corolla...'} />
                 </div>
               </div>
+
+              {/* Hertz auto-pricing section */}
+              {isFormHertz && (
+                <div style={{
+                  padding: '10px 12px', background: 'rgba(255,193,7,.06)',
+                  border: '1px solid rgba(255,193,7,.25)', borderRadius: '6px',
+                  marginBottom: '12px',
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: '8px' }}>
+                    Hertz Auto-Pricing {hertzBreakdown ? `· Tier ${hertzBreakdown.tier} days @ $${hertzBreakdown.dailyRate}/day` : ''}
+                  </div>
+                  <div className="fg-row">
+                    <div className="fg">
+                      <label>Category</label>
+                      <select className="input" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value as HertzVehicleCategory | '')}>
+                        <option value="">All categories</option>
+                        <option value="electric_hybrid">Electric & Hybrid</option>
+                        <option value="passenger">Passenger</option>
+                        <option value="prestige">Prestige</option>
+                        <option value="4wd">4WD</option>
+                        <option value="bus">Bus</option>
+                        <option value="commercial">Commercial</option>
+                      </select>
+                    </div>
+                    <div className="fg" style={{ flex: 2 }}>
+                      <label>SIPP / Vehicle *</label>
+                      <select className="input" value={form.hertz_rate_id} onChange={e => selectHertzRate(e.target.value)}>
+                        <option value="">— Select vehicle —</option>
+                        {filteredRates.map(r => (
+                          <option key={r.id} value={r.id}>{r.sipp_code} — {r.vehicle_type} ({r.vehicle_example})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {form.hertz_rate_id && form.ldl_amount && (
+                    <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>
+                      Pricing code <strong>{form.pricing_code}</strong> · LDL liability cap <strong>${form.ldl_amount.toLocaleString()}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Rego / Assigned To */}
               <div className="fg-row">
@@ -351,16 +619,77 @@ function CarsPanelDesktop() {
               </div>
 
               {/* Pickup / Return Location */}
-              <div className="fg-row">
-                <div className="fg">
-                  <label>Pickup Location</label>
-                  <input className="input" value={form.pickup_loc} onChange={e => setForm(f => ({ ...f, pickup_loc: e.target.value }))} placeholder="Airport, depot address..." />
+              {isFormHertz ? (
+                <>
+                  <div className="fg-row">
+                    <div className="fg" style={{ flex: 2 }}>
+                      <label>Pickup Location</label>
+                      <input
+                        className="input" list="hertz-locations-datalist"
+                        value={form.pickup_loc}
+                        placeholder="Type to search Hertz locations..."
+                        onChange={e => {
+                          const val = e.target.value
+                          // Try to find an exact match by formatted display string
+                          const match = hertzLocations.find(l =>
+                            val === (l.location_name + (l.address ? ` — ${l.address}` : '')) ||
+                            val === l.location_name
+                          )
+                          if (match) {
+                            selectHertzLocation(match.id)
+                          } else {
+                            // Free text — clear the snapshot link but keep typed value
+                            setForm(f => calcCosts({ ...f, hertz_location_id: '', pickup_loc: val }))
+                          }
+                        }} />
+                      <datalist id="hertz-locations-datalist">
+                        {hertzLocations.map(l => (
+                          <option key={l.id} value={l.location_name + (l.address ? ` — ${l.address}` : '')}>
+                            {l.state} · {locationTypeLabel(l.location_type)}{l.fee_value > 0 ? ` · ${l.fee_type === 'percentage' ? l.fee_value + '%' : '$' + l.fee_value + '/day'}` : ''}
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
+                    <div className="fg">
+                      <label>Location Type</label>
+                      <select className="input" value={form.location_type}
+                        onChange={e => update('location_type', e.target.value)}>
+                        <option value="">— Select —</option>
+                        <option value="metro">Metropolitan</option>
+                        <option value="country">Country</option>
+                        <option value="remote">Remote</option>
+                        <option value="high_remote">Remote (BH/MI/Weipa)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="fg-row">
+                    <div className="fg">
+                      <label>Return Location</label>
+                      <input className="input" value={form.return_loc} onChange={e => setForm(f => ({ ...f, return_loc: e.target.value }))} placeholder="Same as pickup if blank" />
+                    </div>
+                    {form.location_type && form.location_type !== 'metro' && (
+                      <div className="fg">
+                        <label>Estimated km <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(for excess-km cost)</span></label>
+                        <input type="number" className="input" min={0} step={10}
+                          value={form.excess_km_estimate || ''}
+                          placeholder={form.start_date && form.end_date ? `${(form.location_type === 'country' ? 200 : 150) * (daysBetween(form.start_date, form.end_date) || 1)} km included` : 'e.g. 1500'}
+                          onChange={e => update('excess_km_estimate', parseInt(e.target.value) || 0)} />
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="fg-row">
+                  <div className="fg">
+                    <label>Pickup Location</label>
+                    <input className="input" value={form.pickup_loc} onChange={e => setForm(f => ({ ...f, pickup_loc: e.target.value }))} placeholder="Airport, depot address..." />
+                  </div>
+                  <div className="fg">
+                    <label>Return Location</label>
+                    <input className="input" value={form.return_loc} onChange={e => setForm(f => ({ ...f, return_loc: e.target.value }))} placeholder="Same or different" />
+                  </div>
                 </div>
-                <div className="fg">
-                  <label>Return Location</label>
-                  <input className="input" value={form.return_loc} onChange={e => setForm(f => ({ ...f, return_loc: e.target.value }))} placeholder="Same or different" />
-                </div>
-              </div>
+              )}
 
               {/* Daily rate excl/incl + GM */}
               <div className="fg-row">
@@ -405,17 +734,44 @@ function CarsPanelDesktop() {
               {/* Loc fee + One-way */}
               <div className="fg-row">
                 <div className="fg">
-                  <label>Location Fee %</label>
+                  <label>Location Fee % {isFormHertz && <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(from location)</span>}</label>
                   <input type="number" className="input" value={form.location_fee_pct || ''} placeholder="0" min={0} step={0.1}
-                    title="Airport/depot surcharge applied as % on top of base rate"
+                    readOnly={isFormHertz && !!form.hertz_location_id}
+                    title="Airport/depot surcharge applied as % on top of base + surcharge"
                     onChange={e => update('location_fee_pct', parseFloat(e.target.value) || 0)} />
                 </div>
+                {isFormHertz && form.location_fee_fixed_daily > 0 && (
+                  <div className="fg">
+                    <label>Location Fee $/day <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(from location)</span></label>
+                    <input type="number" className="input" value={form.location_fee_fixed_daily} readOnly />
+                  </div>
+                )}
                 <div className="fg">
                   <label>One-Way Fee ($)</label>
                   <input type="number" className="input" value={form.one_way_fee || ''} placeholder="0" min={0}
                     onChange={e => update('one_way_fee', parseFloat(e.target.value) || 0)} />
                 </div>
               </div>
+
+              {/* Hertz optional waivers */}
+              {isFormHertz && (
+                <div className="fg-row">
+                  <div className="fg">
+                    <label>LDW $/day <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></label>
+                    <input type="number" className="input" min={0} step={0.01}
+                      value={form.ldw_daily_rate || ''}
+                      placeholder="0"
+                      onChange={e => update('ldw_daily_rate', parseFloat(e.target.value) || 0)} />
+                  </div>
+                  <div className="fg">
+                    <label>MDW $/day <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(optional)</span></label>
+                    <input type="number" className="input" min={0} step={0.01}
+                      value={form.mdw_daily_rate || ''}
+                      placeholder="0"
+                      onChange={e => update('mdw_daily_rate', parseFloat(e.target.value) || 0)} />
+                  </div>
+                </div>
+              )}
 
               {/* Reservation + Collected/Dropped */}
               <div className="fg-row">
@@ -433,9 +789,46 @@ function CarsPanelDesktop() {
                 </div>
               </div>
 
-              {/* Cost preview — matches HTML carCostPreview */}
+              {/* Cost preview */}
               <div style={{ padding: '10px 12px', background: 'var(--bg3)', borderRadius: '6px', fontSize: '12px' }}>
-                {form.daily_rate > 0 && form.start_date && form.end_date ? (
+                {isFormHertz && hertzBreakdown ? (
+                  <>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>DAYS / TIER</span><br /><strong>{hertzBreakdown.days} · {hertzBreakdown.tier}</strong></div>
+                      <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>DAILY RATE</span><br /><strong>{fmt(hertzBreakdown.dailyRate)}</strong></div>
+                      <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>BASE</span><br /><strong>{fmt(hertzBreakdown.baseCost)}</strong></div>
+                      {hertzBreakdown.surchargeTotal > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>SURCHARGE</span><br /><strong>+{fmt(hertzBreakdown.surchargeTotal)}</strong></div>
+                      )}
+                      {hertzBreakdown.locationFeeAmount > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>LOC FEE</span><br /><strong>+{fmt(hertzBreakdown.locationFeeAmount)}</strong></div>
+                      )}
+                      {hertzBreakdown.excessKmCost > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>EXCESS KM</span><br /><strong>+{fmt(hertzBreakdown.excessKmCost)}</strong></div>
+                      )}
+                      {hertzBreakdown.ldwTotal > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>LDW</span><br /><strong>+{fmt(hertzBreakdown.ldwTotal)}</strong></div>
+                      )}
+                      {hertzBreakdown.mdwTotal > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>MDW</span><br /><strong>+{fmt(hertzBreakdown.mdwTotal)}</strong></div>
+                      )}
+                      {hertzBreakdown.weekendSurcharge > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>WEEKEND</span><br /><strong>+{fmt(hertzBreakdown.weekendSurcharge)}</strong></div>
+                      )}
+                      {hertzBreakdown.oneWayFee > 0 && (
+                        <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>ONE-WAY</span><br /><strong>+{fmt(hertzBreakdown.oneWayFee)}</strong></div>
+                      )}
+                      <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>EX GST</span><br /><strong style={{ color: 'var(--accent)' }}>{fmt(hertzBreakdown.totalCostExGst)}</strong></div>
+                      <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>INCL GST</span><br /><strong style={{ color: 'var(--accent)' }}>{fmt(hertzBreakdown.totalCostInclGst)}</strong></div>
+                      <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>CUSTOMER ({form.gm_pct}% GM)</span><br /><strong style={{ color: 'var(--green)' }}>{fmt(form.customer_total)}</strong></div>
+                    </div>
+                    {hertzBreakdown.warnings.length > 0 && (
+                      <div style={{ marginTop: '8px', color: 'var(--orange)', fontSize: '11px' }}>
+                        {hertzBreakdown.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+                      </div>
+                    )}
+                  </>
+                ) : form.daily_rate > 0 && form.start_date && form.end_date ? (
                   <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                     <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>DAYS</span><br /><strong>{previewDays}</strong></div>
                     <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>BASE COST (EX GST)</span><br /><strong>{fmt(form.daily_rate * previewDays)}</strong></div>
@@ -449,7 +842,7 @@ function CarsPanelDesktop() {
                     <div><span style={{ color: 'var(--text3)', fontSize: '10px' }}>CUSTOMER ({form.gm_pct}% GM)</span><br /><strong style={{ color: 'var(--green)' }}>{fmt(form.customer_total)}</strong></div>
                   </div>
                 ) : (
-                  <span style={{ color: 'var(--text3)' }}>Enter rate and dates to see cost preview.</span>
+                  <span style={{ color: 'var(--text3)' }}>{isFormHertz ? 'Pick a SIPP vehicle, location, and dates to see the auto-priced breakdown.' : 'Enter rate and dates to see cost preview.'}</span>
                 )}
               </div>
 
