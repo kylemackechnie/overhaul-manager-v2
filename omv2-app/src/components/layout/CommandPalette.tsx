@@ -142,6 +142,7 @@ const NAV_PAGES: NavPage[] = [
 
   // Site Specific
   { icon: '📊', label: 'Site Dashboard',           panel: 'site-dashboard',     module: 'Site Specific' },
+  { icon: '📑', label: 'NRG Reports',              panel: 'nrg-reports',        module: 'Site Specific' },
 
   // Global
   { icon: '🧰', label: 'Global Tooling Register',  panel: 'global-tooling',     module: 'Global' },

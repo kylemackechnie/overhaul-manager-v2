@@ -445,6 +445,9 @@ export interface Invoice {
   linked_asset_ids: string[]
   status_history: InvoiceStatusHistory[]
   notes: string
+  chargeable: boolean
+  sell_price: number | null
+  gm_pct: number | null
   created_at: string
   updated_at: string
   // Joined

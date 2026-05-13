@@ -88,6 +88,9 @@ interface Invoice {
   status_history: StatusHistoryEntry[]; notes: string|null; dispute_note: string|null
   receipt_paths: string[]
   invoice_ref: string|null
+  chargeable: boolean
+  sell_price: number|null
+  gm_pct: number|null
   created_at: string
 }
 
@@ -101,12 +104,13 @@ type InvForm = {
   po_id: string; tce_item_id: string; status: string; currency: string
   amount: string; expected_amount: string
   invoice_date: string; due_date: string; period_from: string; period_to: string
-  notes: string
+  notes: string; chargeable: boolean; sell_price: string; gm_pct: string
 }
 const EMPTY_FORM: InvForm = {
   invoice_number:'', vendor_ref:'', vendor_details:'', po_id:'', tce_item_id:'',
   status:'received', currency:'AUD', amount:'', expected_amount:'',
   invoice_date:'', due_date:'', period_from:'', period_to:'', notes:'',
+  chargeable:true, sell_price:'', gm_pct:'0',
 }
 
 // ── SAP Invoice Import ────────────────────────────────────────────────────────
@@ -168,10 +172,12 @@ export function InvoicesPanel() {
   const [modalDragOver, setModalDragOver] = useState(false)
 
   // ── Live SPOL reference preview ────────────────────────────────────────────
-  function buildInvRefSlug(invoiceNumber: string, vendor: string, amount: string): string {
-    const clean = (s: string) => s.trim().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').slice(0, 24)
-    const parts = [clean(invoiceNumber)||'INV', clean(vendor)||'Vendor', amount ? `$${parseFloat(amount).toFixed(0)}` : '']
-    return parts.filter(Boolean).join('_')
+  // Format: INV-###_Vendor_Amount  e.g. INV-001_ACL-Industrial_10.47
+  function buildInvRefSlug(vendor: string, amount: string): string {
+    const clean = (s: string) => s.trim().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').slice(0, 30)
+    const vendorSlug = clean(vendor) || 'Vendor'
+    const amtSlug = amount ? parseFloat(amount).toFixed(2) : ''
+    return [vendorSlug, amtSlug].filter(Boolean).join('_')
   }
 
   // Resolve vendor name from form (PO vendor or vendor_details)
@@ -183,7 +189,7 @@ export function InvoicesPanel() {
     return form.vendor_details
   }
 
-  const invRefPreview = `INV-####_${buildInvRefSlug(form.invoice_number, formVendor(), form.amount)}`
+  const invRefPreview = `INV-####_${buildInvRefSlug(formVendor(), form.amount)}`
 
   async function assignInvoiceRef(invoiceId: string): Promise<string> {
     // Get max number across BOTH expenses and invoices for a shared sequence
@@ -195,7 +201,7 @@ export function InvoicesPanel() {
     const invNums = (invData.data || []).map((e: { invoice_ref?: string | null }) => { const m = (e.invoice_ref || '').match(/INV-(\d+)/); return m ? parseInt(m[1]) : 0 })
     const allNums = [...expNums, ...invNums].filter(n => n > 0)
     const next = allNums.length > 0 ? Math.max(...allNums) + 1 : 1
-    const ref = `INV-${String(next).padStart(4, '0')}_${buildInvRefSlug(form.invoice_number, formVendor(), form.amount)}`
+    const ref = `INV-${String(next).padStart(4, '0')}_${buildInvRefSlug(formVendor(), form.amount)}`
     await supabase.from('invoices').update({ invoice_ref: ref }).eq('id', invoiceId)
     return ref
   }
@@ -284,6 +290,9 @@ export function InvoicesPanel() {
       period_from: form.period_from || null,
       period_to: form.period_to || null,
       notes: form.notes,
+      chargeable: form.chargeable,
+      sell_price: form.chargeable ? (parseFloat(form.sell_price) || null) : null,
+      gm_pct: parseFloat(form.gm_pct) || 0,
     }
     const isNew = modal === 'new'
     let savedId: string
@@ -714,6 +723,7 @@ export function InvoicesPanel() {
                               amount: String(inv.amount||''), expected_amount: String(inv.expected_amount||''),
                               invoice_date: inv.invoice_date||'', due_date: inv.due_date||'',
                               period_from: inv.period_from||'', period_to: inv.period_to||'', notes: inv.notes||'',
+                              chargeable: inv.chargeable !== false, sell_price: String(inv.sell_price||''), gm_pct: String(inv.gm_pct||'0'),
                             })
                             setModal(inv)
                           }}>Edit</button>
@@ -794,6 +804,52 @@ export function InvoicesPanel() {
                 <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} /></div>
                 <div className="fg"><label>Period To</label><input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} /></div>
               </div>
+              {/* Chargeable to customer */}
+              <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',marginBottom:'4px'}}>
+                <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px',fontWeight:500,margin:0}}>
+                  <input type="checkbox" checked={form.chargeable} onChange={e=>{
+                    const ch = e.target.checked
+                    setForm(f=>({...f, chargeable:ch, sell_price: ch ? f.sell_price : '0', gm_pct: ch ? f.gm_pct : '0'}))
+                  }} style={{width:'15px',height:'15px'}} />
+                  Chargeable to customer
+                </label>
+                {!form.chargeable && <span style={{fontSize:'11px',color:'var(--text3)',fontStyle:'italic'}}>Not passed on — no margin, excluded from customer price &amp; TCE</span>}
+              </div>
+              {form.chargeable && (
+                <div className="fg-row">
+                  <div className="fg">
+                    <label>Sell Price (AUD)</label>
+                    <input type="number" className="input" value={form.sell_price} onChange={e=>setForm(f=>({...f,sell_price:e.target.value}))} placeholder="0.00" />
+                  </div>
+                  <div className="fg">
+                    <label>GM %</label>
+                    <input type="number" className="input" value={form.gm_pct} onChange={e=>setForm(f=>({...f,gm_pct:e.target.value}))} placeholder="0" />
+                  </div>
+                </div>
+              )}
+              {/* Chargeable to customer */}
+              <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',marginBottom:'4px'}}>
+                <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px',fontWeight:500,margin:0}}>
+                  <input type="checkbox" checked={form.chargeable} onChange={e=>{
+                    const ch = e.target.checked
+                    setForm(f=>({...f, chargeable:ch, sell_price: ch ? f.sell_price : '0', gm_pct: ch ? f.gm_pct : '0'}))
+                  }} style={{width:'15px',height:'15px'}} />
+                  Chargeable to customer
+                </label>
+                {!form.chargeable && <span style={{fontSize:'11px',color:'var(--text3)',fontStyle:'italic'}}>Not passed on — no margin, excluded from customer price &amp; TCE</span>}
+              </div>
+              {form.chargeable && (
+                <div className="fg-row">
+                  <div className="fg">
+                    <label>Sell Price (AUD)</label>
+                    <input type="number" className="input" value={form.sell_price} onChange={e=>setForm(f=>({...f,sell_price:e.target.value}))} placeholder="0.00" />
+                  </div>
+                  <div className="fg">
+                    <label>GM %</label>
+                    <input type="number" className="input" value={form.gm_pct} onChange={e=>setForm(f=>({...f,gm_pct:e.target.value}))} placeholder="0" />
+                  </div>
+                </div>
+              )}
               <div className="fg">
                 <label>TCE Item ID <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— links invoice to a TCE line for actuals</span></label>
                 {tceLines.length === 0 ? (

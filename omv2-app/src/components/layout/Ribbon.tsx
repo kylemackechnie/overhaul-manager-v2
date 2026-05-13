@@ -203,6 +203,7 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '📃', label: 'Allocations', panel: 'nrg-scope-allocations' },
         { icon: '📝', label: 'Credit Notes', panel: 'nrg-credit-notes' },
         { icon: '🏆', label: 'KPI Model', panel: 'nrg-kpi' },
+        { icon: '📑', label: 'NRG Reports', panel: 'nrg-reports' },
       ]},
     ],
   },

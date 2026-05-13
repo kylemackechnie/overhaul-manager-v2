@@ -195,14 +195,17 @@ export function ExpensesPanel() {
 
 
 
-  function buildRefSlug(category: string, vendor: string, description: string): string {
-    const clean = (s: string) => s.trim().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').slice(0, 24)
-    const parts = [clean(category)||'Cost', clean(vendor)||'Vendor', clean(description)||'Desc']
-    return parts.join('_')
+  // Format: EXP-###_Vendor-Description_Price  e.g. EXP-001_Bunnings-consumables_99.47
+  function buildRefSlug(vendor: string, description: string, amount: number): string {
+    const clean = (s: string) => s.trim().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').slice(0, 30)
+    const vendorSlug = clean(vendor) || 'Vendor'
+    const descSlug = clean(description) || 'Desc'
+    const amtSlug = amount ? amount.toFixed(2) : ''
+    return [vendorSlug + '-' + descSlug, amtSlug].filter(Boolean).join('_')
   }
 
   // Live preview for new expenses (number not yet assigned)
-  const refPreview = `EXP-####_${buildRefSlug(form.category, form.vendor, form.description)}`
+  const refPreview = `EXP-####_${buildRefSlug(form.vendor, form.description, form.cost_ex_gst)}`
 
   async function assignExpenseRef(expenseId: string): Promise<string> {
     // Get max existing ref number for this project
@@ -215,7 +218,7 @@ export function ExpensesPanel() {
       .map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
       .filter(n => n > 0)
     const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
-    const ref = `EXP-${String(next).padStart(4,'0')}_${buildRefSlug(form.category, form.vendor, form.description)}`
+    const ref = `EXP-${String(next).padStart(4,'0')}_${buildRefSlug(form.vendor, form.description, form.cost_ex_gst)}`
     await supabase.from('expenses').update({ expense_ref: ref }).eq('id', expenseId)
     return ref
   }
@@ -365,7 +368,7 @@ export function ExpensesPanel() {
       // Build new ref: auto-numbered, same slug as source
       const slug = src.expense_ref
         ? src.expense_ref.replace(/^EXP-\d+_?/, '')
-        : buildRefSlug(src.category, src.vendor, src.description)
+        : buildRefSlug(src.vendor, src.description, src.cost_ex_gst)
       const newRef = `EXP-${String(nextNum).padStart(4, '0')}${slug ? '_' + slug : ''}`
       nextNum++
 

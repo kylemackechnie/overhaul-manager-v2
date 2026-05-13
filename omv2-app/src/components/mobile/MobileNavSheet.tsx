@@ -77,6 +77,7 @@ const SECTIONS: NavSection[] = [
     module: 'site_specific',
     items: [
       { panel: 'site-dashboard',     icon: '🏭', label: 'Site Dashboard' },
+      { panel: 'nrg-reports',        icon: '📑', label: 'NRG Reports' },
       { panel: 'parts-list',         icon: '🔩', label: 'Parts List' },
       { panel: 'parts-receiving',    icon: '📬', label: 'Receiving' },
       { panel: 'parts-issue',        icon: '📋', label: 'Issue Parts' },
