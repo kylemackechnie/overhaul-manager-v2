@@ -25,6 +25,7 @@ export interface Person {
   default_role: string | null
   app_user_id: string | null
   active: boolean
+  gid: string | null
   notes: string | null
   created_at: string
   updated_at: string

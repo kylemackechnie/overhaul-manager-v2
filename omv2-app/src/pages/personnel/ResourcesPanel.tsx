@@ -14,6 +14,7 @@ import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { ResourceCalendar } from './ResourceCalendar'
 import { CrewPlanPanel } from './CrewPlanPanel'
+import { PersonPicker } from '../../components/PersonPicker'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
 
 // Lazy — mobile bundle only loads on phones
@@ -128,6 +129,7 @@ export function ResourcesPanel() {
   const [sortCol, setSortCol] = useState<SortCol>((prefs.res_sort_col as SortCol | undefined) ?? 'name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [activeView, setActiveView] = useState<'list' | 'calendar' | 'crew'>('list')
+  const [showPersonPicker, setShowPersonPicker] = useState(false)
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', specialisation:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false, car_required:false, flight_required:false, accom_required:false, applyCarReq:false, applyFlightReq:false, applyAccomReq:false })
   const [sortAsc, setSortAsc] = useState(prefs.res_sort_asc ?? true)
@@ -225,7 +227,24 @@ export function ResourcesPanel() {
     }
   }
 
-  function openNew() { setForm({...EMPTY}); setModal('new') }
+  function openNew() {
+    // Show person picker first — search existing before creating
+    setShowPersonPicker(true)
+  }
+  function handlePersonPicked(person: Person, _isNew: boolean) {
+    // Pre-fill the form with person data, then open the resource form
+    setForm({
+      ...EMPTY,
+      name: person.full_name,
+      role: person.default_role || '',
+      category: person.default_category || 'trades',
+      email: person.email || '',
+      phone: person.phone || '',
+      company: person.company || '',
+      person_id: person.id,
+    })
+    setModal('new')
+  }
   function openEdit(r: Resource) { setForm({...r}); setModal(r) }
 
   async function saveInline(id: string, field: string, value: unknown) {
@@ -902,6 +921,16 @@ export function ResourcesPanel() {
         </>
       )}
     </>)}
+
+      {/* Person Picker — shown before new resource form to search existing persons */}
+      {showPersonPicker && (
+        <PersonPicker
+          onSelect={handlePersonPicked}
+          onClose={() => setShowPersonPicker(false)}
+          title="Add Person to Project"
+          context={`Adding to ${activeProject?.name ?? 'this project'}`}
+        />
+      )}
 
       {/* Modal */}
       {modal && (
