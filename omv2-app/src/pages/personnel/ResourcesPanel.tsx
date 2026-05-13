@@ -13,6 +13,7 @@ import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { ResourceCalendar } from './ResourceCalendar'
+import { CrewPlanPanel } from './CrewPlanPanel'
 import type { Resource, RateCard, PurchaseOrder } from '../../types'
 
 // Lazy — mobile bundle only loads on phones
@@ -126,6 +127,7 @@ export function ResourcesPanel() {
   const [search, setSearch] = useState('')
   const [sortCol, setSortCol] = useState<SortCol>((prefs.res_sort_col as SortCol | undefined) ?? 'name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [activeView, setActiveView] = useState<'list' | 'calendar' | 'crew'>('list')
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkForm, setBulkForm] = useState({ role:'', company:'', category:'', mob_in:'', mob_out:'', shift:'', wbs:'', specialisation:'', allow_laha:false, allow_meal:false, allow_fsa:false, applyLaha:false, applyMeal:false, applyFsa:false, car_required:false, flight_required:false, accom_required:false, applyCarReq:false, applyFlightReq:false, applyAccomReq:false })
   const [sortAsc, setSortAsc] = useState(prefs.res_sort_asc ?? true)
@@ -573,7 +575,23 @@ export function ResourcesPanel() {
 
         <div style={{width:'0.5px',height:'28px',background:'var(--border)',flexShrink:0}} />
 
-        {/* Search */}
+        {/* View tabs */}
+        <div style={{display:'flex',gap:'2px',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'2px'}}>
+          {([['list','📋 Resources'],['crew','🎯 Crew Plan'],['calendar','📅 Calendar']] as [string,string][]).map(([v,label]) => (
+            <button key={v} onClick={() => setActiveView(v as 'list'|'calendar'|'crew')}
+              style={{padding:'3px 10px',fontSize:'11px',fontWeight:600,borderRadius:'4px',border:'none',cursor:'pointer',whiteSpace:'nowrap',
+                background: activeView === v ? 'var(--bg2)' : 'transparent',
+                color: activeView === v ? 'var(--accent)' : 'var(--text3)',
+                boxShadow: activeView === v ? 'var(--shadow)' : 'none',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search - only shown in list view */}
+        {activeView !== 'crew' && false && <div />}
+        {activeView === 'list' && <div />}
         <div data-tour="resources-search" style={{position:'relative',flex:'0 0 180px'}}>
           <span style={{position:'absolute',left:'7px',top:'50%',transform:'translateY(-50%)',fontSize:'13px',color:'var(--text3)',pointerEvents:'none'}}>⌕</span>
           <input className="input" style={{width:'100%',paddingLeft:'24px',height:'28px',fontSize:'12px'}}
@@ -667,7 +685,7 @@ export function ResourcesPanel() {
               </div>
             ) : null
           })()}
-          <div data-tour="resources-table" className="card" style={{padding:0,marginBottom:'16px'}}>
+          {activeView !== 'crew' && <div data-tour="resources-table" className="card" style={{padding:0,marginBottom:'16px'}}>
             <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'calc(100vh - 280px)'}} onScroll={e => {
               const el = e.currentTarget
               const mirror = el.parentElement?.querySelector('.scroll-mirror') as HTMLElement | null
@@ -857,9 +875,10 @@ export function ResourcesPanel() {
               </tbody>
             </table>
             </div>
-          </div>
+          </div>}
 
-          {/* On-site Gantt calendar */}
+          {/* On-site Gantt calendar — hidden when crew plan active */}
+          {activeView !== 'crew' && (
           <div data-tour="resources-calendar">
             <ResourceCalendar
               resources={filtered}
@@ -869,7 +888,18 @@ export function ResourcesPanel() {
               onBulkEdit={() => setBulkModal(true)}
               onClearSelected={() => setSelected(new Set())}
             />
-          </div>        </>
+          </div>
+          )}
+
+          {/* Crew Plan view */}
+          {activeView === 'crew' && (
+            <CrewPlanPanel
+              projectId={activeProject!.id}
+              rateCards={rcs}
+              wbsList={wbsList}
+            />
+          )}
+        </>
       )}
     </>)}
 
