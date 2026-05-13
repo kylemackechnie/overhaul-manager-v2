@@ -551,11 +551,11 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                     </select>
                   </div>
                   <div className="fg">
-                    <label>Usage Rate ($/day when active)</label>
-                    <input type="number" className="input" value={form.daily_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, daily_rate: parseFloat(e.target.value)||0 }))} placeholder="$/day" />
+                    <label>Usage Rate ({form.charge_unit === 'weekly' ? '$/week when active' : '$/day when active'})</label>
+                    <input type="number" className="input" value={form.daily_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, daily_rate: parseFloat(e.target.value)||0 }))} placeholder={form.charge_unit === 'weekly' ? '$/week' : '$/day'} />
                   </div>
                   <div className="fg">
-                    <label>Standby Rate <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>($/day when idle)</span></label>
+                    <label>Standby Rate <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '10px' }}>({form.charge_unit === 'weekly' ? '$/week when idle' : '$/day when idle'})</span></label>
                     <input type="number" className="input" value={form.standby_rate || ''} onChange={e => setFormAndCalc(f => ({ ...f, standby_rate: parseFloat(e.target.value)||0 }))} placeholder="0" />
                   </div>
                 </div>
@@ -575,14 +575,19 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                 {days > 0 && form.daily_rate > 0 && (() => {
                   const c = calcLocalHireCost()
                   if (!c) return null
+                  const isWeekly = form.charge_unit === 'weekly'
                   const activeDays = form.active_days !== null && form.standby_rate > 0 ? Math.min(form.active_days??days, days) : days
                   const standbyDays = form.standby_rate > 0 ? days - activeDays : 0
+                  const activePeriods = isWeekly ? Math.ceil(activeDays / 7) : activeDays
+                  const standbyPeriods = isWeekly ? Math.ceil(standbyDays / 7) : standbyDays
+                  const unit = isWeekly ? 'wk' : 'd'
+                  const rateLabel = `$${form.daily_rate}/${unit}`
                   return (
                     <div style={{ padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', marginTop: '4px' }}>
                       <div style={{ fontWeight: 600, color: '#15803d', marginBottom: '4px' }}>📐 Auto-calculated cost</div>
                       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontFamily: 'var(--mono)' }}>
-                        <span>Active: {activeDays}d × ${form.daily_rate}/d = ${(activeDays * form.daily_rate * (form.qty||1)).toLocaleString()}</span>
-                        {standbyDays > 0 && <span>Standby: {standbyDays}d × ${form.standby_rate}/d = ${(standbyDays * form.standby_rate * (form.qty||1)).toLocaleString()}</span>}
+                        <span>Active: {activePeriods}{unit} × {rateLabel} = ${(activePeriods * form.daily_rate * (form.qty||1)).toLocaleString()}</span>
+                        {standbyDays > 0 && <span>Standby: {standbyPeriods}{unit} × ${form.standby_rate}/{unit} = ${(standbyPeriods * (form.standby_rate||0) * (form.qty||1)).toLocaleString()}</span>}
                         <span style={{ fontWeight: 700 }}>Total: ${c.toLocaleString()}</span>
                       </div>
                     </div>
