@@ -194,7 +194,7 @@ export async function exportTceAll(
       .eq('project_id', projectId),
     supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
       .eq('project_id', projectId).order('week_ending'),
-    supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount')
+    supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,sell_price')
       .eq('project_id', projectId).in('status', ['approved', 'paid']),
     supabase.from('expenses').select('tce_item_id,date,sell_price,cost_ex_gst,amount,chargeable')
       .eq('project_id', projectId).eq('chargeable', true),
@@ -211,7 +211,7 @@ export async function exportTceAll(
   }[]
   const nrgInvSorted = ((nrgInvRes.data||[]) as {week_ending:string|null;eur_spot_rate:number|null}[])
     .filter(i=>i.week_ending).sort((a,b)=>a.week_ending!.localeCompare(b.week_ending!))
-  const supplierInvoices = (supInvRes.data||[]) as {tce_item_id:string|null;invoice_date:string|null;date_processed:string|null;amount:number|null}[]
+  const supplierInvoices = (supInvRes.data||[]) as {tce_item_id:string|null;invoice_date:string|null;date_processed:string|null;amount:number|null;sell_price:number|null}[]
   const expenseItems = (expRes.data||[]) as {tce_item_id:string|null;date:string|null;sell_price:number|null;cost_ex_gst:number|null;amount:number|null;chargeable:boolean|null}[]
 
   const spotRateByWE: Record<string,number|null> = {}
@@ -275,7 +275,7 @@ export async function exportTceAll(
     const we=periodWE(inv.date_processed || inv.invoice_date)
     if(!we) continue
     const b=nonLabourByItemWeek[inv.tce_item_id]??={}
-    b[we]=(b[we]||0)+(Number(inv.amount)||0)
+    b[we]=(b[we]||0)+(inv.sell_price != null && inv.sell_price !== 0 ? Number(inv.sell_price) : (Number(inv.amount)||0))
   }
   for(const exp of expenseItems){
     if(!exp.tce_item_id) continue

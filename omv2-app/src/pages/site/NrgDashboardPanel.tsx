@@ -18,19 +18,19 @@ export function NrgDashboardPanel() {
     const pid = activeProject!.id
     const [tceRes, invRes, expRes, varRes, woRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('tce_total,source').eq('project_id', pid),
-      supabase.from('invoices').select('amount,status,tce_item_id').eq('project_id', pid),
+      supabase.from('invoices').select('amount,sell_price,status,tce_item_id').eq('project_id', pid),
       supabase.from('expenses').select('cost_ex_gst,amount,tce_item_id,chargeable').eq('project_id', pid).eq('chargeable', true),
       supabase.from('variations').select('status,sell_total').eq('project_id', pid),
       supabase.from('work_orders').select('status').eq('project_id', pid),
     ])
     const tce = (tceRes.data || []) as { tce_total: number; source: string }[]
-    const inv = (invRes.data || []) as { amount: number; status: string; tce_item_id: string | null }[]
+    const inv = (invRes.data || []) as { amount: number; sell_price: number | null; status: string; tce_item_id: string | null }[]
     const exp = (expRes.data || []) as { cost_ex_gst: number; amount: number; tce_item_id: string | null }[]
     const vars = (varRes.data || []) as { status: string; sell_total: number }[]
     const wos = (woRes.data || []) as { status: string }[]
     const oh = tce.filter(l => l.source === 'overhead')
     const sl = tce.filter(l => l.source === 'skilled')
-    const invActuals = inv.filter(i => i.tce_item_id && (i.status === 'approved' || i.status === 'paid')).reduce((a, i) => a + (i.amount || 0), 0)
+    const invActuals = inv.filter(i => i.tce_item_id && (i.status === 'approved' || i.status === 'paid')).reduce((a, i) => a + (i.sell_price != null && i.sell_price !== 0 ? i.sell_price : (i.amount || 0)), 0)
     const expActuals = exp.filter(e => e.tce_item_id).reduce((a, e) => a + (e.cost_ex_gst || e.amount || 0), 0)
     const vnActuals = vars.filter(v => v.status === 'approved').reduce((a, v) => a + (v.sell_total || 0), 0)
     setS({

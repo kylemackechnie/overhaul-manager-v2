@@ -626,6 +626,7 @@ export interface NrgInvoiceMin {
   tce_item_id: string | null
   amount: number
   status: string
+  sell_price?: number | null
   period_from?: string | null
   period_to?: string | null
 }
@@ -700,7 +701,7 @@ export function nrgInvoiceActual(
 
   const invTotal = invoices
     .filter(i => i.tce_item_id === itemId && (i.status === 'approved' || i.status === 'paid'))
-    .reduce((s, i) => s + (i.amount || 0), 0)
+    .reduce((s, i) => s + (i.sell_price != null && i.sell_price !== 0 ? i.sell_price : (i.amount || 0)), 0)
 
   const expTotal = expenses
     .filter(e => e.tce_item_id === itemId && e.chargeable !== false)
@@ -745,7 +746,7 @@ export function nrgInvoiceActualForWeek(
       if (!f || !t) return false  // no period, can't slice
       return f <= weekEnd && t >= weekStart
     })
-    .reduce((s, i) => s + (i.amount || 0), 0)
+    .reduce((s, i) => s + (i.sell_price != null && i.sell_price !== 0 ? i.sell_price : (i.amount || 0)), 0)
 
   const expTotal = expenses
     .filter(e => e.tce_item_id === itemId && e.chargeable !== false && e.date && e.date >= weekStart && e.date <= weekEnd)

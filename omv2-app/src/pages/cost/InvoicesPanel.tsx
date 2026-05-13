@@ -76,6 +76,11 @@ const fmtUser = (email?: string|null) => {
   return email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,(c:string)=>c.toUpperCase())
 }
 
+function calcSell(cost: number, gm: number): number {
+  if (gm >= 100 || gm <= 0) return cost
+  return parseFloat((cost / (1 - gm / 100)).toFixed(2))
+}
+
 interface StatusHistoryEntry { status: string; setBy: string; setAt: string; note?: string }
 
 interface Invoice {
@@ -519,7 +524,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10)});setPendingFiles([]);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setModal('new')}}>+ New Invoice</button>
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
@@ -565,7 +570,7 @@ export function InvoicesPanel() {
           <div style={{fontSize:'36px',marginBottom:'12px'}}>🧾</div>
           <div style={{fontSize:'16px',fontWeight:600,marginBottom:'4px'}}>No invoices yet</div>
           <div style={{fontSize:'13px',color:'var(--text3)',marginBottom:'20px'}}>Add invoices against active POs to track what's been billed.</div>
-          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10)});setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setModal('new')}}>+ New Invoice</button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
@@ -786,7 +791,10 @@ export function InvoicesPanel() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Amount</label>
-                  <input type="number" className="input" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" />
+                  <input type="number" className="input" value={form.amount} onChange={e=>{
+                    const amt = e.target.value
+                    setForm(f=>({...f, amount: amt, sell_price: f.chargeable ? String(calcSell(parseFloat(amt)||0, parseFloat(f.gm_pct)||0)) : '0'}))
+                  }} placeholder="0.00" />
                 </div>
                 <div className="fg">
                   <label>Expected Amount</label>
@@ -818,7 +826,8 @@ export function InvoicesPanel() {
                 <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px',fontWeight:500,margin:0}}>
                   <input type="checkbox" checked={form.chargeable} onChange={e=>{
                     const ch = e.target.checked
-                    setForm(f=>({...f, chargeable:ch, sell_price: ch ? f.sell_price : '0', gm_pct: ch ? f.gm_pct : '0'}))
+                    const sell = ch ? String(calcSell(parseFloat(form.amount)||0, parseFloat(form.gm_pct)||0)) : '0'
+                    setForm(f=>({...f, chargeable:ch, sell_price: sell, gm_pct: ch ? f.gm_pct : '0'}))
                   }} style={{width:'15px',height:'15px'}} />
                   Chargeable to customer
                 </label>
@@ -832,7 +841,10 @@ export function InvoicesPanel() {
                   </div>
                   <div className="fg">
                     <label>GM %</label>
-                    <input type="number" className="input" value={form.gm_pct} onChange={e=>setForm(f=>({...f,gm_pct:e.target.value}))} placeholder="0" />
+                    <input type="number" className="input" value={form.gm_pct} onChange={e=>{
+                      const gm = e.target.value
+                      setForm(f=>({...f, gm_pct: gm, sell_price: f.chargeable ? String(calcSell(parseFloat(f.amount)||0, parseFloat(gm)||0)) : '0'}))
+                    }} placeholder="0" />
                   </div>
                 </div>
               )}
