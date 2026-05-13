@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { HelpButton } from '../../components/HelpButton'
 import type { HireItem, PurchaseOrder } from '../../types'
+import { SE_STANDARD_TOOLS, SE_TOOL_CATEGORIES } from '../../data/seStandardTools'
 
 type HireType = 'dry' | 'wet' | 'local'
 const TYPE_LABELS: Record<HireType, string> = { dry: 'Dry Hire', wet: 'Wet Hire', local: 'Local Equipment' }
@@ -23,6 +24,7 @@ type HireForm = {
   crew: { name: string; role: string }[]
   // Local hire specific
   active_days: number | null
+  tool_id: string
 }
 
 const EMPTY: HireForm = {
@@ -32,7 +34,7 @@ const EMPTY: HireForm = {
   currency: 'AUD', transport_in: 0, transport_out: 0, standby_rate: 0, qty: 1,
   linked_po_id: '', notes: '', wbs: '',
   rate_ds: 0, rate_ns: 0, rate_wds: 0, rate_wns: 0, rate_sdd: 0, rate_sdn: 0, daa_rate: 0,
-  crew: [], active_days: null,
+  crew: [], active_days: null, tool_id: '',
 }
 
 function daysBetween(a: string, b: string): number {
@@ -73,6 +75,9 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
   // Wet hire shift calendar
   const [calendarItem, setCalendarItem] = useState<HireItem | null>(null)
   const [calendarData, setCalendarData] = useState<Record<string, Record<string, boolean>>>({}) // date → {ds,ns,...}
+  const [showSEPicker, setShowSEPicker] = useState(false)
+  const [seSearch, setSeSearch] = useState('')
+  const [seCategory, setSeCategory] = useState('')
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id, hireType])
 
@@ -111,6 +116,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       rate_sdd: hi.rates?.sdd || 0, rate_sdn: hi.rates?.sdn || 0,
       daa_rate: hi.daa_rate || 0, crew: hi.crew || [],
       active_days: hi.active_days ?? null,
+      tool_id: h.tool_id || '',
     })
     setModal(h)
   }
@@ -181,6 +187,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
       crew: hireType === 'wet' ? form.crew : [],
       // Local hire specific
       active_days: hireType === 'local' ? (form.active_days ?? null) : null,
+      tool_id: form.tool_id || null,
     }
     if (modal === 'new') {
       const { error } = await supabase.from('hire_items').insert(payload)
@@ -327,7 +334,15 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
           </p>
         </div>
 {hireSelected.size>0 && <button className="btn btn-sm" style={{background:'#1e40af',color:'#fff'}} onClick={()=>setBulkPoModal(true)}>🔗 Link to PO ({hireSelected.size})</button>}
-        <button className="btn btn-primary" onClick={openNew}>+ Add Item</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {hireType === 'local' && (
+            <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff', fontWeight: 600 }}
+              onClick={() => { setSeSearch(''); setSeCategory(''); setShowSEPicker(true) }}>
+              🔧 SE Standard Tools
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={openNew}>+ Add Item</button>
+        </div>
       </div>
 
       {loading ? <div className="loading-center"><span className="spinner" /> Loading...</div>
@@ -356,7 +371,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                     ref={el => { if (el) el.indeterminate = hireSelected.size > 0 && !items.every(h => hireSelected.has(h.id)) }}
                     onChange={e => setHireSelected(e.target.checked ? new Set(items.map(h=>h.id)) : new Set())} />
                 </th>
-                  <th>Name</th><th>Vendor</th><th>Start</th><th>End</th><th>Days</th>
+                  <th>Name</th><th>Vendor</th>{hireType === 'local' && <th>Tool ID</th>}<th>Start</th><th>End</th><th>Days</th>
                   <th style={{ textAlign: 'right' }}>Rate</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
                   <th style={{ textAlign: 'right' }}>Sell</th>
@@ -372,6 +387,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                       <td><input type="checkbox" checked={hireSelected.has(h.id)} onChange={e=>setHireSelected(s=>{const n=new Set(s);e.target.checked?n.add(h.id):n.delete(h.id);return n})} /></td>
                       <td style={{ fontWeight: 500 }}>{h.name}</td>
                       <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{h.vendor || '—'}</td>
+                      {hireType === 'local' && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--accent)' }}>{h.tool_id || '—'}</td>}
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.start_date || '—'}</td>
                       <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{h.end_date || '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text3)' }}>{d > 0 ? d : '—'}</td>
@@ -394,7 +410,7 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               </tbody>
               <tfoot>
                 <tr style={{ background: 'var(--bg3)', fontWeight: 600 }}>
-                  <td colSpan={6} style={{ padding: '8px 12px' }}>Total</td>
+                  <td colSpan={hireType === 'local' ? 7 : 6} style={{ padding: '8px 12px' }}>Total</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px' }}>{fmt(totalCost)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '8px 12px', color: 'var(--green)' }}>{fmt(totalSell)}</td>
                   <td />
@@ -424,6 +440,14 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
                   <input className="input" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} />
                 </div>
               </div>
+
+              {hireType === 'local' && (
+                <div className="fg">
+                  <label>Tool ID <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— SE asset ID (e.g. BH01, SC6)</span></label>
+                  <input className="input" value={form.tool_id} placeholder="e.g. BH01, SC6, T1"
+                    onChange={e => setForm(f => ({ ...f, tool_id: e.target.value }))} />
+                </div>
+              )}
 
               <div className="fg-row">
                 <div className="fg">
@@ -828,6 +852,75 @@ export function HirePanel({ hireType }: { hireType: HireType }) {
               <div className="modal-footer">
                 <button className="btn" onClick={() => setCalendarItem(null)}>Close</button>
                 <button className="btn btn-primary" onClick={saveCalendar}>Save Calendar &amp; Update Costs</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+      {/* ── SE STANDARD TOOLS PICKER ── */}
+      {showSEPicker && (() => {
+        const filtered = SE_STANDARD_TOOLS.filter(t =>
+          (!seCategory || t.category === seCategory) &&
+          (!seSearch || t.name.toLowerCase().includes(seSearch.toLowerCase()) || t.toolId.toLowerCase().includes(seSearch.toLowerCase()))
+        )
+        return (
+          <div className="modal-overlay" onClick={() => setShowSEPicker(false)}>
+            <div className="modal" style={{ maxWidth: '680px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>🔧 SE Standard Tools <span style={{ fontWeight: 400, fontSize: '13px', color: 'var(--text3)' }}>— 2025 internal rates (AUD)</span></h3>
+                <button className="btn btn-sm" onClick={() => setShowSEPicker(false)}>✕</button>
+              </div>
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexShrink: 0 }}>
+                <input className="input" style={{ flex: 1 }} placeholder="Search tools or IDs…"
+                  value={seSearch} onChange={e => setSeSearch(e.target.value)} autoFocus />
+                <select className="input" style={{ minWidth: '200px' }} value={seCategory} onChange={e => setSeCategory(e.target.value)}>
+                  <option value="">All Categories</option>
+                  {SE_TOOL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {filtered.length === 0 ? (
+                  <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)' }}>No tools match your search</div>
+                ) : filtered.map((t, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 20px', borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer', transition: 'background 0.1s',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    onClick={() => {
+                      setForm(f => ({
+                        ...f,
+                        name: t.name,
+                        tool_id: t.toolId,
+                        vendor: 'Siemens Energy',
+                        charge_unit: t.chargeUnit,
+                        daily_rate: t.chargeUnit === 'daily' ? t.costRate : 0,
+                        weekly_rate: t.chargeUnit === 'weekly' ? t.costRate : 0,
+                      }))
+                      setShowSEPicker(false)
+                      setModal('new')
+                    }}>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>{t.name}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+                        <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>{t.toolId || '—'}</span>
+                        <span style={{ marginLeft: '10px' }}>{t.category}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '16px' }}>
+                      <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: '14px', color: 'var(--mod-tooling)' }}>
+                        ${t.costRate.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text3)' }}>per {t.chargeUnit === 'weekly' ? 'week' : 'day'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-footer" style={{ flexShrink: 0 }}>
+                <span style={{ fontSize: '12px', color: 'var(--text3)' }}>{filtered.length} tool{filtered.length !== 1 ? 's' : ''} — click to pre-fill form</span>
+                <button className="btn" onClick={() => setShowSEPicker(false)}>Close</button>
               </div>
             </div>
           </div>

@@ -667,6 +667,7 @@ export interface HireItem {
   created_at: string
   updated_at: string
   wbs: string
+  tool_id: string | null
 }
 
 export interface WetHireRates { ds?: number; ns?: number; wds?: number; wns?: number; sd?: number }
