@@ -46,7 +46,7 @@ export function UserManagementPanel() {
 
   // Invite modal
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [inviteForm, setInviteForm] = useState<{ name: string; email: string; role: 'admin' | 'member' | 'viewer' }>({ name: '', email: '', role: 'member' })
+  const [inviteForm, setInviteForm] = useState<{ name: string; email: string; role: 'admin' | 'member' | 'viewer' | 'resource_manager' }>({ name: '', email: '', role: 'member' })
   const [inviting, setInviting] = useState(false)
 
   // Permissions edit (local copy for selected user)
@@ -383,6 +383,7 @@ export function UserManagementPanel() {
                     <option value="admin">Admin — full access, can manage users</option>
                     <option value="member">Member — access controlled by permissions</option>
                     <option value="viewer">Viewer — read-only regardless of permissions</option>
+                    <option value="resource_manager">Resource Manager — cross-project resource access</option>
                   </select>
                   {selected.id === currentUser?.id && <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>You cannot change your own role.</p>}
                 </div>

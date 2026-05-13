@@ -399,6 +399,7 @@ const PANEL_MODULE_MAP: Record<string, Module> = {
   'tooling-':     'tooling',
   'global-':      'global',
   'nrg-':         'site_specific',
+  'resource-':     'resources',
   'wo-':          'site_specific',
   'work-':        'site_specific',
   'site-':        'site_specific',
