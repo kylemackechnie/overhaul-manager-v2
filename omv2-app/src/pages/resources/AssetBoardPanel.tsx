@@ -12,6 +12,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
+import { usePermissions } from '../../lib/permissions'
 import { toast } from '../../components/ui/Toast'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -21,7 +22,7 @@ interface Asset {
   asset_tag: string
   name: string
   category: string | null
-  status: string         // from sea_assets.status column
+  status: string
   calibration_due: string | null
   service_due: string | null
   home_location: string | null
@@ -29,16 +30,23 @@ interface Asset {
   daily_rate: number | null
   charge_unit: string | null
   notes: string | null
-  // current deployment (if on site)
+  lead_time_days: number
+  // currently active deployment
   deployment?: {
     project_name: string
     project_id: string
     start_date: string
     end_date: string | null
   }
+  // soonest upcoming future deployment
+  nextDeployment?: {
+    project_name: string
+    start_date: string
+    end_date: string | null
+  }
 }
 
-type LiveStatus = 'available' | 'onsite' | 'in_transit' | 'in_service'
+type LiveStatus = 'available' | 'onsite' | 'departing_soon' | 'scheduled' | 'in_transit' | 'in_service'
 
 interface Project {
   id: string
@@ -72,9 +80,17 @@ function getLiveStatus(asset: Asset): LiveStatus {
   const calExp = asset.calibration_due && asset.calibration_due < today
   const svcExp = asset.service_due && asset.service_due < today
   if (calExp || svcExp) return 'in_service'
+  // Currently on site
   if (asset.deployment) {
     const { start_date, end_date } = asset.deployment
     if (start_date <= today && (!end_date || end_date >= today)) return 'onsite'
+  }
+  // Has a future deployment — check lead time threshold
+  if (asset.nextDeployment) {
+    const leadDays = asset.lead_time_days ?? 14
+    const daysUntil = Math.round((new Date(asset.nextDeployment.start_date).getTime() - Date.now()) / 86400000)
+    if (daysUntil <= leadDays) return 'departing_soon'
+    return 'scheduled'
   }
   return 'available'
 }
@@ -117,7 +133,7 @@ function AssetCard({
   }[calStatus]
 
   const catColor = CAT_COLORS[asset.category ?? ''] ?? 'var(--text3)'
-  const borderColor = calStatus === 'overdue' ? '#fca5a5' : calStatus === 'due' ? '#fcd34d' : 'var(--border)'
+  const borderColor = calStatus === 'overdue' ? '#fca5a5' : calStatus === 'due' ? '#fcd34d' : liveStatus === 'departing_soon' ? '#fcd34d' : 'var(--border)'
 
   return (
     <div
@@ -145,14 +161,20 @@ function AssetCard({
         </span>
       </div>
 
-      {/* Deployment */}
-      {asset.deployment && liveStatus === 'onsite' && (
+      {/* Deployment info — varies by status */}
+      {liveStatus === 'onsite' && asset.deployment && (
         <div style={{ fontSize: 10, marginBottom: 5 }}>
-          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
-            {shortProjName(asset.deployment.project_name)}
+          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{shortProjName(asset.deployment.project_name)}</span>
+          <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)', marginLeft: 6 }}>→ {fmtDate(asset.deployment.end_date)}</span>
+        </div>
+      )}
+      {(liveStatus === 'departing_soon' || liveStatus === 'scheduled') && asset.nextDeployment && (
+        <div style={{ fontSize: 10, marginBottom: 5 }}>
+          <span style={{ fontWeight: 600, color: liveStatus === 'departing_soon' ? 'var(--orange)' : 'var(--blue)' }}>
+            {shortProjName(asset.nextDeployment.project_name)}
           </span>
           <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)', marginLeft: 6 }}>
-            → {fmtDate(asset.deployment.end_date)}
+            from {fmtDate(asset.nextDeployment.start_date)}
           </span>
         </div>
       )}
@@ -196,23 +218,45 @@ function BoardSection({ title, dot, count, children }: {
 
 // ── Deployment year bar (mini Gantt) ─────────────────────────────────────────
 
-function YearBar({ start, end, label, color }: { start: string; end: string; label: string; color: string }) {
-  const WIN_START = new Date('2026-01-01').getTime()
-  const WIN_END   = new Date('2026-12-31').getTime()
-  const WIN_DAYS  = Math.round((WIN_END - WIN_START) / 86400000) + 1
-  const s = Math.max(WIN_START, new Date(start).getTime())
-  const e = Math.min(WIN_END,   new Date(end || '2026-12-31').getTime())
-  const leftPct  = ((s - WIN_START) / 86400000 / WIN_DAYS) * 100
-  const widthPct = Math.max(1, (Math.round((e - s) / 86400000) / WIN_DAYS) * 100)
+const WIN_MS    = new Date('2026-01-01').getTime()
+const WIN_DAYS  = 365
+const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function pct(dateStr: string): number {
+  const d = Math.max(0, Math.min(WIN_DAYS, Math.round((new Date(dateStr).getTime() - WIN_MS) / 86400000)))
+  return (d / WIN_DAYS) * 100
+}
+
+function YearGantt({ deployments }: { deployments: { start: string; end: string; label: string; color: string }[] }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const todayPct = pct(today)
   return (
-    <div style={{ position: 'relative', height: 20, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
-      {/* Month ticks */}
-      {[0,1,2,3,4,5,6,7,8,9,10,11].map(m => (
-        <div key={m} style={{ position: 'absolute', left: `${(m/12)*100}%`, top: 0, bottom: 0, width: 1, background: 'var(--border)', opacity: 0.5 }} />
-      ))}
-      {/* Deployment bar */}
-      <div style={{ position: 'absolute', left: `${leftPct}%`, width: `${widthPct}%`, top: 2, bottom: 2, background: color, borderRadius: 2, display: 'flex', alignItems: 'center', paddingLeft: 4, overflow: 'hidden' }}>
-        {widthPct > 8 && <span style={{ fontSize: 9, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap' }}>{label}</span>}
+    <div>
+      {/* Month labels */}
+      <div style={{ display: 'flex', marginBottom: 2 }}>
+        {MONTH_LABELS.map(m => (
+          <div key={m} style={{ flex: 1, textAlign: 'center', fontSize: 9, fontWeight: 600, color: 'var(--text3)', letterSpacing: '0.02em' }}>{m}</div>
+        ))}
+      </div>
+      {/* Gantt area */}
+      <div style={{ position: 'relative', height: deployments.length * 22 + 4, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+        {/* Month grid lines */}
+        {MONTH_LABELS.map((_, i) => (
+          <div key={i} style={{ position: 'absolute', left: `${(i/12)*100}%`, top: 0, bottom: 0, width: 1, background: 'var(--border)', opacity: 0.5 }} />
+        ))}
+        {/* Today line */}
+        <div style={{ position: 'absolute', left: `${todayPct}%`, top: 0, bottom: 0, width: 2, background: 'var(--accent)', opacity: 0.7, zIndex: 5 }} />
+        {/* Deployment bars */}
+        {deployments.map((d, i) => {
+          const l = pct(d.start)
+          const w = Math.max(1, pct(d.end) - l)
+          return (
+            <div key={i} title={`${d.label}: ${d.start} → ${d.end}`}
+              style={{ position: 'absolute', left: `${l}%`, width: `${w}%`, top: 2 + i * 22, height: 18, borderRadius: 3, background: d.color, display: 'flex', alignItems: 'center', paddingLeft: 4, overflow: 'hidden' }}>
+              {w > 5 && <span style={{ fontSize: 9, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</span>}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -237,12 +281,17 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
     service_due:     asset.service_due ?? '',
     home_location:   asset.home_location ?? '',
     notes:           asset.notes ?? '',
+    weekly_rate:     asset.weekly_rate?.toString() ?? '',
+    daily_rate:      asset.daily_rate?.toString() ?? '',
+    charge_unit:     asset.charge_unit ?? 'weekly',
   })
   const [deployProj, setDeployProj] = useState('')
   const [deployStart, setDeployStart] = useState('')
   const [deployEnd, setDeployEnd] = useState('')
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'plan' | 'edit'>('plan')
+  const { canWrite } = usePermissions()
+  const canEditRates = canWrite('resources')
 
   useEffect(() => {
     supabase
@@ -272,7 +321,7 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
   async function handleSave() {
     setSaving(true)
     await onSave(
-      { ...form, calibration_due: form.calibration_due || null, service_due: form.service_due || null, home_location: form.home_location || null, notes: form.notes || null } as Partial<Asset>,
+      { ...form, calibration_due: form.calibration_due || null, service_due: form.service_due || null, home_location: form.home_location || null, notes: form.notes || null } as unknown as Partial<Asset>,
       deployProj || undefined, deployStart || undefined, deployEnd || undefined,
     )
     setSaving(false)
@@ -289,7 +338,7 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={onClose} />
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 440,
+        position: 'fixed', top: 48, right: 0, bottom: 0, width: 440,
         background: 'var(--bg)', borderLeft: '1px solid var(--border)',
         boxShadow: 'var(--shadow-md)', zIndex: 201,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -329,15 +378,6 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
 
           {activeTab === 'plan' ? (
             <>
-              {/* Mini month ruler */}
-              <div style={{ display: 'flex', marginBottom: 6 }}>
-                <div style={{ flex: 1, display: 'flex' }}>
-                  {['J','F','M','A','M','J','J','A','S','O','N','D'].map(m => (
-                    <div key={m} style={{ flex: 1, textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{m}</div>
-                  ))}
-                </div>
-              </div>
-
               {/* Year plan */}
               {loadingDepls ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text3)', fontSize: 12 }}>
@@ -350,21 +390,14 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>Use the Edit / Assign tab to assign to a project.</div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {allDeployments.map((d, i) => {
-                    const color = PROJ_COLORS[i % PROJ_COLORS.length]
-                    return (
-                      <div key={d.id}>
-                        <YearBar
-                          start={d.start_date}
-                          end={d.end_date ?? '2026-12-31'}
-                          label={d.project_name.replace(/\d{4}/g, '').replace(/Outage/i,'').trim().slice(0, 16)}
-                          color={color}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
+                <YearGantt
+                  deployments={allDeployments.map((d, i) => ({
+                    start: d.start_date,
+                    end:   d.end_date ?? '2026-12-31',
+                    label: d.project_name.replace(/\d{4}/g, '').replace(/Outage/i,'').trim().slice(0, 16),
+                    color: PROJ_COLORS[i % PROJ_COLORS.length],
+                  }))}
+                />
               )}
 
               {/* Deployment table */}
@@ -447,6 +480,39 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
                 <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes" />
               </div>
 
+              {/* Rates — read-only unless admin/resource manager */}
+              <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text3)', marginBottom: 8 }}>
+                  Rates {!canEditRates && <span style={{ fontWeight: 400, fontSize: 9, marginLeft: 4 }}>(read-only)</span>}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Weekly Rate (AUD)</label>
+                    {canEditRates
+                      ? <input className="input" type="number" value={form.weekly_rate} onChange={e => setForm(f => ({ ...f, weekly_rate: e.target.value }))} placeholder="e.g. 4680" />
+                      : <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', padding: '6px 0' }}>{asset.weekly_rate ? `$${asset.weekly_rate.toLocaleString()}/wk` : '—'}</div>
+                    }
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Daily Rate (AUD)</label>
+                    {canEditRates
+                      ? <input className="input" type="number" value={form.daily_rate} onChange={e => setForm(f => ({ ...f, daily_rate: e.target.value }))} placeholder="e.g. 840" />
+                      : <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', padding: '6px 0' }}>{asset.daily_rate ? `$${asset.daily_rate.toLocaleString()}/day` : '—'}</div>
+                    }
+                  </div>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Charge Unit</label>
+                  {canEditRates
+                    ? <select className="input" value={form.charge_unit} onChange={e => setForm(f => ({ ...f, charge_unit: e.target.value }))}>
+                        <option value="weekly">Weekly</option>
+                        <option value="daily">Daily</option>
+                      </select>
+                    : <div style={{ fontSize: 12, color: 'var(--text2)', padding: '6px 0', textTransform: 'capitalize' }}>{asset.charge_unit ?? '—'}</div>
+                  }
+                </div>
+              </div>
+
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Assign to Project</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -498,24 +564,35 @@ export function AssetBoardPanel() {
     const today = new Date().toISOString().slice(0, 10)
 
     const [assetsData, deploymentsData, projData] = await Promise.all([
-      supabase.from('sea_assets').select('*').order('category').order('name'),
+      supabase.from('sea_assets').select('*, lead_time_days').order('category').order('name'),
       supabase.from('sea_asset_deployments')
         .select('sea_asset_id, start_date, end_date, project_id, projects:project_id(name)')
-        .lte('start_date', today)
-        .or(`end_date.gte.${today},end_date.is.null`),
+        .order('start_date'),
       supabase.from('projects').select('id, name').not('name', 'ilike', '%test%').neq('name', 'tet').order('start_date'),
     ])
 
-    // Build deployment map: asset_id → current deployment
-    const deplMap = new Map<string, Asset['deployment']>()
-    for (const d of (deploymentsData.data || []) as Record<string, unknown>[]) {
+    // Build deployment maps: current (active today) + next upcoming
+    type DeplEntry = { project_name: string; project_id: string; start_date: string; end_date: string | null }
+    const currentMap = new Map<string, DeplEntry>()
+    const nextMap    = new Map<string, DeplEntry>()
+    const allDepls   = (deploymentsData.data || []) as Record<string, unknown>[]
+
+    for (const d of allDepls) {
+      const aid  = d.sea_asset_id as string
       const proj = d.projects as { name: string } | null
-      deplMap.set(d.sea_asset_id as string, {
-        project_name: proj?.name ?? 'Unknown',
-        project_id:   d.project_id as string,
-        start_date:   d.start_date as string,
-        end_date:     d.end_date as string | null,
-      })
+      const sd   = d.start_date as string
+      const ed   = d.end_date as string | null
+      const entry: DeplEntry = { project_name: proj?.name ?? 'Unknown', project_id: d.project_id as string, start_date: sd, end_date: ed }
+
+      // Active today
+      if (sd <= today && (!ed || ed >= today)) {
+        currentMap.set(aid, entry)
+      }
+      // Future — keep only the soonest upcoming per asset
+      if (sd > today) {
+        const existing = nextMap.get(aid)
+        if (!existing || sd < existing.start_date) nextMap.set(aid, entry)
+      }
     }
 
     const built: Asset[] = ((assetsData.data || []) as Record<string, unknown>[]).map(a => ({
@@ -531,7 +608,9 @@ export function AssetBoardPanel() {
       daily_rate:       a.daily_rate as number | null,
       charge_unit:      a.charge_unit as string | null,
       notes:            a.notes as string | null,
-      deployment:       deplMap.get(a.id as string),
+      lead_time_days:   (a.lead_time_days as number) ?? 14,
+      deployment:       currentMap.get(a.id as string),
+      nextDeployment:   nextMap.get(a.id as string),
     }))
 
     setAssets(built)
@@ -553,27 +632,33 @@ export function AssetBoardPanel() {
   }, [assets, search, catFilter])
 
   const groups = useMemo(() => {
-    const g: Record<LiveStatus, Asset[]> = { onsite: [], in_transit: [], in_service: [], available: [] }
+    const g: Record<LiveStatus, Asset[]> = { onsite: [], departing_soon: [], scheduled: [], in_transit: [], in_service: [], available: [] }
     for (const a of filtered) g[getLiveStatus(a)].push(a)
     return g
   }, [filtered])
 
   const stats = useMemo(() => ({
-    available:  assets.filter(a => getLiveStatus(a) === 'available').length,
-    onsite:     assets.filter(a => getLiveStatus(a) === 'onsite').length,
-    in_transit: assets.filter(a => getLiveStatus(a) === 'in_transit').length,
-    in_service: assets.filter(a => getLiveStatus(a) === 'in_service').length,
+    available:      assets.filter(a => getLiveStatus(a) === 'available').length,
+    onsite:         assets.filter(a => getLiveStatus(a) === 'onsite').length,
+    departing_soon: assets.filter(a => getLiveStatus(a) === 'departing_soon').length,
+    scheduled:      assets.filter(a => getLiveStatus(a) === 'scheduled').length,
+    in_transit:     assets.filter(a => getLiveStatus(a) === 'in_transit').length,
+    in_service:     assets.filter(a => getLiveStatus(a) === 'in_service').length,
   }), [assets])
 
   async function handleSave(updates: Partial<Asset>, deployProjectId?: string, deployStart?: string, deployEnd?: string) {
     if (!editAsset) return
-    const { error } = await supabase.from('sea_assets').update({
+    const payload: Record<string, unknown> = {
       status:          updates.status,
       calibration_due: updates.calibration_due ?? null,
       service_due:     updates.service_due ?? null,
       home_location:   updates.home_location ?? null,
       notes:           updates.notes ?? null,
-    }).eq('id', editAsset.id)
+    }
+    if (updates.weekly_rate !== undefined) payload.weekly_rate = updates.weekly_rate ? Number(updates.weekly_rate) : null
+    if (updates.daily_rate  !== undefined) payload.daily_rate  = updates.daily_rate  ? Number(updates.daily_rate)  : null
+    if (updates.charge_unit !== undefined) payload.charge_unit = updates.charge_unit || null
+    const { error } = await supabase.from('sea_assets').update(payload).eq('id', editAsset.id)
 
     if (error) { toast(error.message, 'error'); return }
 
@@ -611,10 +696,11 @@ export function AssetBoardPanel() {
         {/* KPI */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           {[
-            { label: 'Available',   val: stats.available,  color: 'var(--green)'  },
-            { label: 'On Site',     val: stats.onsite,     color: 'var(--accent)' },
-            { label: 'In Transit',  val: stats.in_transit, color: 'var(--blue)'   },
-            { label: 'In Service',  val: stats.in_service, color: stats.in_service > 0 ? 'var(--red)' : 'var(--text3)' },
+            { label: 'Available',      val: stats.available,      color: 'var(--green)'  },
+            { label: 'On Site',        val: stats.onsite,         color: 'var(--accent)' },
+            { label: 'Departing Soon', val: stats.departing_soon, color: 'var(--orange)' },
+            { label: 'Scheduled',      val: stats.scheduled,      color: 'var(--blue)'   },
+            { label: 'In Service',     val: stats.in_service,     color: stats.in_service > 0 ? 'var(--red)' : 'var(--text3)' },
           ].map(({ label, val, color }) => (
             <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 12px', borderTop: `3px solid ${color}`, minWidth: 90 }}>
               <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{val}</div>
@@ -651,10 +737,12 @@ export function AssetBoardPanel() {
               </div>
             )}
             {([
-              { key: 'onsite'     as LiveStatus, title: 'On Site',        dot: 'var(--accent)' },
-              { key: 'in_transit' as LiveStatus, title: 'In Transit',     dot: 'var(--blue)'   },
-              { key: 'in_service' as LiveStatus, title: 'In Service / Cal Due', dot: 'var(--red)' },
-              { key: 'available'  as LiveStatus, title: 'Available',      dot: 'var(--green)'  },
+              { key: 'onsite'         as LiveStatus, title: 'On Site',                  dot: 'var(--accent)' },
+              { key: 'departing_soon' as LiveStatus, title: 'Departing Soon (≤lead time)', dot: 'var(--orange)' },
+              { key: 'scheduled'      as LiveStatus, title: 'Scheduled',                dot: 'var(--blue)'   },
+              { key: 'in_transit'     as LiveStatus, title: 'In Transit',               dot: 'var(--purple)' },
+              { key: 'in_service'     as LiveStatus, title: 'In Service / Cal Due',     dot: 'var(--red)'    },
+              { key: 'available'      as LiveStatus, title: 'Available',                dot: 'var(--green)'  },
             ]).map(({ key, title, dot }) => (
               <BoardSection key={key} title={title} dot={dot} count={groups[key].length}>
                 {groups[key].length === 0 ? (
