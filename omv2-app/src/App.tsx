@@ -91,6 +91,8 @@ import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
 import { GlobalRateDefaultsPanel } from './pages/settings/GlobalRateDefaultsPanel'
 import { PayrollRulesPanel } from './pages/settings/PayrollRulesPanel'
+import { HertzRatesPanel } from './pages/settings/HertzRatesPanel'
+import { HertzLocationsPanel } from './pages/settings/HertzLocationsPanel'
 import { ProfilePage } from './pages/settings/ProfilePage'
 import { SitesPanel } from './pages/settings/SitesPanel'
 import { PrePlanningPanel } from './pages/project/PrePlanningPanel'
@@ -288,7 +290,7 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
       >
-        {(['profile', 'user-management', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations'].includes(activePanel)) ? (
           <MobilePanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -337,7 +339,7 @@ function AppInner() {
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
         {/* Profile and settings panels don't require an active project */}
-        {(['profile', 'user-management', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults'].includes(activePanel)) ? (
+        {(['profile', 'user-management', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations'].includes(activePanel)) ? (
           <PanelRouter panel={activePanel} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -510,6 +512,8 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'user-management':       return <UserManagementPanel />
     case 'rate-defaults':         return <GlobalRateDefaultsPanel />
     case 'payroll-rules':         return <PayrollRulesPanel />
+    case 'hertz-rates':           return <HertzRatesPanel />
+    case 'hertz-locations':       return <HertzLocationsPanel />
     case 'profile':               return <ProfilePage />
     case 'sites':                 return <SitesPanel />
     case 'audit-trail':           return <AuditTrailPanel />

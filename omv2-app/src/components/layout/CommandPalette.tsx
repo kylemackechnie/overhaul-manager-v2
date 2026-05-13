@@ -149,6 +149,8 @@ const NAV_PAGES: NavPage[] = [
   { icon: '🔩', label: 'Global Parts',             panel: 'global-parts',       module: 'Global' },
   { icon: '🌐', label: 'Global Rate Defaults',     panel: 'rate-defaults',      module: 'Global', keywords: 'rate book template' },
   { icon: '🧾', label: 'Payroll Rules',            panel: 'payroll-rules',      module: 'Global' },
+  { icon: '🚗', label: 'Hertz Vehicle Rates',      panel: 'hertz-rates',        module: 'Global', keywords: 'car hire SIPP vehicle rate' },
+  { icon: '📍', label: 'Hertz Locations',          panel: 'hertz-locations',    module: 'Global', keywords: 'car hire airport pickup branch' },
 
   // Admin / File menu
   { icon: '👥', label: 'User Management',          panel: 'user-management',    module: 'Admin' },
