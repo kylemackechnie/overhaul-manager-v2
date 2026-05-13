@@ -137,7 +137,7 @@ function TradesTimesheetsComp({ ctx }: { ctx: DashboardContext }) {
     ]} />
 }
 export const TradesTimesheetsTile: TileComponent = {
-  def: { id: 'trades-timesheets', icon: '📋', title: 'Trades Timesheets', description: 'Trades hours, sell value and weeks logged', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'trades-timesheets', icon: '📋', title: 'Trades Timesheets', description: 'Trades hours, sell value and weeks logged', category: 'Labour', defaultSize: 'lg', defaultVisible: true },
   Component: TradesTimesheetsComp,
 }
 
@@ -153,7 +153,7 @@ function MgmtTimesheetsComp({ ctx }: { ctx: DashboardContext }) {
     ]} />
 }
 export const MgmtTimesheetsTile: TileComponent = {
-  def: { id: 'mgmt-timesheets', icon: '📋', title: 'Mgmt Timesheets', description: 'Management and SE AG hours, sell value and weeks', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'mgmt-timesheets', icon: '📋', title: 'Mgmt Timesheets', description: 'Management and SE AG hours, sell value and weeks', category: 'Labour', defaultSize: 'lg', defaultVisible: true },
   Component: MgmtTimesheetsComp,
 }
 
@@ -203,7 +203,7 @@ function AllowanceBreakdownComp({ ctx }: { ctx: DashboardContext }) {
     ]} />
 }
 export const AllowanceBreakdownTile: TileComponent = {
-  def: { id: 'allowance-breakdown', icon: '🧾', title: 'Allowance Breakdown', description: 'LAHA, Meal allowance and FSA day counts from timesheets', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'allowance-breakdown', icon: '🧾', title: 'Allowance Breakdown', description: 'LAHA, Meal allowance and FSA day counts from timesheets', category: 'Labour', defaultSize: 'lg', defaultVisible: true },
   Component: AllowanceBreakdownComp,
 }
 
@@ -283,7 +283,7 @@ function UtilisationComp({ ctx }: { ctx: DashboardContext }) {
     ]} />
 }
 export const UtilisationTile: TileComponent = {
-  def: { id: 'utilisation', icon: '📊', title: 'Utilisation', description: 'Cars and accommodation currently active today', category: 'Support', defaultSize: 'md', defaultVisible: false },
+  def: { id: 'utilisation', icon: '📊', title: 'Utilisation', description: 'Cars and accommodation currently active today', category: 'Support', defaultSize: 'lg', defaultVisible: true, defaultVisible: false },
   Component: UtilisationComp,
 }
 

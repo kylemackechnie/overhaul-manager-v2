@@ -6,14 +6,15 @@ interface Props {
   tile: TileLayoutEntry
   editMode: boolean
   children: React.ReactNode
+  gridCols?: number
 }
 
-export function SortableTile({ tile, editMode, children }: Props) {
+export function SortableTile({ tile, editMode, children, gridCols = 4 }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tile.id,
   })
 
-  const colSpan = tile.size === 'lg' || tile.size === 'xl' || tile.size === 'full' ? 2 : 1
+  const colSpan = tile.size === 'full' ? gridCols : (tile.size === 'lg' || tile.size === 'xl') ? 2 : 1
 
   return (
     <div

@@ -174,7 +174,7 @@ export function CustomisableDashboard({
               if (!entry) return null
               const { Component } = entry
               return (
-                <SortableTile key={tile.id} tile={tile} editMode={editMode}>
+                <SortableTile key={tile.id} tile={tile} editMode={editMode} gridCols={gridCols}>
                   <div
                     style={{
                       position: 'relative',

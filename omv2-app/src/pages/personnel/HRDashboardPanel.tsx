@@ -12,11 +12,12 @@ const QUICK_LINKS = [
 export function HRDashboardPanel() {
   return (
     <CustomisableDashboard
-      dashboardId="hr"
+      dashboardId="hr-v2"
       registry={HR_REGISTRY}
       categories={HR_CATEGORIES}
       tileComponents={HR_TILE_MAP}
       quickLinks={QUICK_LINKS}
+      gridCols={6}
     />
   )
 }

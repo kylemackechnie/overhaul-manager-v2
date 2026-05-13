@@ -15,7 +15,7 @@ const def = {
   title: 'Mob / Demob Strip',
   description: '14-day Gantt strip showing resource arrivals and departures',
   category: 'Headcount',
-  defaultSize: 'lg' as const,
+  defaultSize: 'full' as const,
   defaultVisible: true,
 }
 

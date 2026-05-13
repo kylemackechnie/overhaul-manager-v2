@@ -16,7 +16,7 @@ const def = {
   title: 'Labour S-Curve',
   description: 'Cumulative or weekly labour hours / sell value by category',
   category: 'Labour',
-  defaultSize: 'lg' as const,
+  defaultSize: 'full' as const,
   defaultVisible: true,
 }
 
