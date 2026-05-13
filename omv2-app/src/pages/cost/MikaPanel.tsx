@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { toast } from '../../components/ui/Toast'
 import { aggregateAllCostsByWbs, type SeSupportEntry } from '../../engines/wbsAggregator'
 import { buildForecast } from '../../engines/forecastEngine'
 import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCommitmentsEngine'
@@ -60,6 +61,7 @@ export function MikaPanel() {
   const [wbsAgg, setWbsAgg] = useState<import('../../engines/wbsAggregator').WbsAggregate>({})
   const [committedMap, setCommittedMap] = useState<Record<string, number>>({})
   const [drillCell, setDrillCell] = useState<{ wbs: string; col: 'actuals' | 'committed' | 'forecast' | 'eac' } | null>(null)
+  const [editingCell, setEditingCell] = useState<{ wbs: string; field: 'pm80tot' | 'pm100'; value: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -388,6 +390,24 @@ export function MikaPanel() {
     return { approved, pending }
   }
 
+  async function saveInlineEdit(wbs: string, field: 'pm80tot' | 'pm100', rawValue: string) {
+    const value = parseFloat(rawValue.replace(/[^0-9.\-]/g, '')) || 0
+    // Update local state immediately
+    setMika(prev => {
+      if (!prev) return prev
+      return { ...prev, lines: prev.lines.map(l => l.wbs === wbs ? { ...l, [field]: value } : l) }
+    })
+    setEditingCell(null)
+    // Persist to DB
+    const dbField = field === 'pm80tot' ? 'pm80' : 'pm100'
+    const { error } = await supabase
+      .from('mika_wbs_lines')
+      .update({ [dbField]: value })
+      .eq('project_id', activeProject!.id)
+      .eq('wbs', wbs)
+    if (error) toast(error.message, 'error')
+  }
+
   // Filtered lines
   const lines = (mika?.lines) || []
   const q = search.toLowerCase()
@@ -586,8 +606,44 @@ export function MikaPanel() {
                         <td style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{l.wbs}</td>
                         <td>{indent}{l.desc || '—'}</td>
                         <td style={{ textAlign: 'center', color: 'var(--text3)' }}>{l.level}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(l.pm80tot)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#3b82f6' }}>{fmt(l.pm100)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', padding: '2px 4px' }}>
+                          {editingCell?.wbs === l.wbs && editingCell.field === 'pm80tot' ? (
+                            <input
+                              autoFocus
+                              style={{ width: '90px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', padding: '2px 4px', border: '1px solid var(--accent)', borderRadius: '3px', background: 'var(--bg)' }}
+                              value={editingCell.value}
+                              onChange={e => setEditingCell(ec => ec ? { ...ec, value: e.target.value } : ec)}
+                              onBlur={() => saveInlineEdit(l.wbs, 'pm80tot', editingCell.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(l.wbs, 'pm80tot', editingCell.value); if (e.key === 'Escape') setEditingCell(null) }}
+                            />
+                          ) : (
+                            <span
+                              title="Click to edit"
+                              style={{ cursor: 'pointer', borderBottom: '1px dashed var(--border)', paddingBottom: '1px' }}
+                              onClick={() => setEditingCell({ wbs: l.wbs, field: 'pm80tot', value: String(l.pm80tot || 0) })}>
+                              {fmt(l.pm80tot)}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#3b82f6', padding: '2px 4px' }}>
+                          {editingCell?.wbs === l.wbs && editingCell.field === 'pm100' ? (
+                            <input
+                              autoFocus
+                              style={{ width: '90px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '11px', padding: '2px 4px', border: '1px solid #3b82f6', borderRadius: '3px', background: 'var(--bg)', color: '#3b82f6' }}
+                              value={editingCell.value}
+                              onChange={e => setEditingCell(ec => ec ? { ...ec, value: e.target.value } : ec)}
+                              onBlur={() => saveInlineEdit(l.wbs, 'pm100', editingCell.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(l.wbs, 'pm100', editingCell.value); if (e.key === 'Escape') setEditingCell(null) }}
+                            />
+                          ) : (
+                            <span
+                              title="Click to edit"
+                              style={{ cursor: 'pointer', borderBottom: '1px dashed #3b82f6', paddingBottom: '1px' }}
+                              onClick={() => setEditingCell({ wbs: l.wbs, field: 'pm100', value: String(l.pm100 || 0) })}>
+                              {fmt(l.pm100)}
+                            </span>
+                          )}
+                        </td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: vn.approved > 0 ? '#d97706' : 'var(--text3)' }}>{vn.approved > 0 ? fmt(vn.approved) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: vn.pending > 0 ? '#d97706' : 'var(--text3)' }}>{vn.pending > 0 ? fmt(vn.pending) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: hasVns ? 700 : bold }}>{hasVns ? fmt(revisedBudget) : '—'}</td>
