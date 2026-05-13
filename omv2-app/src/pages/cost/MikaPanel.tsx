@@ -53,7 +53,7 @@ export function MikaPanel() {
   const [mika, setMika] = useState<MikaData | null>(null)
   const [preview, setPreview] = useState<MikaData | null>(null)
   const [search, setSearch] = useState('')
-  const [levelFilter, setLevelFilter] = useState('3')
+  const [levelFilter, setLevelFilter] = useState('all')
   const [status, setStatus] = useState<{ msg: string; type: 'info' | 'success' | 'error' } | null>(null)
   const [saving, setSaving] = useState(false)
   const [variations, setVariations] = useState<{ status: string; line_items: unknown[] }[]>([])
