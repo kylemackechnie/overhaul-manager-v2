@@ -636,6 +636,7 @@ export interface NrgExpenseMin {
   amount: number
   sell_price?: number | null
   date?: string | null
+  chargeable?: boolean | null
 }
 
 export interface NrgVariationMin {
@@ -702,7 +703,7 @@ export function nrgInvoiceActual(
     .reduce((s, i) => s + (i.amount || 0), 0)
 
   const expTotal = expenses
-    .filter(e => e.tce_item_id === itemId)
+    .filter(e => e.tce_item_id === itemId && e.chargeable !== false)
     .reduce((s, e) => {
       // Use sell_price when set (chargeable expenses); fall back to cost_ex_gst for non-chargeable
       const val = (e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst || e.amount || 0)
@@ -747,7 +748,7 @@ export function nrgInvoiceActualForWeek(
     .reduce((s, i) => s + (i.amount || 0), 0)
 
   const expTotal = expenses
-    .filter(e => e.tce_item_id === itemId && e.date && e.date >= weekStart && e.date <= weekEnd)
+    .filter(e => e.tce_item_id === itemId && e.chargeable !== false && e.date && e.date >= weekStart && e.date <= weekEnd)
     .reduce((s, e) => {
       const val = (e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst || e.amount || 0)
       return s + val

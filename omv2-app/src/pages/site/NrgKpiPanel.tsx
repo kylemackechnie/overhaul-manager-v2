@@ -26,7 +26,7 @@ export function NrgKpiPanel() {
     const [lData, iData, eData, vData] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('invoices').select('tce_item_id,amount,status').eq('project_id', pid).in('status', ['approved', 'paid']),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,chargeable').eq('project_id', pid).eq('chargeable', true),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
     ])
     setLines((lData.data || []) as NrgTceLine[])

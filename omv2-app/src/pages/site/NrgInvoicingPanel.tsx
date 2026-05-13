@@ -80,7 +80,7 @@ export function NrgInvoicingPanel() {
         .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,status,invoice_number').eq('project_id', pid).in('status', ['approved', 'paid']),
-      supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category').eq('project_id', pid),
+      supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category,chargeable').eq('project_id', pid).eq('chargeable', true),
     ])
     setTceLines(fetchedTceLines)
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])

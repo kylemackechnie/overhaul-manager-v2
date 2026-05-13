@@ -19,7 +19,7 @@ export function NrgDashboardPanel() {
     const [tceRes, invRes, expRes, varRes, woRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('tce_total,source').eq('project_id', pid),
       supabase.from('invoices').select('amount,status,tce_item_id').eq('project_id', pid),
-      supabase.from('expenses').select('cost_ex_gst,amount,tce_item_id').eq('project_id', pid),
+      supabase.from('expenses').select('cost_ex_gst,amount,tce_item_id,chargeable').eq('project_id', pid).eq('chargeable', true),
       supabase.from('variations').select('status,sell_total').eq('project_id', pid),
       supabase.from('work_orders').select('status').eq('project_id', pid),
     ])
