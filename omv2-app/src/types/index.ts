@@ -530,6 +530,88 @@ export interface Car {
   // CO2 tracking
   fuel_type: string
   total_km: number
+  // Vendor / Hertz auto-pricing (added 2026)
+  vendor_id: string | null
+  hertz_rate_id: string | null
+  hertz_location_id: string | null
+  location_type: VehicleLocationType | null
+  tier_applied: HertzRateTier | null
+  sipp_code: string
+  pricing_code: string
+  vehicle_category: HertzVehicleCategory | ''
+  vehicle_example: string
+  ldl_amount: number | null
+  daily_surcharge_rate: number
+  location_fee_fixed_daily: number
+  excess_km_estimate: number
+  excess_km_rate: number | null
+  ldw_daily_rate: number
+  mdw_daily_rate: number
+}
+
+export type VehicleLocationType = 'metro' | 'country' | 'remote' | 'high_remote'
+export type HertzRateTier = '1-2' | '3-6' | '7-29' | '30+'
+export type HertzVehicleCategory = 'electric_hybrid' | 'passenger' | 'prestige' | '4wd' | 'bus' | 'commercial'
+export type HertzLocationFeeType = 'none' | 'percentage' | 'fixed_daily'
+
+export interface Vendor {
+  id: string
+  name: string
+  is_active: boolean
+  has_managed_rates: boolean
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface HertzVehicleRate {
+  id: string
+  sipp_code: string
+  pricing_code: string
+  vehicle_category: HertzVehicleCategory
+  vehicle_type: string
+  vehicle_example: string
+  rate_1_2_days: number
+  rate_3_6_days: number
+  rate_7_29_days: number
+  rate_30_plus_days: number
+  excess_km_rate: number | null
+  km_included_country: number | null
+  km_included_remote: number | null
+  surcharge_country: number
+  surcharge_remote: number
+  surcharge_high_remote: number
+  ldl_amount: number | null
+  remote_available: boolean
+  weekend_surcharge_amount: number | null
+  weekend_surcharge_max_hours: number | null
+  effective_from: string
+  effective_to: string | null
+  is_active: boolean
+  notes: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface HertzLocation {
+  id: string
+  location_code: string | null
+  location_name: string
+  state: string
+  address: string
+  phone: string
+  location_type: VehicleLocationType
+  is_airport: boolean
+  fee_type: HertzLocationFeeType
+  fee_value: number
+  is_active: boolean
+  effective_from: string
+  effective_to: string | null
+  notes: string
+  sort_order: number
+  created_at: string
+  updated_at: string
 }
 
 export interface Accommodation {
