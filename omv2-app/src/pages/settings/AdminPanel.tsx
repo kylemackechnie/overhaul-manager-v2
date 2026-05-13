@@ -6,6 +6,18 @@ import { useAppStore } from '../../store/appStore'
 
 const ADMIN_ITEMS = [
   {
+    icon: '📋',
+    label: 'People Directory',
+    description: 'Browse and edit all personnel records, inductions and profile details',
+    panel: 'hr-directory',
+  },
+  {
+    icon: '📅',
+    label: 'Resource Year View',
+    description: '30,000ft Gantt of all resources across all 2026 projects',
+    panel: 'hr-year-view',
+  },
+  {
     icon: '👥',
     label: 'User Management',
     description: 'Manage app users, roles and permissions',

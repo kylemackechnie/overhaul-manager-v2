@@ -376,9 +376,7 @@ export function Ribbon() {
                 minWidth: '200px', zIndex: 200, overflow: 'hidden'
               }}>
                 {[
-                  { icon: '📋', label: 'People Directory',   panel: 'hr-directory' },
-                  { icon: '📅', label: 'Resource Year View', panel: 'hr-year-view' },
-                  { icon: '⚙️', label: 'Admin',              panel: 'admin' },
+                  { icon: '⚙️', label: 'Admin', panel: 'admin' },
                 ].map(item => (
                   <button
                     key={item.panel}
