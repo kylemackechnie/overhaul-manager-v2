@@ -149,23 +149,25 @@ function buildSLRow(rowNum: number, isH: boolean, cells: Record<string,CellDef>)
   const parts = SL_COLS.map(col => makeCell(col, rowNum, isH?SL_H[col]:SL_D[col], cells[col]??{type:'',value:null}))
   return `<row r="${rowNum}" spans="1:53" s="${isH?304:457}" customFormat="1" ht="15.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
 }
-function buildSLSubheaderRow(): string {
-  // Style 439 = full template subheader style (blue bg, bold, wrap) — use OH row2 style 42
-  const HDR_S = 439  // subheader cell style in full template SL sheet
-  const ROW_S = 290  // row-level style for subheader rows in full template
+function buildSLSubheaderRow(slWeeks: string[], labelByWE: Record<string,string>): string {
+  const HDR_S = 439
+  const ROW_S = 290
+  const fmtWE = (iso: string) => iso.split('-').reverse().join('/')
   const cells: string[] = SL_COLS.map(col => {
     const ref = `${col}2`
-    // Find week index for this column
     const weekIdx = SL_WEEK_PAIRS.findIndex(([wh, wc]) => wh === col || wc === col)
     let label = ''
     if (weekIdx >= 0) {
       const isHrs = SL_WEEK_PAIRS[weekIdx][0] === col
-      label = `Week ${weekIdx+1} - Actual ${isHrs ? 'Hours' : 'Total Cost'}`
+      const we = slWeeks[weekIdx]
+      const invLabel = we && labelByWE[we] ? labelByWE[we] : `Week ${weekIdx+1}`
+      const weSuffix = we ? ` - WE ${fmtWE(we)}` : ''
+      label = `${invLabel}${weSuffix} - Actual ${isHrs ? 'Hours' : 'Total Cost'}`
     } else {
       label = SL_SUBHEADER_STATIC[col] ?? ''
     }
     if (!label) return `<c r="${ref}" s="${HDR_S}"/>`
-    return `<c r="${ref}" s="${HDR_S}" t="inlineStr"><is><t>${label}</t></is></c>`
+    return `<c r="${ref}" s="${HDR_S}" t="inlineStr"><is><t>${xmlEsc(label)}</t></is></c>`
   })
   return `<row r="2" spans="1:53" s="${ROW_S}" customFormat="1" ht="63" x14ac:dyDescent="0.25">${cells.join('')}</row>`
 }
@@ -192,7 +194,7 @@ export async function exportTceAll(
       .eq('project_id', projectId).eq('timesheet_status', 'approved'),
     supabase.from('variations').select('id,number,title,tce_link,wo_ref,sell_total,cost_total,status,scope,notes')
       .eq('project_id', projectId),
-    supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate')
+    supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate,label')
       .eq('project_id', projectId).order('week_ending'),
     supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,sell_price')
       .eq('project_id', projectId).in('status', ['approved', 'paid']),
@@ -209,15 +211,17 @@ export async function exportTceAll(
     id:string;number:string;title:string;tce_link:string|null;wo_ref:string|null;
     sell_total:number;cost_total:number;status:string;scope:string;notes:string
   }[]
-  const nrgInvSorted = ((nrgInvRes.data||[]) as {week_ending:string|null;eur_spot_rate:number|null}[])
+  const nrgInvSorted = ((nrgInvRes.data||[]) as {week_ending:string|null;eur_spot_rate:number|null;label:string|null}[])
     .filter(i=>i.week_ending).sort((a,b)=>a.week_ending!.localeCompare(b.week_ending!))
   const supplierInvoices = (supInvRes.data||[]) as {tce_item_id:string|null;invoice_date:string|null;date_processed:string|null;amount:number|null;sell_price:number|null}[]
   const expenseItems = (expRes.data||[]) as {tce_item_id:string|null;date:string|null;sell_price:number|null;cost_ex_gst:number|null;amount:number|null;chargeable:boolean|null}[]
 
   const spotRateByWE: Record<string,number|null> = {}
+  const labelByWE: Record<string,string> = {}
   for (const i of nrgInvSorted) {
     const r=i.eur_spot_rate
     spotRateByWE[i.week_ending!]=r!=null&&!isNaN(Number(r))?Number(r):null
+    if (i.label) labelByWE[i.week_ending!]=i.label
   }
   const spotRate=(we:string)=>spotRateByWE[we]??null
 
@@ -469,7 +473,7 @@ export async function exportTceAll(
   }
 
   // SL: keep row 1 (section labels), inject custom subheader as row 2, data from row 3
-  const slSubheader = buildSLSubheaderRow()
+  const slSubheader = buildSLSubheaderRow(slWeeks, labelByWE)
   const sl1 = sl3Xml.match(/<row r="1"[^>]*>.*?<\/row>/s)?.[0] || ''
   const updatedSL = sl3Xml
     .replace(/<sheetData>.*?<\/sheetData>/s, `<sheetData>${sl1}${slSubheader}${slRows.join('')}</sheetData>`)

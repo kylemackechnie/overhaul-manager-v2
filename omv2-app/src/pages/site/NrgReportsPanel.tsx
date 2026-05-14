@@ -99,6 +99,7 @@ export function NrgReportsPanel() {
         .from('invoices')
         .select('id,invoice_date,invoice_ref,tce_item_id,vendor_details,amount,sell_price,gm_pct,chargeable,po_id,purchase_orders(vendor)')
         .eq('project_id', pid)
+        .in('status', ['approved', 'paid'])
         .order('invoice_date', { ascending: false }),
       supabase
         .from('nrg_tce_lines')
@@ -171,7 +172,7 @@ export function NrgReportsPanel() {
     // Expenses
     const expRows = expenses
       .filter(e => {
-        if (expFilter === 'chargeable' && !e.chargeable) return false
+        if (expFilter !== 'nonchargeable' && !e.chargeable) return false
         if (expFilter === 'nonchargeable' && e.chargeable) return false
         if (dateFrom && e.date && e.date < dateFrom) return false
         if (dateTo && e.date && e.date > dateTo) return false
@@ -194,6 +195,7 @@ export function NrgReportsPanel() {
         tce_description: e.tce_item_id ? (tceLookup[e.tce_item_id]?.description || '—') : '—',
         vendor: e.vendor,
         description: e.description,
+        cost_price: e.cost_ex_gst ?? 0,
         sell_price: e.chargeable ? (e.sell_price ?? e.cost_ex_gst) : 0,
         gm_pct: e.chargeable ? e.gm_pct : 0,
         chargeable: e.chargeable ? 'Yes' : 'No',
@@ -202,7 +204,7 @@ export function NrgReportsPanel() {
     // Invoices
     const invRows = invoices
       .filter(i => {
-        if (expFilter === 'chargeable' && !i.chargeable) return false
+        if (expFilter !== 'nonchargeable' && !i.chargeable) return false
         if (expFilter === 'nonchargeable' && i.chargeable) return false
         if (dateFrom && i.invoice_date && i.invoice_date < dateFrom) return false
         if (dateTo && i.invoice_date && i.invoice_date > dateTo) return false
@@ -225,6 +227,7 @@ export function NrgReportsPanel() {
         tce_description: i.tce_item_id ? (tceLookup[i.tce_item_id]?.description || '—') : '—',
         vendor: i.po?.vendor || i.vendor_details || '—',
         description: '—',
+        cost_price: i.amount ?? 0,
         sell_price: i.chargeable ? (i.sell_price ?? i.amount ?? 0) : 0,
         gm_pct: i.chargeable ? (i.gm_pct ?? 0) : 0,
         chargeable: i.chargeable ? 'Yes' : 'No',
@@ -236,10 +239,10 @@ export function NrgReportsPanel() {
   function exportExpensesCSV() {
     const rows = buildExpensesRows()
     if (!rows.length) { toast('No data to export', 'info'); return }
-    const headers = ['Type','Date','SPOL / ISO Filing Ref','TCE Item ID','TCE Description','Vendor','Description','Sell Price','GM %','Chargeable']
+    const headers = ['Type','Date','SPOL / ISO Filing Ref','TCE Item ID','TCE Description','Vendor','Description','Cost Price','Sell Price','GM %','Chargeable']
     const csvRows: (string | number | boolean | null | undefined)[][] = [
       headers,
-      ...rows.map(r => [r.type, r.date, r.ref, r.tce_item_id, r.tce_description, r.vendor, r.description, r.sell_price.toFixed(2), r.gm_pct.toFixed(1), r.chargeable]),
+      ...rows.map(r => [r.type, r.date, r.ref, r.tce_item_id, r.tce_description, r.vendor, r.description, r.cost_price.toFixed(2), r.sell_price.toFixed(2), r.gm_pct.toFixed(1), r.chargeable]),
     ]
     downloadCSV(csvRows, `NRG_Expenses_${activeProject?.name || 'project'}`)
     toast('Exported', 'success')
@@ -356,7 +359,7 @@ export function NrgReportsPanel() {
               className={`btn btn-sm${expFilter === f ? ' btn-primary' : ''}`}
               onClick={() => setExpFilter(f)}
             >
-              {f === 'all' ? 'All' : f === 'chargeable' ? '✓ Chargeable' : '✗ Non-chargeable'}
+              {f === 'all' ? '✓ All Chargeable' : f === 'chargeable' ? '✓ Chargeable' : '✗ Non-chargeable'}
             </button>
           ))}
           <button className="btn btn-sm" onClick={exportExpensesCSV}>⬇ CSV</button>
@@ -380,7 +383,7 @@ export function NrgReportsPanel() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['Type', 'Date', 'SPOL / ISO Filing Ref', 'TCE Item', 'TCE Description', 'Vendor / Description', 'Sell Price', 'GM %', 'Chargeable'].map(h => (
+                  {['Type', 'Date', 'SPOL / ISO Filing Ref', 'TCE Item', 'TCE Description', 'Vendor / Description', 'Cost Price', 'Sell Price', 'GM %', 'Chargeable'].map(h => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--text2)' }}>{h}</th>
                   ))}
                 </tr>
@@ -406,6 +409,9 @@ export function NrgReportsPanel() {
                     <td style={{ padding: '7px 10px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <div>{row.vendor}</div>
                       {row.description && row.description !== '—' && <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{row.description}</div>}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--text2)' }}>
+                      {fmt(row.cost_price)}
                     </td>
                     <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {row.chargeable === 'Yes' ? fmt(row.sell_price) : <span style={{ color: 'var(--text3)' }}>—</span>}
