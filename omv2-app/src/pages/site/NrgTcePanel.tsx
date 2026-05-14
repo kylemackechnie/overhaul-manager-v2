@@ -129,6 +129,7 @@ export function NrgTcePanel() {
   useEffect(() => {
     if (!drillLine || !activeProject) { setDrillAllowances([]); return }
     const isLabour = drillLine.line_type === 'Labour' || drillLine.source === 'skilled'
+      || (drillLine.item_id ? (labourSellByItem[drillLine.item_id] || 0) > 0 : false)
     if (!isLabour || !drillLine.item_id) { setDrillAllowances([]); return }
     let cancelled = false
     setDrillAllowancesLoading(true)
@@ -227,7 +228,9 @@ export function NrgTcePanel() {
   function lineActualCost(l: NrgTceLine): number {
     if (l.line_type === 'Fixed Price') return l.tce_total || 0
     const isLabour = (l.line_type || '').includes('Labour') || l.source === 'skilled'
-    if (isLabour && l.item_id) {
+    // Also treat as labour if the item has timesheet_cost_lines entries (e.g. overhead lines with labour)
+    const hasTimesheetCostLines = l.item_id ? (labourSellByItem[l.item_id] || 0) > 0 : false
+    if ((isLabour || hasTimesheetCostLines) && l.item_id) {
       // Read from stored timesheet_cost_lines (same source as NRG Actuals + NRG Invoice)
       // This avoids rate card drift from live recalculation
       const labourSell = labourSellByItem[l.item_id] || 0
@@ -997,6 +1000,7 @@ export function NrgTcePanel() {
 
               {drillType === 'actual' && (() => {
                 const isLabour = drillLine.line_type === 'Labour' || drillLine.source === 'skilled'
+                  || (drillLine.item_id ? (labourSellByItem[drillLine.item_id] || 0) > 0 : false)
                 const fmt2 = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
                 if (isLabour) {
