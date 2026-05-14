@@ -88,6 +88,15 @@ export interface UserPrefs {
   dashboard_layouts?: Record<string, import('./dashboard').TileLayoutEntry[]>
 
   /**
+   * Per-dashboard layout version tracking. When a dashboard adds new default-visible
+   * tiles, bump its version in DASHBOARD_LAYOUT_VERSIONS (lib/dashboardLayout.ts).
+   * mergeLayout compares the user's stored version against the current one and
+   * makes new defaultVisible tiles visible for existing users on the next load.
+   * Without this, existing users only see new tiles after a manual layout reset.
+   */
+  dashboard_layout_versions?: Record<string, number>
+
+  /**
    * Per-dashboard selected time window preset key.
    * e.g. dashboard_time_windows['cost'] = 'this-month'
    */

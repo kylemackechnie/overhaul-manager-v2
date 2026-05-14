@@ -1,15 +1,16 @@
 import { CustomisableDashboard } from '../../components/dashboard/CustomisableDashboard'
 import { MAIN_REGISTRY, MAIN_TILE_MAP, MAIN_CATEGORIES } from '../../components/dashboard/tiles/main'
-import { MainDashboardHeader, MainDashboardAlerts } from '../../components/dashboard/tiles/main/MainDashboardChrome'
+import { MainDashboardHeader } from '../../components/dashboard/tiles/main/MainDashboardChrome'
 
+// Quick-link buttons that sit beneath the tile grid. Kept narrow on purpose —
+// the dashboard is the destination now, not a launchpad. Heavy navigation lives
+// in the ribbon.
 const QUICK_LINKS = [
   { label: '📋 Timesheets',    panel: 'hr-timesheets-trades' },
   { label: '📦 Parts List',    panel: 'parts-list' },
-  { label: '📥 Import Parts',  panel: 'parts-import' },
   { label: '💰 Cost Dashboard',panel: 'cost-dashboard' },
   { label: '📈 Forecast',      panel: 'cost-forecast' },
   { label: '📝 Variations',    panel: 'variations' },
-  { label: '⚙ Settings',       panel: 'project-settings' },
   { label: '✅ Pre-Planning',   panel: 'pre-planning' },
 ]
 
@@ -21,7 +22,6 @@ export function DashboardPanel() {
       categories={MAIN_CATEGORIES}
       tileComponents={MAIN_TILE_MAP}
       header={<MainDashboardHeader />}
-      alerts={<MainDashboardAlerts />}
       quickLinks={QUICK_LINKS}
     />
   )

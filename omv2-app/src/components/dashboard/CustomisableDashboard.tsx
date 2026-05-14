@@ -8,7 +8,7 @@
  * Tiles fetch their own data via React Query — no shared data load.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   DndContext,
@@ -23,7 +23,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { usePermissions } from '../../lib/permissions'
-import { getDefaultLayout, mergeLayout, filterRegistry } from '../../lib/dashboardLayout'
+import { getDefaultLayout, mergeLayout, filterRegistry, DASHBOARD_LAYOUT_VERSIONS } from '../../lib/dashboardLayout'
 import { fmt as fmtCurrency } from '../../lib/currency'
 import { SortableTile } from './SortableTile'
 import { DashboardToolbar } from './DashboardToolbar'
@@ -86,12 +86,28 @@ export function CustomisableDashboard({
     [registry, canRead, canWrite, activeProject],
   )
 
-  // Layout: merge saved prefs with current registry
+  // Layout: merge saved prefs with current registry, respecting version migration.
   const savedLayout = prefs.dashboard_layouts?.[dashboardId] as TileLayoutEntry[] | undefined
+  const savedVersion = prefs.dashboard_layout_versions?.[dashboardId] ?? 1
+  const currentVersion = DASHBOARD_LAYOUT_VERSIONS[dashboardId] ?? 1
   const layout: TileLayoutEntry[] = useMemo(() => {
-    if (savedLayout?.length) return mergeLayout(savedLayout, applicableRegistry)
+    if (savedLayout?.length) return mergeLayout(savedLayout, applicableRegistry, savedVersion, currentVersion)
     return getDefaultLayout(applicableRegistry)
-  }, [savedLayout, applicableRegistry])
+  }, [savedLayout, applicableRegistry, savedVersion, currentVersion])
+
+  // After loading, if the version was bumped, persist the new version so we
+  // don't re-promote tiles next time. Wrapped in useEffect to avoid render loop.
+  useEffect(() => {
+    if (savedLayout?.length && savedVersion < currentVersion) {
+      setPref('dashboard_layout_versions', {
+        ...(prefs.dashboard_layout_versions || {}),
+        [dashboardId]: currentVersion,
+      })
+    }
+    // We deliberately don't depend on `prefs` to avoid an infinite loop —
+    // the only inputs we care about are savedVersion vs currentVersion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardId, savedVersion, currentVersion])
 
   const visibleTiles = layout.filter(t => t.visible)
 
@@ -134,6 +150,10 @@ export function CustomisableDashboard({
 
   function resetLayout() {
     saveLayout(getDefaultLayout(applicableRegistry))
+    setPref('dashboard_layout_versions', {
+      ...(prefs.dashboard_layout_versions || {}),
+      [dashboardId]: currentVersion,
+    })
     setConfirmReset(false)
   }
 

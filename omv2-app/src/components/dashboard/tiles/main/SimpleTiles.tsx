@@ -29,7 +29,7 @@ function CarsTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const CarsTile: TileComponent = {
-  def: { id: 'cars', icon: '🚗', title: 'Cars', description: 'Car hire bookings and costs', category: 'People', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'cars', icon: '🚗', title: 'Cars', description: 'Car hire bookings and costs', category: 'People', defaultSize: 'md', defaultVisible: false },
   Component: CarsTileComp,
 }
 
@@ -52,7 +52,7 @@ function AccomTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const AccommodationTile: TileComponent = {
-  def: { id: 'accommodation', icon: '🏨', title: 'Accommodation', description: 'Room bookings and occupants', category: 'People', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'accommodation', icon: '🏨', title: 'Accommodation', description: 'Room bookings and occupants', category: 'People', defaultSize: 'md', defaultVisible: false },
   Component: AccomTileComp,
 }
 
@@ -87,7 +87,7 @@ function ProcurementTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const ProcurementTile: TileComponent = {
-  def: { id: 'procurement', icon: '🧾', title: 'Procurement', description: 'Purchase orders, invoices and vendor payments', category: 'Finance', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'procurement', icon: '🧾', title: 'Procurement', description: 'Purchase orders, invoices and vendor payments', category: 'Finance', defaultSize: 'md', defaultVisible: false },
   Component: ProcurementTileComp,
 }
 
@@ -115,7 +115,7 @@ function VariationsTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const VariationsTile: TileComponent = {
-  def: { id: 'variations', icon: '🔀', title: 'Variations', description: 'Scope changes, cost lines and client approvals', category: 'Finance', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'variations', icon: '🔀', title: 'Variations', description: 'Scope changes, cost lines and client approvals', category: 'Finance', defaultSize: 'md', defaultVisible: false },
   Component: VariationsTileComp,
 }
 
@@ -151,7 +151,7 @@ function SparePartsTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const SparePartsTile: TileComponent = {
-  def: { id: 'spare-parts', icon: '📦', title: 'Spare Parts', description: 'WOSIT export, receiving, inventory and kit issuing', category: 'Field', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'spare-parts', icon: '📦', title: 'Spare Parts', description: 'WOSIT export, receiving, inventory and kit issuing', category: 'Field', defaultSize: 'md', defaultVisible: false },
   Component: SparePartsTileComp,
 }
 
@@ -177,7 +177,7 @@ function WorkOrdersTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const WorkOrdersTile: TileComponent = {
-  def: { id: 'work-orders', icon: '🔩', title: 'Work Orders', description: 'WO tracking and actuals allocation', category: 'Field', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'work-orders', icon: '🔩', title: 'Work Orders', description: 'WO tracking and actuals allocation', category: 'Field', defaultSize: 'md', defaultVisible: false },
   Component: WorkOrdersTileComp,
 }
 
@@ -206,7 +206,7 @@ function HireTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const HireTile: TileComponent = {
-  def: { id: 'hire', icon: '🚜', title: 'Equipment Hire', description: 'Dry, wet and local hire — rates, calendars and costs', category: 'Field', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'hire', icon: '🚜', title: 'Equipment Hire', description: 'Dry, wet and local hire — rates, calendars and costs', category: 'Field', defaultSize: 'md', defaultVisible: false },
   Component: HireTileComp,
 }
 
@@ -231,7 +231,7 @@ function ToolingTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const ToolingTile: TileComponent = {
-  def: { id: 'tooling', icon: '🔧', title: 'SE Rental Tooling', description: 'TV register, packages, costing and project splits', category: 'Field', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'tooling', icon: '🔧', title: 'SE Rental Tooling', description: 'TV register, packages, costing and project splits', category: 'Field', defaultSize: 'md', defaultVisible: false },
   Component: ToolingTileComp,
 }
 
@@ -258,7 +258,7 @@ function SubconTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const SubcontractorsTile: TileComponent = {
-  def: { id: 'subcontractors', icon: '🏗', title: 'Subcontractors', description: 'RFQs, contracts and subcon timesheets', category: 'Field', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'subcontractors', icon: '🏗', title: 'Subcontractors', description: 'RFQs, contracts and subcon timesheets', category: 'Field', defaultSize: 'md', defaultVisible: false },
   Component: SubconTileComp,
 }
 
@@ -287,7 +287,7 @@ function LogisticsTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const LogisticsTile: TileComponent = {
-  def: { id: 'logistics', icon: '🚢', title: 'Logistics', description: 'Import and export shipments tracking', category: 'Field', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'logistics', icon: '🚢', title: 'Logistics', description: 'Import and export shipments tracking', category: 'Field', defaultSize: 'md', defaultVisible: false },
   Component: LogisticsTileComp,
 }
 
@@ -304,7 +304,7 @@ function HardwareTileComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const HardwareTile: TileComponent = {
-  def: { id: 'hardware', icon: '💰', title: 'Hardware Pricing', description: 'Contract lines, escalation and customer offers', category: 'Commercial', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'hardware', icon: '💰', title: 'Hardware Pricing', description: 'Contract lines, escalation and customer offers', category: 'Commercial', defaultSize: 'md', defaultVisible: false },
   Component: HardwareTileComp,
 }
 

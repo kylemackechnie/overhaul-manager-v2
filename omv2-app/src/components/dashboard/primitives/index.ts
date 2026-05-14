@@ -1,5 +1,7 @@
 export { KpiCard } from './KpiCard'
 export type { KpiCardProps } from './KpiCard'
+export { MetricCard } from './MetricCard'
+export type { MetricCardProps } from './MetricCard'
 export { ModCard } from './ModCard'
 export type { ModCardProps } from './ModCard'
 export { ProgressBarCard } from './ProgressBarCard'
