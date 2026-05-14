@@ -1100,6 +1100,53 @@ export function NrgTcePanel() {
                         </table>
                       </div>
                     )}
+
+                    {/* Expenses/invoices also tagged to this labour line */}
+                    {(() => {
+                      const labInvoices = invoices.filter(i => i.tce_item_id === drillLine.item_id && (i.status === 'approved' || i.status === 'paid'))
+                      const labExpenses = expenses.filter(e => e.tce_item_id === drillLine.item_id && e.chargeable !== false)
+                      if (!labInvoices.length && !labExpenses.length) return null
+                      return (
+                        <div style={{ marginTop: 16 }}>
+                          <div style={{ fontSize:'11px', fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>
+                            Invoices & Expenses ({labInvoices.length + labExpenses.length} items)
+                          </div>
+                          <table style={{ width:'100%', fontSize:'13px', borderCollapse:'collapse' }}>
+                            <thead><tr style={{ borderBottom:'2px solid var(--border)' }}>
+                              {['Source','Reference','Description','Date','Amount'].map(h => (
+                                <th key={h} style={{ textAlign: h === 'Amount' ? 'right' : 'left', padding:'6px 8px', color:'var(--text3)', fontSize:'11px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                              ))}
+                            </tr></thead>
+                            <tbody>
+                              {labInvoices.map((i, idx) => (
+                                <tr key={`inv-${idx}`} style={{ borderBottom:'1px solid var(--border)' }}>
+                                  <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#dbeafe', color:'#1e40af', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Invoice</span></td>
+                                  <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(i as unknown as Record<string,unknown>).invoice_number as string || '—'}</td>
+                                  <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{(i as unknown as Record<string,unknown>).vendor_details as string || '—'}</td>
+                                  <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{(i as unknown as Record<string,unknown>).date_processed as string || (i as unknown as Record<string,unknown>).invoice_date as string || '—'}</td>
+                                  <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#1e40af' }}>{fmt2(i.amount || 0)}</td>
+                                </tr>
+                              ))}
+                              {labExpenses.map((e, idx) => (
+                                <tr key={`exp-${idx}`} style={{ borderBottom:'1px solid var(--border)' }}>
+                                  <td style={{ padding:'7px 8px' }}><span style={{ fontSize:'10px', background:'#fef3c7', color:'#92400e', padding:'1px 5px', borderRadius:'3px', fontWeight:600 }}>Expense</span></td>
+                                  <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).expense_ref as string || '—'}</td>
+                                  <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).description as string || (e as unknown as Record<string,unknown>).vendor as string || '—'}</td>
+                                  <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{e.date || '—'}</td>
+                                  <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt2(e.cost_ex_gst || e.amount || 0)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
+                              <td colSpan={4} style={{ padding:'8px' }}>Total</td>
+                              <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>
+                                {fmt2(labInvoices.reduce((s,i)=>s+(i.amount||0),0) + labExpenses.reduce((s,e)=>s+(e.cost_ex_gst||e.amount||0),0))}
+                              </td>
+                            </tr></tfoot>
+                          </table>
+                        </div>
+                      )
+                    })()}
                   </>
                 }
 
