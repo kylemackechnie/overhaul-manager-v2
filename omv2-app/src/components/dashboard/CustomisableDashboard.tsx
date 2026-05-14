@@ -95,10 +95,21 @@ export function CustomisableDashboard({
     return getDefaultLayout(applicableRegistry)
   }, [savedLayout, applicableRegistry, savedVersion, currentVersion])
 
-  // After loading, if the version was bumped, persist the new version so we
-  // don't re-promote tiles next time. Wrapped in useEffect to avoid render loop.
+  // After loading, if the version was bumped, persist BOTH the migrated layout
+  // AND the new version so subsequent loads don't re-trigger the migration
+  // (and therefore don't accidentally hide tiles that were just promoted).
+  //
+  // CRITICAL: we must save the merged layout, not just bump the version. If we
+  // only bump the version, the next render reads savedVersion === currentVersion
+  // and rebuilds the layout with isOutdated=false, which hides the new tiles
+  // that should be visible.
   useEffect(() => {
     if (savedLayout?.length && savedVersion < currentVersion) {
+      const merged = mergeLayout(savedLayout, applicableRegistry, savedVersion, currentVersion)
+      setPref('dashboard_layouts', {
+        ...(prefs.dashboard_layouts || {}),
+        [dashboardId]: merged,
+      })
       setPref('dashboard_layout_versions', {
         ...(prefs.dashboard_layout_versions || {}),
         [dashboardId]: currentVersion,
@@ -107,7 +118,7 @@ export function CustomisableDashboard({
     // We deliberately don't depend on `prefs` to avoid an infinite loop —
     // the only inputs we care about are savedVersion vs currentVersion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboardId, savedVersion, currentVersion])
+  }, [dashboardId, savedVersion, currentVersion, applicableRegistry])
 
   const visibleTiles = layout.filter(t => t.visible)
 

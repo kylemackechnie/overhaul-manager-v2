@@ -20,11 +20,16 @@ import type { Module } from './permissions'
  * v1 = original launch
  * v2 = Phase A hero tiles + AttentionFeed (Project Health, Cost Snapshot,
  *      Day Counter, Headcount Plan, Cash Position, Needs Attention) — May 2026
+ * v3 = Phase B (Cost CPI/SPI/EAC/TCPI etc) + Phase C (Mob Readiness,
+ *      PreplanProgress, VendorConcentration, ProductivityIndex)
+ * v4 = Re-trigger of v3 migration after fixing the persistence race where the
+ *      version bump fired before the merged layout was saved, hiding the new
+ *      tiles on subsequent loads.
  */
 export const DASHBOARD_LAYOUT_VERSIONS: Record<string, number> = {
-  main: 3,
-  cost: 3,
-  hr: 2,
+  main: 4,
+  cost: 4,
+  hr: 3,
   hse: 1,
   hire: 1,
   tooling: 1,
@@ -47,10 +52,13 @@ export function getDefaultLayout(registry: TileDef[]): TileLayoutEntry[] {
 /**
  * Merge a saved layout with the current registry.
  * - Tiles removed from the registry are silently dropped.
- * - New tiles in the registry are appended at the end.
- *   - If layoutVersion < currentVersion AND tile.defaultVisible: visible = true
- *     (so existing users see the new hero tiles).
- *   - Otherwise: visible = false (user opts in via picker).
+ * - For users with an outdated layout version:
+ *   - NEW tiles in the registry are added at the front, visible if defaultVisible.
+ *   - EXISTING tiles in the saved layout that are currently hidden but have
+ *     defaultVisible=true in the registry are RE-PROMOTED to visible. This
+ *     recovers users whose previous migration ran with broken logic (e.g.
+ *     race condition that saved them as hidden).
+ * - For users at the current version: saved layout is preserved as-is.
  */
 export function mergeLayout(
   saved: TileLayoutEntry[],
@@ -60,25 +68,46 @@ export function mergeLayout(
 ): TileLayoutEntry[] {
   const knownIds = new Set(registry.map(t => t.id))
   const maxOrder = saved.reduce((m, t) => Math.max(m, t.order), -1)
-  const merged = saved.filter(t => knownIds.has(t.id))
   const savedIds = new Set(saved.map(t => t.id))
-  let nextOrder = maxOrder + 1
   const isOutdated = layoutVersion < currentVersion
+
+  // Build a lookup of registry defaults for re-promotion logic
+  const regByDef = new Map<string, TileDef>()
+  for (const t of registry) regByDef.set(t.id, t)
+
+  // 1. Keep saved tiles that still exist in the registry.
+  //    If outdated AND the tile is currently hidden but should be visible by
+  //    default, re-promote it. This recovers users from a broken prior migration.
+  const merged: TileLayoutEntry[] = saved
+    .filter(t => knownIds.has(t.id))
+    .map(t => {
+      if (!isOutdated) return t
+      const def = regByDef.get(t.id)
+      if (!def) return t
+      if (!t.visible && def.defaultVisible) {
+        // Re-promote: bring to the front
+        return { ...t, visible: true, order: -1 }
+      }
+      return t
+    })
+
+  // 2. Append new tiles. If outdated AND defaultVisible, add at the front
+  //    (negative order) so heroes appear before existing tiles. Otherwise
+  //    append at the end, hidden.
+  let nextOrder = maxOrder + 1
   for (const tile of registry) {
     if (!savedIds.has(tile.id)) {
-      // New tile: visible if user's layout pre-dates a version bump AND tile is default-visible
       const visible = isOutdated && tile.defaultVisible
       merged.push({
         id: tile.id,
         visible,
-        // New default-visible tiles slot in at the FRONT of the layout for
-        // outdated users so heroes appear first. Otherwise append.
         order: visible ? -saved.length + nextOrder : nextOrder,
         size: tile.defaultSize,
       })
       nextOrder++
     }
   }
+
   return merged.sort((a, b) => a.order - b.order).map((t, i) => ({ ...t, order: i }))
 }
 
