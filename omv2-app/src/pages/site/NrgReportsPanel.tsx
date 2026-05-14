@@ -258,7 +258,7 @@ export function NrgReportsPanel() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px' }}>
+    <div style={{ padding: '20px' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 700, margin: 0 }}>NRG Reports</h1>
         <p style={{ fontSize: '13px', color: 'var(--text3)', marginTop: '4px' }}>
