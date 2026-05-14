@@ -269,6 +269,7 @@ export function ExpensesPanel() {
       cost_ex_gst: form.cost_ex_gst, sell_price: form.sell_price,
       gm_pct: form.gm_pct, currency: form.currency, wbs: form.wbs, notes: form.notes,
       tce_item_id: form.tce_item_id || null,
+      chargeable: form.chargeable,
     }
     // If lines present, override top-level cost/sell with rollup
     if (hasLines) {
