@@ -304,8 +304,8 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
       >
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'resource-assets', 'resource-asset-timeline', 'resource-tooling-demand', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
-          <MobilePanelRouter panel={activePanel} />
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'resource-assets', 'resource-asset-timeline', 'resource-tooling-demand', 'hr-directory', 'hr-year-view'].includes(activePanel ?? '')) ? (
+          <MobilePanelRouter panel={activePanel ?? 'dashboard'} />
         ) : !activeProject ? (
           restoringProject ? (
             <div className="mobile-loading"><span className="spinner" /> Restoring project…</div>
@@ -320,7 +320,7 @@ function AppInner() {
             </div>
           )
         ) : (
-          <MobilePanelRouter panel={activePanel} />
+          <MobilePanelRouter panel={activePanel ?? 'dashboard'} />
         )}
       </MobileShell>
       <ToastContainer />
@@ -353,8 +353,8 @@ function AppInner() {
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
         {/* Profile and settings panels don't require an active project */}
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'hr-directory', 'hr-year-view'].includes(activePanel)) ? (
-          <PanelRouter panel={activePanel} />
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'hr-directory', 'hr-year-view'].includes(activePanel ?? '')) ? (
+          <PanelRouter panel={activePanel ?? 'dashboard'} />
         ) : !activeProject ? (
           restoringProject ? (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'70vh', gap:'12px' }}>
@@ -365,7 +365,7 @@ function AppInner() {
             <PlatformHomePanel onOpenPicker={() => setPickerOpen(true)} />
           )
         ) : (
-          <PanelRouter panel={activePanel} />
+          <PanelRouter panel={activePanel ?? 'dashboard'} />
         )}
       </div>
 

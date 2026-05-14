@@ -18,8 +18,8 @@ interface AppStore {
   restoreProject: (project: Project | null) => void
 
   // UI state
-  activePanel: string
-  setActivePanel: (panel: string) => void
+  activePanel: string | null
+  setActivePanel: (panel: string | null) => void
 
   activeRibbonTab: string
   setActiveRibbonTab: (tab: string) => void

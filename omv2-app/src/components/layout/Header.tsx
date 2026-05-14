@@ -54,7 +54,7 @@ export function Header({ onOpenPicker, onOpenSearch, onOpenSettings }: HeaderPro
   return (
     <header className="app-header">
       {/* Left: Logo */}
-      <div className="header-logo" onClick={onOpenPicker}>
+      <div className="header-logo" onClick={() => { setActiveProject(null); setActivePanel(null) }} title="Platform home">
         <div className="header-logo-icon">SE</div>
         <span className="header-logo-text">Siemens Energy</span>
       </div>

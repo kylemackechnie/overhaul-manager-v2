@@ -66,7 +66,7 @@ export function MobileBottomTabs({ onMoreOpen }: Props) {
   return (
     <nav className="mobile-bottomtabs" aria-label="Main navigation">
       {TABS.map(tab => {
-        const isActive = tab.matchPanels.includes(activePanel)
+        const isActive = tab.matchPanels.includes(activePanel ?? '')
         return (
           <button
             key={tab.id}
