@@ -22,9 +22,9 @@ import type { Module } from './permissions'
  *      Day Counter, Headcount Plan, Cash Position, Needs Attention) — May 2026
  */
 export const DASHBOARD_LAYOUT_VERSIONS: Record<string, number> = {
-  main: 2,
-  cost: 2,
-  hr: 1,
+  main: 3,
+  cost: 3,
+  hr: 2,
   hse: 1,
   hire: 1,
   tooling: 1,

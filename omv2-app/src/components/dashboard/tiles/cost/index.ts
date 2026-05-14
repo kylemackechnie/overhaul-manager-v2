@@ -9,6 +9,7 @@ import {
   CPITile, SPITile, EACTile, TCPITile, CashConversionTile,
   WbsHeatStripTile, InvoiceAgeingTile, SpendVelocityTile, VariationImpactTile,
 } from './cost-hero-tiles'
+import { VendorConcentrationTile } from '../ExtraTiles'
 import type { TileComponent, TileDef } from '../../../../types/dashboard'
 
 export const COST_TILES: TileComponent[] = [
@@ -19,7 +20,7 @@ export const COST_TILES: TileComponent[] = [
   // ─── Detail tier: full-width WBS heat strip ──────────────────────────────
   WbsHeatStripTile,
   // ─── Detail tier: focused signals (visible by default) ───────────────────
-  InvoiceAgeingTile, SpendVelocityTile, VariationImpactTile,
+  InvoiceAgeingTile, SpendVelocityTile, VariationImpactTile, VendorConcentrationTile,
   // ─── Reference tier: granular KPI cards (hidden by default) ──────────────
   InvoiceTotalTile, ApprovedPaidTile, PendingInvoicesTile, DisputedInvoicesTile,
   ActivePOsTile, PendingPOCommitmentTile, WbsCodesTile, SapReconStatusTile,

@@ -6,6 +6,7 @@ import {
   HeadcountPlanTile, CashPositionTile,
 } from './HeroTiles'
 import { AttentionFeedTile } from './AttentionFeedTile'
+import { PreplanProgressTile } from '../ExtraTiles'
 import {
   CarsTile, AccommodationTile, ProcurementTile, VariationsTile,
   SparePartsTile, WorkOrdersTile, HireTile, ToolingTile,
@@ -20,6 +21,7 @@ export const MAIN_TILES: TileComponent[] = [
   DayCountTile,
   HeadcountPlanTile,
   CashPositionTile,
+  PreplanProgressTile,
   // ─── Action tier ─────────────────────────────────────────────────────────
   AttentionFeedTile,
   LookaheadTile,

@@ -1,5 +1,7 @@
 import { LabourSCurveTile } from './SCurveTile'
 import { MobDemobStripTile } from './MobDemobStripTile'
+import { MobReadinessTile } from './MobReadinessTile'
+import { ProductivityIndexTile } from '../ExtraTiles'
 import {
   TotalPeopleTile, OnSiteNowTile, Incoming7dTile, HoursToDateTile, LabourSellToDateTile,
   TradesHeadcountTile, MgmtHeadcountTile, SeagHeadcountTile, SubconHeadcountTile,
@@ -11,8 +13,12 @@ import {
 import type { TileComponent, TileDef } from '../../../../types/dashboard'
 
 export const HR_TILES: TileComponent[] = [
-  // Top KPIs
+  // ─── Hero — actionable readiness (NEW, default visible) ─────────────────
+  MobReadinessTile,
+  // ─── Top KPIs ───────────────────────────────────────────────────────────
   TotalPeopleTile, OnSiteNowTile, Incoming7dTile, HoursToDateTile, LabourSellToDateTile,
+  // ─── Productivity (NEW) ─────────────────────────────────────────────────
+  ProductivityIndexTile,
   // S-curve (wide tile)
   LabourSCurveTile,
   // Mob/demob strip (wide tile)
@@ -34,4 +40,4 @@ export const HR_TILE_MAP: Record<string, TileComponent> =
 
 export const HR_REGISTRY: TileDef[] = HR_TILES.map(t => t.def)
 
-export const HR_CATEGORIES = ['Headcount', 'Labour', 'Support', 'Alerts']
+export const HR_CATEGORIES = ['Alerts', 'Headcount', 'Labour', 'Support']
