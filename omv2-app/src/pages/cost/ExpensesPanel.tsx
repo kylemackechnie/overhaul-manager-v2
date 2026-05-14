@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 import { naturalSortItemId } from '../../lib/dates'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
@@ -8,6 +8,11 @@ import { toast } from '../../components/ui/Toast'
 import type { Expense, ExpenseLine, Resource, WbsItem } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName, RECEIPT_BUCKET } from '../../lib/receiptStorage'
+import { useIsMobile } from '../../hooks/useIsMobile'
+
+const ExpensesMobile = lazy(() =>
+  import('../mobile/ExpensesMobile').then(m => ({ default: m.ExpensesMobile }))
+)
 
 const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Fixed Cost','Other']
 
@@ -29,6 +34,18 @@ function calcSell(cost: number, gm: number): number {
 }
 
 export function ExpensesPanel() {
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <ExpensesMobile />
+      </Suspense>
+    )
+  }
+  return <ExpensesPanelDesktop />
+}
+
+function ExpensesPanelDesktop() {
   const { activeProject } = useAppStore()
   const { canWrite } = usePermissions()
   const [expenses, setExpenses] = useState<Expense[]>([])

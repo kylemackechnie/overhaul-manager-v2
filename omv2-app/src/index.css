@@ -1900,3 +1900,140 @@ th.resizable .col-resizer:active {
   border-width: 2px;
   font-weight: 700;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Session 6 — Mobile receipt capture
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Action row above the recent list ────────────────────────────────── */
+.mobile-receipt-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.mobile-receipt-primary {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 52px;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 137, 138, 0.3);
+  touch-action: manipulation;
+}
+.mobile-receipt-primary:active { background: var(--accent2); transform: scale(0.98); }
+.mobile-receipt-secondary {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  font-size: 20px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.mobile-receipt-secondary:active { background: var(--bg3); }
+
+/* ── Receipt card in the recent list ─────────────────────────────────── */
+.mobile-receipt-card {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 0 14px 8px;
+  padding: 14px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.mobile-receipt-card:active { background: var(--bg3); }
+
+/* ── Photo slot in the entry sheet ───────────────────────────────────── */
+.mobile-receipt-photo-slot {
+  /* Reserve consistent space so the form doesn't jump when a preview loads */
+  min-height: 180px;
+  background: var(--bg3);
+  border: 2px dashed var(--border2);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* When preview is shown, the inner div overrides the dashed look */
+}
+.mobile-receipt-photo-slot > div { width: 100%; }
+.mobile-receipt-preview {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+.mobile-receipt-attach {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 32px 16px;
+  font: inherit;
+  touch-action: manipulation;
+}
+.mobile-receipt-attach:active { background: var(--bg2); }
+
+.mobile-receipt-retake {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.mobile-receipt-file-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  width: 100%;
+}
+
+/* ── Detail-sheet receipt link (PDFs, non-image) ─────────────────────── */
+.mobile-receipt-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+.mobile-receipt-link:active { background: var(--bg2); }

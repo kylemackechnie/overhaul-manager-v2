@@ -27,6 +27,8 @@ export const MOBILE_OPTIMISED: ReadonlySet<string> = new Set([
   // Site / Parts
   'parts-issue',
   'parts-receiving',
+  // Cost
+  'expenses',
 ])
 
 /**
