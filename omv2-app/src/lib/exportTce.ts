@@ -172,6 +172,25 @@ function buildSLSubheaderRow(slWeeks: string[], labelByWE: Record<string,string>
   return `<row r="2" spans="1:53" s="${ROW_S}" customFormat="1" ht="63" x14ac:dyDescent="0.25">${cells.join('')}</row>`
 }
 
+function buildOHSubheaderRow(ohWeeks: string[], labelByWE: Record<string,string>): string {
+  const HDR_S = 42   // OH sheet row 2 header style
+  const ROW_S = 42
+  const fmtWE = (iso: string) => iso.split('-').reverse().join('/')
+  const cells: string[] = OH_COLS.map(col => {
+    const ref = `${col}2`
+    const weekIdx = OH_WEEK_PAIRS.findIndex(([wh, wc]) => wh === col || wc === col)
+    if (weekIdx < 0) return `<c r="${ref}" s="${HDR_S}"/>`
+    const isHrs = OH_WEEK_PAIRS[weekIdx][0] === col
+    const we = ohWeeks[weekIdx]
+    const invLabel = we && labelByWE[we] ? labelByWE[we] : `Week ${weekIdx+1}`
+    const weSuffix = we ? ` - WE ${fmtWE(we)}` : ''
+    const label = `${invLabel}${weSuffix} - Actual ${isHrs ? 'Hours' : 'Total Cost (Including Overhead and Profit)'}`
+    return `<c r="${ref}" s="${HDR_S}" t="inlineStr"><is><t>${xmlEsc(label)}</t></is></c>`
+  })
+  return `<row r="2" spans="1:47" s="${ROW_S}" customFormat="1" ht="63" x14ac:dyDescent="0.25">${cells.join('')}</row>`
+}
+
+
 function buildOHRow(rowNum: number, isH: boolean, cells: Record<string,CellDef>): string {
   const parts = OH_COLS.map(col => makeCell(col, rowNum, isH?OH_H[col]:OH_D[col], cells[col]??{type:'',value:null}))
   return `<row r="${rowNum}" spans="1:47" s="${isH?146:148}" customFormat="1" ht="12.75" customHeight="1" x14ac:dyDescent="0.25">${parts.join('')}</row>`
@@ -479,7 +498,13 @@ export async function exportTceAll(
     .replace(/<sheetData>.*?<\/sheetData>/s, `<sheetData>${sl1}${slSubheader}${slRows.join('')}</sheetData>`)
     .replace(/ref="A1:BA\d+"/, `ref="A1:BA${slRowNum-1}"`)
   zip.file('xl/worksheets/sheet3.xml', updatedSL)
-  zip.file('xl/worksheets/sheet2.xml', spliceSheet(oh2Xml,  2, ohRows,  `AU${ohRowNum-1}`,  /ref="A1:BC\d+"/))
+  // OH: keep row 1, inject custom subheader as row 2, data from row 3
+  const ohSubheader = buildOHSubheaderRow(ohWeeks, labelByWE)
+  const oh1 = oh2Xml.match(/<row r="1"[^>]*>.*?<\/row>/s)?.[0] || ''
+  const updatedOH = oh2Xml
+    .replace(/<sheetData>.*?<\/sheetData>/s, `<sheetData>${oh1}${ohSubheader}${ohRows.join('')}</sheetData>`)
+    .replace(/ref="A1:BC\d+"/, `ref="A1:AU${ohRowNum-1}"`)
+  zip.file('xl/worksheets/sheet2.xml', updatedOH)
   zip.file('xl/worksheets/sheet4.xml', spliceSheet(var4Xml, 1, varRows, `AM${varRowNum-1}`, /ref="A1:AM\d+"/))
 
   const total=existingSiCount+newSi.length
