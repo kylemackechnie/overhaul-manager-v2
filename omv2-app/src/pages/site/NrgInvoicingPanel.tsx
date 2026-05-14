@@ -209,7 +209,7 @@ export function NrgInvoicingPanel() {
       for (const inv of supplierInvoices) {
         if (inv.tce_item_id !== line.item_id) continue
         if (!inPeriod((inv.date_processed || inv.invoice_date) as string, fromWE, toWE)) continue
-        total += Number(inv.amount) || 0
+        total += (Number(inv.sell_price) || 0) !== 0 ? Number(inv.sell_price) : (Number(inv.amount) || 0)
       }
       for (const exp of expenseItems) {
         if (exp.tce_item_id !== line.item_id) continue
@@ -238,7 +238,7 @@ export function NrgInvoicingPanel() {
     for (const inv of supplierInvoices) {
       if (inv.tce_item_id !== line.item_id) continue
       if (!inPeriod((inv.date_processed || inv.invoice_date) as string, fromWE, toWE)) continue
-      total += Number(inv.amount) || 0
+      total += (Number(inv.sell_price) || 0) !== 0 ? Number(inv.sell_price) : (Number(inv.amount) || 0)
     }
     for (const exp of expenseItems) {
       if (exp.tce_item_id !== line.item_id) continue
@@ -709,7 +709,7 @@ export function NrgInvoicingPanel() {
                             <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text3)' }}>{(i.invoice_number as string) || '—'}</td>
                             <td style={{ padding: '5px 10px', fontSize: 11 }}>{(i.invoice_number as string) || '—'}</td>
                             <td style={{ padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--text2)' }}>{fmtDate((i.date_processed || i.invoice_date) as string)}</td>
-                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt(Number(i.amount) || 0)}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600 }}>{fmt((Number(i.sell_price) || 0) !== 0 ? Number(i.sell_price) : (Number(i.amount) || 0))}</td>
                           </tr>
                         ))}
                       </tbody>
