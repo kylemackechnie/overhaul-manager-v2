@@ -110,6 +110,7 @@ import { DemandSupplyPanel } from './pages/resources/DemandSupplyPanel'
 import { AssetBoardPanel } from './pages/resources/AssetBoardPanel'
 import { AssetTimelinePanel } from './pages/resources/AssetTimelinePanel'
 import { ToolingDemandPanel } from './pages/resources/ToolingDemandPanel'
+import { ResourceRequirementsPanel } from './pages/project/ResourceRequirementsPanel'
 import { UtilisationPanel } from './pages/personnel/UtilisationPanel'
 import { MigrationPanel } from './pages/settings/MigrationPanel'
 import { HireDashboard } from './pages/hire/HireDashboard'
@@ -435,6 +436,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'calendar':              return <CalendarPanel />
     case 'gantt':                 return <GanttPanel />
     case 'project-settings':      return <ProjectSettingsPanel />
+    case 'resource-requirements': return <ResourceRequirementsPanel />
     case 'pre-planning':          return <PrePlanningPanel />
     case 'wbs-list':              return <WBSPanel />
     case 'public-holidays':       return <PublicHolidaysPanel />

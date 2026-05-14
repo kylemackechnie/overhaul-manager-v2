@@ -51,6 +51,7 @@ const RIBBON_MODULES: RibbonTab[] = [
       ]},
       { label: 'Planning', buttons: [
         { icon: '✅', label: 'Pre-Planning', panel: 'pre-planning' },
+        { icon: '📋', label: 'Resource Req.', panel: 'resource-requirements' },
       ]},
     ],
   },
