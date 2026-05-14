@@ -20,7 +20,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../../../lib/supabase'
 import { useProjectHealth } from '../../../../hooks/useProjectHealth'
-import { useWbsActuals } from '../../../../hooks/useWbsActuals'
 import { TileLoading, TileEmpty } from '../../primitives'
 import { toneFor, TONE_COLOR } from '../../../../lib/dashboardThresholds'
 import type { TileComponent, DashboardContext } from '../../../../types/dashboard'
@@ -328,18 +327,19 @@ function WbsHeatStripComp({ ctx }: { ctx: DashboardContext }) {
     enabled: !!ctx.projectId,
     staleTime: 60_000,
   })
-  const { data: actuals, isLoading: l2 } = useWbsActuals(ctx.projectId)
+  const { data: health, isLoading: l2 } = useProjectHealth(ctx.projectId)
 
-  if (l1 || l2 || !mika || !actuals) return <TileLoading />
+  if (l1 || l2 || !mika || !health) return <TileLoading />
   if (mika.length === 0) return <TileEmpty icon="🗂" label="No MIKA imported yet" />
 
-  // Build per-WBS heat rows. Only consider WBS codes that have BOTH a PM100 and
-  // some actual spend, ranked by used%.
+  // Build per-WBS heat rows from canonical wbsActuals (matches MIKA exactly).
+  // Only consider WBS codes that have BOTH a PM100 and some actual spend,
+  // ranked by used%.
   type Row = { wbs: string; desc: string; pm100: number; actuals: number; pct: number }
   const rows: Row[] = []
   for (const m of mika) {
     if ((m.pm100 || 0) < 1) continue
-    const act = actuals.byWbs[m.wbs]?.actuals || 0
+    const act = health.wbsActuals[m.wbs]?.actuals || 0
     if (act < 1) continue
     rows.push({
       wbs: m.wbs,

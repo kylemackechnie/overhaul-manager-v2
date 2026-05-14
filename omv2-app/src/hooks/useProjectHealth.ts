@@ -5,24 +5,37 @@
  * dashboards. Every health-related tile (Cost Snapshot, CPI, SPI, EAC, TCPI,
  * Project Health composite) reads from this hook so the numbers always agree.
  *
- * Data sources (all read-only from existing tables):
- *   - mika_wbs_lines        → BAC (PM100), client forecast (Forecast TC), PM80
- *   - timesheet_cost_lines  → labour AC (cost) and EV (sell, as proxy for earned value)
- *   - invoices              → invoiced / approved / paid actuals (Type B)
- *   - purchase_orders       → committed (in conjunction with invoices)
- *   - expenses              → small actuals
- *   - variations            → approved scope-uplift adjustment to BAC
- *   - projects.start/end    → time elapsed % for SPI baseline
+ * **CRITICAL: this hook calls the canonical `aggregateAllCostsByWbs` and
+ * `buildPoCommitments` engines that the MIKA Cost Plan uses.** This is heavy
+ * (~18 parallel fetches plus a few thousand lines of computation) but is the
+ * only way to guarantee dashboard numbers match MIKA exactly.
  *
- * Note: this hook does NOT re-run the full wbsAggregator (heavy). It uses
- * MIKA as the budget baseline and rolls up actuals/commitments at the project
- * level. Where MikaPanel and Project Health disagree, MikaPanel is the deep
- * truth — Project Health is the executive summary.
+ * React Query caches the result for 60s — subsequent tile reads are free.
+ *
+ * Data sources:
+ *   - mika_wbs_lines        → BAC (PM100) and PM80, filtered to the minimum
+ *                              level to avoid summing the WBS hierarchy.
+ *   - aggregateAllCostsByWbs → AC and EV (canonical actuals)
+ *   - buildPoCommitments    → committed PO costs
+ *   - projects.start/end    → time elapsed % for the SPI baseline
+ *
+ * Where MikaPanel and Project Health disagree, MikaPanel is the deep truth
+ * (per-WBS, per-line). Project Health rolls up the same data to project totals.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
 import { supabase } from '../lib/supabase'
+import { aggregateAllCostsByWbs } from '../engines/wbsAggregator'
+import { buildPoCommitments } from '../engines/poCommitmentsEngine'
+import type {
+  Resource, RateCard, WeeklyTimesheet, BackOfficeHour,
+  HireItem, Car, Accommodation, ToolingCosting, Expense,
+  GlobalTV, GlobalDepartment, Variation, VariationLine,
+  PurchaseOrder, Invoice,
+} from '../types'
+import type { SeSupportEntry, TimesheetCostLineLite } from '../engines/wbsAggregator'
+import type { PoCommitmentResource, PoCommitmentProject } from '../engines/poCommitmentsEngine'
 
 export interface ProjectHealth {
   /** Budget At Completion — total approved budget incl. approved variations */
@@ -34,14 +47,14 @@ export interface ProjectHealth {
   /** Approved variation value (uplift on BAC) */
   variationUplift: number
 
-  /** Earned Value — sell value of work done to date (proxy via timesheet sell + approved invoice sell-equivalent) */
+  /** Earned Value — sell value of work delivered to date */
   ev: number
-  /** Actual Cost — total cost incurred to date */
+  /** Actual Cost — total cost incurred to date (from canonical aggregator) */
   ac: number
   /** Planned Value — straight-line BAC × % time elapsed */
   pv: number
 
-  /** PO commitments outstanding (PO value − invoiced for that PO) */
+  /** PO commitments outstanding (uninvoiced remaining commitment) */
   poCommitted: number
   /** Invoiced total (any status) */
   invoiced: number
@@ -77,15 +90,55 @@ export interface ProjectHealth {
   /** Days left until project end */
   daysToEnd: number | null
 
-  /** Composite health score (0–100) — used by the hero tile */
+  /** Composite health score (0–100) */
   healthScore: number
   /** Top reasons the health score isn't 100 — for the "why" expansion */
   healthIssues: { label: string; severity: 'red' | 'amber' }[]
+
+  /** Per-WBS canonical roll-up (matches MIKA). Tiles can use this without
+   *  re-running the aggregator. Keys: WBS code → {actuals, sell}. */
+  wbsActuals: Record<string, { actuals: number; sell: number }>
+  /** Per-WBS committed PO costs (canonical engine). */
+  wbsCommitted: Record<string, number>
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 const daysBetween = (a: string, b: string) =>
   Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
+
+/**
+ * Roll a WBS line's value into its own code AND every parent prefix.
+ * "S.1.1.1" with value V contributes to S.1.1.1, S.1.1, S.1, and S.
+ * Mirrors the MikaPanel "rollup" helper so per-WBS dashboard tiles match MIKA.
+ */
+function rollupByPrefix(
+  map: Record<string, { actuals: number; sell: number }>,
+  code: string,
+  actuals: number,
+  sell: number,
+) {
+  const parts = code.split('.')
+  let prefix = parts[0]
+  if (!map[prefix]) map[prefix] = { actuals: 0, sell: 0 }
+  map[prefix].actuals += actuals
+  map[prefix].sell += sell
+  for (let i = 1; i < parts.length; i++) {
+    prefix += '.' + parts[i]
+    if (!map[prefix]) map[prefix] = { actuals: 0, sell: 0 }
+    map[prefix].actuals += actuals
+    map[prefix].sell += sell
+  }
+}
+
+function rollupSingle(map: Record<string, number>, code: string, value: number) {
+  const parts = code.split('.')
+  let prefix = parts[0]
+  map[prefix] = (map[prefix] || 0) + value
+  for (let i = 1; i < parts.length; i++) {
+    prefix += '.' + parts[i]
+    map[prefix] = (map[prefix] || 0) + value
+  }
+}
 
 export function useProjectHealth(projectId: string | undefined) {
   const { activeProject } = useAppStore()
@@ -95,54 +148,123 @@ export function useProjectHealth(projectId: string | undefined) {
     queryFn: async () => {
       const pid = projectId!
 
-      const [mikaR, tclR, invR, poR, expR, varR] = await Promise.all([
-        supabase.from('mika_wbs_lines').select('pm80,pm100,forecast_tc').eq('project_id', pid),
-        supabase.from('timesheet_cost_lines').select('cost_labour,sell_labour,cost_allowances,sell_allowances,timesheet_status,work_date').eq('project_id', pid),
-        supabase.from('invoices').select('amount,status,sell_price').eq('project_id', pid),
-        supabase.from('purchase_orders').select('po_value,status').eq('project_id', pid),
-        supabase.from('expenses').select('cost_ex_gst,sell_price,date').eq('project_id', pid),
-        supabase.from('variations').select('value,sell_total,cost_total,status').eq('project_id', pid),
+      // ── Fetch every collection the canonical aggregator needs ────────────
+      const [
+        mikaR, resourcesR, rateCardsR, timesheetsR, costLinesR,
+        tcOwnedR, tcCrossR, tvsR, deptsR,
+        hireR, carsR, accomR, expensesR, boR, seR,
+        varsR, varLinesR, posR, invoicesR, holsR,
+      ] = await Promise.all([
+        supabase.from('mika_wbs_lines').select('pm80,pm100,level').eq('project_id', pid),
+        supabase.from('resources').select('*').eq('project_id', pid),
+        supabase.from('rate_cards').select('*').eq('project_id', pid),
+        supabase.from('weekly_timesheets').select('*').eq('project_id', pid),
+        supabase.from('timesheet_cost_lines')
+          .select('category,wbs,cost_labour,sell_labour,cost_allowances,sell_allowances,person_name,work_date')
+          .eq('project_id', pid),
+        supabase.from('tooling_costings').select('*').eq('project_id', pid),
+        supabase.from('tooling_costings').select('*').neq('project_id', pid)
+          .filter('splits', 'cs', `[{"projectId":"${pid}"}]`),
+        supabase.from('global_tvs').select('*'),
+        supabase.from('global_departments').select('*'),
+        supabase.from('hire_items').select('*').eq('project_id', pid),
+        supabase.from('cars').select('*').eq('project_id', pid),
+        supabase.from('accommodation').select('*').eq('project_id', pid),
+        supabase.from('expenses').select('*').eq('project_id', pid),
+        supabase.from('back_office_hours').select('*').eq('project_id', pid),
+        supabase.from('se_support_costs')
+          .select('wbs,amount,sell_price,currency,person,description,date')
+          .eq('project_id', pid),
+        supabase.from('variations').select('*').eq('project_id', pid),
+        supabase.from('variation_lines').select('*').eq('project_id', pid),
+        supabase.from('purchase_orders').select('*').eq('project_id', pid),
+        supabase.from('invoices').select('*').eq('project_id', pid),
+        supabase.from('public_holidays').select('date').eq('project_id', pid),
       ])
 
-      const mika = (mikaR.data || []) as { pm80: number | null; pm100: number | null; forecast_tc: number | null }[]
-      const tcl = (tclR.data || []) as { cost_labour: number | null; sell_labour: number | null; cost_allowances: number | null; sell_allowances: number | null; timesheet_status: string | null; work_date: string | null }[]
-      const inv = (invR.data || []) as { amount: number | null; status: string; sell_price: number | null }[]
-      const pos = (poR.data || []) as { po_value: number | null; status: string }[]
-      const exp = (expR.data || []) as { cost_ex_gst: number | null; sell_price: number | null; date: string | null }[]
-      const vars = (varR.data || []) as { value: number | null; sell_total: number | null; cost_total: number | null; status: string }[]
+      const mikaAll = (mikaR.data || []) as { pm80: number | null; pm100: number | null; level: string | number | null }[]
+      const resources = (resourcesR.data || []) as Resource[]
+      const rateCards = (rateCardsR.data || []) as RateCard[]
+      const timesheets = (timesheetsR.data || []) as WeeklyTimesheet[]
+      const costLines = (costLinesR.data || []) as TimesheetCostLineLite[]
+      const toolingCostings = [
+        ...((tcOwnedR.data || []) as ToolingCosting[]),
+        ...((tcCrossR.data || []) as ToolingCosting[]),
+      ]
+      const globalTVs = (tvsR.data || []) as GlobalTV[]
+      const globalDepartments = (deptsR.data || []) as GlobalDepartment[]
+      const hireItems = (hireR.data || []) as HireItem[]
+      const cars = (carsR.data || []) as Car[]
+      const accommodation = (accomR.data || []) as Accommodation[]
+      const expenses = (expensesR.data || []) as Expense[]
+      const backOfficeHours = (boR.data || []) as BackOfficeHour[]
+      const seSupport = (seR.data || []) as SeSupportEntry[]
+      const variations = (varsR.data || []) as Variation[]
+      const variationLines = (varLinesR.data || []) as VariationLine[]
+      const purchaseOrders = (posR.data || []) as PurchaseOrder[]
+      const invoices = (invoicesR.data || []) as Invoice[]
+      const publicHolidays = ((holsR.data || []) as { date: string }[]).map(h => h.date)
 
-      // ── Budget ──────────────────────────────────────────────────────────
-      const pm100 = mika.reduce((s, r) => s + (r.pm100 || 0), 0)
-      const pm80 = mika.reduce((s, r) => s + (r.pm80 || 0), 0)
-      const variationUplift = vars
+      // ── Budget (MIKA at the minimum level only to avoid hierarchy double-count)
+      // mika_wbs_lines.level is stored as TEXT; coerce for comparison.
+      let minLevel = Infinity
+      for (const m of mikaAll) {
+        const l = Number(m.level ?? 0)
+        if (Number.isFinite(l) && l < minLevel) minLevel = l
+      }
+      const topLines = mikaAll.filter(m => Number(m.level ?? 0) === minLevel)
+      const pm100 = topLines.reduce((s, r) => s + (r.pm100 || 0), 0)
+      const pm80 = topLines.reduce((s, r) => s + (r.pm80 || 0), 0)
+      const variationUplift = variations
         .filter(v => v.status === 'approved')
         .reduce((s, v) => s + (v.sell_total || v.value || 0), 0)
       const bac = pm100 + variationUplift
 
-      // ── Actual Cost ─────────────────────────────────────────────────────
-      // Approved labour + approved/paid invoices + expenses
-      const labourCost = tcl
-        .filter(l => l.timesheet_status === 'approved')
-        .reduce((s, l) => s + (l.cost_labour || 0) + (l.cost_allowances || 0), 0)
-      const invoiceActuals = inv
-        .filter(i => i.status === 'approved' || i.status === 'paid')
-        .reduce((s, i) => s + (i.amount || 0), 0)
-      const expenseActuals = exp.reduce((s, e) => s + (e.cost_ex_gst || 0), 0)
-      const ac = labourCost + invoiceActuals + expenseActuals
+      // ── Actual Cost & Earned Value (canonical aggregator) ─────────────────
+      const agg = aggregateAllCostsByWbs({
+        project: activeProject,
+        resources, rateCards, timesheets,
+        timesheetCostLines: costLines,
+        toolingCostings, globalTVs, globalDepartments,
+        hireItems, cars, accommodation,
+        expenses, backOfficeHours, seSupport,
+        variations, variationLines,
+        invoices, purchaseOrders,
+        publicHolidays,
+        activeProjectId: pid,
+      })
 
-      // ── Earned Value ───────────────────────────────────────────────────
-      // EV = sell value of work done. Labour sell + approved invoice sell + variation sell delivered
-      // (sell ≈ earned value of revenue-side work performed)
-      const labourEv = tcl
-        .filter(l => l.timesheet_status === 'approved')
-        .reduce((s, l) => s + (l.sell_labour || 0) + (l.sell_allowances || 0), 0)
-      const invoiceEv = inv
-        .filter(i => i.status === 'approved' || i.status === 'paid')
-        .reduce((s, i) => s + (i.sell_price != null && i.sell_price !== 0 ? i.sell_price : (i.amount || 0)), 0)
-      const expenseEv = exp.reduce((s, e) => s + (e.sell_price || e.cost_ex_gst || 0), 0)
-      const ev = labourEv + invoiceEv + expenseEv
+      let ac = 0
+      let ev = 0
+      const wbsActuals: Record<string, { actuals: number; sell: number }> = {}
+      for (const [code, row] of Object.entries(agg)) {
+        ac += row.total
+        ev += row.totalSell
+        if (row.total || row.totalSell) {
+          // Roll up to parent prefixes so e.g. "S.1.1.1" also contributes to
+          // "S.1.1" and "S.1" and "S". Matches MikaPanel's per-row totals.
+          rollupByPrefix(wbsActuals, code, row.total, row.totalSell)
+        }
+      }
 
-      // ── Time elapsed → Planned Value ───────────────────────────────────
+      // ── PO commitments (canonical engine) ─────────────────────────────────
+      const { byWbs: committedByWbs } = buildPoCommitments(
+        purchaseOrders,
+        invoices,
+        hireItems,
+        cars,
+        accommodation,
+        resources as unknown as PoCommitmentResource[],
+        (activeProject || {}) as PoCommitmentProject,
+      )
+      const poCommitted = Object.values(committedByWbs).reduce((s, v) => s + v, 0)
+      // Roll up the committed map by prefix for tile use
+      const wbsCommitted: Record<string, number> = {}
+      for (const [code, val] of Object.entries(committedByWbs)) {
+        if (val) rollupSingle(wbsCommitted, code, val)
+      }
+
+      // ── Time elapsed → Planned Value ─────────────────────────────────────
       const start = activeProject?.start_date
       const end = activeProject?.end_date
       const today = todayStr()
@@ -162,20 +284,21 @@ export function useProjectHealth(projectId: string | undefined) {
       }
       const pv = bac * (timeElapsedPct / 100)
 
-      // ── Procurement totals ─────────────────────────────────────────────
-      const invoiced = inv.reduce((s, i) => s + (i.amount || 0), 0)
-      const invoicedApproved = inv
-        .filter(i => i.status === 'approved' || i.status === 'paid')
+      // ── Invoice totals (raw) ─────────────────────────────────────────────
+      // NOTE: InvoiceStatus type doesn't include 'paid' but runtime allows it
+      // (legacy data + status_history transitions). We treat both approved and
+      // paid as "approved/paid" for cashflow display.
+      const isApproved = (s: string) => s === 'approved' || s === 'paid'
+      const isPending = (s: string) => s === 'received' || s === 'checked'
+      const invoiced = invoices.reduce((s, i) => s + (i.amount || 0), 0)
+      const invoicedApproved = invoices
+        .filter(i => isApproved(i.status as unknown as string))
         .reduce((s, i) => s + (i.amount || 0), 0)
-      const invoicedPending = inv
-        .filter(i => i.status === 'received' || i.status === 'checked')
+      const invoicedPending = invoices
+        .filter(i => isPending(i.status as unknown as string))
         .reduce((s, i) => s + (i.amount || 0), 0)
-      const poValueActive = pos
-        .filter(p => p.status === 'active')
-        .reduce((s, p) => s + (p.po_value || 0), 0)
-      const poCommitted = Math.max(0, poValueActive - invoiced)
 
-      // ── EVM indices ────────────────────────────────────────────────────
+      // ── EVM indices ──────────────────────────────────────────────────────
       const cpi = ac > 0.01 ? ev / ac : null
       const spi = pv > 0.01 ? ev / pv : null
       const eac = cpi != null && cpi > 0.01 ? ac + (bac - ev) / cpi : null
@@ -186,7 +309,7 @@ export function useProjectHealth(projectId: string | undefined) {
       const progressPct = bac > 0.01 ? (ev / bac) * 100 : 0
       const burnPct = bac > 0.01 ? (ac / bac) * 100 : 0
 
-      // ── Composite health score ────────────────────────────────────────
+      // ── Composite health score ────────────────────────────────────────────
       let score = 100
       const issues: { label: string; severity: 'red' | 'amber' }[] = []
 
@@ -218,9 +341,12 @@ export function useProjectHealth(projectId: string | undefined) {
         outageDay, daysToStart, daysToEnd,
         healthScore: score,
         healthIssues: issues,
+        wbsActuals, wbsCommitted,
       }
     },
     enabled: !!projectId && !!activeProject,
+    // Heavy compute — cache for 60s, gc 5min after unused
     staleTime: 60_000,
+    gcTime: 5 * 60_000,
   })
 }
