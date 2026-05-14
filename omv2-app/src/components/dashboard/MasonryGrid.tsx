@@ -182,6 +182,13 @@ function MasonryTile({ id, x, y, width, ready, editMode, onMeasure, children }: 
     return () => ro.disconnect()
   }, [id, onMeasure])
 
+  // When the user is dragging this tile, let dnd-kit drive motion via
+  // `transform`. Otherwise our own absolute-position transitions handle the
+  // shuffle animation. Two motion sources can't compete on the same element.
+  const motionStyle = isDragging
+    ? { transform: CSS.Transform.toString(transform), transition: 'none' }
+    : { transform: 'none', transition: transition || 'left 0.22s ease, top 0.22s ease, width 0.22s ease, opacity 0.15s ease' }
+
   return (
     <div
       ref={setNodeRef}
@@ -190,26 +197,32 @@ function MasonryTile({ id, x, y, width, ready, editMode, onMeasure, children }: 
         left: x,
         top: y,
         width,
-        opacity: ready ? (isDragging ? 0.4 : 1) : 0,
-        transform: CSS.Transform.toString(transform),
-        transition: transition
-          ? transition
-          : 'left 0.22s ease, top 0.22s ease, width 0.22s ease, opacity 0.15s ease',
-        zIndex: isDragging ? 50 : 1,
+        opacity: ready ? (isDragging ? 0.85 : 1) : 0,
+        zIndex: isDragging ? 100 : 1,
+        // In edit mode, the whole tile is grabbable. Otherwise normal cursor.
+        cursor: editMode ? (isDragging ? 'grabbing' : 'grab') : undefined,
+        // Visual elevation while dragging
+        boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.18)' : 'none',
+        borderRadius: 6,
+        ...motionStyle,
       }}
-      {...attributes}
+      // Apply both attributes (accessibility) and listeners (pointer handlers)
+      // to the whole tile only when in edit mode. Outside edit mode, the tile
+      // is just a regular interactive surface so clicks bubble to its inner
+      // onClick handlers (open panel etc).
+      {...(editMode ? { ...attributes, ...listeners } : {})}
     >
-      <div ref={innerRef} style={{ position: 'relative' }}>
-        {/* Drag handle — only shown in edit mode */}
+      <div ref={innerRef} style={{ position: 'relative', pointerEvents: editMode ? 'none' : 'auto' }}>
+        {/* Drag-handle pip — visual only when in edit mode */}
         {editMode && (
           <div
-            {...listeners}
             style={{
               position: 'absolute', top: 6, left: 6, zIndex: 10,
-              background: 'rgba(0,0,0,0.6)', borderRadius: '4px', padding: '3px 6px',
-              cursor: 'grab', fontSize: '13px', color: '#fff', userSelect: 'none', lineHeight: 1,
+              background: 'rgba(0,0,0,0.55)', borderRadius: '4px', padding: '3px 6px',
+              fontSize: '13px', color: '#fff', userSelect: 'none', lineHeight: 1,
+              pointerEvents: 'none',
             }}
-            title="Drag to reorder"
+            aria-hidden="true"
           >
             ⠿
           </div>

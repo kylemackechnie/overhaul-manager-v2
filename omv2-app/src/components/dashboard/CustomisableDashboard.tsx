@@ -13,11 +13,11 @@ import type { ReactNode } from 'react'
 import {
   DndContext,
   PointerSensor,
-  closestCenter,
+  closestCorners,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import type { DragEndEvent } from '@dnd-kit/core'
+import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../store/appStore'
@@ -80,6 +80,9 @@ export function CustomisableDashboard({
   const [editMode, setEditMode] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  /** While a drag is in progress, we mutate this local copy of the layout in
+   *  real-time so the masonry can reflow. Committed to Supabase on drag end. */
+  const [draftLayout, setDraftLayout] = useState<TileLayoutEntry[] | null>(null)
 
   // Filter registry by permissions + project applicability
   const applicableRegistry = useMemo(
@@ -91,10 +94,12 @@ export function CustomisableDashboard({
   const savedLayout = prefs.dashboard_layouts?.[dashboardId] as TileLayoutEntry[] | undefined
   const savedVersion = prefs.dashboard_layout_versions?.[dashboardId] ?? 1
   const currentVersion = DASHBOARD_LAYOUT_VERSIONS[dashboardId] ?? 1
-  const layout: TileLayoutEntry[] = useMemo(() => {
+  const persistedLayout: TileLayoutEntry[] = useMemo(() => {
     if (savedLayout?.length) return mergeLayout(savedLayout, applicableRegistry, savedVersion, currentVersion)
     return getDefaultLayout(applicableRegistry)
   }, [savedLayout, applicableRegistry, savedVersion, currentVersion])
+  // While dragging we show the local draft. Otherwise the persisted layout.
+  const layout = draftLayout ?? persistedLayout
 
   // After loading, if the version was bumped, persist BOTH the migrated layout
   // AND the new version so subsequent loads don't re-trigger the migration
@@ -140,14 +145,37 @@ export function CustomisableDashboard({
     })
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  function handleDragStart() {
+    // Snapshot the current layout into the draft so we can mutate it freely
+    setDraftLayout(layout.map(t => ({ ...t })))
+  }
+
+  function handleDragOver(event: DragOverEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const oldIndex = layout.findIndex(t => t.id === active.id)
-    const newIndex = layout.findIndex(t => t.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(layout, oldIndex, newIndex).map((t, i) => ({ ...t, order: i }))
-    saveLayout(reordered)
+    setDraftLayout(prev => {
+      const base = prev ?? layout
+      const oldIndex = base.findIndex(t => t.id === active.id)
+      const newIndex = base.findIndex(t => t.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      return arrayMove(base, oldIndex, newIndex).map((t, i) => ({ ...t, order: i }))
+    })
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    const finalLayout = draftLayout ?? layout
+    setDraftLayout(null)
+    if (!over || active.id === over.id) return
+    // Persist whatever the draft settled on. We compare to persistedLayout
+    // and only write if order actually changed (avoids needless Supabase writes
+    // on a tap-without-drag).
+    const orderChanged = finalLayout.some((t, i) => persistedLayout[i]?.id !== t.id)
+    if (orderChanged) saveLayout(finalLayout)
+  }
+
+  function handleDragCancel() {
+    setDraftLayout(null)
   }
 
   function toggleTile(id: string) {
@@ -191,7 +219,14 @@ export function CustomisableDashboard({
       />
 
       {/* Tile grid */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext items={visibleTiles.map(t => t.id)} strategy={rectSortingStrategy}>
           <MasonryGrid
             columns={gridCols}
