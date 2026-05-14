@@ -315,18 +315,37 @@ function ProjectStatusTileComp({ ctx }: { ctx: DashboardContext }) {
   const start = activeProject?.start_date
   const end = activeProject?.end_date
   const isLive = start && start <= todayStr && (!end || end >= todayStr)
+  const daysToStart = start && start > todayStr
+    ? Math.ceil((new Date(start + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000)
+    : null
   const dayNum = isLive && start
     ? Math.floor((new Date(todayStr).getTime() - new Date(start + 'T00:00:00').getTime()) / 86400000) + 1
     : null
+
+  let value: string = '—'
+  let sub: string = activeProject?.name || 'No project selected'
+  let color = '#8b5cf6'
+
+  if (dayNum != null) {
+    value = `Day ${dayNum}`
+  } else if (daysToStart != null) {
+    value = `${daysToStart}d`
+    sub = `until mob · ${start}`
+    color = 'var(--amber)'
+  } else if (start && end && end < todayStr) {
+    value = 'Closeout'
+    sub = `Ended ${end}`
+    color = 'var(--text3)'
+  }
 
   return (
     <KpiCard
       icon={def2.icon}
       label="Project Status"
-      value={dayNum ? `Day ${dayNum}` : start && start > todayStr ? 'Pre-outage' : '—'}
-      sub={activeProject?.name || 'No project selected'}
-      color="#8b5cf6"
-      accent="#8b5cf6"
+      value={value}
+      sub={sub}
+      color={color}
+      accent={color}
       onClick={() => ctx.setActivePanel('project-settings')}
     />
   )

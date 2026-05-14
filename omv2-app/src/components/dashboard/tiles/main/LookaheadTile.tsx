@@ -50,9 +50,15 @@ function LookaheadTileComp({ ctx }: { ctx: DashboardContext }) {
   if (error) return <TileError />
   if (!data) return <TileEmpty icon="📅" label="No project selected" />
 
-  const events: LookaheadEvent[] = []
+  // Build raw events first, then group by (date, kind, vendor) so that
+  // "7 different containers all on-hire from Siemens Energy tomorrow" becomes
+  // ONE row in the dashboard rather than 7 noisy rows.
+  interface RawEvent {
+    date: string; kind: string; icon: string; vendor: string; itemLabel: string; panel?: string
+  }
+  const raw: RawEvent[] = []
 
-  // Mob ins / outs
+  // Mob ins / outs — already aggregated per-date by the original logic
   const arrMap: Record<string, string[]> = {}
   const depMap: Record<string, string[]> = {}
   for (const r of data.res) {
@@ -60,35 +66,74 @@ function LookaheadTileComp({ ctx }: { ctx: DashboardContext }) {
     if (r.mob_out && inWindow(r.mob_out)) { depMap[r.mob_out] = [...(depMap[r.mob_out] || []), r.name || ''] }
   }
   for (const [d, names] of Object.entries(arrMap)) {
-    events.push({ date: d, icon: '👤', label: `${names.length} person${names.length > 1 ? 's' : ''} arrive${names.length === 1 ? 's' : ''}`, sub: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''), days: daysFrom(d), panel: 'hr-resources' })
+    raw.push({ date: d, kind: 'arrival', icon: '👤', vendor: '', itemLabel: `${names.length} person${names.length > 1 ? 's' : ''} arrive${names.length === 1 ? 's' : ''}`, panel: 'hr-resources' })
   }
   for (const [d, names] of Object.entries(depMap)) {
-    events.push({ date: d, icon: '👋', label: `${names.length} person${names.length > 1 ? 's' : ''} depart${names.length === 1 ? 's' : ''}`, sub: names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''), days: daysFrom(d), panel: 'hr-resources' })
+    raw.push({ date: d, kind: 'departure', icon: '👋', vendor: '', itemLabel: `${names.length} person${names.length > 1 ? 's' : ''} depart${names.length === 1 ? 's' : ''}`, panel: 'hr-resources' })
   }
-  // Hire
+
   for (const h of data.hire) {
     const icon = h.hire_type === 'wet' ? '🏗️' : h.hire_type === 'local' ? '🧰' : '🚜'
     const panel = `hire-${h.hire_type}`
-    if (inWindow(h.start_date)) events.push({ date: h.start_date!, icon, label: `${h.name || 'Equipment'} on-hire`, sub: h.vendor || '', days: daysFrom(h.start_date!), panel })
-    if (h.end_date && inWindow(h.end_date)) events.push({ date: h.end_date, icon, label: `${h.name || 'Equipment'} off-hire`, sub: h.vendor || '', days: daysFrom(h.end_date), panel })
+    if (inWindow(h.start_date)) raw.push({ date: h.start_date!, kind: `hire-on-${h.hire_type}`, icon, vendor: h.vendor || '', itemLabel: h.name || 'Equipment', panel })
+    if (h.end_date && inWindow(h.end_date)) raw.push({ date: h.end_date, kind: `hire-off-${h.hire_type}`, icon, vendor: h.vendor || '', itemLabel: h.name || 'Equipment', panel })
   }
-  // Cars
   for (const c of data.cars) {
     const lbl = c.vehicle_type ? `${c.vehicle_type}${c.rego ? ` (${c.rego})` : ''}` : 'Car hire'
-    if (inWindow(c.start_date)) events.push({ date: c.start_date!, icon: '🚗', label: `${lbl} pickup`, sub: c.vendor || '', days: daysFrom(c.start_date!), panel: 'hr-cars' })
-    if (c.end_date && inWindow(c.end_date)) events.push({ date: c.end_date, icon: '🚗', label: `${lbl} return`, sub: c.vendor || '', days: daysFrom(c.end_date), panel: 'hr-cars' })
+    if (inWindow(c.start_date)) raw.push({ date: c.start_date!, kind: 'car-pickup', icon: '🚗', vendor: c.vendor || '', itemLabel: lbl, panel: 'hr-cars' })
+    if (c.end_date && inWindow(c.end_date)) raw.push({ date: c.end_date, kind: 'car-return', icon: '🚗', vendor: c.vendor || '', itemLabel: lbl, panel: 'hr-cars' })
   }
-  // Accommodation
   for (const a of data.accom) {
     const lbl = `${a.property || 'Accom'}${a.room ? ` · ${a.room}` : ''}`
-    const occ = ((a.occupants as string[]) || []).length
-    if (inWindow(a.check_in)) events.push({ date: a.check_in!, icon: '🏨', label: `${lbl} check-in`, sub: `${occ} occupant${occ !== 1 ? 's' : ''}`, days: daysFrom(a.check_in!), panel: 'hr-accommodation' })
-    if (a.check_out && inWindow(a.check_out)) events.push({ date: a.check_out, icon: '🏨', label: `${lbl} check-out`, sub: `${occ} occupant${occ !== 1 ? 's' : ''}`, days: daysFrom(a.check_out), panel: 'hr-accommodation' })
+    if (inWindow(a.check_in)) raw.push({ date: a.check_in!, kind: 'accom-in', icon: '🏨', vendor: '', itemLabel: lbl, panel: 'hr-accommodation' })
+    if (a.check_out && inWindow(a.check_out)) raw.push({ date: a.check_out, kind: 'accom-out', icon: '🏨', vendor: '', itemLabel: lbl, panel: 'hr-accommodation' })
   }
-  // Tooling
   for (const tc of data.tooling) {
-    if (inWindow(tc.charge_start)) events.push({ date: tc.charge_start!, icon: '🔩', label: `TV${tc.tv_no} rental starts`, sub: 'Charge period begins', days: daysFrom(tc.charge_start!), panel: 'tooling-tvs' })
-    if (tc.charge_end && inWindow(tc.charge_end)) events.push({ date: tc.charge_end, icon: '🔩', label: `TV${tc.tv_no} rental ends`, sub: 'Return to Germany', days: daysFrom(tc.charge_end), panel: 'tooling-tvs' })
+    if (inWindow(tc.charge_start)) raw.push({ date: tc.charge_start!, kind: 'tv-start', icon: '🔩', vendor: '', itemLabel: `TV${tc.tv_no} rental starts`, panel: 'tooling-tvs' })
+    if (tc.charge_end && inWindow(tc.charge_end)) raw.push({ date: tc.charge_end, kind: 'tv-end', icon: '🔩', vendor: '', itemLabel: `TV${tc.tv_no} rental ends`, panel: 'tooling-tvs' })
+  }
+
+  // ── Group by (date | kind | vendor) ─────────────────────────────────────
+  const KIND_LABEL: Record<string, { on: string; off?: string } | string> = {
+    'arrival': '',
+    'departure': '',
+    'hire-on-dry': 'on-hire',  'hire-off-dry': 'off-hire',
+    'hire-on-wet': 'on-hire',  'hire-off-wet': 'off-hire',
+    'hire-on-local': 'on-hire','hire-off-local': 'off-hire',
+    'car-pickup': 'pickup',    'car-return': 'return',
+    'accom-in': 'check-in',    'accom-out': 'check-out',
+    'tv-start': 'starts',      'tv-end': 'ends',
+  }
+
+  const groups = new Map<string, { date: string; icon: string; vendor: string; kind: string; items: string[]; panel?: string }>()
+  for (const r of raw) {
+    const key = `${r.date}|${r.kind}|${r.vendor}`
+    const ex = groups.get(key)
+    if (ex) ex.items.push(r.itemLabel)
+    else groups.set(key, { date: r.date, icon: r.icon, vendor: r.vendor, kind: r.kind, items: [r.itemLabel], panel: r.panel })
+  }
+
+  const events: LookaheadEvent[] = []
+  for (const g of groups.values()) {
+    const verb = KIND_LABEL[g.kind] || ''
+    const n = g.items.length
+    let label: string
+    let sub: string
+    if (g.kind === 'arrival' || g.kind === 'departure') {
+      // For mob events, items[0] is already a pre-formatted summary
+      label = g.items[0]
+      sub = ''
+    } else if (n === 1) {
+      label = `${g.items[0]} ${verb}`.trim()
+      sub = g.vendor
+    } else {
+      // Multiple items on same date for same vendor → roll up
+      const sample = g.items.slice(0, 2).join(', ')
+      const more = n > 2 ? ` +${n - 2} more` : ''
+      label = `${n} items ${verb}`.trim()
+      sub = g.vendor ? `${g.vendor} · ${sample}${more}` : `${sample}${more}`
+    }
+    events.push({ date: g.date, icon: g.icon, label, sub, days: daysFrom(g.date), panel: g.panel })
   }
   events.sort((a, b) => a.days - b.days)
 

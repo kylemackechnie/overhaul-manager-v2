@@ -25,7 +25,8 @@ import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { usePermissions } from '../../lib/permissions'
 import { getDefaultLayout, mergeLayout, filterRegistry, DASHBOARD_LAYOUT_VERSIONS } from '../../lib/dashboardLayout'
 import { fmt as fmtCurrency } from '../../lib/currency'
-import { SortableTile } from './SortableTile'
+import { MasonryGrid } from './MasonryGrid'
+import type { MasonryItem } from './MasonryGrid'
 import { DashboardToolbar } from './DashboardToolbar'
 import { TileErrorBoundary } from './TileErrorBoundary'
 import { WidgetPicker } from './WidgetPicker'
@@ -192,27 +193,23 @@ export function CustomisableDashboard({
       {/* Tile grid */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={visibleTiles.map(t => t.id)} strategy={rectSortingStrategy}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-              gap: '12px',
-              alignItems: 'start',
-            }}
-          >
-            {visibleTiles.map(tile => {
-              const entry = tileComponents[tile.id]
-              if (!entry) return null
-              const { Component } = entry
-              return (
-                <SortableTile key={tile.id} tile={tile} editMode={editMode} gridCols={gridCols}>
+          <MasonryGrid
+            columns={gridCols}
+            editMode={editMode}
+            items={visibleTiles.map<MasonryItem>(tile => ({
+              id: tile.id,
+              size: tile.size,
+              render: (em) => {
+                const entry = tileComponents[tile.id]
+                if (!entry) return null
+                const { Component } = entry
+                return (
                   <div
                     style={{
                       position: 'relative',
-                      outline: editMode ? '2px dashed var(--accent)' : 'none',
+                      outline: em ? '2px dashed var(--accent)' : 'none',
                       outlineOffset: '2px',
                       borderRadius: '6px',
-                      height: '100%',
                     }}
                   >
                     <TileErrorBoundary tileId={tile.id}>
@@ -220,7 +217,7 @@ export function CustomisableDashboard({
                     </TileErrorBoundary>
 
                     {/* Edit-mode remove button */}
-                    {editMode && (
+                    {em && (
                       <button
                         onClick={() => toggleTile(tile.id)}
                         style={{
@@ -237,10 +234,10 @@ export function CustomisableDashboard({
                       </button>
                     )}
                   </div>
-                </SortableTile>
-              )
-            })}
-          </div>
+                )
+              },
+            }))}
+          />
         </SortableContext>
       </DndContext>
 
