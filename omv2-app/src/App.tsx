@@ -110,6 +110,7 @@ import { DemandSupplyPanel } from './pages/resources/DemandSupplyPanel'
 import { AssetBoardPanel } from './pages/resources/AssetBoardPanel'
 import { AssetTimelinePanel } from './pages/resources/AssetTimelinePanel'
 import { ToolingDemandPanel } from './pages/resources/ToolingDemandPanel'
+import { PlatformHomePanel } from './pages/platform/PlatformHomePanel'
 import { ResourceRequirementsPanel } from './pages/project/ResourceRequirementsPanel'
 import { UtilisationPanel } from './pages/personnel/UtilisationPanel'
 import { MigrationPanel } from './pages/settings/MigrationPanel'
@@ -361,14 +362,7 @@ function AppInner() {
               <span style={{ fontSize:'13px', color:'var(--text3)' }}>Restoring your project...</span>
             </div>
           ) : (
-            <div className="empty-state" style={{ paddingTop:'80px' }}>
-              <div className="icon">⚙️</div>
-              <h3>Select a project</h3>
-              <p>Click the project pill in the header or the SE logo to open the project picker.</p>
-              <button className="btn btn-primary" style={{ marginTop:'16px' }} onClick={() => setPickerOpen(true)}>
-                Open Project Picker
-              </button>
-            </div>
+            <PlatformHomePanel onOpenPicker={() => setPickerOpen(true)} />
           )
         ) : (
           <PanelRouter panel={activePanel} />
