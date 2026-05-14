@@ -135,7 +135,7 @@ export function ExpensesPanel() {
       vendor: e.vendor || '', description: e.description, date: e.date || '',
       amount: e.amount, cost_ex_gst: e.cost_ex_gst, sell_price: e.sell_price,
       gm_pct: e.gm_pct, currency: e.currency, wbs: e.wbs, notes: e.notes,
-      chargeable: e.sell_price !== 0, tce_item_id: e.tce_item_id || '',
+      chargeable: e.chargeable ?? e.sell_price !== 0, tce_item_id: e.tce_item_id || '',
     })
     // Load existing lines for this expense
     const { data } = await supabase.from('expense_lines').select('*').eq('expense_id', e.id).order('sort_order')
@@ -384,7 +384,7 @@ export function ExpensesPanel() {
         sell_price:   src.sell_price,
         currency:     src.currency,
         gm_pct:       src.gm_pct,
-        chargeable:   src.chargeable || src.sell_price !== 0,
+        chargeable:   src.chargeable ?? src.sell_price !== 0,
         tce_item_id:  src.tce_item_id,
         wbs:          src.wbs,
         notes:        src.notes,
