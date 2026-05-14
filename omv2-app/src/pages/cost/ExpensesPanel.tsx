@@ -53,7 +53,7 @@ export function ExpensesPanel() {
   const [showBulkDownload, setShowBulkDownload] = useState(false)
   const [bulkDlWeeks, setBulkDlWeeks] = useState<Set<string>>(new Set())
   const [bulkDlLoading, setBulkDlLoading] = useState(false)
-  type ExpSortCol = 'date'|'description'|'category'|'cost'|'sell'|'wbs'
+  type ExpSortCol = 'date'|'description'|'expense_ref'|'category'|'cost'|'sell'|'wbs'
   type ExpSortDir = 'asc'|'desc'
   const [sortCol, setSortCol] = useState<ExpSortCol>('date')
   const [sortDir, setSortDir] = useState<ExpSortDir>('desc')
@@ -501,6 +501,7 @@ export function ExpensesPanel() {
       switch (sortCol) {
         case 'date':        va = a.date||''; vb = b.date||''; break
         case 'description': va = (a.description||'').toLowerCase(); vb = (b.description||'').toLowerCase(); break
+        case 'expense_ref': va = (a.expense_ref||'').toLowerCase(); vb = (b.expense_ref||'').toLowerCase(); break
         case 'category':    va = (a.category||'').toLowerCase(); vb = (b.category||'').toLowerCase(); break
         case 'cost':        va = a.cost_ex_gst||0; vb = b.cost_ex_gst||0; break
         case 'sell':        va = a.sell_price||0; vb = b.sell_price||0; break
@@ -598,6 +599,7 @@ export function ExpensesPanel() {
                   </th>
                   <SortTh col="date" label="Date" />
                   <SortTh col="description" label="Description" />
+                  <SortTh col="expense_ref" label="ISO Filing Ref" />
                   <SortTh col="category" label="Category" />
                   <SortTh col="cost" label="Cost (ex GST)" align="right" />
                   <SortTh col="sell" label="Sell" align="right" />
@@ -617,10 +619,8 @@ export function ExpensesPanel() {
                       <input type="checkbox" checked={selected.has(e.id)} onChange={()=>toggleSelect(e.id)} style={{accentColor:'#f472b6'}} />
                     </td>
                     <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{e.date || '—'}</td>
-                    <td style={{ fontWeight: 500 }}>
-                      {e.description}
-                      {e.expense_ref && <div style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)',marginTop:'1px'}}>{e.expense_ref}</div>}
-                    </td>
+                    <td style={{ fontWeight: 500 }}>{e.description}</td>
+                    <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{e.expense_ref || '—'}</td>
                     <td style={{ fontSize: '12px', color: 'var(--text3)' }}>{e.category || '—'}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(e.cost_ex_gst || 0)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : e.sell_price < 0 ? 'var(--red)' : 'var(--text3)' }}>
