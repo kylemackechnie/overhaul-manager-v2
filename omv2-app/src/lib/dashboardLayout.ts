@@ -23,7 +23,7 @@ import type { Module } from './permissions'
  */
 export const DASHBOARD_LAYOUT_VERSIONS: Record<string, number> = {
   main: 2,
-  cost: 1,
+  cost: 2,
   hr: 1,
   hse: 1,
   hire: 1,

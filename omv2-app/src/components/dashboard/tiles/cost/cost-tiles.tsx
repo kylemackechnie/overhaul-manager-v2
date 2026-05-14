@@ -42,7 +42,7 @@ function InvoiceTotalComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('invoices')} />
 }
 export const InvoiceTotalTile: TileComponent = {
-  def: { id: 'invoice-total', icon: '🧾', title: 'Invoice Total', description: 'Total invoiced value across all POs', category: 'Procurement', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'invoice-total', icon: '🧾', title: 'Invoice Total', description: 'Total invoiced value across all POs', category: 'Procurement', defaultSize: 'md', defaultVisible: false },
   Component: InvoiceTotalComp,
 }
 
@@ -56,7 +56,7 @@ function ApprovedPaidComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('invoices')} />
 }
 export const ApprovedPaidTile: TileComponent = {
-  def: { id: 'approved-paid', icon: '✅', title: 'Approved / Paid', description: 'Total value of approved and paid invoices', category: 'Procurement', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'approved-paid', icon: '✅', title: 'Approved / Paid', description: 'Total value of approved and paid invoices', category: 'Procurement', defaultSize: 'md', defaultVisible: false },
   Component: ApprovedPaidComp,
 }
 
@@ -72,7 +72,7 @@ function PendingInvoicesComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('invoices')} />
 }
 export const PendingInvoicesTile: TileComponent = {
-  def: { id: 'pending-invoices', icon: '⏳', title: 'Pending Invoices', description: 'Invoices received or in review awaiting approval', category: 'Procurement', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'pending-invoices', icon: '⏳', title: 'Pending Invoices', description: 'Invoices received or in review awaiting approval', category: 'Procurement', defaultSize: 'md', defaultVisible: false },
   Component: PendingInvoicesComp,
 }
 
@@ -87,7 +87,7 @@ function DisputedInvoicesComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('invoices')} />
 }
 export const DisputedInvoicesTile: TileComponent = {
-  def: { id: 'disputed-invoices', icon: '⚡', title: 'Disputed Invoices', description: 'Dollar value at risk from invoices in disputed status', category: 'Procurement', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'disputed-invoices', icon: '⚡', title: 'Disputed Invoices', description: 'Dollar value at risk from invoices in disputed status', category: 'Procurement', defaultSize: 'md', defaultVisible: false },
   Component: DisputedInvoicesComp,
 }
 
@@ -115,7 +115,7 @@ function ActivePOsComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('purchase-orders')} />
 }
 export const ActivePOsTile: TileComponent = {
-  def: { id: 'active-pos', icon: '📋', title: 'Active POs', description: 'Count and value of active purchase orders', category: 'Procurement', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'active-pos', icon: '📋', title: 'Active POs', description: 'Count and value of active purchase orders', category: 'Procurement', defaultSize: 'md', defaultVisible: false },
   Component: ActivePOsComp,
 }
 
@@ -150,7 +150,7 @@ function WbsCodesComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('wbs-list')} />
 }
 export const WbsCodesTile: TileComponent = {
-  def: { id: 'wbs-codes', icon: '🗂', title: 'WBS Codes', description: 'Count of WBS cost allocation elements', category: 'Variations', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'wbs-codes', icon: '🗂', title: 'WBS Codes', description: 'Count of WBS cost allocation elements', category: 'Variations', defaultSize: 'md', defaultVisible: false },
   Component: WbsCodesComp,
 }
 
@@ -175,7 +175,7 @@ function SapReconComp({ ctx }: { ctx: DashboardContext }) {
   )
 }
 export const SapReconStatusTile: TileComponent = {
-  def: { id: 'sap-recon-status', icon: '⚖', title: 'SAP Recon Status', description: 'Reconciled vs unmatched rows from last SAP import', category: 'Procurement', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'sap-recon-status', icon: '⚖', title: 'SAP Recon Status', description: 'Reconciled vs unmatched rows from last SAP import', category: 'Procurement', defaultSize: 'md', defaultVisible: false },
   Component: SapReconComp,
 }
 
@@ -192,7 +192,7 @@ function TradesHoursComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hr-timesheets-trades')} />
 }
 export const TradesHoursTile: TileComponent = {
-  def: { id: 'trades-hours', icon: '🔨', title: 'Trades Hours', description: 'Total trades hours logged to date with sell value', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'trades-hours', icon: '🔨', title: 'Trades Hours', description: 'Total trades hours logged to date with sell value', category: 'Labour', defaultSize: 'md', defaultVisible: false },
   Component: TradesHoursComp,
 }
 
@@ -207,7 +207,7 @@ function TradesCostComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hr-timesheets-trades')} />
 }
 export const TradesCostTile: TileComponent = {
-  def: { id: 'trades-cost', icon: '💵', title: 'Trades Cost', description: 'Labour cost for all trades timesheets to date', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'trades-cost', icon: '💵', title: 'Trades Cost', description: 'Labour cost for all trades timesheets to date', category: 'Labour', defaultSize: 'md', defaultVisible: false },
   Component: TradesCostComp,
 }
 
@@ -221,7 +221,7 @@ function MgmtHoursComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hr-timesheets-mgmt')} />
 }
 export const MgmtHoursTile: TileComponent = {
-  def: { id: 'mgmt-hours', icon: '💼', title: 'Mgmt Hours', description: 'Management and SE AG hours logged to date', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'mgmt-hours', icon: '💼', title: 'Mgmt Hours', description: 'Management and SE AG hours logged to date', category: 'Labour', defaultSize: 'md', defaultVisible: false },
   Component: MgmtHoursComp,
 }
 
@@ -247,7 +247,7 @@ function BackOfficeCostComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hr-backoffice')} />
 }
 export const BackOfficeCostTile: TileComponent = {
-  def: { id: 'back-office-cost', icon: '🏢', title: 'Back Office Cost', description: 'Back office hours cost + SE Support costs', category: 'Labour', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'back-office-cost', icon: '🏢', title: 'Back Office Cost', description: 'Back office hours cost + SE Support costs', category: 'Labour', defaultSize: 'md', defaultVisible: false },
   Component: BackOfficeCostComp,
 }
 
@@ -276,7 +276,7 @@ function HireEquipmentComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hire-dry')} />
 }
 export const HireEquipmentTile: TileComponent = {
-  def: { id: 'hire-equipment', icon: '🚜', title: 'Equipment Hire', description: 'Total equipment hire cost (dry, wet, local) in project currency', category: 'Other Costs', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'hire-equipment', icon: '🚜', title: 'Equipment Hire', description: 'Total equipment hire cost (dry, wet, local) in project currency', category: 'Other Costs', defaultSize: 'md', defaultVisible: false },
   Component: HireEquipmentComp,
 }
 
@@ -297,7 +297,7 @@ function ExpensesTotalComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('expenses')} />
 }
 export const ExpensesTotalTile: TileComponent = {
-  def: { id: 'expenses-total', icon: '🧾', title: 'Expenses', description: 'Total project expenses excluding GST', category: 'Other Costs', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'expenses-total', icon: '🧾', title: 'Expenses', description: 'Total project expenses excluding GST', category: 'Other Costs', defaultSize: 'md', defaultVisible: false },
   Component: ExpensesTotalComp,
 }
 
@@ -317,7 +317,7 @@ function CarsTotalComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hr-cars')} />
 }
 export const CarsTotalTile: TileComponent = {
-  def: { id: 'cars-total', icon: '🚗', title: 'Car Hire Cost', description: 'Total cost of all car hire bookings', category: 'Other Costs', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'cars-total', icon: '🚗', title: 'Car Hire Cost', description: 'Total cost of all car hire bookings', category: 'Other Costs', defaultSize: 'md', defaultVisible: false },
   Component: CarsTotalComp,
 }
 
@@ -337,7 +337,7 @@ function AccomTotalComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('hr-accommodation')} />
 }
 export const AccomTotalTile: TileComponent = {
-  def: { id: 'accom-total', icon: '🏨', title: 'Accommodation Cost', description: 'Total cost of all accommodation bookings', category: 'Other Costs', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'accom-total', icon: '🏨', title: 'Accommodation Cost', description: 'Total cost of all accommodation bookings', category: 'Other Costs', defaultSize: 'md', defaultVisible: false },
   Component: AccomTotalComp,
 }
 
@@ -359,7 +359,7 @@ function VariationsApprovedComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('variations')} />
 }
 export const VariationsApprovedTile: TileComponent = {
-  def: { id: 'variations-approved', icon: '✔', title: 'Variations Approved', description: 'Total approved variation value', category: 'Variations', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'variations-approved', icon: '✔', title: 'Variations Approved', description: 'Total approved variation value', category: 'Variations', defaultSize: 'md', defaultVisible: false },
   Component: VariationsApprovedComp,
 }
 
@@ -381,7 +381,7 @@ function ToolingEurCostComp({ ctx }: { ctx: DashboardContext }) {
     onClick={() => ctx.setActivePanel('tooling-tvs')} />
 }
 export const ToolingEurCostTile: TileComponent = {
-  def: { id: 'tooling-eur-cost', icon: '🔧', title: 'SE Tooling EUR Cost', description: 'Total SE rental tooling cost in EUR', category: 'Other Costs', defaultSize: 'md', defaultVisible: true },
+  def: { id: 'tooling-eur-cost', icon: '🔧', title: 'SE Tooling EUR Cost', description: 'Total SE rental tooling cost in EUR', category: 'Other Costs', defaultSize: 'md', defaultVisible: false },
   Component: ToolingEurCostComp,
 }
 
