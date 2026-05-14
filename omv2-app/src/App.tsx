@@ -128,6 +128,7 @@ import { PartsReportsPanel } from './pages/site/PartsReportsPanel'
 import { PartsSearchPanel } from './pages/site/PartsSearchPanel'
 import { MobileShell } from './components/mobile/MobileShell'
 import { MobileDesktopOnly } from './components/mobile/MobilePanelHeader'
+import { MOBILE_OPTIMISED, PANEL_FRIENDLY_NAMES } from './lib/mobilePanels'
 import { useIsMobile } from './hooks/useIsMobile'
 import type { Session } from '@supabase/supabase-js'
 import type { Project } from './types'
@@ -545,72 +546,10 @@ function PanelRouter({ panel }: { panel: string }) {
 
 // ════════════════════════════════════════════════════════════════════════
 // MOBILE PANEL ROUTER
-// Wraps PanelRouter and hard-blocks panels that haven't been built for mobile.
-//
-// To add a new mobile-optimised panel:
-// 1. Build the mobile component in src/pages/mobile/<Panel>Mobile.tsx
-// 2. In the desktop panel file (src/pages/<module>/<Panel>Panel.tsx):
-//    a. Convert the import to React.lazy() — see CarsPanel for the pattern
-//    b. Rename existing function to <Panel>PanelDesktop
-//    c. Add a wrapper: useIsMobile() → <Suspense fallback={…}><Mobile/></Suspense>
-// 3. Add the panel key to MOBILE_OPTIMISED below
-//
-// Lazy-loading is mandatory — otherwise mobile code ends up in the main
-// bundle and inflates desktop downloads.
+// MOBILE_OPTIMISED and PANEL_FRIENDLY_NAMES live in lib/mobilePanels.ts so
+// MobileNavSheet can also import them (to hide desktop-only items from the
+// More sheet).
 // ════════════════════════════════════════════════════════════════════════
-
-/**
- * Panels that have a mobile-optimised render. Anything not in this set shows
- * the "Open on desktop" soft-block via MobileDesktopOnly.
- */
-const MOBILE_OPTIMISED: Set<string> = new Set([
-  // Always-allow: navigation/admin/profile (simple enough to render as-is)
-  'dashboard',
-  'profile',
-  'help',
-  'project-settings',
-  // Personnel
-  'hr-resources',
-  'hr-accommodation',
-  'hr-cars',
-  // Site / Parts (Session 2)
-  'parts-issue',
-  'parts-receiving',
-  // Future panels — add here when mobile branch is built:
-  // 'hr-timesheets-trades',
-  // 'parts-list',
-  // 'hire-dry', 'hire-wet', 'hire-local',
-])
-
-/** Friendly names for the desktop-only block screen */
-const PANEL_FRIENDLY_NAMES: Record<string, string> = {
-  'cost-forecast':    'Forecast',
-  'cost-mika':        'MIKA',
-  'cost-reconcile':   'Forecast vs MIKA',
-  'cost-scurve':      'S-Curve',
-  'cost-report':      'Cost Report',
-  'sap-recon':        'SAP Reconciliation',
-  'cost-customer-report': 'Customer Report',
-  'pre-planning-report': 'Pre-Planning Report',
-  'reports-db':       'Reports Database',
-  'subcon-rfq-doc':   'RFQ Document Builder',
-  'subcon-rfq':       'Subcon Cost Model',
-  'nrg-tce':          'NRG TCE Register',
-  'nrg-ohf':          'NRG Overhead Forecast',
-  'nrg-actuals':      'NRG Actuals',
-  'nrg-invoicing':    'NRG Invoicing',
-  'nrg-kpi':          'NRG KPI Model',
-  'gantt':            'Gantt Chart',
-  'wbs-list':         'WBS List',
-  'cost-dashboard':   'Cost Dashboard',
-  'hr-utilisation':   'Utilisation',
-  'hr-ratecards':     'Rate Cards',
-  'hardware-import':  'Hardware Import',
-  'hardware-contract':'Hardware Contracts',
-  'tooling-tvs':      'TV Register',
-  'tooling-kollos':   'Kollos',
-  'tooling-costings': 'Tooling Costings',
-}
 
 function MobilePanelRouter({ panel }: { panel: string }) {
   // Permission check still applies — uses same helper as desktop

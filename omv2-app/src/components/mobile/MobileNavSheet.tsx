@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from '../../store/appStore'
 import { usePermissions, type Module } from '../../lib/permissions'
 import { setMobileOverride } from '../../hooks/useIsMobile'
+import { MOBILE_OPTIMISED } from '../../lib/mobilePanels'
 
 interface NavItem {
   panel: string
@@ -156,6 +157,10 @@ interface Props {
 export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
   const { setActivePanel } = useAppStore()
   const { canRead } = usePermissions()
+  // When false (default), only show mobile-ready panels in each section.
+  // When true, show every panel — useful for occasional desktop-only lookups
+  // (the soft-block will still appear if they tap one).
+  const [showAll, setShowAll] = useState(false)
 
   // Lock body scroll when open
   useEffect(() => {
@@ -189,15 +194,39 @@ export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
             aria-label="Close"
           >✕</button>
         </div>
+
+        {/* Filter toggle — phone-ready vs all panels */}
+        <div className="mobile-nav-filter">
+          <button
+            className={`mobile-nav-filter-btn ${!showAll ? 'mobile-nav-filter-btn-active' : ''}`}
+            onClick={() => setShowAll(false)}
+          >
+            📱 Phone-ready
+          </button>
+          <button
+            className={`mobile-nav-filter-btn ${showAll ? 'mobile-nav-filter-btn-active' : ''}`}
+            onClick={() => setShowAll(true)}
+          >
+            All panels
+          </button>
+        </div>
+
         <div className="mobile-sheet-body">
           {SECTIONS.map(section => {
             // Permission gate: hide whole section if user can't read
             if (section.module && !canRead(section.module)) return null
+            // Mobile-readiness filter: hide items not in MOBILE_OPTIMISED
+            // unless the user opted into showing all panels.
+            const visibleItems = showAll
+              ? section.items
+              : section.items.filter(item => MOBILE_OPTIMISED.has(item.panel))
+            // If the section has no visible items after filtering, hide it.
+            if (visibleItems.length === 0) return null
             return (
               <div key={section.key} className="mobile-nav-section">
                 <h3 className="mobile-nav-section-label">{section.label}</h3>
                 <div className="mobile-nav-grid">
-                  {section.items.map(item => (
+                  {visibleItems.map(item => (
                     <button
                       key={item.panel}
                       className="mobile-nav-item"

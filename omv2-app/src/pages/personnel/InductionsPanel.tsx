@@ -1,9 +1,14 @@
 import * as XLSX from 'xlsx'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { HelpButton } from '../../components/HelpButton'
+import { useIsMobile } from '../../hooks/useIsMobile'
+
+const InductionsMobile = lazy(() =>
+  import('../mobile/InductionsMobile').then(m => ({ default: m.InductionsMobile }))
+)
 
 // ── Print helpers ──────────────────────────────────────────────────────────
 
@@ -501,6 +506,18 @@ export async function writeToGlobalRegister(
 }
 
 export function InductionsPanel() {
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <InductionsMobile />
+      </Suspense>
+    )
+  }
+  return <InductionsPanelDesktop />
+}
+
+function InductionsPanelDesktop() {
   const { activeProject, setActiveProject } = useAppStore()
   const [resources, setResources]         = useState<Resource[]>([])
   const [inductionData, setInductionData] = useState<InductionPerson[]>([])

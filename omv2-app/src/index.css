@@ -1810,3 +1810,93 @@ th.resizable .col-resizer:active {
 /* When toggle pill is rendered inside a card-button, we use <span> which has
    no native button click feedback. The pointer cursor + active state on
    the parent button is enough. */
+
+/* ════════════════════════════════════════════════════════════════════
+   Session 5 — Inductions mobile + Mobile nav filter
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Mobile nav filter toggle (Phone-ready / All panels) ─────────────── */
+.mobile-nav-filter {
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.mobile-nav-filter-btn {
+  flex: 1;
+  padding: 9px 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.mobile-nav-filter-btn-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.mobile-nav-filter-btn:active { background: var(--bg3); }
+
+/* ── Inductions card + detail ────────────────────────────────────────── */
+.mobile-induct-card {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 0 14px 8px;
+  padding: 14px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.mobile-induct-card:active { background: var(--bg3); }
+
+.mobile-induct-section {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+.mobile-induct-list {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mobile-induct-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mobile-induct-row:last-child { border-bottom: 0; }
+
+/* ── Colour-coded filter chips (used by Inductions for status filter) ── */
+.mobile-chip-red,    .mobile-chip-red-out    { color: #991b1b; border-color: #fecaca; }
+.mobile-chip-orange, .mobile-chip-orange-out { color: #9a3412; border-color: #fed7aa; }
+.mobile-chip-amber,  .mobile-chip-amber-out  { color: #92400e; border-color: #fde68a; }
+.mobile-chip-green,  .mobile-chip-green-out  { color: #166534; border-color: #bbf7d0; }
+.mobile-chip-red    { background: #fee2e2; }
+.mobile-chip-orange { background: #ffedd5; }
+.mobile-chip-amber  { background: #fef3c7; }
+.mobile-chip-green  { background: #dcfce7; }
+.mobile-chip-red.mobile-chip-active,
+.mobile-chip-orange.mobile-chip-active,
+.mobile-chip-amber.mobile-chip-active,
+.mobile-chip-green.mobile-chip-active {
+  /* Override teal active state for status-coloured chips */
+  color: inherit;
+  border-width: 2px;
+  font-weight: 700;
+}
