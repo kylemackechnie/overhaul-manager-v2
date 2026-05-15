@@ -103,6 +103,7 @@ import { HSEHoursPanel } from './pages/personnel/HSEHoursPanel'
 import { AuditTrailPanel } from './pages/settings/AuditTrailPanel'
 import { AdminPanel } from './pages/settings/AdminPanel'
 import { ResourceBoardPanel } from './pages/resources/ResourceBoardPanel'
+import { ResourceManagerHome } from './pages/resources/ResourceManagerHome'
 import { CrewConfirmationPanel } from './pages/resources/CrewConfirmationPanel'
 import { ResourceManagerInductionsPanel } from './pages/resources/ResourceManagerInductionsPanel'
 import { AvailabilityTimelinePanel } from './pages/resources/AvailabilityTimelinePanel'
@@ -321,7 +322,7 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
       >
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'resource-assets', 'resource-asset-timeline', 'resource-tooling-demand', 'hr-directory', 'hr-year-view'].includes(activePanel ?? '')) ? (
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-manager', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'resource-assets', 'resource-asset-timeline', 'resource-tooling-demand', 'hr-directory', 'hr-year-view'].includes(activePanel ?? '')) ? (
           <MobilePanelRouter panel={activePanel ?? 'dashboard'} />
         ) : !activeProject ? (
           restoringProject ? (
@@ -540,6 +541,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
     case 'admin':                 return <AdminPanel />
+    case 'resource-manager':       return <ResourceManagerHome />
     case 'resource-board':        return <ResourceBoardPanel />
     case 'resource-crew-confirm':   return <CrewConfirmationPanel />
     case 'resource-inductions':      return <ResourceManagerInductionsPanel />

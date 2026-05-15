@@ -52,7 +52,7 @@ function buildModules(openPicker: () => void): (Module & { onClick: () => void }
       icon: '👥',
       label: 'Resource Management',
       description: 'People directory, crew confirmation, availability timeline, demand vs supply, inductions',
-      panel: 'resource-board',
+      panel: 'resource-manager',
       color: '#0369a1',
       accent: '#0369a1',
       stats: s => `${s.resources} deployed`,
