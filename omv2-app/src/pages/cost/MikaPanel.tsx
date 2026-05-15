@@ -752,7 +752,7 @@ export function MikaPanel() {
 
         return (
           <div className="modal-overlay" onClick={() => setDrillCell(null)}>
-            <div className="modal" style={{ maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="modal" style={{ maxWidth: '960px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <div>
                   <h2 style={{ fontSize: '14px', marginBottom: '2px' }}>{wbs}</h2>
