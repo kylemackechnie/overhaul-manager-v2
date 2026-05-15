@@ -67,6 +67,14 @@ export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
         startY.current = null
         return
       }
+      // Don't engage if the touch starts inside an open sheet or modal —
+      // sheets have their own drag-handle for dismissal, and pulling down
+      // on a sheet must not also trigger a refresh of the underlying panel.
+      const target = e.target as HTMLElement | null
+      if (target?.closest('.mobile-sheet-backdrop, .mobile-sheet-overlay, .modal-overlay, .mobile-scanner-overlay')) {
+        startY.current = null
+        return
+      }
       startY.current = e.touches[0].clientY
     }
 
@@ -173,19 +181,12 @@ export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
             )}
           </div>
         )}
-        {/* Content shifts down with pull so it feels physically attached
-            to the indicator card. Transition kicks in when releasing/idle. */}
-        <div
-          className="mobile-ptr-shift"
-          style={{
-            transform: ptrVisible ? `translateY(${yOffset}px)` : '',
-            transition: ptr.phase === 'pulling' ? 'none' : 'transform 0.2s ease-out',
-          }}
-        >
-          <RefreshContext.Provider value={refreshCtxValue}>
-            {children}
-          </RefreshContext.Provider>
-        </div>
+        {/* Content stays stationary; only the indicator animates. Wrapping
+            content in a transform created a containing block that broke
+            position:fixed for descendant overlays (MobileBottomSheet). */}
+        <RefreshContext.Provider value={refreshCtxValue}>
+          {children}
+        </RefreshContext.Provider>
       </main>
       <MobileBottomTabs onMoreOpen={() => setSheetOpen(true)} />
       <MobileNavSheet

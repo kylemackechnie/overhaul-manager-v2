@@ -2201,7 +2201,11 @@ th.resizable .col-resizer:active {
 
 /* Content shift wrapper — pulls down with the gesture so the indicator
    appears to be attached to the top of the content (rather than the
-   viewport, which would feel disconnected). */
+   viewport, which would feel disconnected).
+   NOTE: no `will-change: transform` here — that would create a containing
+   block for position:fixed descendants (like MobileBottomSheet's overlay),
+   trapping them inside this wrapper instead of letting them cover the
+   viewport. The inline transform set in JS handles the animation just fine. */
 .mobile-ptr-shift {
-  will-change: transform;
+  /* nothing — kept as a hook in case we need to add styling later */
 }
