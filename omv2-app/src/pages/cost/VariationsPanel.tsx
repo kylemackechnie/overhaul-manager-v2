@@ -219,6 +219,7 @@ function fmtRaisedDate(dateStr: string | null): string {
 
 export function VariationsPanel() {
   const { activeProject } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
   const [variations, setVariations] = useState<Variation[]>([])
   const [variationLines, setVariationLines] = useState<Map<string, VariationLine[]>>(new Map())
@@ -273,7 +274,7 @@ export function VariationsPanel() {
     setLoading(false)
   }
 
-  const hasTce = tceLines.length > 0
+  // isTce derived from activeProject.cost_method above
 
   async function saveVnSettings() {
     setVnSettingsSaving(true)
@@ -772,7 +773,7 @@ export function VariationsPanel() {
                     <div className="fg"><label>Valid Until <span style={{fontWeight:400,fontSize:'11px',color:'var(--text3)'}}>— on VN doc</span></label><input type="date" className="input" value={form.valid_until} onChange={e=>setForm(f=>({...f,valid_until:e.target.value}))}/></div>
                   </div>
                   {/* NRG TCE Section — only shown when project has TCE data */}
-                  {hasTce && (
+                  {isTce && tceLines.length > 0 && (
                     <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'6px',padding:'12px',marginTop:'8px'}}>
                       <div style={{fontSize:'11px',fontWeight:700,color:'#1e40af',marginBottom:'8px'}}>🔵 NRG TCE Integration</div>
                       <div className="fg-row">

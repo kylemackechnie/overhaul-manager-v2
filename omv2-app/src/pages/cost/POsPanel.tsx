@@ -51,6 +51,7 @@ interface ActualsRow { person_name: string; role: string; work_date: string; wee
 
 export function POsPanel() {
   const { activeProject, activePOManagerId, setActivePOManagerId } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [resources, setResources] = useState<Resource[]>([])
@@ -631,13 +632,13 @@ export function POsPanel() {
               Line Items <button className="btn btn-sm" onClick={()=>setForm(f=>({...f,lines:[...f.lines,mkLine()]}))}>+ Add Line</button>
             </div>
             {form.lines.map((line,i)=>(
-              <div key={line.id} style={{display:'grid',gridTemplateColumns:tceLines.length>0?'1fr 100px 140px 120px 32px':'1fr 100px 120px 32px',gap:'6px',marginBottom:'6px',alignItems:'flex-end'}}>
+              <div key={line.id} style={{display:'grid',gridTemplateColumns:isTce && tceLines.length>0?'1fr 100px 140px 120px 32px':'1fr 100px 120px 32px',gap:'6px',marginBottom:'6px',alignItems:'flex-end'}}>
                 <div>{i===0&&<label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>Description</label>}
                   <input className="input" value={line.description} onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,description:e.target.value}:l)}))} placeholder="Description"/></div>
                 <div>{i===0&&<label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>WBS</label>}
                   <select className="input" value={line.wbs} onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,wbs:e.target.value}:l)}))}>
                     <option value="">— WBS —</option>{wbsList.map(w=><option key={w.id} value={w.code}>{w.code}{w.name?` — ${w.name}`:''}</option>)}</select></div>
-                {tceLines.length>0&&<div>{i===0&&<label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>TCE Item</label>}
+                {isTce && tceLines.length>0&&<div>{i===0&&<label style={{fontSize:'11px',display:'block',marginBottom:'2px'}}>TCE Item</label>}
                   <select className="input" value={line.tce_item_id||''} onChange={e=>setForm(f=>({...f,lines:f.lines.map((l,j)=>j===i?{...l,tce_item_id:e.target.value}:l)}))}>
                     <option value="">— No TCE —</option>
                     {(['overhead','skilled'] as const).map(src=>{const sl=tceLines.filter(l=>l.source===src&&l.line_type!=='group');if(!sl.length)return null;return <optgroup key={src} label={src==='overhead'?'Overhead':'Skilled'}>{sl.map(l=><option key={l.item_id} value={l.item_id||''}>{l.item_id} — {l.description}</option>)}</optgroup>})}

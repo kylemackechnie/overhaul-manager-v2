@@ -235,6 +235,7 @@ interface Props {
 
 export function CommandPalette({ open, onClose }: Props) {
   const { activeProject, setActivePanel } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const [query, setQuery] = useState('')
   const [sections, setSections] = useState<CmdSection[]>([])
   const [activeIdx, setActiveIdx] = useState(-1)
@@ -271,6 +272,7 @@ export function CommandPalette({ open, onClose }: Props) {
     // names are short generic words (e.g. "Cost Tracking", "Personnel")
     // that produce too many false positives.
     const pageHits = NAV_PAGES
+      .filter(p => p.module !== 'NRG' || isTce)
       .map(p => {
         const labelScore = fuzzy(p.label, ql).score
         const kwScore    = p.keywords ? fuzzy(p.keywords, ql).score * 0.9 : 0
@@ -560,8 +562,8 @@ export function CommandPalette({ open, onClose }: Props) {
         score: s.reference ? score(s.reference) : 1,
       })
     }
-    // 14. NRG TCE
-    for (const t of data<{ id: string; item_id?: string; description?: string; work_order?: string; contract_scope?: string }>(13)) {
+    // 14. NRG TCE — only for TCE projects
+    if (isTce) for (const t of data<{ id: string; item_id?: string; description?: string; work_order?: string; contract_scope?: string }>(13)) {
       items.push({
         key: 'tce:' + t.id,
         icon: '🎯', title: t.item_id || '(no id)',
@@ -643,7 +645,7 @@ export function CommandPalette({ open, onClose }: Props) {
           ) : showEmptyState ? (
             <div style={{ padding: '16px' }}>
               <div className="cmd-section-label">Quick Navigation</div>
-              {NAV_PAGES.slice(0, 8).map((p, i) => (
+              {NAV_PAGES.filter(p => p.module !== 'NRG' || isTce).slice(0, 8).map((p, i) => (
                 <div key={p.panel} className={`cmd-item ${i === activeIdx ? 'active' : ''}`}
                   onClick={() => { onClose(); setActivePanel(p.panel) }}>
                   <span className="cmd-item-icon">{p.icon}</span>

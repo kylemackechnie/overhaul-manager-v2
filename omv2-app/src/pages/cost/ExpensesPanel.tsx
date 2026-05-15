@@ -47,6 +47,7 @@ export function ExpensesPanel() {
 
 function ExpensesPanelDesktop() {
   const { activeProject } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [resources, setResources] = useState<Resource[]>([])
@@ -799,7 +800,7 @@ function ExpensesPanelDesktop() {
                   {wbsList.map(w => <option key={w.id} value={w.code}>{w.code} {w.name ? `— ${w.name}` : ''}</option>)}
                 </select>
               </div>
-              {!hasLines && (
+              {!hasLines && isTce && (
               <div className="fg">
                 <label>NRG TCE Scope <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— links expense to a TCE line for actuals</span></label>
                 {tceLines.length > 0 ? (
@@ -820,8 +821,8 @@ function ExpensesPanelDesktop() {
                 <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
 
-              {/* ── Line Items (optional split) ── */}
-              <div style={{borderTop:'1px solid var(--border)',marginTop:'8px',paddingTop:'8px'}}>
+              {/* ── Line Items (optional split) — NRG TCE only ── */}
+              {isTce && <div style={{borderTop:'1px solid var(--border)',marginTop:'8px',paddingTop:'8px'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
                   <button type="button" className="btn btn-sm" style={{fontSize:'11px',background:'none',border:'1px dashed var(--border)',color:'var(--text3)'}}
                     onClick={()=>{ if(!showLines){ setShowLines(true); if(lines.length===0) addLine() } else { if(lines.length===0) setShowLines(false) } }}>
@@ -870,7 +871,7 @@ function ExpensesPanelDesktop() {
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setModal(null)}>Cancel</button>

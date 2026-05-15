@@ -534,7 +534,10 @@ export function Ribbon() {
         }}
         data-tour="ribbon-buttons"
       >
-        {activeTab.groups.map((group, gi) => (
+        {activeTab.groups.filter(group => {
+          if (group.label === 'NRG Gladstone') return activeProject.cost_method === 'nrg_tce'
+          return true
+        }).map((group, gi) => (
           <div key={gi} style={{ display: 'flex', alignItems: 'flex-start', gap: '2px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>

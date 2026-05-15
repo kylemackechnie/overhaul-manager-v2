@@ -155,7 +155,8 @@ interface Props {
 }
 
 export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
-  const { setActivePanel } = useAppStore()
+  const { setActivePanel, activeProject } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canRead } = usePermissions()
   // When false (default), only show mobile-ready panels in each section.
   // When true, show every panel — useful for occasional desktop-only lookups
@@ -217,9 +218,11 @@ export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
             if (section.module && !canRead(section.module)) return null
             // Mobile-readiness filter: hide items not in MOBILE_OPTIMISED
             // unless the user opted into showing all panels.
-            const visibleItems = showAll
+            const NRG_PANELS = new Set(['nrg-dashboard','nrg-tce','nrg-actuals','nrg-invoicing','nrg-kpi','nrg-reports','nrg-ohf','nrg-approvals','nrg-scope-allocations','nrg-credit-notes'])
+            const visibleItems = (showAll
               ? section.items
               : section.items.filter(item => MOBILE_OPTIMISED.has(item.panel))
+            ).filter(item => !NRG_PANELS.has(item.panel) || isTce)
             // If the section has no visible items after filtering, hide it.
             if (visibleItems.length === 0) return null
             return (

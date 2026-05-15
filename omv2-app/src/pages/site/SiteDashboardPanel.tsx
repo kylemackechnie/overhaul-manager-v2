@@ -1,7 +1,8 @@
 import { useAppStore } from '../../store/appStore'
 
 export function SiteDashboardPanel() {
-  const { setActivePanel } = useAppStore()
+  const { setActivePanel, activeProject } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
 
   const sites = [
     {
@@ -31,7 +32,7 @@ export function SiteDashboardPanel() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-        {sites.map(site => (
+        {sites.filter(() => isTce).map(site => (
           <div key={site.key} className="card"
             style={{ cursor: 'pointer', borderTop: `3px solid ${site.color}`, padding: '20px' }}
             onClick={() => setActivePanel(site.panel)}>

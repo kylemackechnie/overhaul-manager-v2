@@ -20,7 +20,7 @@ export function ProjectSettingsPanel() {
     name: '', wbs: '', start_date: '', end_date: '',
     default_gm: 15, notes: '',
     unit: '', pm: '', site_contact: '', site_phone: '', client: '',
-    currency: 'AUD', scope_tracking: 'none',
+    currency: 'AUD', scope_tracking: 'none', cost_method: 'standard' as 'standard' | 'nrg_tce',
   currency_rates: [] as {code:string;name:string;rate:number}[],
     std_hours_day: {} as Record<string,number>,
     std_hours_night: {} as Record<string,number>,
@@ -163,6 +163,7 @@ export function ProjectSettingsPanel() {
       currency: activeProject.currency || 'AUD',
     currency_rates: (activeProject.currency_rates as {code:string;name:string;rate:number}[] || []),
       scope_tracking: activeProject.scope_tracking || 'none',
+      cost_method: (activeProject.cost_method || 'standard') as 'standard' | 'nrg_tce',
       site_id: activeProject.site_id || '',
       std_hours_day: { ...(activeProject.std_hours?.day as Record<string,number> || {}) },
       std_hours_night: { ...(activeProject.std_hours?.night as Record<string,number> || {}) },
@@ -193,6 +194,7 @@ export function ProjectSettingsPanel() {
       currency: form.currency,
       currency_rates: form.currency_rates,
       scope_tracking: form.scope_tracking,
+      cost_method: form.cost_method,
       std_hours: { day: form.std_hours_day, night: form.std_hours_night },
       pm_user_id: pmUserId || null,
       pa_user_id: paUserId || null,
@@ -448,6 +450,16 @@ export function ProjectSettingsPanel() {
             </select>
             <p style={{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}}>
               Controls the allocation button in timesheet cells — Work Orders or NRG TCE scopes.
+            </p>
+          </div>
+          <div className="fg" style={{flex:2}}>
+            <label>Cost Method</label>
+            <select className="input" value={form.cost_method} onChange={e=>setForm(f=>({...f,cost_method:e.target.value as 'standard'|'nrg_tce'}))}>
+              <option value="standard">Standard — WBS tracking only</option>
+              <option value="nrg_tce">NRG TCE — Total Contract Estimate method</option>
+            </select>
+            <p style={{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}}>
+              Enables TCE item fields on invoices, expenses, POs and variations, plus NRG-specific panels and reports.
             </p>
           </div>
         </div>

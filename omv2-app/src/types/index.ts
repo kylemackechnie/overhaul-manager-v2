@@ -206,6 +206,7 @@ export interface Project {
   client: string
   currency: string
   scope_tracking: string
+  cost_method: 'standard' | 'nrg_tce'
   rates: { currency: string; currencies: CurrencyRate[] }
   public_holidays: PublicHoliday[]
   ph_state: string | null
@@ -361,6 +362,7 @@ export interface WeeklyTimesheet {
    *  means "no default" — allowances will land as unallocated in NRG Actuals. */
   allowances_tce_default?: string
   scope_tracking?: 'none' | 'work_orders' | 'nrg_tce'
+  cost_method?: 'standard' | 'nrg_tce'
   created_at: string
   updated_at: string
 }

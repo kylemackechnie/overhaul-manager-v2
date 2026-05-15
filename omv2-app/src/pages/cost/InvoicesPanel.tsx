@@ -142,6 +142,7 @@ function excelSerialToISO(serial: unknown): string {
 
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
   const { prefs, setPref } = useUserPrefs()
 
@@ -645,7 +646,7 @@ export function InvoicesPanel() {
                 {isInvVisible('currency') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>Currency</th>}
                 {isInvVisible('period_from') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>Period From</th>}
                 {isInvVisible('period_to') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',textAlign:'center'}}>Period To</th>}
-                {isInvVisible('tce_item') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>TCE Item</th>}
+                {isTce && isInvVisible('tce_item') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>TCE Item</th>}
                 {isInvVisible('sap_doc') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)',fontFamily:'var(--mono)'}}>SAP Doc #</th>}
                 {isInvVisible('notes') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Notes</th>}
                 {isInvVisible('actions') && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Actions</th>}
@@ -747,7 +748,7 @@ export function InvoicesPanel() {
                     {isInvVisible('currency') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px'}}>{cur}</td>}
                     {isInvVisible('period_from') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px'}}>{fmtDate(inv.period_from) || '—'}</td>}
                     {isInvVisible('period_to') && <td style={{padding:'8px 10px',textAlign:'center',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px'}}>{fmtDate(inv.period_to) || '—'}</td>}
-                    {isInvVisible('tce_item') && <td style={{padding:'8px 10px',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{inv.tce_item_id || '—'}</td>}
+                    {isTce && isInvVisible('tce_item') && <td style={{padding:'8px 10px',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{inv.tce_item_id || '—'}</td>}
                     {isInvVisible('sap_doc') && <td style={{padding:'8px 10px',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px',color:'#7c3aed'}}>{(inv as typeof inv & {sap_doc_number?:string}).sap_doc_number || '—'}</td>}
                     {isInvVisible('notes') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'11px',color:'var(--text2)',maxWidth:'160px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={inv.notes||undefined}>{inv.notes || '—'}</td>}
                     {/* Actions */}
@@ -885,7 +886,7 @@ export function InvoicesPanel() {
                   ℹ️ Amount, sell price, chargeable and TCE scope are set per line item below — top-level fields are locked.
                 </div>
               )}
-              {!hasLines && (<>
+              {!hasLines && isTce && (<>
               {/* Chargeable to customer */}
               <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',marginBottom:'4px'}}>
                 <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px',fontWeight:500,margin:0}}>
@@ -935,8 +936,8 @@ export function InvoicesPanel() {
               </>)}
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
 
-              {/* ── Line Items (optional split) ── */}
-              <div style={{borderTop:'1px solid var(--border)',marginTop:'8px',paddingTop:'8px'}}>
+              {/* ── Line Items (optional split) — NRG TCE only ── */}
+              {isTce && <div style={{borderTop:'1px solid var(--border)',marginTop:'8px',paddingTop:'8px'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
                   <button type="button" className="btn btn-sm" style={{fontSize:'11px',background:'none',border:'1px dashed var(--border)',color:'var(--text3)'}}
                     onClick={()=>{ if(!showLines){ setShowLines(true); if(lines.length===0) addLine() } else { if(lines.length===0) setShowLines(false) } }}>
@@ -970,7 +971,7 @@ export function InvoicesPanel() {
                     <button type="button" className="btn btn-sm" style={{fontSize:'11px',marginTop:'4px'}} onClick={addLine}>+ Add line</button>
                   </div>
                 )}
-              </div>
+              </div>}
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',padding:'10px 12px',marginTop:'4px'}}>
                 <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'}}>
                   SPOL File Reference

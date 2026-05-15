@@ -351,6 +351,7 @@ interface ResolveSplit {
 
 export function TimesheetsPanel({ type }: { type: TsType }) {
   const { activeProject } = useAppStore()
+  const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
   const tsPerms = useTimesheetPermissions(activeProject ?? null)
   const [sheets, setSheets] = useState<WeeklyTimesheet[]>([])
@@ -1239,7 +1240,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   onChange={e => setActiveWeek({ ...activeWeek, scope_tracking: e.target.value } as WeeklyTimesheet)}>
                   <option value="none">No tracking</option>
                   <option value="work_orders">Work Orders</option>
-                  {tceLines.length > 0 && <option value="nrg_tce">NRG TCE</option>}
+                  {isTce && tceLines.length > 0 && <option value="nrg_tce">NRG TCE</option>}
                 </select>
                 {/* Allowance TCE default — only shown when scope is nrg_tce. Per-person
                     overrides set on each crew row take precedence over this default. */}
