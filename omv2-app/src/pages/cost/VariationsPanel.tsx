@@ -217,40 +217,6 @@ function fmtRaisedDate(dateStr: string | null): string {
   return `${parts[2]}-${parts[1]}-${parts[0].slice(2)}`
 }
 
-function printVariation(v: Variation, lines: VariationLine[], projectName: string, client: string) {
-  const sc = STATUS_COLORS[v.status] || STATUS_COLORS.draft
-  const catTotals: Record<string,{cost:number;sell:number}> = {}
-  lines.forEach(l => {
-    const c = l.category||'other'; if (!catTotals[c]) catTotals[c]={cost:0,sell:0}
-    catTotals[c].cost += l.cost_total||0; catTotals[c].sell += l.sell_total||0
-  })
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>VN ${v.number}</title>
-<style>body{font-family:Arial,sans-serif;font-size:12px;padding:28px;color:#111}
-h1{font-size:20px;color:#d97706}h2{font-size:12px;font-weight:700;color:#0369a1;text-transform:uppercase;border-bottom:2px solid #bae6fd;padding-bottom:4px;margin:16px 0 8px}
-table{width:100%;border-collapse:collapse;margin-bottom:14px}th,td{padding:7px 10px;border:1px solid #e2e8f0;text-align:left}
-th{background:#f8fafc;font-size:11px}.status{display:inline-block;padding:3px 12px;border-radius:12px;font-size:10px;font-weight:700;background:${sc.bg};color:${sc.color}}
-.total-row td{background:#f0fdf4;font-weight:700}@media print{button{display:none}}</style></head><body>
-<div style="display:flex;justify-content:space-between;margin-bottom:16px">
-  <div><h1>Variation Notice — ${v.number}</h1><div style="color:#555;font-size:11px">${projectName}${client?' · '+client:''}</div></div>
-  <div style="text-align:right"><span class="status">${v.status.toUpperCase()}</span>${v.customer_ref?`<div style="font-size:11px;margin-top:6px">Client Ref: <b>${v.customer_ref}</b></div>`:''}</div>
-</div>
-<h2 style="font-size:15px;text-transform:none;border-bottom:1px solid #e2e8f0;color:#111">${v.title}</h2>
-${v.scope?`<h2>Scope</h2><p style="white-space:pre-wrap">${v.scope}</p>`:''}
-<h2>Cost Summary</h2>
-<table><thead><tr><th>Category</th><th style="text-align:right">Cost</th><th style="text-align:right">Variation Value</th></tr></thead>
-<tbody>${Object.entries(catTotals).map(([cat,t])=>`<tr><td>${CAT_LABELS[cat]||cat}</td><td style="text-align:right;font-family:monospace">$${t.cost.toLocaleString('en-AU',{minimumFractionDigits:2})}</td><td style="text-align:right;font-family:monospace;font-weight:700">$${t.sell.toLocaleString('en-AU',{minimumFractionDigits:2})}</td></tr>`).join('')}</tbody>
-<tfoot><tr class="total-row"><td>TOTAL</td><td style="text-align:right;font-family:monospace">$${lines.reduce((s,l)=>s+(l.cost_total||0),0).toLocaleString('en-AU',{minimumFractionDigits:2})}</td><td style="text-align:right;font-family:monospace">$${lines.reduce((s,l)=>s+(l.sell_total||0),0).toLocaleString('en-AU',{minimumFractionDigits:2})}</td></tr></tfoot></table>
-${v.assumptions?`<h2>Assumptions</h2><p style="white-space:pre-wrap">${v.assumptions}</p>`:''}
-${v.exclusions?`<h2>Exclusions</h2><p style="white-space:pre-wrap">${v.exclusions}</p>`:''}
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:32px">
-  <div><div style="border-bottom:1px solid #000;height:44px;margin-bottom:4px"></div><div style="font-size:11px">Authorised (Client) · Date: ___</div></div>
-  <div><div style="border-bottom:1px solid #000;height:44px;margin-bottom:4px"></div><div style="font-size:11px">Prepared (SE) · Date: ___</div></div>
-</div>
-<script>setTimeout(()=>window.print(),400)<\/script></body></html>`
-  const w = window.open('','_blank','width=900,height=800')
-  if (w) { w.document.write(html); w.document.close() }
-}
-
 export function VariationsPanel() {
   const { activeProject } = useAppStore()
   const { canWrite } = usePermissions()
@@ -680,29 +646,26 @@ export function VariationsPanel() {
                   <span style={{fontSize:'12px',color:'var(--text3)'}}>{v.raised_date||'—'}</span>
                   <div style={{display:'flex',gap:'4px'}} onClick={e=>e.stopPropagation()}>
                     <button className="btn btn-sm" onClick={()=>{openEdit(v);setActiveTab('details')}}>Edit</button>
-                    <button className="btn btn-sm" onClick={()=>printVariation(v,vLines,activeProject?.name||'',activeProject?.client||'')}>🖨</button>
-                    {(activeProject?.site_info as Record<string,string>|undefined)?.siemens_project_no && (
-                      <button className="btn btn-sm" title="Print NRG Variation Form" onClick={()=>{
-                        const si = (activeProject!.site_info||{}) as Record<string,string>
-                        generateVariationDoc({
-                          number: v.number, scope: v.scope||'',
-                          raisedDate: fmtRaisedDate(v.raised_date),
-                          validUntil: fmtValidUntil(v.valid_until),
-                          client: activeProject!.client||'',
-                          siemensProjectNo: si.siemens_project_no||'',
-                          contractNo: si.contract_no||'',
-                          unit: activeProject!.unit||'',
-                          pmName: activeProject!.pm||'',
-                          cpmName: si.cpm_name||'',
-                          forAttention: si.for_attention||'',
-                          clientSignatory1: si.client_signatory_1||'',
-                          clientSignatory1Title: si.client_signatory_1_title||'',
-                          clientSignatory2: si.client_signatory_2||'',
-                          clientSignatory2Title: si.client_signatory_2_title||'',
-                          boilerplate: si.vn_boilerplate||'',
-                        }).catch(e=>toast(String(e),'error'))
-                      }}>📄 NRG</button>
-                    )}
+                    <button className="btn btn-sm" onClick={()=>{
+                      const si = (activeProject!.site_info||{}) as Record<string,string>
+                      generateVariationDoc({
+                        number: v.number, scope: v.scope||'',
+                        raisedDate: fmtRaisedDate(v.raised_date),
+                        validUntil: fmtValidUntil(v.valid_until),
+                        client: activeProject!.client||'',
+                        siemensProjectNo: si.siemens_project_no||'',
+                        contractNo: si.contract_no||'',
+                        unit: activeProject!.unit||'',
+                        pmName: activeProject!.pm||'',
+                        cpmName: si.cpm_name||'',
+                        forAttention: si.for_attention||'',
+                        clientSignatory1: si.client_signatory_1||'',
+                        clientSignatory1Title: si.client_signatory_1_title||'',
+                        clientSignatory2: si.client_signatory_2||'',
+                        clientSignatory2Title: si.client_signatory_2_title||'',
+                        boilerplate: si.vn_boilerplate||'',
+                      }).catch(e=>toast(String(e),'error'))
+                    }}>🖨 Print VN</button>
                     <button className="btn btn-sm" style={{color:'var(--red)'}} onClick={()=>del(v)}>✕</button>
                   </div>
                   <span style={{color:'var(--text3)',fontSize:'11px'}}>{isExpanded?'▲':'▼'}</span>
@@ -744,12 +707,6 @@ export function VariationsPanel() {
               <h3>{modal==='new'?'New Variation':`Edit ${(modal as Variation).number}`}</h3>
               <div style={{display:'flex',gap:'6px'}}>
                 {modal!=='new' && (
-                  <button className="btn btn-sm"
-                    onClick={()=>printVariation(modal as Variation, variationLines.get((modal as Variation).id)||[], activeProject?.name||'', activeProject?.client||'')}>
-                    🖨 Print VN
-                  </button>
-                )}
-                {modal!=='new' && (activeProject?.site_info as Record<string,string>|undefined)?.siemens_project_no && (
                   <button className="btn btn-sm" onClick={()=>{
                     const v = modal as Variation
                     const si = (activeProject!.site_info||{}) as Record<string,string>
@@ -770,7 +727,7 @@ export function VariationsPanel() {
                       clientSignatory2Title: si.client_signatory_2_title||'',
                       boilerplate: si.vn_boilerplate||'',
                     }).catch(e=>toast(String(e),'error'))
-                  }}>📄 NRG Form</button>
+                  }}>🖨 Print VN</button>
                 )}
                 <button className="btn btn-sm" onClick={()=>setModal(null)}>✕</button>
               </div>

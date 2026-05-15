@@ -664,23 +664,6 @@ interface VnDocData {
   boilerplate: string       // custom terms paragraph, or empty to use template default
 }
 
-function replaceExact(xml: string, find: string, replace: string): string {
-  const idx = xml.indexOf(find)
-  if (idx === -1) return xml
-  return xml.substring(0, idx) + xmlEsc(replace) + xml.substring(idx + find.length)
-}
-
-// Replace a multi-run value. The template splits some fields across runs.
-// Strategy: find the first literal and replace it; nullify subsequent runs.
-function replaceRunSequence(xml: string, firstLiteral: string, secondLiteral: string, fullValue: string): string {
-  const idx = xml.indexOf(firstLiteral)
-  if (idx === -1) return xml
-  // Replace first run's text
-  let result = xml.substring(0, idx) + xmlEsc(fullValue) + xml.substring(idx + firstLiteral.length)
-  // Erase second run's text (it now contains the second part of the old split value)
-  result = result.replace('>' + secondLiteral + '</w:t>', '></w:t>')
-  return result
-}
 
 export async function generateVariationDoc(data: VnDocData): Promise<void> {
   const templateBytes = b64ToBytes(VN_TEMPLATE_B64)
