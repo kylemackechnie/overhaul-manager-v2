@@ -22,6 +22,7 @@ const INV_COLS = [
   { id: 'last_action',  label: 'Last Action',    defaultVisible: true,  group: 'Workflow' },
   { id: 'dtp',          label: 'DTP',            defaultVisible: true,  group: 'Workflow' },
   { id: 'actions',      label: 'Actions',        defaultVisible: true,  group: 'Workflow' },
+  { id: 'invoice_ref',  label: 'ISO Filing Ref', defaultVisible: true,  group: 'Core' },
   // Optional — hidden by default
   { id: 'vendor_ref',   label: 'Vendor Ref',     defaultVisible: false, group: 'Core' },
   { id: 'vendor_details', label: 'Vendor Details', defaultVisible: false, group: 'Core' },
@@ -101,7 +102,7 @@ interface Invoice {
 
 interface PO { id: string; po_number: string|null; internal_ref: string|null; vendor: string|null; currency: string|null }
 
-type SortCol = 'invoice'|'po'|'date'|'due'|'expected'|'amount'|'status'|'lastaction'
+type SortCol = 'invoice'|'invoice_ref'|'po'|'date'|'due'|'expected'|'amount'|'status'|'lastaction'
 type SortDir = 'asc'|'desc'
 
 type InvForm = {
@@ -477,7 +478,8 @@ export function InvoicesPanel() {
     const pb = b.po_id ? poMap[b.po_id] : null
     let va: string|number = '', vb: string|number = ''
     switch (sortCol) {
-      case 'invoice':    va = a.invoice_number||''; vb = b.invoice_number||''; break
+      case 'invoice':     va = a.invoice_number||''; vb = b.invoice_number||''; break
+      case 'invoice_ref': va = (a.invoice_ref||'').toLowerCase(); vb = (b.invoice_ref||'').toLowerCase(); break
       case 'po':         va = (pa?.po_number||pa?.vendor||'').toLowerCase(); vb = (pb?.po_number||pb?.vendor||'').toLowerCase(); break
       case 'date':       va = a.invoice_date||''; vb = b.invoice_date||''; break
       case 'due':        va = a.due_date||''; vb = b.due_date||''; break
@@ -580,6 +582,7 @@ export function InvoicesPanel() {
             <thead>
               <tr>
                 {isInvVisible('invoice') && <SortTh col="invoice" label="Invoice #" />}
+                {isInvVisible('invoice_ref') && <SortTh col="invoice_ref" label="ISO Filing Ref" />}
                 {isInvVisible('po_vendor') && <SortTh col="po" label="PO / Vendor" />}
                 {isInvVisible('inv_date') && <SortTh col="date" label="Inv Date" align="center" />}
                 {isInvVisible('due_date') && <SortTh col="due" label="Due Date" align="center" />}
@@ -637,9 +640,10 @@ export function InvoicesPanel() {
                     {/* Invoice # */}
                     {isInvVisible('invoice') && <td style={{padding:'8px 10px',verticalAlign:'top'}}>
                       <div style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:'12px'}}>{inv.invoice_number || '—'}</div>
-                      {inv.invoice_ref && <div style={{fontSize:'9px',color:'var(--accent)',fontFamily:'var(--mono)',marginTop:'1px'}}>{inv.invoice_ref}</div>}
                       {inv.source === 'sap_import' && <div style={{fontSize:'9px',color:'#7c3aed'}}>SAP Import</div>}
                     </td>}
+                    {/* ISO Filing Ref */}
+                    {isInvVisible('invoice_ref') && <td style={{padding:'8px 10px',verticalAlign:'top',fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{inv.invoice_ref || '—'}</td>}
                     {/* PO / Vendor */}
                     {isInvVisible('po_vendor') && <td style={{padding:'8px 10px',verticalAlign:'top',fontSize:'10px'}}>
                       {po ? (
