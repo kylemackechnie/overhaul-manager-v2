@@ -217,7 +217,7 @@ export async function exportTceAll(
     supabase.from('nrg_customer_invoices').select('week_ending,eur_spot_rate,label')
       .eq('project_id', projectId).order('week_ending'),
     supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,sell_price')
-      .eq('project_id', projectId).in('status', ['approved', 'paid']),
+      .eq('project_id', projectId).in('status', ['approved', 'paid']).not('tce_item_id', 'is', null),
     fetch('/tce_full_template.xlsx'),
   ])
 

@@ -80,7 +80,7 @@ export function NrgInvoicingPanel() {
       supabase.from('timesheet_cost_lines')
         .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,sell_price,status,invoice_number').eq('project_id', pid).in('status', ['approved', 'paid']),
+      supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,sell_price,status,invoice_number').eq('project_id', pid).in('status', ['approved', 'paid']).not('tce_item_id', 'is', null),
       Promise.resolve({ data: [] }),  // expenses fetched separately via fetchTceExpenses
     ])
     setTceLines(fetchedTceLines)

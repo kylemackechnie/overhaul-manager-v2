@@ -159,7 +159,7 @@ export function NrgTcePanel() {
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
         .eq('project_id', pid).eq('status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,amount,sell_price,status,invoice_date,date_processed,invoice_number,vendor_ref,vendor_details').eq('project_id', pid).in('status', ['approved', 'paid']),
+      supabase.from('invoices').select('tce_item_id,amount,sell_price,status,invoice_date,date_processed,invoice_number,vendor_ref,vendor_details').eq('project_id', pid).in('status', ['approved', 'paid']).not('tce_item_id', 'is', null),
       Promise.resolve({ data: [] }),  // expenses fetched separately via fetchTceExpenses
       supabase.from('variations').select('status,tce_link,sell_total,cost_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),

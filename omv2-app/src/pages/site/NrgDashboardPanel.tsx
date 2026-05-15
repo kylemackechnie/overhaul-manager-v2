@@ -19,7 +19,7 @@ export function NrgDashboardPanel() {
     const pid = activeProject!.id
     const [tceRes, invRes, varRes, woRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('tce_total,source').eq('project_id', pid),
-      supabase.from('invoices').select('amount,sell_price,status,tce_item_id').eq('project_id', pid),
+      supabase.from('invoices').select('amount,sell_price,status,tce_item_id').eq('project_id', pid).not('tce_item_id', 'is', null),
       supabase.from('variations').select('status,sell_total').eq('project_id', pid),
       supabase.from('work_orders').select('status').eq('project_id', pid),
     ])

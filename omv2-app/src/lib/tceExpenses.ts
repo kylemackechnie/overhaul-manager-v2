@@ -1,13 +1,13 @@
 import { supabase } from './supabase'
 
 /**
- * Fetch expenses for TCE actuals — returns a flat array that includes:
+ * Fetch expenses AND invoice lines for TCE actuals — returns a flat array including:
  *   1. Regular expenses (with tce_item_id set at the top level, no line items)
- *   2. Exploded expense_lines rows (each line treated as its own virtual expense,
- *      using the parent's date and project_id)
+ *   2. Exploded expense_lines rows (each line as a virtual expense)
+ *   3. Exploded invoice_lines rows (each line as a virtual expense entry)
  *
- * Parent expenses that have line items are automatically excluded since their
- * tce_item_id is null — only the lines carry the TCE allocation.
+ * Parent expenses/invoices with line items have tce_item_id = null — only their
+ * child lines carry the TCE allocation.
  */
 export interface TceExpenseRow {
   tce_item_id: string | null
@@ -23,7 +23,7 @@ export interface TceExpenseRow {
 }
 
 export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow[]> {
-  const [expRes, lineRes] = await Promise.all([
+  const [expRes, expLineRes, invLineRes] = await Promise.all([
     // Regular expenses — only those with a direct tce_item_id (no line items)
     supabase
       .from('expenses')
@@ -31,11 +31,19 @@ export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow
       .eq('project_id', projectId)
       .not('tce_item_id', 'is', null),
 
-    // Exploded line items — join to parent for date/expense_ref/project
+    // Exploded expense line items — join to parent for date/expense_ref/project
     supabase
       .from('expense_lines')
       .select('tce_item_id,cost_ex_gst,amount,sell_price,gm_pct,chargeable,description,expenses!inner(date,expense_ref,vendor,project_id)')
       .eq('expenses.project_id', projectId)
+      .not('tce_item_id', 'is', null),
+
+    // Exploded invoice line items — join to parent invoice for date/ref/project
+    supabase
+      .from('invoice_lines')
+      .select('tce_item_id,amount,sell_price,gm_pct,chargeable,description,invoices!inner(invoice_date,date_processed,invoice_ref,vendor_details,project_id)')
+      .eq('invoices.project_id', projectId)
+      .eq('invoices.status', 'approved')
       .not('tce_item_id', 'is', null),
   ])
 
@@ -52,7 +60,7 @@ export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow
     vendor: e.vendor as string | null,
   }))
 
-  const lineRows: TceExpenseRow[] = (lineRes.data || []).map((l: Record<string, unknown>) => {
+  const expLineRows: TceExpenseRow[] = (expLineRes.data || []).map((l: Record<string, unknown>) => {
     const parent = (l.expenses as Record<string, unknown>) || {}
     return {
       tce_item_id: l.tce_item_id as string | null,
@@ -68,5 +76,23 @@ export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow
     }
   })
 
-  return [...directRows, ...lineRows]
+  const invLineRows: TceExpenseRow[] = (invLineRes.data || []).map((l: Record<string, unknown>) => {
+    const parent = (l.invoices as Record<string, unknown>) || {}
+    const cost = Number(l.amount) || 0
+    const sell = l.sell_price != null ? Number(l.sell_price) : null
+    return {
+      tce_item_id: l.tce_item_id as string | null,
+      cost_ex_gst: cost,
+      amount: cost,
+      sell_price: sell,
+      gm_pct: l.gm_pct != null ? Number(l.gm_pct) : null,
+      chargeable: l.chargeable as boolean | null,
+      date: (parent.date_processed || parent.invoice_date) as string | null,
+      expense_ref: parent.invoice_ref as string | null,
+      description: l.description as string | null,
+      vendor: parent.vendor_details as string | null,
+    }
+  })
+
+  return [...directRows, ...expLineRows, ...invLineRows]
 }

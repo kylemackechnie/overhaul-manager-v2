@@ -100,6 +100,10 @@ interface Invoice {
   created_at: string
 }
 
+interface InvoiceLine {
+  id: string; description: string; amount: number; sell_price: number; gm_pct: number; chargeable: boolean; tce_item_id: string; sort_order: number; created_at: string
+}
+
 interface PO { id: string; po_number: string|null; internal_ref: string|null; vendor: string|null; currency: string|null }
 
 type SortCol = 'invoice'|'invoice_ref'|'po'|'date'|'due'|'expected'|'amount'|'status'|'lastaction'
@@ -168,6 +172,8 @@ export function InvoicesPanel() {
   function setSortDir(v: SortDir)      { _setSortDir(v);      setPref('inv_sort_dir', v) }
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
   const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
+  const [lines, setLines] = useState<InvoiceLine[]>([])
+  const [showLines, setShowLines] = useState(false)
   const [sapModal, setSapModal] = useState(false)
   const [sapRows, setSapRows] = useState<SapInvRow[]>([])
   const [dragOverId, setDragOverId] = useState<string|null>(null)
@@ -176,6 +182,32 @@ export function InvoicesPanel() {
   const [sapImporting, setSapImporting] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [modalDragOver, setModalDragOver] = useState(false)
+
+  // Line item helpers
+  const hasLines = lines.length > 0
+  const linesTotalAmount = lines.reduce((s, l) => s + (l.amount || 0), 0)
+  const linesTotalSell = lines.reduce((s, l) => s + (l.sell_price || 0), 0)
+  function addLine() {
+    const newLine: InvoiceLine = { id: `tmp-${Date.now()}`, description: '', amount: 0, sell_price: 0, gm_pct: parseFloat(form.gm_pct) || 15, chargeable: true, tce_item_id: '', sort_order: lines.length, created_at: '' }
+    setLines(prev => [...prev, newLine])
+  }
+  function updateLine(idx: number, patch: Partial<InvoiceLine>) {
+    setLines(prev => prev.map((l, i) => {
+      if (i !== idx) return l
+      const updated = { ...l, ...patch }
+      // Auto-calc sell price when amount or gm_pct changes
+      if (('amount' in patch || 'gm_pct' in patch) && updated.chargeable) {
+        updated.sell_price = calcSell(updated.amount, updated.gm_pct)
+      }
+      if ('chargeable' in patch && !patch.chargeable) {
+        updated.sell_price = 0; updated.gm_pct = 0
+      }
+      return updated
+    }))
+  }
+  function removeLine(idx: number) { setLines(prev => prev.filter((_, i) => i !== idx)) }
+
+
 
   // ── Live SPOL reference preview ────────────────────────────────────────────
   // Format: INV-###_Vendor_Amount  e.g. INV-001_ACL-Industrial_10.47
@@ -286,10 +318,11 @@ export function InvoicesPanel() {
       vendor_ref: form.vendor_ref,
       vendor_details: form.vendor_details,
       po_id: form.po_id || null,
-      tce_item_id: form.tce_item_id || null,
+      // If lines exist, tce_item_id is null (set per-line); chargeable/sell come from rollup
+      tce_item_id: hasLines ? null : (form.tce_item_id || null),
       status: form.status,
       currency: form.currency || 'AUD',
-      amount: parseFloat(form.amount) || null,
+      amount: hasLines ? linesTotalAmount : (parseFloat(form.amount) || null),
       expected_amount: parseFloat(form.expected_amount) || null,
       invoice_date: form.invoice_date || null,
       date_processed: form.date_processed || null,
@@ -297,9 +330,9 @@ export function InvoicesPanel() {
       period_from: form.period_from || null,
       period_to: form.period_to || null,
       notes: form.notes,
-      chargeable: form.chargeable,
-      sell_price: form.chargeable ? (parseFloat(form.sell_price) || null) : null,
-      gm_pct: parseFloat(form.gm_pct) || 0,
+      chargeable: hasLines ? lines.some(l => l.chargeable) : form.chargeable,
+      sell_price: hasLines ? linesTotalSell : (form.chargeable ? (parseFloat(form.sell_price) || null) : null),
+      gm_pct: hasLines ? 0 : (parseFloat(form.gm_pct) || 0),
     }
     const isNew = modal === 'new'
     let savedId: string
@@ -317,6 +350,22 @@ export function InvoicesPanel() {
     const existingInv = isNew ? null : (modal as Invoice)
     if (!existingInv?.invoice_ref) {
       await assignInvoiceRef(savedId)
+    }
+
+    // Save line items
+    await supabase.from('invoice_lines').delete().eq('invoice_id', savedId)
+    if (lines.length > 0) {
+      const linePayloads = lines.map((l, i) => ({
+        invoice_id: savedId,
+        description: l.description,
+        amount: l.amount || 0,
+        sell_price: l.chargeable ? (l.sell_price || 0) : 0,
+        gm_pct: l.gm_pct || 0,
+        chargeable: l.chargeable,
+        tce_item_id: l.tce_item_id || null,
+        sort_order: i,
+      }))
+      await supabase.from('invoice_lines').insert(linePayloads)
     }
 
     // Upload any pending files from the modal
@@ -526,7 +575,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
@@ -572,7 +621,7 @@ export function InvoicesPanel() {
           <div style={{fontSize:'36px',marginBottom:'12px'}}>🧾</div>
           <div style={{fontSize:'16px',fontWeight:600,marginBottom:'4px'}}>No invoices yet</div>
           <div style={{fontSize:'13px',color:'var(--text3)',marginBottom:'20px'}}>Add invoices against active POs to track what's been billed.</div>
-          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
@@ -737,6 +786,12 @@ export function InvoicesPanel() {
                               notes: inv.notes||'',
                               chargeable: inv.chargeable !== false, sell_price: String(inv.sell_price||''), gm_pct: String(inv.gm_pct||'0'),
                             })
+                            // Load existing lines
+                            supabase.from('invoice_lines').select('*').eq('invoice_id', inv.id).order('sort_order').then(({ data }) => {
+                              const existingLines = (data || []) as InvoiceLine[]
+                              setLines(existingLines)
+                              setShowLines(existingLines.length > 0)
+                            })
                             setModal(inv)
                           }}>Edit</button>
                           <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>setHistoryModal(inv)}>History</button>
@@ -795,10 +850,10 @@ export function InvoicesPanel() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Amount</label>
-                  <input type="number" className="input" value={form.amount} onChange={e=>{
+                  <input type="number" className="input" value={hasLines ? linesTotalAmount.toFixed(2) : form.amount} onChange={e=>{
                     const amt = e.target.value
                     setForm(f=>({...f, amount: amt, sell_price: f.chargeable ? String(calcSell(parseFloat(amt)||0, parseFloat(f.gm_pct)||0)) : '0'}))
-                  }} placeholder="0.00" />
+                  }} placeholder="0.00" disabled={hasLines} style={hasLines ? {opacity:0.5,cursor:'not-allowed'} : {}} />
                 </div>
                 <div className="fg">
                   <label>Expected Amount</label>
@@ -825,6 +880,12 @@ export function InvoicesPanel() {
                 <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} /></div>
                 <div className="fg"><label>Period To</label><input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} /></div>
               </div>
+              {hasLines && (
+                <div style={{fontSize:'11px',color:'var(--text3)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'5px',padding:'6px 10px',margin:'4px 0'}}>
+                  ℹ️ Amount, sell price, chargeable and TCE scope are set per line item below — top-level fields are locked.
+                </div>
+              )}
+              {!hasLines && (<>
               {/* Chargeable to customer */}
               <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',marginBottom:'4px'}}>
                 <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px',fontWeight:500,margin:0}}>
@@ -871,9 +932,45 @@ export function InvoicesPanel() {
                   </select>
                 )}
               </div>
+              </>)}
               <div className="fg"><label>Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}}/></div>
 
-              {/* SPOL reference preview */}
+              {/* ── Line Items (optional split) ── */}
+              <div style={{borderTop:'1px solid var(--border)',marginTop:'8px',paddingTop:'8px'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
+                  <button type="button" className="btn btn-sm" style={{fontSize:'11px',background:'none',border:'1px dashed var(--border)',color:'var(--text3)'}}
+                    onClick={()=>{ if(!showLines){ setShowLines(true); if(lines.length===0) addLine() } else { if(lines.length===0) setShowLines(false) } }}>
+                    {showLines ? '▼ Line Items (split invoice)' : '▶ Split this invoice into line items'}
+                  </button>
+                  {hasLines && (
+                    <span style={{fontSize:'11px',color:'var(--text3)'}}>
+                      Cost: <strong>${linesTotalAmount.toFixed(2)}</strong> · Sell: <strong style={{color:'var(--green)'}}>${linesTotalSell.toFixed(2)}</strong>
+                    </span>
+                  )}
+                </div>
+                {showLines && (
+                  <div style={{background:'var(--bg2)',borderRadius:'6px',padding:'8px',border:'1px solid var(--border)'}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 90px 32px 60px 80px 1fr 28px',gap:'4px',marginBottom:'4px',fontSize:'10px',color:'var(--text3)',fontWeight:600,textTransform:'uppercase',padding:'0 2px'}}>
+                      <span>Description</span><span>Amount</span><span>Ch.</span><span>GM%</span><span>Sell</span><span>TCE</span><span></span>
+                    </div>
+                    {lines.map((l, idx) => (
+                      <div key={l.id} style={{display:'grid',gridTemplateColumns:'1fr 90px 32px 60px 80px 1fr 28px',gap:'4px',marginBottom:'4px',alignItems:'center'}}>
+                        <input className="input" style={{fontSize:'12px',padding:'4px 6px'}} value={l.description} onChange={e=>updateLine(idx,{description:e.target.value})} placeholder="Description" />
+                        <input type="number" className="input" style={{fontSize:'12px',padding:'4px 6px'}} value={l.amount||''} onChange={e=>updateLine(idx,{amount:parseFloat(e.target.value)||0})} placeholder="0.00" />
+                        <input type="checkbox" checked={l.chargeable} onChange={e=>updateLine(idx,{chargeable:e.target.checked})} style={{width:'16px',height:'16px',margin:'auto'}} />
+                        <input type="number" className="input" style={{fontSize:'12px',padding:'4px 6px'}} value={l.gm_pct||''} onChange={e=>updateLine(idx,{gm_pct:parseFloat(e.target.value)||0})} placeholder="0" disabled={!l.chargeable} />
+                        <input type="number" className="input" style={{fontSize:'12px',padding:'4px 6px',color:'var(--green)',fontWeight:600}} value={l.sell_price||''} onChange={e=>updateLine(idx,{sell_price:parseFloat(e.target.value)||0})} placeholder="0.00" disabled={!l.chargeable} />
+                        <select className="input" style={{fontSize:'12px',padding:'4px 6px'}} value={l.tce_item_id} onChange={e=>updateLine(idx,{tce_item_id:e.target.value})}>
+                          <option value="">— No TCE —</option>
+                          {[...tceLines].sort((a,b)=>naturalSortItemId(a.item_id,b.item_id)).map(t=><option key={t.id} value={t.item_id}>{t.item_id} — {t.description}</option>)}
+                        </select>
+                        <button onClick={()=>removeLine(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--red)',fontSize:'16px',padding:'0',lineHeight:1}}>×</button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn btn-sm" style={{fontSize:'11px',marginTop:'4px'}} onClick={addLine}>+ Add line</button>
+                  </div>
+                )}
+              </div>
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',padding:'10px 12px',marginTop:'4px'}}>
                 <div style={{fontSize:'10px',color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'4px'}}>
                   SPOL File Reference

@@ -89,7 +89,7 @@ export function NrgActualsPanel() {
         .select('tce_item_id,work_order,work_date,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid)
         .eq('timesheet_status', 'approved'),
-      supabase.from('invoices').select('tce_item_id,amount,sell_price,status,period_from,period_to').eq('project_id', pid).in('status', ['approved', 'paid']),
+      supabase.from('invoices').select('tce_item_id,amount,sell_price,status,period_from,period_to').eq('project_id', pid).in('status', ['approved', 'paid']).not('tce_item_id', 'is', null),
       Promise.resolve({ data: [] }),  // expenses handled separately below
       supabase.from('variations').select('status,tce_link,sell_total,approved_date').eq('project_id', pid),
       supabase.from('nrg_customer_invoices').select('id,week_ending,eur_spot_rate').eq('project_id', pid).order('week_ending'),
