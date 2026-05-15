@@ -241,6 +241,15 @@ export function VariationsPanel() {
   const [lines, setLines] = useState<LineForm[]>([mkLine()])
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string|null>(null)
+  // Panel-level view tabs
+  const [panelView, setPanelView] = useState<'register'|'settings'>('register')
+  // VN Settings form (saved to project.site_info)
+  const EMPTY_VN_SETTINGS = {
+    for_attention: '', client_signatory_1: '', client_signatory_1_title: '',
+    client_signatory_2: '', client_signatory_2_title: '', vn_boilerplate: '',
+  }
+  const [vnSettings, setVnSettings] = useState(EMPTY_VN_SETTINGS)
+  const [vnSettingsSaving, setVnSettingsSaving] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
 
@@ -264,10 +273,37 @@ export function VariationsPanel() {
     setWbsList((wbsRes.data||[]) as {id:string;code:string;name:string}[])
     setTceLines((tceRes.data||[]) as NrgTceLine[])
     setRateCards((rcRes.data||[]) as RateCard[])
+    // Init VN settings from project site_info
+    const si = (activeProject!.site_info || {}) as Record<string,string>
+    setVnSettings({
+      for_attention: si.for_attention || '',
+      client_signatory_1: si.client_signatory_1 || '',
+      client_signatory_1_title: si.client_signatory_1_title || '',
+      client_signatory_2: si.client_signatory_2 || '',
+      client_signatory_2_title: si.client_signatory_2_title || '',
+      vn_boilerplate: si.vn_boilerplate || '',
+    })
     setLoading(false)
   }
 
   const hasTce = tceLines.length > 0
+
+  async function saveVnSettings() {
+    setVnSettingsSaving(true)
+    const si = {
+      ...(activeProject!.site_info || {}),
+      for_attention: vnSettings.for_attention.trim(),
+      client_signatory_1: vnSettings.client_signatory_1.trim(),
+      client_signatory_1_title: vnSettings.client_signatory_1_title.trim(),
+      client_signatory_2: vnSettings.client_signatory_2.trim(),
+      client_signatory_2_title: vnSettings.client_signatory_2_title.trim(),
+      vn_boilerplate: vnSettings.vn_boilerplate.trim(),
+    }
+    const { error } = await supabase.from('projects').update({ site_info: si }).eq('id', activeProject!.id)
+    if (error) { toast(error.message, 'error') }
+    else { toast('VN settings saved', 'success') }
+    setVnSettingsSaving(false)
+  }
 
   function printRegister() {
     const projectName = activeProject?.name || 'Project'
@@ -498,12 +534,93 @@ export function VariationsPanel() {
           </p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
-          <button className="btn btn-sm" onClick={printRegister} disabled={variations.length===0}>🖨 Print Register</button>
-          <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
-          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={openNew}>+ New Variation</button>
+          {panelView === 'register' && <>
+            <button className="btn btn-sm" onClick={printRegister} disabled={variations.length===0}>🖨 Print Register</button>
+            <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
+            <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={openNew}>+ New Variation</button>
+          </>}
         </div>
       </div>
 
+      {/* Panel-level tab row */}
+      <div style={{display:'flex',gap:'0',borderBottom:'1px solid var(--border)',marginBottom:'16px'}}>
+        {(['register','settings'] as const).map(tab => (
+          <button key={tab} onClick={()=>setPanelView(tab)}
+            style={{padding:'8px 16px',fontSize:'13px',fontWeight:panelView===tab?700:400,
+              borderBottom:panelView===tab?'2px solid var(--accent)':'2px solid transparent',
+              background:'transparent',border:'none',cursor:'pointer',
+              color:panelView===tab?'var(--accent)':'var(--text3)'}}>
+            {tab === 'register' ? 'Register' : '⚙ VN Settings'}
+          </button>
+        ))}
+      </div>
+
+      {/* VN Settings view */}
+      {panelView === 'settings' && (
+        <div style={{maxWidth:'640px'}}>
+          <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'20px'}}>
+            These values are applied to all variation notice documents for this project.
+            Changes here do not affect individual variations — only the printed document output.
+          </p>
+          <div className="card" style={{marginBottom:'16px'}}>
+            <div style={{fontWeight:600,marginBottom:'14px',fontSize:'13px',color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em'}}>Client Signatories</div>
+            <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+              <div className="fg">
+                <label>For the Attention of</label>
+                <input className="input" value={vnSettings.for_attention}
+                  onChange={e=>setVnSettings(s=>({...s,for_attention:e.target.value}))}
+                  placeholder="e.g. Troy Smith & Monique Ward" />
+              </div>
+              <div className="fg-row">
+                <div className="fg">
+                  <label>Signatory 1 — Name</label>
+                  <input className="input" value={vnSettings.client_signatory_1}
+                    onChange={e=>setVnSettings(s=>({...s,client_signatory_1:e.target.value}))}
+                    placeholder="e.g. Troy Smith" />
+                </div>
+                <div className="fg">
+                  <label>Signatory 1 — Title</label>
+                  <input className="input" value={vnSettings.client_signatory_1_title}
+                    onChange={e=>setVnSettings(s=>({...s,client_signatory_1_title:e.target.value}))}
+                    placeholder="e.g. Turbine Specialist" />
+                </div>
+              </div>
+              <div className="fg-row">
+                <div className="fg">
+                  <label>Signatory 2 — Name</label>
+                  <input className="input" value={vnSettings.client_signatory_2}
+                    onChange={e=>setVnSettings(s=>({...s,client_signatory_2:e.target.value}))}
+                    placeholder="e.g. Monique Ward" />
+                </div>
+                <div className="fg">
+                  <label>Signatory 2 — Title</label>
+                  <input className="input" value={vnSettings.client_signatory_2_title}
+                    onChange={e=>setVnSettings(s=>({...s,client_signatory_2_title:e.target.value}))}
+                    placeholder="e.g. Contract Specialist" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="card" style={{marginBottom:'20px'}}>
+            <div style={{fontWeight:600,marginBottom:'14px',fontSize:'13px',color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em'}}>Terms Boilerplate</div>
+            <div className="fg">
+              <label>Custom terms paragraph <span style={{fontWeight:400,color:'var(--text3)',fontSize:'11px'}}>— leave blank to use the standard SE terms</span></label>
+              <textarea className="input" rows={5} value={vnSettings.vn_boilerplate}
+                onChange={e=>setVnSettings(s=>({...s,vn_boilerplate:e.target.value}))}
+                style={{resize:'vertical'}}
+                placeholder="The price shown is an estimate and invoicing will be based on actual hours..." />
+            </div>
+          </div>
+          <div style={{display:'flex',justifyContent:'flex-end'}}>
+            <button className="btn btn-primary" onClick={saveVnSettings} disabled={vnSettingsSaving}>
+              {vnSettingsSaving ? <span className="spinner" style={{width:'14px',height:'14px'}}/> : null} Save VN Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Register view */}
+      {panelView === 'register' && (<>
       {loading ? <div className="loading-center"><span className="spinner"/> Loading...</div>
       : variations.length === 0 ? (
         <div className="empty-state">
@@ -572,6 +689,7 @@ export function VariationsPanel() {
           })}
         </div>
       )}
+      </>)}
 
       {/* Modal */}
       {modal && (

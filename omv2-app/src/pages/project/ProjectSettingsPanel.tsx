@@ -25,6 +25,9 @@ export function ProjectSettingsPanel() {
     std_hours_day: {} as Record<string,number>,
     std_hours_night: {} as Record<string,number>,
     site_id: '',
+    siemens_project_no: '',
+    contract_no: '',
+    cpm_name: '',
   })
   const [saving, setSaving] = useState(false)
   const [sites, setSites] = useState<{id:string,name:string}[]>([])
@@ -163,6 +166,9 @@ export function ProjectSettingsPanel() {
       site_id: activeProject.site_id || '',
       std_hours_day: { ...(activeProject.std_hours?.day as Record<string,number> || {}) },
       std_hours_night: { ...(activeProject.std_hours?.night as Record<string,number> || {}) },
+      siemens_project_no: (activeProject.site_info?.siemens_project_no as string) || '',
+      contract_no: (activeProject.site_info?.contract_no as string) || '',
+      cpm_name: (activeProject.site_info?.cpm_name as string) || '',
     })
     setPatterns((activeProject.shift_patterns as unknown as WetHirePattern[] || []))
     setLabourPatterns((activeProject.labour_patterns as unknown as LabourPattern[] || []))
@@ -190,6 +196,12 @@ export function ProjectSettingsPanel() {
       std_hours: { day: form.std_hours_day, night: form.std_hours_night },
       pm_user_id: pmUserId || null,
       pa_user_id: paUserId || null,
+      site_info: {
+        ...(activeProject!.site_info || {}),
+        siemens_project_no: form.siemens_project_no.trim(),
+        contract_no: form.contract_no.trim(),
+        cpm_name: form.cpm_name.trim(),
+      },
     }
     const { data, error } = await supabase.from('projects').update(payload)
       .eq('id', activeProject!.id).select('*,site:sites(id,name)').single()
@@ -284,6 +296,33 @@ export function ProjectSettingsPanel() {
           <div className="fg">
             <label>Notes</label>
             <textarea className="input" rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical'}} />
+          </div>
+        </div>
+      </div>
+
+      {/* Contract Details */}
+      <div className="card" style={{marginBottom:'16px'}}>
+        {section('Contract Details')}
+        <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>
+          Used to populate variation notice documents. Leave blank if not applicable.
+        </p>
+        <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+          <div className="fg-row">
+            <div className="fg">
+              <label>Siemens Project No.</label>
+              <input className="input" value={form.siemens_project_no} onChange={e=>setForm(f=>({...f,siemens_project_no:e.target.value}))} placeholder="e.g. SF232178831" />
+            </div>
+            <div className="fg">
+              <label>Contract No.</label>
+              <input className="input" value={form.contract_no} onChange={e=>setForm(f=>({...f,contract_no:e.target.value}))} placeholder="e.g. NRG00173164" />
+            </div>
+          </div>
+          <div className="fg-row">
+            <div className="fg">
+              <label>Commercial Project Manager</label>
+              <input className="input" value={form.cpm_name} onChange={e=>setForm(f=>({...f,cpm_name:e.target.value}))} placeholder="Full name" />
+            </div>
+            <div className="fg" />
           </div>
         </div>
       </div>
