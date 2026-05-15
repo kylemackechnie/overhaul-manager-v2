@@ -164,7 +164,12 @@ export function POsPanel() {
     const ha = getHireAct(id).reduce((s, h) => s + h.actualToDate, 0)
     const ca = getCarAct(id).reduce((s, c) => s + c.actualToDate, 0)
     const aa = getAccomAct(id).reduce((s, a) => s + a.actualToDate, 0)
-    return { actTotal: la+ha+ca+aa, planned: b?.total ?? 0, labAct: la, hireAct: ha, carAct: ca, accomAct: aa, budget: poValue(pos.find(p => p.id === id)!) }
+    const bgt = poValue(pos.find(p => p.id === id)!)
+    // Fixed price POs with no linked bookings: PO value IS the plan
+    const hasBookings = la > 0 || ha > 0 || ca > 0 || aa > 0
+      || resources.some(r => (r as Resource & { linked_po_id?: string }).linked_po_id === id)
+    const planned = (b?.total ?? 0) === 0 && !hasBookings && bgt > 0 ? bgt : (b?.total ?? 0)
+    return { actTotal: la+ha+ca+aa, planned, labAct: la, hireAct: ha, carAct: ca, accomAct: aa, budget: bgt }
   }
 
   function openDetail(po: PurchaseOrder) {
