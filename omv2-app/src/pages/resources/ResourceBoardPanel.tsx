@@ -2,7 +2,9 @@
  * ResourceBoardPanel.tsx
  * The Resource Manager's home screen.
  * Cross-project view of all people in resources joined to persons.
- * Grouped by status: On Site / Incoming / Free / Compliance Hold.
+ * Grouped by status: On Site / Incoming / Free.
+ * No compliance hold — passport notices shown as a badge on the card only.
+ * Passport status read from induction_courses global register (upload-based), not persons fields.
  */
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -30,10 +32,9 @@ interface BoardResource {
   default_category: string | null
   gid: string | null
   status: string | null
-  medical_date: string | null
-  induction_ehs_date: string | null
-  induction_qual_date: string | null
   project_name: string
+  // Passport notice — null = no data in register, 'expired' = SEP/SQP expired, 'expiring' = within 90d
+  passport_notice: 'expired' | 'expiring' | null
 }
 
 interface Project {
@@ -43,7 +44,7 @@ interface Project {
   end_date: string | null
 }
 
-type BoardStatus = 'onsite' | 'incoming' | 'free' | 'hold'
+type BoardStatus = 'onsite' | 'incoming' | 'free'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -65,10 +66,6 @@ const PLACEHOLDER_NAMES = ['TBC', 'Scaffolder 3', 'Scaffolder 5']
 
 function getStatus(r: BoardResource): BoardStatus {
   const today = new Date().toISOString().slice(0, 10)
-  const ehsExp  = r.induction_ehs_date  && r.induction_ehs_date  < today
-  const qualExp = r.induction_qual_date && r.induction_qual_date < today
-  const medExp  = r.medical_date        && r.medical_date         < today
-  if (ehsExp || qualExp || medExp) return 'hold'
   const mobIn  = r.mob_in  ?? ''
   const mobOut = r.mob_out ?? ''
   if (mobIn <= today && (!mobOut || mobOut >= today)) return 'onsite'
@@ -79,28 +76,7 @@ function getStatus(r: BoardResource): BoardStatus {
   return 'free'
 }
 
-function complianceDot(r: BoardResource): 'green' | 'amber' | 'red' | 'grey' {
-  const today = new Date().toISOString().slice(0, 10)
-  const soon  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
-  const dates = [r.induction_ehs_date, r.induction_qual_date, r.medical_date]
-  if (!dates.some(Boolean)) return 'grey'
-  if (dates.some(d => d && d < today))              return 'red'
-  if (dates.some(d => d && d >= today && d <= soon)) return 'amber'
-  return 'green'
-}
-
-function complianceLabel(r: BoardResource): string {
-  const today = new Date().toISOString().slice(0, 10)
-  const soon  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
-  if (!r.induction_ehs_date && !r.induction_qual_date && !r.medical_date) return 'No induction data'
-  if (r.induction_ehs_date  && r.induction_ehs_date  < today) return 'EHS expired'
-  if (r.induction_qual_date && r.induction_qual_date < today) return 'QUAL expired'
-  if (r.medical_date        && r.medical_date         < today) return 'Medical expired'
-  if (r.induction_ehs_date  && r.induction_ehs_date  <= soon) return 'EHS expiring soon'
-  if (r.induction_qual_date && r.induction_qual_date <= soon) return 'QUAL expiring soon'
-  if (r.medical_date        && r.medical_date         <= soon) return 'Medical expiring soon'
-  return 'All current'
-}
+// No compliance dot — passport notice badge on card only if global register has data
 
 function fmtDate(d: string | null) {
   if (!d) return '—'
@@ -122,19 +98,13 @@ function PersonCard({
 }) {
   const cat = resource.default_category || resource.category
   const catStyle = cat ? (CAT_STYLE[cat] ?? { bg: 'var(--bg3)', color: 'var(--text3)' }) : null
-  const dot = complianceDot(resource)
-  const dotColors = { green: 'var(--green)', amber: 'var(--orange)', red: 'var(--red)', grey: 'var(--text3)' }
-  const dotColor = dotColors[dot]
-  const label = complianceLabel(resource)
   const status = getStatus(resource)
   const isPlaceholder = !resource.person_id || PLACEHOLDER_NAMES.includes(resource.name)
-
   const today = new Date().toISOString().slice(0, 10)
   const daysUntilMob = resource.mob_in
     ? Math.round((new Date(resource.mob_in).getTime() - Date.now()) / 86400000)
     : null
-
-  const borderColor = selected ? 'var(--accent)' : dot === 'red' ? '#fca5a5' : dot === 'amber' ? '#fcd34d' : 'var(--border)'
+  const borderColor = selected ? 'var(--accent)' : 'var(--border)'
 
   return (
     <div
@@ -146,8 +116,8 @@ function PersonCard({
         cursor: 'pointer', opacity: isPlaceholder ? 0.55 : 1,
         transition: 'border-color 0.1s',
       }}
-      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
-      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.borderColor = borderColor }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = borderColor}
     >
       {/* Name + category */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
@@ -166,8 +136,8 @@ function PersonCard({
         )}
       </div>
 
-      {/* Project + dates */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6, flexWrap: 'wrap' }}>
+      {/* Project + dates + profile link */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         <span style={{
           fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
           background: projColor + '20', color: projColor, border: `1px solid ${projColor}40`,
@@ -180,21 +150,28 @@ function PersonCard({
         {status === 'onsite' && resource.mob_out && resource.mob_out >= today && (
           <span style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text3)' }}>→ {fmtDate(resource.mob_out)}</span>
         )}
-      </div>
-
-      {/* Compliance */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
-        <span style={{ fontSize: 10, color: dotColor, flex: 1 }}>{label}</span>
         {resource.person_id && !isPlaceholder && (
           <button
             onClick={e => { e.stopPropagation(); onOpenProfile(resource.person_id!) }}
-            style={{ fontSize: 10, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0, flexShrink: 0 }}
+            style={{ fontSize: 10, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0, marginLeft: 'auto', flexShrink: 0 }}
           >
             Profile →
           </button>
         )}
       </div>
+
+      {/* Passport notice — only shown when global register has data indicating expired/expiring */}
+      {resource.passport_notice && (
+        <div style={{
+          marginTop: 6, padding: '3px 7px', borderRadius: 3,
+          background: resource.passport_notice === 'expired' ? '#fff1f2' : '#fffbeb',
+          border: `1px solid ${resource.passport_notice === 'expired' ? '#fca5a5' : '#fcd34d'}`,
+          fontSize: 10, fontWeight: 600,
+          color: resource.passport_notice === 'expired' ? '#991b1b' : '#92400e',
+        }}>
+          {resource.passport_notice === 'expired' ? '⚠ Passport expired' : '⚠ Passport expiring soon'}
+        </div>
+      )}
     </div>
   )
 }
@@ -315,7 +292,7 @@ export function ResourceBoardPanel() {
         .select(`
           id, name, role, shift, category, mob_in, mob_out,
           project_id, person_id, flight_required, accom_required, car_required,
-          persons:person_id (full_name, default_category, gid, status, medical_date, induction_ehs_date, induction_qual_date),
+          persons:person_id (full_name, default_category, gid, status),
           projects:project_id (name, start_date, end_date)
         `)
         .order('mob_out', { ascending: false }),
@@ -327,30 +304,55 @@ export function ResourceBoardPanel() {
         .order('start_date'),
     ])
 
+    // Fetch SEP/SQP passport status from global register for all persons on resources
+    const personIds = ((resData.data || []) as Record<string, unknown>[])
+      .map(r => r.person_id as string | null).filter(Boolean) as string[]
+
+    const passportMap = new Map<string, 'expired' | 'expiring'>()
+    if (personIds.length > 0) {
+      const today = new Date().toISOString().slice(0, 10)
+      const soon  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
+      const { data: indData } = await supabase
+        .from('induction_courses')
+        .select('person_id, course_key, status, expiry_date')
+        .in('person_id', personIds)
+        .in('course_key', ['sep_trades', 'sep_project', 'sep_contractors', 'sqp_gt', 'sqp_gt_contr', 'sqp_project', 'sqp_trades', 'sqp_contractors'])
+
+      for (const row of (indData || []) as { person_id: string; course_key: string; status: string; expiry_date: string | null }[]) {
+        if (!row.person_id) continue
+        const existing = passportMap.get(row.person_id)
+        if (existing === 'expired') continue // worst already set
+        if (row.status === 'expired' || (row.expiry_date && row.expiry_date < today)) {
+          passportMap.set(row.person_id, 'expired')
+        } else if (row.expiry_date && row.expiry_date >= today && row.expiry_date <= soon) {
+          passportMap.set(row.person_id, 'expiring')
+        }
+      }
+    }
+
     const rows: BoardResource[] = ((resData.data || []) as Record<string, unknown>[]).map(r => {
       const p = (r.persons as Record<string, unknown> | null)
       const proj = (r.projects as Record<string, unknown> | null)
+      const pid = r.person_id as string | null
       return {
-        id:                  r.id as string,
-        name:                r.name as string,
-        role:                r.role as string | null,
-        shift:               r.shift as string | null,
-        category:            r.category as string | null,
-        mob_in:              r.mob_in as string | null,
-        mob_out:             r.mob_out as string | null,
-        project_id:          r.project_id as string,
-        person_id:           r.person_id as string | null,
-        flight_required:     (r.flight_required as boolean) ?? false,
-        accom_required:      (r.accom_required as boolean) ?? false,
-        car_required:        (r.car_required as boolean) ?? false,
-        full_name:           p?.full_name as string | null,
-        default_category:    p?.default_category as string | null,
-        gid:                 p?.gid as string | null,
-        status:              p?.status as string | null,
-        medical_date:        p?.medical_date as string | null,
-        induction_ehs_date:  p?.induction_ehs_date as string | null,
-        induction_qual_date: p?.induction_qual_date as string | null,
-        project_name:        proj?.name as string ?? 'Unknown',
+        id:               r.id as string,
+        name:             r.name as string,
+        role:             r.role as string | null,
+        shift:            r.shift as string | null,
+        category:         r.category as string | null,
+        mob_in:           r.mob_in as string | null,
+        mob_out:          r.mob_out as string | null,
+        project_id:       r.project_id as string,
+        person_id:        pid,
+        flight_required:  (r.flight_required as boolean) ?? false,
+        accom_required:   (r.accom_required as boolean) ?? false,
+        car_required:     (r.car_required as boolean) ?? false,
+        full_name:        p?.full_name as string | null,
+        default_category: p?.default_category as string | null,
+        gid:              p?.gid as string | null,
+        status:           p?.status as string | null,
+        project_name:     proj?.name as string ?? 'Unknown',
+        passport_notice:  pid ? (passportMap.get(pid) ?? null) : null,
       }
     })
 
@@ -382,12 +384,11 @@ export function ResourceBoardPanel() {
   }, [resources, search, catFilter, projFilter])
 
   const groups = useMemo(() => {
-    const g: Record<BoardStatus, BoardResource[]> = { onsite: [], incoming: [], free: [], hold: [] }
+    const g: Record<BoardStatus, BoardResource[]> = { onsite: [], incoming: [], free: [] }
     for (const r of filtered) g[getStatus(r)].push(r)
     g.onsite.sort((a, b)   => (a.mob_out ?? '').localeCompare(b.mob_out ?? ''))
     g.incoming.sort((a, b) => (a.mob_in  ?? '').localeCompare(b.mob_in  ?? ''))
     g.free.sort((a, b)     => (b.mob_out ?? '').localeCompare(a.mob_out ?? ''))
-    g.hold.sort((a, b)     => (a.full_name || a.name).localeCompare(b.full_name || b.name))
     return g
   }, [filtered])
 
@@ -395,7 +396,6 @@ export function ResourceBoardPanel() {
     onsite:   resources.filter(r => getStatus(r) === 'onsite').length,
     incoming: resources.filter(r => getStatus(r) === 'incoming').length,
     free:     resources.filter(r => getStatus(r) === 'free').length,
-    hold:     resources.filter(r => getStatus(r) === 'hold').length,
     total:    resources.length,
   }), [resources])
 
@@ -438,7 +438,6 @@ export function ResourceBoardPanel() {
             { label: 'On Site',  val: stats.onsite,   color: 'var(--accent)' },
             { label: 'Incoming', val: stats.incoming,  color: 'var(--orange)' },
             { label: 'Free',     val: stats.free,      color: 'var(--green)' },
-            { label: 'Hold',     val: stats.hold,      color: stats.hold > 0 ? 'var(--red)' : 'var(--text3)' },
             { label: 'Total',    val: stats.total,     color: 'var(--border2)' },
           ].map(({ label, val, color }) => (
             <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 12px', borderTop: `3px solid ${color}`, minWidth: 80 }}>
@@ -481,16 +480,10 @@ export function ResourceBoardPanel() {
           </div>
         ) : (
           <>
-            {groups.hold.length > 0 && (
-              <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fff7ed', border: '1px solid #fbbf24', borderRadius: 'var(--radius)', fontSize: 12, color: '#78350f', display: 'flex', gap: 8, alignItems: 'center' }}>
-                ⚠️ <strong>{groups.hold.length} {groups.hold.length === 1 ? 'person' : 'people'}</strong> with expired inductions or medical — see Compliance Hold below
-              </div>
-            )}
             {([
-              { key: 'onsite'   as BoardStatus, title: 'On Site',          dot: 'var(--green)'  },
+              { key: 'onsite'   as BoardStatus, title: 'On Site',           dot: 'var(--green)'  },
               { key: 'incoming' as BoardStatus, title: 'Incoming ≤14 days', dot: 'var(--orange)' },
               { key: 'free'     as BoardStatus, title: 'Free / Available',  dot: 'var(--accent)' },
-              { key: 'hold'     as BoardStatus, title: 'Compliance Hold',   dot: 'var(--red)'    },
             ]).map(({ key, title, dot }) => (
               <BoardSection key={key} title={title} dot={dot} count={groups[key].length}>
                 {groups[key].length === 0 ? (
