@@ -44,9 +44,9 @@ export function useAttentionItems(projectId: string | undefined) {
       const today = todayStr()
       const items: AttentionItem[] = []
 
-      const [resR, invR, rfqR, ppR, tsR, poR, indR] = await Promise.all([
+      const [resR, invR, rfqR, ppR, tsR, poR, indR, accomR] = await Promise.all([
         supabase.from('resources')
-          .select('id,name,mob_in,category,linked_po_id,flight_required,flight_booked,accom_required,accom_booked,car_required,person_id')
+          .select('id,name,mob_in,category,linked_po_id,flight_required,flights,accom_required,accom_booked,car_required,person_id')
           .eq('project_id', pid),
         supabase.from('invoices')
           .select('id,invoice_number,amount,status,received_date,due_date,vendor_details')
@@ -67,6 +67,9 @@ export function useAttentionItems(projectId: string | undefined) {
         // Inductions live on the project, but person-level visa/induction state lives on persons table
         supabase.from('person_visas')
           .select('person_id,visa_type,expiry_date'),
+        supabase.from('accommodation')
+          .select('occupants,check_in,check_out')
+          .eq('project_id', pid),
       ])
 
       const resources = (resR.data || [])
@@ -76,6 +79,11 @@ export function useAttentionItems(projectId: string | undefined) {
       const draftTs = (tsR.data || [])
       const pos = (poR.data || [])
       const visas = (indR.data || [])
+      // Build set of resources.ids with accommodation booked
+      const accomBookedIds = new Set<string>()
+      for (const a of (accomR?.data || []) as { occupants: string[] | null; check_in: string | null; check_out: string | null }[]) {
+        for (const id of (a.occupants || [])) accomBookedIds.add(id)
+      }
 
       // ── Mob readiness ─────────────────────────────────────────────────
       // For every resource mobbing in next 14 days, check critical bookings.
@@ -85,8 +93,8 @@ export function useAttentionItems(projectId: string | undefined) {
         if (days > 14) continue
 
         const missing: string[] = []
-        if (r.flight_required && !r.flight_booked) missing.push('flight')
-        if (r.accom_required && !r.accom_booked) missing.push('accommodation')
+        if (r.flight_required && !(r.flights && r.flights.trim())) missing.push('flight')
+        if (r.accom_required && !accomBookedIds.has(r.id)) missing.push('accommodation')
         if (r.car_required) {
           // car_required has no "booked" mirror — flag for manual check
           // (we could cross-reference cars table here but it's expensive — leave as soft flag)
