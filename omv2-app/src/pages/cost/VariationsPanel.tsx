@@ -16,6 +16,7 @@ import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { HelpButton } from '../../components/HelpButton'
+import { generateVariationDoc } from '../../lib/docGeneration'
 import type { Variation, VariationLine, NrgTceLine, RateCard } from '../../types'
 
 const STATUS_COLORS: Record<string,{bg:string,color:string}> = {
@@ -62,7 +63,7 @@ const mkLine = (): LineForm => ({
 const EMPTY_FORM = {
   number:'', title:'', status:'draft', cause:'', raised_date:'', scope:'',
   assumptions:'', exclusions:'', submitted_date:'', approved_date:'', customer_ref:'',
-  notes:'', wo_ref:'', tce_link:'',
+  notes:'', wo_ref:'', tce_link:'', valid_until:'',
 }
 
 // Rate key buckets matching splitHours output
@@ -190,6 +191,25 @@ function computeLine(l: LineForm, gmPct: number, rateCards: RateCard[]): LineFor
   const sell_total = us !== 0 ? qty * us
     : cost_total !== 0 ? parseFloat((cost_total / (1 - gmPct/100)).toFixed(2)) : 0
   return { ...l, cost_total, sell_total }
+}
+
+// Format a date string (YYYY-MM-DD) as "23rd December 2026" for the VN form
+function fmtValidUntil(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr + 'T00:00:00')
+  if (isNaN(d.getTime())) return dateStr
+  const day = d.getDate()
+  const suffix = day === 1 || day === 21 || day === 31 ? 'st' : day === 2 || day === 22 ? 'nd' : day === 3 || day === 23 ? 'rd' : 'th'
+  const month = d.toLocaleString('en-AU', { month: 'long' })
+  return `${day}${suffix} ${month} ${d.getFullYear()}`
+}
+
+// Format a date string (YYYY-MM-DD) as DD-MM-YY for the VN form header
+function fmtRaisedDate(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const parts = dateStr.split('-')
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}-${parts[1]}-${parts[0].slice(2)}`
 }
 
 function printVariation(v: Variation, lines: VariationLine[], projectName: string, client: string) {
@@ -362,6 +382,7 @@ export function VariationsPanel() {
       submitted_date:v.submitted_date||'', approved_date:v.approved_date||'',
       customer_ref:v.customer_ref||'', notes:v.notes||'',
       wo_ref:v.wo_ref||'', tce_link:v.tce_link||'',
+      valid_until:v.valid_until||'',
     })
     const existingLines = variationLines.get(v.id) || []
     setLines(existingLines.length > 0
@@ -419,6 +440,7 @@ export function VariationsPanel() {
       submitted_date:form.submitted_date||null, approved_date:form.approved_date||null,
       notes:form.notes, customer_ref:form.customer_ref,
       wo_ref:form.wo_ref,
+      valid_until:form.valid_until||null,
       // CRITICAL: tce_link stores item_id text (e.g. "2.02.8.34"), never the UUID
       tce_link:form.tce_link,
       cost_total:totalCost, sell_total:totalSell,
@@ -658,6 +680,28 @@ export function VariationsPanel() {
                   <div style={{display:'flex',gap:'4px'}} onClick={e=>e.stopPropagation()}>
                     <button className="btn btn-sm" onClick={()=>{openEdit(v);setActiveTab('details')}}>Edit</button>
                     <button className="btn btn-sm" onClick={()=>printVariation(v,vLines,activeProject?.name||'',activeProject?.client||'')}>🖨</button>
+                    {(activeProject?.site_info as Record<string,string>|undefined)?.siemens_project_no && (
+                      <button className="btn btn-sm" title="Print NRG Variation Form" onClick={()=>{
+                        const si = (activeProject!.site_info||{}) as Record<string,string>
+                        generateVariationDoc({
+                          number: v.number, scope: v.scope||'',
+                          raisedDate: fmtRaisedDate(v.raised_date),
+                          validUntil: fmtValidUntil(v.valid_until),
+                          client: activeProject!.client||'',
+                          siemensProjectNo: si.siemens_project_no||'',
+                          contractNo: si.contract_no||'',
+                          unit: activeProject!.unit||'',
+                          pmName: activeProject!.pm||'',
+                          cpmName: si.cpm_name||'',
+                          forAttention: si.for_attention||'',
+                          clientSignatory1: si.client_signatory_1||'',
+                          clientSignatory1Title: si.client_signatory_1_title||'',
+                          clientSignatory2: si.client_signatory_2||'',
+                          clientSignatory2Title: si.client_signatory_2_title||'',
+                          boilerplate: si.vn_boilerplate||'',
+                        }).catch(e=>toast(String(e),'error'))
+                      }}>📄 NRG</button>
+                    )}
                     <button className="btn btn-sm" style={{color:'var(--red)'}} onClick={()=>del(v)}>✕</button>
                   </div>
                   <span style={{color:'var(--text3)',fontSize:'11px'}}>{isExpanded?'▲':'▼'}</span>
@@ -704,6 +748,29 @@ export function VariationsPanel() {
                     🖨 Print VN
                   </button>
                 )}
+                {modal!=='new' && (activeProject?.site_info as Record<string,string>|undefined)?.siemens_project_no && (
+                  <button className="btn btn-sm" onClick={()=>{
+                    const v = modal as Variation
+                    const si = (activeProject!.site_info||{}) as Record<string,string>
+                    generateVariationDoc({
+                      number: v.number, scope: v.scope||'',
+                      raisedDate: fmtRaisedDate(v.raised_date),
+                      validUntil: fmtValidUntil(v.valid_until),
+                      client: activeProject!.client||'',
+                      siemensProjectNo: si.siemens_project_no||'',
+                      contractNo: si.contract_no||'',
+                      unit: activeProject!.unit||'',
+                      pmName: activeProject!.pm||'',
+                      cpmName: si.cpm_name||'',
+                      forAttention: si.for_attention||'',
+                      clientSignatory1: si.client_signatory_1||'',
+                      clientSignatory1Title: si.client_signatory_1_title||'',
+                      clientSignatory2: si.client_signatory_2||'',
+                      clientSignatory2Title: si.client_signatory_2_title||'',
+                      boilerplate: si.vn_boilerplate||'',
+                    }).catch(e=>toast(String(e),'error'))
+                  }}>📄 NRG Form</button>
+                )}
                 <button className="btn btn-sm" onClick={()=>setModal(null)}>✕</button>
               </div>
             </div>
@@ -742,6 +809,7 @@ export function VariationsPanel() {
                     <div className="fg"><label>Raised</label><input type="date" className="input" value={form.raised_date} onChange={e=>setForm(f=>({...f,raised_date:e.target.value}))}/></div>
                     <div className="fg"><label>Submitted</label><input type="date" className="input" value={form.submitted_date} onChange={e=>setForm(f=>({...f,submitted_date:e.target.value}))}/></div>
                     <div className="fg"><label>Approved</label><input type="date" className="input" value={form.approved_date} onChange={e=>setForm(f=>({...f,approved_date:e.target.value}))}/></div>
+                    <div className="fg"><label>Valid Until <span style={{fontWeight:400,fontSize:'11px',color:'var(--text3)'}}>— on VN doc</span></label><input type="date" className="input" value={form.valid_until} onChange={e=>setForm(f=>({...f,valid_until:e.target.value}))}/></div>
                   </div>
                   {/* NRG TCE Section — only shown when project has TCE data */}
                   {hasTce && (

@@ -2,7 +2,7 @@
 // Uses JSZip to load .docx templates, fill fields, and trigger browser download.
 
 import JSZip from 'jszip'
-import { DHL_SLI_TEMPLATE_B64, DHL_INVOICE_TEMPLATE_B64, DHL_PACKING_TEMPLATE_B64 } from './docTemplates'
+import { DHL_SLI_TEMPLATE_B64, DHL_INVOICE_TEMPLATE_B64, DHL_PACKING_TEMPLATE_B64, VN_TEMPLATE_B64 } from './docTemplates'
 
 // ── XML helpers ──────────────────────────────────────────────────────────────
 function xmlEsc(s: unknown): string {
@@ -636,4 +636,151 @@ function _buildFakeOverlay(fields: PandIFields): Record<string, string> {
     'pl-lot':        fields.lot,
     'pl-currency':   fields.currency,
   }
+}
+
+// ── Variation Notice document generation ──────────────────────────────────────
+// Fills the NRG Variation Form template (word/document.xml) with live data.
+// The template has hardcoded literal values that we locate and replace precisely.
+
+interface VnDocData {
+  // Variation fields
+  number: string
+  scope: string
+  raisedDate: string       // DD-MM-YY format
+  validUntil: string       // e.g. "23rd December 2026"
+  // Project-level fields (from project.site_info + project fields)
+  client: string
+  siemensProjectNo: string  // e.g. SF232178831
+  contractNo: string        // e.g. NRG00173164
+  unit: string              // e.g. U2
+  pmName: string
+  cpmName: string
+  // VN Settings fields (from site_info)
+  forAttention: string
+  clientSignatory1: string
+  clientSignatory1Title: string
+  clientSignatory2: string
+  clientSignatory2Title: string
+  boilerplate: string       // custom terms paragraph, or empty to use template default
+}
+
+function replaceExact(xml: string, find: string, replace: string): string {
+  const idx = xml.indexOf(find)
+  if (idx === -1) return xml
+  return xml.substring(0, idx) + xmlEsc(replace) + xml.substring(idx + find.length)
+}
+
+// Replace a multi-run value. The template splits some fields across runs.
+// Strategy: find the first literal and replace it; nullify subsequent runs.
+function replaceRunSequence(xml: string, firstLiteral: string, secondLiteral: string, fullValue: string): string {
+  const idx = xml.indexOf(firstLiteral)
+  if (idx === -1) return xml
+  // Replace first run's text
+  let result = xml.substring(0, idx) + xmlEsc(fullValue) + xml.substring(idx + firstLiteral.length)
+  // Erase second run's text (it now contains the second part of the old split value)
+  result = result.replace('>' + secondLiteral + '</w:t>', '></w:t>')
+  return result
+}
+
+export async function generateVariationDoc(data: VnDocData): Promise<void> {
+  const templateBytes = b64ToBytes(VN_TEMPLATE_B64)
+  const zip = await JSZip.loadAsync(templateBytes)
+  let xml = await zip.file('word/document.xml')!.async('string')
+
+  // ── Header row fields ──────────────────────────────────────────────────────
+
+  // Client (two occurrences — form table and final signatory block)
+  xml = xml.split('NRG Gladstone Power Station').join(xmlEsc(data.client))
+
+  // For the Attention of — two runs: 'Troy Smith' + ' &amp; Monique Ward'
+  // Replace first run with the full forAttention value, erase second run
+  {
+    const full = data.forAttention
+    const idx = xml.indexOf('>Troy Smith<')
+    if (idx !== -1) {
+      xml = xml.substring(0, idx + 1) + xmlEsc(full) + xml.substring(idx + 1 + 'Troy Smith'.length)
+      xml = xml.replace('> &amp; Monique Ward<', '><')
+    }
+  }
+
+  // Siemens Project No — split across two runs: 'SF' + '232178831'
+  {
+    const sfIdx = xml.indexOf('>SF<')
+    if (sfIdx !== -1 && data.siemensProjectNo) {
+      xml = xml.substring(0, sfIdx + 1) + xmlEsc(data.siemensProjectNo) + xml.substring(sfIdx + 1 + 'SF'.length)
+      xml = xml.replace('>232178831<', '><')
+    }
+  }
+
+  // Contract No / Name
+  xml = xml.split('NRG00173164').join(xmlEsc(data.contractNo))
+
+  // Date (raised date)
+  xml = xml.replace('>DD-MM-YY<', '>' + xmlEsc(data.raisedDate) + '<')
+
+  // Reference No — structure: 'VN_' + '###' (highlighted) + '_NRG00173164_' + 'U2_' + 'SF232178831'
+  // Replace '###' with the VN number (without VN_ prefix), update unit and SF number
+  {
+    const vnNum = data.number.startsWith('VN_') ? data.number.slice(3) : data.number
+    xml = xml.replace('>###<', '>' + xmlEsc(vnNum) + '<')
+    xml = xml.replace('>U2_<', '>' + xmlEsc((data.unit || 'U') + '_') + '<')
+    // SF232178831 in the refer no (second occurrence — first was Siemens Project No field already replaced)
+    // At this point the SF number in the refer no still contains the original text if siemensProjectNo was set
+    // The refer no had 'SF232178831' at the end — it was replaced by the split-run replacement above if SF found
+    // But the refer no's SF is a single run: '>SF232178831<'
+    // After the SF-split replacement above, only the project-no cell had 'SF' as split run
+    // The refer no's SF is a clean single run — replace it directly
+    if (data.siemensProjectNo) {
+      xml = xml.replace('>SF232178831<', '>' + xmlEsc(data.siemensProjectNo) + '<')
+    }
+  }
+
+  // ── Description of Works ───────────────────────────────────────────────────
+
+  // Replace the scope placeholder
+  xml = xml.replace('>Insert new text here.<', '>' + xmlEsc(data.scope || '') + '<')
+
+  // Valid until — the template has: '...valid until 23rd December 202' + '6'
+  // Replace the full sentence fragment (the split '6' on next run)
+  if (data.validUntil) {
+    xml = xml.replace(
+      '>This Variation Proposal is valid until 23rd December 202<',
+      '>This Variation Proposal is valid until ' + xmlEsc(data.validUntil) + '<'
+    )
+    // Erase the split '6' run
+    xml = xml.replace(/(<\/w:t><\/w:r><w:r[^>]*><w:rPr>[^<]*(?:<[^/][^>]*\/>[^<]*)*<\/w:rPr>)<w:t>6<\/w:t>/, '$1<w:t></w:t>')
+  }
+
+  // Custom boilerplate — replace the fixed terms sentences if a custom one was provided
+  if (data.boilerplate.trim()) {
+    xml = xml.replace(
+      '>The price shown is an estimate and invoicing will be based on actual hours and the Schedule of Rates as outlined in the Contract.<',
+      '>' + xmlEsc(data.boilerplate.trim()) + '<'
+    )
+    // Remove the subsequent bullet points (Third-party / payment terms)
+    xml = xml.replace('>Third-party costs will be charged at cost plus 15% Gross Margin (Cost/1-GM).<', '><')
+  }
+
+  // ── Signatory blocks ───────────────────────────────────────────────────────
+
+  // PM name
+  xml = xml.replace('>Manny Dominguez<', '>' + xmlEsc(data.pmName || '') + '<')
+
+  // CPM name
+  xml = xml.replace('>Laura Rovner<', '>' + xmlEsc(data.cpmName || '') + '<')
+
+  // Client Signatory 1 — name (first occurrence of 'Troy Smith' — second is in "for attention" block already replaced above)
+  xml = xml.replace('>Troy Smith<', '>' + xmlEsc(data.clientSignatory1 || '') + '<')
+  xml = xml.replace('>Turbine Specialist<', '>' + xmlEsc(data.clientSignatory1Title || '') + '<')
+
+  // Client Signatory 2
+  xml = xml.replace('>Monique Ward<', '>' + xmlEsc(data.clientSignatory2 || '') + '<')
+  xml = xml.replace('>Contract Specialist<', '>' + xmlEsc(data.clientSignatory2Title || '') + '<')
+
+  // ── Write back and download ────────────────────────────────────────────────
+  zip.file('word/document.xml', xml)
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+  const safeNum = data.number.replace(/[/\\]/g, '-')
+  const filename = `${safeNum}_${data.contractNo || 'VN'}_Variation_Form.docx`
+  triggerDownload(blob, filename)
 }

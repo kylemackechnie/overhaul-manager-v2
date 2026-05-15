@@ -814,6 +814,7 @@ export interface Variation {
   status: string; value: number | null; scope: string
   cause: string; raised_date: string | null; assumptions: string; exclusions: string
   submitted_date: string | null; approved_date: string | null
+  valid_until: string | null
   notes: string; line_items: unknown[] | null; customer_ref?: string
   // Fields added in fix migration
   tce_link: string        // stores TCE item_id (text), NOT internal UUID — stable across re-imports
