@@ -370,9 +370,9 @@ function AppInner() {
 
       {/* Full-screen project picker overlay */}
       {pickerOpen && (
-        <ProjectPicker onClose={() => {
+        <ProjectPicker onClose={(projectSelected?: boolean) => {
           setPickerOpen(false)
-          if (!activeProject && needsProject()) setPickerOpen(true) // keep open if no project needed
+          if (!projectSelected && !activeProject && needsProject()) setPickerOpen(true)
         }} />
       )}
 

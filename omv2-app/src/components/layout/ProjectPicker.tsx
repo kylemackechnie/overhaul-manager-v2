@@ -5,7 +5,7 @@ import { toast } from '../ui/Toast'
 import type { Project, Site } from '../../types'
 
 interface ProjectPickerProps {
-  onClose: () => void
+  onClose: (projectSelected?: boolean) => void
 }
 
 const SITE_COLOURS = ['#0ea5e9','#f59e0b','#8b5cf6','#10b981','#f43f5e','#3b82f6','#ec4899','#14b8a6']
@@ -99,7 +99,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
 
   async function selectProject(p: Project) {
     setActiveProject(p)
-    onClose()
+    onClose(true)
   }
 
   async function createProject() {
@@ -116,7 +116,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
       toast('Project created', 'success')
       setProjects(prev => [data as Project, ...prev])
       setActiveProject(data as Project)
-      onClose()
+      onClose(true)
     } catch (e: unknown) {
       toast((e as Error).message, 'error')
     }
@@ -362,7 +362,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {activeProject && (
-            <button className="btn btn-sm" onClick={onClose}>← Back to {activeProject.name}</button>
+            <button className="btn btn-sm" onClick={() => onClose()}>← Back to {activeProject.name}</button>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '20px', padding: '4px 10px 4px 5px' }}>
             <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: '9px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -380,7 +380,7 @@ export function ProjectPicker({ onClose }: ProjectPickerProps) {
             <span className="spinner" style={{ width: '32px', height: '32px' }} />
             <span style={{ fontSize: '13px', color: 'var(--text3)' }}>Loading projects...</span>
           </>
-          {activeProject && <button className="btn" onClick={onClose}>← Back to {activeProject.name}</button>}
+          {activeProject && <button className="btn" onClick={() => onClose()}>← Back to {activeProject.name}</button>}
         </div>
       ) : loadError ? (
         <div className="loading-center" style={{ flexDirection: 'column', gap: '12px' }}>
