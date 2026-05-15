@@ -338,12 +338,7 @@ function AssetDrawer({ asset, projects, onSave, onClose }: {
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={onClose} />
       <div style={{
-        position: 'fixed', top: (() => {
-          const header = document.querySelector('.app-header')
-          const ribbon = document.querySelector('.ribbon-nav')
-          return (header?.getBoundingClientRect().height ?? 52) +
-                 (ribbon?.getBoundingClientRect().height ?? 0)
-        })(), right: 0, bottom: 0, width: 440,
+        position: 'fixed', top: 'var(--chrome-height, 0px)', right: 0, bottom: 0, width: 440,
         background: 'var(--bg)', borderLeft: '1px solid var(--border)',
         boxShadow: 'var(--shadow-md)', zIndex: 201,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',

@@ -309,23 +309,10 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
   }
 
   // Drawer shell
-  // Measure the header+ribbon height dynamically so we sit below it
-  const [topOffset, setTopOffset] = useState(0)
-  useEffect(() => {
-    function measureTop() {
-      const header = document.querySelector('.app-header')
-      const ribbon = document.querySelector('.ribbon-nav')
-      const h = (header?.getBoundingClientRect().height ?? 0) +
-                (ribbon?.getBoundingClientRect().height ?? 0)
-      setTopOffset(h)
-    }
-    measureTop()
-    window.addEventListener('resize', measureTop)
-    return () => window.removeEventListener('resize', measureTop)
-  }, [])
-
   const drawerStyle: React.CSSProperties = {
-    position: 'fixed', top: topOffset, right: 0, bottom: 0, width: 460,
+    position: 'fixed',
+    top: 'var(--chrome-height, 0px)',
+    right: 0, bottom: 0, width: 460,
     background: 'var(--bg)', borderLeft: '1px solid var(--border)',
     boxShadow: 'var(--shadow-md)', zIndex: 50,
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
