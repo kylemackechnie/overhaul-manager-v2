@@ -10,6 +10,7 @@ import { parseNrgTceFile } from '../../lib/nrgTceImport'
 import { downloadTemplate } from '../../lib/templates'
 import { exportTceAll } from '../../lib/exportTce'
 import { nrgLineActual, nrgInvoiceActual, nrgMatchAllocForLine, splitHours, calcHoursCost, type NrgWoAlloc, type NrgTimesheet, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
+import { fetchTceExpenses } from '../../lib/tceExpenses'
 import type { NrgTceLine, RateCard } from '../../types'
 
 const SOURCES = ['overhead', 'skilled', 'variation'] as const
@@ -153,13 +154,13 @@ export function NrgTcePanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lRes, wbsRes, tsRes, invRes, expRes, varRes, rcRes, poRes, clRes, nrgInvRes] = await Promise.all([
+    const [lRes, wbsRes, tsRes, invRes, , varRes, rcRes, poRes, clRes, nrgInvRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('source').order('sort_order').order('item_id'),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
       supabase.from('weekly_timesheets').select('id,week_start,type,status,scope_tracking,regime,crew,allowances_tce_default,travel_tce_default')
         .eq('project_id', pid).eq('status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,sell_price,status,invoice_date,date_processed,invoice_number,vendor_ref,vendor_details').eq('project_id', pid).in('status', ['approved', 'paid']),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date,description,vendor,expense_ref,category,chargeable').eq('project_id', pid).eq('chargeable', true),
+      Promise.resolve({ data: [] }),  // expenses fetched separately via fetchTceExpenses
       supabase.from('variations').select('status,tce_link,sell_total,cost_total').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('purchase_orders').select('id,tce_item_id,po_value,status,po_number,vendor').eq('project_id', pid),
@@ -171,7 +172,8 @@ export function NrgTcePanel() {
     setPos((poRes.data || []) as {id:string;tce_item_id:string|null;po_value:number|null;status:string;po_number:string|null;vendor:string|null}[])
     setTimesheets((tsRes.data || []) as NrgTimesheet[])
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
-    setExpenses((expRes.data || []) as NrgExpenseMin[])
+    const tceExpenses = await fetchTceExpenses(pid)
+    setExpenses(tceExpenses as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
     setRateCards((rcRes.data || []) as RateCard[])
 

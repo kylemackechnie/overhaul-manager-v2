@@ -754,11 +754,11 @@ function ExpensesPanelDesktop() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Receipt Amount (inc GST) <span style={{fontSize:'10px',color:'var(--text3)'}}>auto-fills ex GST</span></label>
-                  <input type="number" className="input" value={form.amount || ''} onChange={e => updateAmountInclGst(e.target.value === '' ? 0 : parseFloat(e.target.value))} placeholder="0.00" />
+                  <input type="number" className="input" value={form.amount || ''} onChange={e => updateAmountInclGst(e.target.value === '' ? 0 : parseFloat(e.target.value))} placeholder="0.00" disabled={hasLines} style={hasLines ? {opacity:0.5,cursor:'not-allowed'} : {}} />
                 </div>
                 <div className="fg">
                   <label>Cost (ex GST) <span style={{fontSize:'10px',color:'var(--text3)'}}>auto-fills inc GST</span></label>
-                  <input type="number" className="input" value={form.cost_ex_gst || ''} onChange={e => updateAmountExGst(e.target.value === '' ? 0 : parseFloat(e.target.value))} placeholder="0.00" />
+                  <input type="number" className="input" value={form.cost_ex_gst || ''} onChange={e => updateAmountExGst(e.target.value === '' ? 0 : parseFloat(e.target.value))} placeholder="0.00" disabled={hasLines} style={hasLines ? {opacity:0.5,cursor:'not-allowed'} : {}} />
                 </div>
                 <div className="fg">
                   <label>Currency</label>
@@ -767,6 +767,12 @@ function ExpensesPanelDesktop() {
                   </select>
                 </div>
               </div>
+              {hasLines && (
+                <div style={{fontSize:'11px',color:'var(--text3)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'5px',padding:'6px 10px',marginTop:'-4px'}}>
+                  ℹ️ Cost, sell price, chargeable and TCE scope are set per line item below — top-level fields are locked.
+                </div>
+              )}
+              {!hasLines && (
               <div className="fg-row" style={{ alignItems: 'center' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>
                   <input type="checkbox" checked={form.chargeable} onChange={e => toggleChargeable(e.target.checked)} />
@@ -785,6 +791,7 @@ function ExpensesPanelDesktop() {
                   </>
                 )}
               </div>
+              )}
               <div className="fg">
                 <label>WBS Code</label>
                 <select className="input" value={form.wbs} onChange={e => setForm(f => ({ ...f, wbs: e.target.value }))}>
@@ -792,6 +799,7 @@ function ExpensesPanelDesktop() {
                   {wbsList.map(w => <option key={w.id} value={w.code}>{w.code} {w.name ? `— ${w.name}` : ''}</option>)}
                 </select>
               </div>
+              {!hasLines && (
               <div className="fg">
                 <label>NRG TCE Scope <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '11px' }}>— links expense to a TCE line for actuals</span></label>
                 {tceLines.length > 0 ? (
@@ -806,6 +814,7 @@ function ExpensesPanelDesktop() {
                   <input className="input" value={form.tce_item_id} onChange={e => setForm(f => ({ ...f, tce_item_id: e.target.value }))} placeholder="e.g. 2.02.4.1 (import TCE to enable dropdown)" />
                 )}
               </div>
+              )}
               <div className="fg">
                 <label>Notes</label>
                 <input className="input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />

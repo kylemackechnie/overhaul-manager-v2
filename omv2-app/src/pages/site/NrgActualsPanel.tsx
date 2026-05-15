@@ -10,6 +10,7 @@ import { downloadCSV } from '../../lib/csv'
 import { nrgInvoiceActual, nrgInvoiceActualForWeek, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import { NrgTimesheetExportModal } from '../../components/NrgTimesheetExportModal'
 import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
+import { fetchTceExpenses } from '../../lib/tceExpenses'
 import type { RateCard, WeeklyTimesheet } from '../../types'
 import type { NrgTceLine } from '../../types'
 
@@ -81,7 +82,7 @@ export function NrgActualsPanel() {
       }
     }
 
-    const [clRes, invRes, expRes, varRes, nrgInvRes, poRes] = await Promise.all([
+    const [clRes, invRes, , varRes, nrgInvRes, poRes] = await Promise.all([
       // Read from the pre-calculated cost lines table (approved only).
       // Include work_date so we can aggregate by week for the "this week" column.
       supabase.from('timesheet_cost_lines')
@@ -89,7 +90,7 @@ export function NrgActualsPanel() {
         .eq('project_id', pid)
         .eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,amount,sell_price,status,period_from,period_to').eq('project_id', pid).in('status', ['approved', 'paid']),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,sell_price,date,chargeable').eq('project_id', pid).eq('chargeable', true),
+      Promise.resolve({ data: [] }),  // expenses handled separately below
       supabase.from('variations').select('status,tce_link,sell_total,approved_date').eq('project_id', pid),
       supabase.from('nrg_customer_invoices').select('id,week_ending,eur_spot_rate').eq('project_id', pid).order('week_ending'),
       supabase.from('purchase_orders').select('tce_item_id,po_value,status').eq('project_id', pid),
@@ -149,7 +150,8 @@ export function NrgActualsPanel() {
     setLabourByItem(agg)
     setCostLines(clRows as CostLineRow[])
     setInvoices((invRes.data || []) as NrgInvoiceMin[])
-    setExpenses((expRes.data || []) as NrgExpenseMin[])
+    const tceExpenses = await fetchTceExpenses(pid)
+    setExpenses(tceExpenses as NrgExpenseMin[])
     setVariations((varRes.data || []) as NrgVariationMin[])
     setPos((poRes.data || []) as {tce_item_id:string|null;po_value:number;status:string}[])
     setLoading(false)

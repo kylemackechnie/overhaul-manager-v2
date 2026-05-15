@@ -11,6 +11,7 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { writeTimesheetCostLines } from '../../engines/timesheetCostEngine'
+import { fetchTceExpenses } from '../../lib/tceExpenses'
 import type { RateCard, WeeklyTimesheet } from '../../types'
 import type { NrgTceLine, NrgCustomerInvoice, NrgInvoiceGroupingRule } from '../../types'
 
@@ -73,14 +74,14 @@ export function NrgInvoicingPanel() {
       }
     }
 
-    const [invRes, rulesRes, clRes, supInvRes, expRes] = await Promise.all([
+    const [invRes, rulesRes, clRes, supInvRes] = await Promise.all([
       supabase.from('nrg_customer_invoices').select('*').eq('project_id', pid).order('week_ending'),
       supabase.from('nrg_invoice_grouping_rules').select('*').eq('project_id', pid).order('sort_order'),
       supabase.from('timesheet_cost_lines')
         .select('tce_item_id,week_ending,week_start,cost_labour,sell_labour,sell_labour_eur,cost_allowances,sell_allowances,allocated_hours,category')
         .eq('project_id', pid).eq('timesheet_status', 'approved'),
       supabase.from('invoices').select('tce_item_id,invoice_date,date_processed,amount,sell_price,status,invoice_number').eq('project_id', pid).in('status', ['approved', 'paid']),
-      supabase.from('expenses').select('tce_item_id,date,cost_ex_gst,amount,sell_price,description,vendor,expense_ref,category,chargeable').eq('project_id', pid).eq('chargeable', true),
+      Promise.resolve({ data: [] }),  // expenses fetched separately via fetchTceExpenses
     ])
     setTceLines(fetchedTceLines)
     setInvoices((invRes.data||[]) as NrgCustomerInvoice[])
@@ -99,7 +100,8 @@ export function NrgInvoicingPanel() {
     setCostLinesByItemAndWeek(byItemWeek)
     setRawCostLines(rawCL)
     setSupplierInvoices((supInvRes.data||[]) as Record<string,unknown>[])
-    setExpenseItems((expRes.data||[]) as Record<string,unknown>[])
+    const tceExpenses = await fetchTceExpenses(pid)
+    setExpenseItems(tceExpenses as unknown as Record<string,unknown>[])
     let rd = (rulesRes.data||[]) as NrgInvoiceGroupingRule[]
     if (rd.length === 0) {
       const { data: nr } = await supabase.from('nrg_invoice_grouping_rules')

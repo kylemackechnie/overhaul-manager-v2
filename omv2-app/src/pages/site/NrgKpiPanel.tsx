@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
 import { downloadCSV } from '../../lib/csv'
+import { fetchTceExpenses } from '../../lib/tceExpenses'
 import { nrgInvoiceActual, type NrgInvoiceMin, type NrgExpenseMin, type NrgVariationMin } from '../../engines/costEngine'
 import type { NrgTceLine } from '../../types'
 
@@ -23,15 +24,15 @@ export function NrgKpiPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [lData, iData, eData, vData] = await Promise.all([
+    const [lData, iData, vData] = await Promise.all([
       supabase.from('nrg_tce_lines').select('*').eq('project_id', pid).order('item_id'),
       supabase.from('invoices').select('tce_item_id,amount,sell_price,status').eq('project_id', pid).in('status', ['approved', 'paid']),
-      supabase.from('expenses').select('tce_item_id,cost_ex_gst,amount,chargeable').eq('project_id', pid).eq('chargeable', true),
       supabase.from('variations').select('status,tce_link,sell_total').eq('project_id', pid),
     ])
+    const tceExpenses = await fetchTceExpenses(pid)
     setLines((lData.data || []) as NrgTceLine[])
     setInvoices((iData.data || []) as NrgInvoiceMin[])
-    setExpenses((eData.data || []) as NrgExpenseMin[])
+    setExpenses(tceExpenses as NrgExpenseMin[])
     setVariations((vData.data || []) as NrgVariationMin[])
     setLoading(false)
   }

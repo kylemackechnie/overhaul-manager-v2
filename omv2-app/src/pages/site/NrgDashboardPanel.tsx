@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { fetchTceExpenses } from '../../lib/tceExpenses'
 
 const NRG = '#ea580c'
 const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -16,16 +17,16 @@ export function NrgDashboardPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [tceRes, invRes, expRes, varRes, woRes] = await Promise.all([
+    const [tceRes, invRes, varRes, woRes] = await Promise.all([
       supabase.from('nrg_tce_lines').select('tce_total,source').eq('project_id', pid),
       supabase.from('invoices').select('amount,sell_price,status,tce_item_id').eq('project_id', pid),
-      supabase.from('expenses').select('cost_ex_gst,amount,tce_item_id,chargeable').eq('project_id', pid).eq('chargeable', true),
       supabase.from('variations').select('status,sell_total').eq('project_id', pid),
       supabase.from('work_orders').select('status').eq('project_id', pid),
     ])
+    const tceExpenses = await fetchTceExpenses(pid)
     const tce = (tceRes.data || []) as { tce_total: number; source: string }[]
     const inv = (invRes.data || []) as { amount: number; sell_price: number | null; status: string; tce_item_id: string | null }[]
-    const exp = (expRes.data || []) as { cost_ex_gst: number; amount: number; tce_item_id: string | null }[]
+    const exp = tceExpenses
     const vars = (varRes.data || []) as { status: string; sell_total: number }[]
     const wos = (woRes.data || []) as { status: string }[]
     const oh = tce.filter(l => l.source === 'overhead')
