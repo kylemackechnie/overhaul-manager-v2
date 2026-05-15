@@ -494,9 +494,9 @@ export async function writeToGlobalRegister(
   let upserted = 0
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH)
-    const { data, error } = await supabase.rpc(rpcName, { rows: batch })
-    if (error) console.error(`Global register upsert error:`, error.message)
-    else upserted += (data as number) ?? batch.length
+    const { data, error } = await supabase.rpc(rpcName, { p_rows: batch })
+    if (error) console.error(`Global register upsert error:`, error.message, error)
+    else upserted += typeof data === 'number' ? data : batch.length
   }
 
   const matched = rows.filter(r => r.person_id !== null).length
