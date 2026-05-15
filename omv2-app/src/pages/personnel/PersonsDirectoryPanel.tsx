@@ -124,10 +124,12 @@ function SortTh({ label, sortKey, current, dir, onSort, style }: {
     <th
       onClick={() => onSort(sortKey)}
       style={{
+        position: 'sticky', top: 0, zIndex: 10,
         padding: '10px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-        textTransform: 'uppercase', color: active ? '#fff' : 'rgba(255,255,255,0.5)',
+        textTransform: 'uppercase',
+        color: active ? 'var(--accent)' : 'var(--text3)',
         cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
-        background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
+        background: 'var(--bg2)', borderBottom: '2px solid var(--border)',
         ...style,
       }}
     >
@@ -295,7 +297,7 @@ export function PersonsDirectoryPanel() {
               <col style={{ width: 46 }} />
             </colgroup>
             <thead>
-              <tr style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+              <tr>
                 <SortTh label="Name"           sortKey="name"     current={sortKey} dir={sortDir} onSort={handleSort} style={{ paddingLeft: 16 }} />
                 <SortTh label="GID"            sortKey="name"     current={sortKey} dir={sortDir} onSort={handleSort} />
                 <SortTh label="Role"           sortKey="role"     current={sortKey} dir={sortDir} onSort={handleSort} />

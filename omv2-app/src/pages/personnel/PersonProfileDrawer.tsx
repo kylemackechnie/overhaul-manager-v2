@@ -278,6 +278,8 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
   const [deployments, setDeployments] = useState<Deployment[]>([])
   const [tab, setTab] = useState<Tab>('details')
   const [loading, setLoading] = useState(true)
+  const [registerCourses, setRegisterCourses] = useState<{ course_key: string; status: string; expiry_date: string | null }[]>([])
+  const [registerLessons, setRegisterLessons] = useState<{ lesson_key: string; status: string; expiry_date: string | null }[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -289,11 +291,15 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
         .select('id,mob_in,mob_out,role,project_id,projects(id,name,client)')
         .eq('person_id', personId)
         .order('mob_in', { ascending: false }),
-    ]).then(([p, v, a, d]) => {
+      supabase.from('induction_courses').select('course_key, status, expiry_date').eq('person_id', personId),
+      supabase.from('induction_lessons').select('lesson_key, status, expiry_date').eq('person_id', personId),
+    ]).then(([p, v, a, d, ic, il]) => {
       if (p.data) setPerson(p.data as PersonFull)
       setVisas((v.data || []) as Visa[])
       setAssets((a.data || []) as Asset[])
       setDeployments((d.data || []) as unknown as Deployment[])
+      setRegisterCourses((ic.data || []) as { course_key: string; status: string; expiry_date: string | null }[])
+      setRegisterLessons((il.data || []) as { lesson_key: string; status: string; expiry_date: string | null }[])
       setLoading(false)
     })
   }, [personId])
@@ -430,8 +436,83 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
         {/* ── INDUCTIONS ── */}
         {tab === 'inductions' && (
           <div>
-            <Section title="Induction Passport">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* Global register — shown when upload data exists */}
+            {(registerCourses.length > 0 || registerLessons.length > 0) ? (
+              <>
+                {registerCourses.length > 0 && (
+                  <Section title="SE Passports (SE Learning)">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {registerCourses.map(c => {
+                        const today = new Date().toISOString().slice(0, 10)
+                        const soon  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
+                        const isExpired  = c.expiry_date && c.expiry_date < today
+                        const isExpiring = !isExpired && c.expiry_date && c.expiry_date <= soon
+                        const noExpiry   = c.status === 'valid' && (!c.expiry_date || c.expiry_date === '9999-12-31')
+                        const isNa       = c.status === 'na'
+                        const bg    = isNa ? 'var(--bg3)' : isExpired ? '#fee2e2' : isExpiring ? '#fef3c7' : noExpiry ? '#e0f2fe' : '#d1fae5'
+                        const color = isNa ? 'var(--text3)' : isExpired ? '#991b1b' : isExpiring ? '#92400e' : noExpiry ? '#0369a1' : '#065f46'
+                        const pill  = isNa ? 'N/A' : isExpired ? 'Expired' : isExpiring ? 'Expiring' : noExpiry ? 'No expiry' : 'Current'
+                        const label = c.course_key.replace(/_/g, ' ').replace(/\w/g, l => l.toUpperCase())
+                        return (
+                          <div key={c.course_key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--bg3)', borderRadius: 5, border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{label}</span>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              {c.expiry_date && c.expiry_date !== '9999-12-31' && (
+                                <span style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text3)' }}>
+                                  {new Date(c.expiry_date).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                </span>
+                              )}
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: bg, color }}>{pill}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Section>
+                )}
+                {registerLessons.length > 0 && (
+                  <Section title="HRWLs (SE Learning)">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {registerLessons.map(l => {
+                        const today = new Date().toISOString().slice(0, 10)
+                        const soon  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10)
+                        const isExpired  = l.expiry_date && l.expiry_date < today
+                        const isExpiring = !isExpired && l.expiry_date && l.expiry_date <= soon
+                        const noExpiry   = l.status === 'valid' && (!l.expiry_date || l.expiry_date === '9999-12-31')
+                        const isNa       = l.status === 'na'
+                        const bg    = isNa ? 'var(--bg3)' : isExpired ? '#fee2e2' : isExpiring ? '#fef3c7' : noExpiry ? '#e0f2fe' : '#d1fae5'
+                        const color = isNa ? 'var(--text3)' : isExpired ? '#991b1b' : isExpiring ? '#92400e' : noExpiry ? '#0369a1' : '#065f46'
+                        const pill  = isNa ? 'N/A' : isExpired ? 'Expired' : isExpiring ? 'Expiring' : noExpiry ? 'No expiry' : 'Current'
+                        const label = l.lesson_key.replace(/_/g, ' ').replace(/\w/g, c => c.toUpperCase())
+                        return (
+                          <div key={l.lesson_key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--bg3)', borderRadius: 5, border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 500 }}>{label}</span>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              {l.expiry_date && l.expiry_date !== '9999-12-31' && (
+                                <span style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text3)' }}>
+                                  {new Date(l.expiry_date).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                </span>
+                              )}
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: bg, color }}>{pill}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Section>
+                )}
+              </>
+            ) : (
+              <Section title="SE Learning Register">
+                <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic', padding: '8px 0' }}>
+                  No register data yet for this person. Upload via Admin → Induction Register.
+                </div>
+              </Section>
+            )}
+
+            {/* Manual dates — legacy fallback, always editable */}
+            <Section title="Manual Dates">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 {[
                   { label: 'EHS', status: ehsS, date: person.induction_ehs_date },
                   { label: 'QUAL', status: qualS, date: person.induction_qual_date },
@@ -448,9 +529,7 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
                   )
                 })}
               </div>
-            </Section>
-            <Section title="Medical">
-              <div style={{ background: 'var(--bg3)', borderRadius: 6, padding: '10px 12px', border: '1px solid var(--border)', display: 'inline-block' }}>
+              <div style={{ background: 'var(--bg3)', borderRadius: 6, padding: '10px 12px', border: '1px solid var(--border)', display: 'inline-block', marginBottom: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Medical</div>
                 <IndBadge date={person.medical_date} />
                 <div style={{ marginTop: 4 }}>
