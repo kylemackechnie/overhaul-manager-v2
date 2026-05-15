@@ -253,7 +253,15 @@ export function POsPanel() {
     const carActTotal = carActuals.reduce((s,c)=>s+c.actualToDate,0)
     const accomActTotal = accomActuals.reduce((s,a)=>s+a.actualToDate,0)
     const totalActuals = labActTotal+hireActTotal+carActTotal+accomActTotal
-    const planned = bucket?.total ?? 0
+    const planned = (() => {
+      // For fixed price POs with no linked resources or bookings, the PO value IS the plan
+      if ((bucket?.total ?? 0) === 0) {
+        const hasLinkedBookings = labActuals.length > 0 || hireActuals.length > 0 || carActuals.length > 0 || accomActuals.length > 0
+          || resources.some(r => (r as Resource & { linked_po_id?: string }).linked_po_id === po.id)
+        if (!hasLinkedBookings && budget > 0) return budget
+      }
+      return bucket?.total ?? 0
+    })()
     const { total: invoiced, list: poInvoices } = getInvoiced(po.id)
     const varianceToDate = budget - totalActuals
     const forecastVariance = budget - planned
