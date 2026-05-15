@@ -66,6 +66,11 @@ const EMPTY_FORM = {
   notes:'', wo_ref:'', tce_link:'', valid_until:'',
 }
 
+const EMPTY_VN_SETTINGS = {
+  for_attention: '', client_signatory_1: '', client_signatory_1_title: '',
+  client_signatory_2: '', client_signatory_2_title: '', vn_boilerplate: '',
+}
+
 // Rate key buckets matching splitHours output
 const BKTS = ['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const
 const BKT_LABELS: Record<string,string> = {
@@ -264,10 +269,6 @@ export function VariationsPanel() {
   // Panel-level view tabs
   const [panelView, setPanelView] = useState<'register'|'settings'>('register')
   // VN Settings form (saved to project.site_info)
-  const EMPTY_VN_SETTINGS = {
-    for_attention: '', client_signatory_1: '', client_signatory_1_title: '',
-    client_signatory_2: '', client_signatory_2_title: '', vn_boilerplate: '',
-  }
   const [vnSettings, setVnSettings] = useState(EMPTY_VN_SETTINGS)
   const [vnSettingsSaving, setVnSettingsSaving] = useState(false)
 
