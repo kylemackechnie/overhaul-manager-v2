@@ -7,9 +7,10 @@ interface HeaderProps {
   onOpenPicker: () => void
   onOpenSearch: () => void
   onOpenSettings: () => void
+  onGoHome: () => void
 }
 
-export function Header({ onOpenPicker, onOpenSearch, onOpenSettings }: HeaderProps) {
+export function Header({ onOpenPicker, onOpenSearch, onOpenSettings, onGoHome }: HeaderProps) {
   const { activeProject, currentUser, setActiveProject, setActivePanel } = useAppStore()
   const [darkMode, setDarkMode] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -54,7 +55,7 @@ export function Header({ onOpenPicker, onOpenSearch, onOpenSettings }: HeaderPro
   return (
     <header className="app-header">
       {/* Left: Logo */}
-      <div className="header-logo" onClick={() => { setActiveProject(null); setActivePanel(null) }} title="Platform home">
+      <div className="header-logo" onClick={onGoHome} title="Platform home">
         <div className="header-logo-icon">SE</div>
         <span className="header-logo-text">Siemens Energy</span>
       </div>

@@ -363,6 +363,7 @@ function AppInner() {
         onOpenPicker={() => setPickerOpen(true)}
         onOpenSearch={() => setCmdOpen(true)}
         onOpenSettings={() => setActivePanel('project-settings')}
+        onGoHome={() => { setPickerOpen(false); setActiveProject(null); setActivePanel(null) }}
       />
 
       {/* Ribbon — only when project selected */}
