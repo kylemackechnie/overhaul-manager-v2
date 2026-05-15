@@ -435,14 +435,14 @@ export function CrewConfirmationPanel() {
             <thead>
               <tr style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                 <SortTh col="name"    label="Name / Role"   style={{ paddingLeft: 16, minWidth: 160 }} />
-                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.5)', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>Shift</th>
+                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', position: 'sticky', top: 0, zIndex: 10, color: 'var(--text3)', background: 'var(--bg2)', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>Shift</th>
                 <SortTh col="mob_in"  label="Mob In"   />
                 <SortTh col="mob_out" label="Mob Out"  />
-                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.5)', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>✈ Flights</th>
-                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.5)', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>🏨 Accom</th>
-                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.5)', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>🚗 Car</th>
-                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.5)', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>Inductions</th>
-                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.5)', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>Medical</th>
+                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', position: 'sticky', top: 0, zIndex: 10, color: 'var(--text3)', background: 'var(--bg2)', borderBottom: '2px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>✈ Flights</th>
+                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', position: 'sticky', top: 0, zIndex: 10, color: 'var(--text3)', background: 'var(--bg2)', borderBottom: '2px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>🏨 Accom</th>
+                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', position: 'sticky', top: 0, zIndex: 10, color: 'var(--text3)', background: 'var(--bg2)', borderBottom: '2px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>🚗 Car</th>
+                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', position: 'sticky', top: 0, zIndex: 10, color: 'var(--text3)', background: 'var(--bg2)', borderBottom: '2px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>Inductions</th>
+                <th style={{ padding: '9px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', position: 'sticky', top: 0, zIndex: 10, color: 'var(--text3)', background: 'var(--bg2)', borderBottom: '2px solid var(--border)', textAlign: 'center', whiteSpace: 'nowrap' }}>Medical</th>
                 <SortTh col="overall" label="Status" />
               </tr>
             </thead>
