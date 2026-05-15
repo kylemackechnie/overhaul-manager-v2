@@ -29,6 +29,11 @@
   --mod-hardware: #059669;
   --mod-hire: #d97706;
   --mod-hr: #0891b2;
+  /* App chrome heights — used by fixed drawers to sit below header+ribbon */
+  --header-h: 52px;
+  --ribbon-tabrow-h: 40px;
+  --ribbon-strip-h: 82px;
+  --chrome-height: calc(var(--header-h) + var(--ribbon-tabrow-h) + var(--ribbon-strip-h));
 }
 
 body.dark-mode {
