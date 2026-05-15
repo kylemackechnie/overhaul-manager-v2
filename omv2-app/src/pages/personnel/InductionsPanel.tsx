@@ -441,7 +441,6 @@ export async function writeToGlobalRegister(
   fileType: 'courses' | 'lessons',
   sourceProjectId?: string
 ): Promise<{ upserted: number; matched: number }> {
-  const table = fileType === 'courses' ? 'induction_courses' : 'induction_lessons'
   const keyField = fileType === 'courses' ? 'course_key' : 'lesson_key'
 
   // Fetch persons for name matching (to populate person_id)
@@ -488,17 +487,16 @@ export async function writeToGlobalRegister(
 
   if (rows.length === 0) return { upserted: 0, matched: 0 }
 
-  // Upsert in batches of 500
+  // Use RPC functions to upsert — Supabase JS client can't resolve expression indexes
+  // (unique index is on lower(person_name) which onConflict string can't target)
+  const rpcName = fileType === 'courses' ? 'upsert_induction_courses' : 'upsert_induction_lessons'
   const BATCH = 500
   let upserted = 0
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH)
-    const { error } = await supabase.from(table).upsert(batch, {
-      onConflict: `person_name,${keyField}`,
-      ignoreDuplicates: false,
-    })
+    const { data, error } = await supabase.rpc(rpcName, { rows: batch })
     if (error) console.error(`Global register upsert error:`, error.message)
-    else upserted += batch.length
+    else upserted += (data as number) ?? batch.length
   }
 
   const matched = rows.filter(r => r.person_id !== null).length
