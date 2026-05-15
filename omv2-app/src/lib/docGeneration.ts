@@ -648,6 +648,7 @@ interface VnDocData {
   scope: string
   raisedDate: string       // DD-MM-YY format
   validUntil: string       // e.g. "23rd December 2026"
+  lines: { category: string; description: string; sell_total: number }[]
   // Project-level fields (from project.site_info + project fields)
   client: string
   siemensProjectNo: string  // e.g. SF232178831
@@ -664,6 +665,64 @@ interface VnDocData {
   boilerplate: string       // custom terms paragraph, or empty to use template default
 }
 
+
+// Build an OOXML table showing the cost breakdown (sell values only)
+const CAT_LABEL_MAP: Record<string, string> = {
+  labour_trades: 'Trades Labour', labour_mgmt: 'Management Labour', labour_subcon: 'Subcon Labour',
+  materials: 'Materials', equipment: 'Equipment Hire', third_party: 'Third Party Services', other: 'Other',
+}
+
+function buildCostTableXml(lines: VnDocData['lines']): string {
+  const fmt = (n: number) => '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const total = lines.reduce((s, l) => s + (l.sell_total || 0), 0)
+
+  const rPr = '<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>'
+  const rPrBold = '<w:rPr><w:b/><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>'
+  const pPr = '<w:pPr><w:spacing w:after="0"/></w:pPr>'
+
+  const cell = (text: string, bold = false, rightAlign = false, shade = false) => {
+    const shd = shade ? '<w:shd w:val="clear" w:color="auto" w:fill="D0D0D0"/>' : ''
+    const jc = rightAlign ? '<w:jc w:val="right"/>' : ''
+    return `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>${shd}</w:tcPr><w:p><w:pPr><w:spacing w:after="0"/>${jc}</w:pPr><w:r>${bold ? rPrBold : rPr}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p></w:tc>`
+  }
+
+  // Header row
+  const headerRow = `<w:tr><w:trPr><w:shd w:val="clear" w:color="auto" w:fill="808080"/></w:trPr>
+    ${cell('Description', true)}${cell('Category', true)}${cell('Variation Value (excl. GST)', true, true)}
+  </w:tr>`
+
+  // Line rows
+  const lineRows = lines.map(l => `<w:tr>
+    ${cell(l.description)}${cell(CAT_LABEL_MAP[l.category] || l.category)}${cell(fmt(l.sell_total || 0), false, true)}
+  </w:tr>`).join('')
+
+  // Total row
+  const totalRow = `<w:tr><w:trPr><w:shd w:val="clear" w:color="auto" w:fill="D0D0D0"/></w:trPr>
+    ${cell('TOTAL', true, false, true)}${cell('', false, false, true)}${cell(fmt(total), true, true, true)}
+  </w:tr>`
+
+  return `<w:tbl>
+    <w:tblPr>
+      <w:tblStyle w:val="TableGrid"/>
+      <w:tblW w:w="9360" w:type="dxa"/>
+      <w:tblBorders>
+        <w:top w:val="single" w:sz="4" w:space="0" w:color="808080"/>
+        <w:left w:val="single" w:sz="4" w:space="0" w:color="808080"/>
+        <w:bottom w:val="single" w:sz="4" w:space="0" w:color="808080"/>
+        <w:right w:val="single" w:sz="4" w:space="0" w:color="808080"/>
+        <w:insideH w:val="single" w:sz="4" w:space="0" w:color="808080"/>
+        <w:insideV w:val="single" w:sz="4" w:space="0" w:color="808080"/>
+      </w:tblBorders>
+      <w:tblCellMar>
+        <w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/>
+        <w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/>
+      </w:tblCellMar>
+    </w:tblPr>
+    <w:tblGrid><w:gridCol w:w="5000"/><w:gridCol w:w="2360"/><w:gridCol w:w="2000"/></w:tblGrid>
+    ${headerRow}${lineRows}${totalRow}
+  </w:tbl>
+  <w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>`
+}
 
 export async function generateVariationDoc(data: VnDocData): Promise<void> {
   const templateBytes = b64ToBytes(VN_TEMPLATE_B64)
@@ -720,8 +779,21 @@ export async function generateVariationDoc(data: VnDocData): Promise<void> {
 
   // ── Description of Works ───────────────────────────────────────────────────
 
-  // Replace the scope placeholder
-  xml = xml.replace('>Insert new text here.<', '>' + xmlEsc(data.scope || '') + '<')
+  // Replace the scope placeholder, then inject cost table after it
+  const scopeText = xmlEsc(data.scope || '')
+  const scopePlaceholder = '>Insert new text here.<'
+  const scopeReplaced = '>' + scopeText + '<'
+  xml = xml.replace(scopePlaceholder, scopeReplaced)
+
+  // Inject cost table after the scope paragraph (find closing </w:p> after scope text)
+  if (data.lines.length > 0) {
+    const scopeIdx = xml.indexOf(scopeReplaced.slice(1, 30))
+    if (scopeIdx !== -1) {
+      const afterScopePara = xml.indexOf('</w:p>', scopeIdx) + '</w:p>'.length
+      const costTableXml = buildCostTableXml(data.lines)
+      xml = xml.substring(0, afterScopePara) + costTableXml + xml.substring(afterScopePara)
+    }
+  }
 
   // Valid until — the template has: '...valid until 23rd December 202' + '6'
   // Replace the full sentence fragment (the split '6' on next run)
