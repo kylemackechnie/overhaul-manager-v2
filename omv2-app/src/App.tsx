@@ -371,7 +371,7 @@ function AppInner() {
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
         {/* Profile and settings panels don't require an active project */}
-        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-board', 'hr-directory', 'hr-year-view'].includes(activePanel ?? '')) ? (
+        {(['profile', 'user-management', 'admin', 'audit-trail', 'sites', 'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations', 'resource-manager', 'resource-board', 'resource-crew-confirm', 'resource-inductions', 'resource-timeline', 'resource-demand', 'resource-assets', 'resource-asset-timeline', 'resource-tooling-demand', 'hr-directory', 'hr-year-view'].includes(activePanel ?? '')) ? (
           <PanelRouter panel={activePanel ?? 'dashboard'} />
         ) : !activeProject ? (
           restoringProject ? (
