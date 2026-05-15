@@ -310,7 +310,7 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
 
   // Drawer shell
   const drawerStyle: React.CSSProperties = {
-    position: 'fixed', insetBlock: 0, right: 0, width: 460,
+    position: 'fixed', top: 48, right: 0, bottom: 0, width: 460,
     background: 'var(--bg)', borderLeft: '1px solid var(--border)',
     boxShadow: 'var(--shadow-md)', zIndex: 50,
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
