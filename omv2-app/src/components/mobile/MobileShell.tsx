@@ -67,11 +67,17 @@ export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
         startY.current = null
         return
       }
-      // Don't engage if the touch starts inside an open sheet or modal —
-      // sheets have their own drag-handle for dismissal, and pulling down
-      // on a sheet must not also trigger a refresh of the underlying panel.
-      const target = e.target as HTMLElement | null
-      if (target?.closest('.mobile-sheet-backdrop, .mobile-sheet-overlay, .modal-overlay, .mobile-scanner-overlay')) {
+      // Don't engage if ANY sheet/modal is currently open. Two reasons:
+      //  1. The user is probably trying to dismiss the sheet, not refresh the
+      //     panel underneath.
+      //  2. Sheets handle their own drag-down gestures, and we don't want a
+      //     racing native PTR listener on .mobile-content competing.
+      // We check by querying the document, not via target.closest(), because
+      // target.closest is fragile if the touch starts on a portal child or a
+      // newly-rendered element whose ancestry isn't yet attached.
+      if (document.querySelector(
+        '.mobile-sheet-backdrop, .mobile-sheet-overlay, .modal-overlay, .mobile-scanner-overlay'
+      )) {
         startY.current = null
         return
       }

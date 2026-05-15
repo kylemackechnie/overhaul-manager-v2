@@ -1265,18 +1265,30 @@ th.resizable .col-resizer:active {
   border-radius: 16px 16px 0 0;
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
-  max-height: 90dvh;
+  /* Use a single consistent height ceiling. Previous code had
+     max-height: 90dvh on .mobile-sheet AND min-height: 92dvh on
+     .mobile-sheet-full — that contradicts and on some iOS Safari builds
+     resolves to 0, leaving only the backdrop visible. */
+  max-height: 95dvh;
   animation: mobile-sheet-slide 0.25s ease-out;
   /* Safe-area inset on the bottom for the home indicator */
   padding-bottom: env(safe-area-inset-bottom, 0);
+  /* Defensive: ensure the sheet has at least some height even if its body
+     children fail to size correctly. */
+  min-height: 200px;
+  /* Make sure we sit above the backdrop's flex-end alignment without
+     any chance of being clipped */
+  position: relative;
+  z-index: 1;
 }
 @keyframes mobile-sheet-slide {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
-.mobile-sheet-half { min-height: 55vh; }
-.mobile-sheet-full { min-height: 92vh; min-height: 92dvh; }
+/* Height presets — pick one MIN-HEIGHT, let max-height (95dvh) cap us */
+.mobile-sheet-auto { /* content-sized; only min-height kicks in if content tiny */ }
+.mobile-sheet-half { min-height: 55dvh; }
+.mobile-sheet-full { min-height: 85dvh; }
 
 .mobile-sheet-handle-wrap {
   padding: 8px 0 4px;

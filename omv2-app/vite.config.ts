@@ -29,6 +29,14 @@ export default defineConfig({
       workbox: {
         // Bump SW caching limit (default 2MB; our bundles are larger)
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        // Take control of all open tabs as soon as the new SW activates,
+        // and skip the 'waiting' state where the old SW stays in charge
+        // until all PWA windows are closed. Without these, iOS standalone
+        // users see the OLD code for hours/days until they kill the app.
+        skipWaiting: true,
+        clientsClaim: true,
+        // Clean up old caches from previous SW versions when activating
+        cleanupOutdatedCaches: true,
         // Cache strategies
         runtimeCaching: [
           {
