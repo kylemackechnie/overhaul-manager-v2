@@ -258,6 +258,22 @@ function AppInner() {
 
   useAuth()
 
+  // Keep --chrome-height CSS variable in sync so fixed drawers clear the app chrome
+  useEffect(() => {
+    function update() {
+      const header = document.querySelector('.app-header')
+      const ribbon = document.querySelector('.ribbon-nav')
+      const h = (header?.getBoundingClientRect().height ?? 0) +
+                (ribbon?.getBoundingClientRect().height ?? 0)
+      document.documentElement.style.setProperty('--chrome-height', h + 'px')
+    }
+    update()
+    const t = setTimeout(update, 50)
+    const obs = new ResizeObserver(update)
+    document.querySelectorAll('.app-header, .ribbon-nav').forEach(el => obs.observe(el))
+    return () => { clearTimeout(t); obs.disconnect() }
+  })
+
   // Progressive loading message — most refreshes resolve in <2s, but tracking
   // prevention or slow networks can stretch the auth handshake to 30s+. We
   // update the message so the user knows the app hasn't frozen.
