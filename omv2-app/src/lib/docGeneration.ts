@@ -678,7 +678,6 @@ function buildCostTableXml(lines: VnDocData['lines']): string {
 
   const rPr = '<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>'
   const rPrBold = '<w:rPr><w:b/><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>'
-  const pPr = '<w:pPr><w:spacing w:after="0"/></w:pPr>'
 
   const cell = (text: string, bold = false, rightAlign = false, shade = false) => {
     const shd = shade ? '<w:shd w:val="clear" w:color="auto" w:fill="D0D0D0"/>' : ''
