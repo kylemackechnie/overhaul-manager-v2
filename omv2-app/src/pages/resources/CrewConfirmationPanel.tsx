@@ -32,10 +32,14 @@ interface TrackerRow {
   induction_ehs_date: string | null
   induction_qual_date: string | null
   medical_date: string | null
-  // actual data from source tables
-  flights_text: string | null   // resources.flights free-text
-  car_booked: boolean           // derived from cars table
-  accom_booked: boolean         // derived from accommodation.occupants
+  // required flags
+  flight_required: boolean
+  accom_required: boolean
+  car_required: boolean
+  // booking details (null = not booked)
+  flights_text: string | null        // resources.flights free text
+  accom_detail: string | null        // accommodation.property
+  car_detail: string | null          // cars: vendor · vehicle_type
   ind_status: 'ok' | 'expiring' | 'expired' | 'missing'
   med_status: 'ok' | 'expiring' | 'expired' | 'missing'
   overall: 'ready' | 'warn' | 'hold' | 'unconfirmed'
@@ -76,6 +80,9 @@ function dateStatus(date: string | null, mobOut: string | null): 'ok' | 'expirin
 
 function overallStatus(row: Omit<TrackerRow, 'overall'>): TrackerRow['overall'] {
   if (row.ind_status === 'expired' || row.med_status === 'expired') return 'hold'
+  if (row.flight_required && !row.flights_text) return 'warn'
+  if (row.accom_required  && !row.accom_detail) return 'warn'
+  if (row.car_required    && !row.car_detail)   return 'warn'
   if (row.ind_status === 'missing' || row.ind_status === 'expiring') return 'warn'
   if (row.med_status === 'missing' || row.med_status === 'expiring') return 'warn'
   if (!row.mob_in) return 'unconfirmed'
@@ -154,29 +161,37 @@ export function CrewConfirmationPanel() {
       .from('resources')
       .select(`
         id, name, role, shift, category, mob_in, mob_out, person_id, flights,
+        flight_required, accom_required, car_required,
         persons:person_id (full_name, gid, induction_ehs_date, induction_qual_date, medical_date)
       `)
       .eq('project_id', selectedProjectId)
       .order('name')
 
-    // 2. Cars booked (cars.person_id = resources.id)
+    // 2. Cars booked (cars.person_id = resources.id) — fetch display detail
     const { data: carData } = await supabase
       .from('cars')
-      .select('person_id')
+      .select('person_id, vendor, vehicle_type, reservation')
       .eq('project_id', selectedProjectId)
 
-    const carBookedSet = new Set((carData || []).map(c => c.person_id as string))
+    // Map resources.id → car detail string
+    const carDetailMap = new Map<string, string>()
+    for (const car of (carData || []) as { person_id: string; vendor: string | null; vehicle_type: string | null; reservation: string | null }[]) {
+      if (!car.person_id) continue
+      const parts = [car.vendor, car.vehicle_type].filter(Boolean).join(' · ')
+      carDetailMap.set(car.person_id, parts || 'Car booked')
+    }
 
-    // 3. Accommodation (occupants JSONB array contains resources.id)
+    // 3. Accommodation — fetch property name and map by occupant resources.id
     const { data: accomData } = await supabase
       .from('accommodation')
-      .select('occupants')
+      .select('occupants, property, vendor')
       .eq('project_id', selectedProjectId)
 
-    const accomBookedSet = new Set<string>()
-    for (const a of (accomData || [])) {
-      const occ = (a.occupants as string[]) || []
-      occ.forEach(id => accomBookedSet.add(id))
+    const accomDetailMap = new Map<string, string>()
+    for (const a of (accomData || []) as { occupants: string[]; property: string | null; vendor: string | null }[]) {
+      const detail = a.property || a.vendor || 'Accommodation booked'
+      const occ = a.occupants || []
+      occ.forEach(id => accomDetailMap.set(id, detail))
     }
 
     // Build rows
@@ -194,8 +209,8 @@ export function CrewConfirmationPanel() {
         (ind_ehs === 'expiring' || ind_qual === 'expiring') ? 'expiring' :
         (ind_ehs === 'missing' && ind_qual === 'missing') ? 'missing' : 'ok'
 
-      const car_booked    = carBookedSet.has(r.id as string)
-      const accom_booked  = accomBookedSet.has(r.id as string)
+      const car_detail   = carDetailMap.get(r.id as string) ?? null
+      const accom_detail = accomDetailMap.get(r.id as string) ?? null
 
       const partial: Omit<TrackerRow, 'overall'> = {
         id:               r.id as string,
@@ -206,14 +221,17 @@ export function CrewConfirmationPanel() {
         mob_in:           r.mob_in as string | null,
         mob_out:          mobOut,
         person_id:        r.person_id as string | null,
-        flights_text:      (r.flights as string | null) || null,
+        flights_text:     (r.flights as string | null) || null,
+        flight_required:  (r.flight_required as boolean) ?? false,
+        accom_required:   (r.accom_required as boolean) ?? false,
+        car_required:     (r.car_required as boolean) ?? false,
+        accom_detail,
+        car_detail,
         full_name:        p?.full_name as string | null,
         gid:              p?.gid as string | null,
         induction_ehs_date:  p?.induction_ehs_date as string | null,
         induction_qual_date: p?.induction_qual_date as string | null,
         medical_date:     p?.medical_date as string | null,
-        car_booked,
-        accom_booked,
         ind_status,
         med_status: med,
       }
@@ -287,7 +305,7 @@ export function CrewConfirmationPanel() {
     const csvRows = filtered.map(r => [
       r.full_name || r.name, r.gid || '', r.role || '', r.shift || '',
       r.mob_in || '', r.mob_out || '',
-      r.flights_text || '', r.accom_booked ? 'Yes' : 'No', r.car_booked ? 'Yes' : 'No',
+      r.flights_text || '', r.accom_detail || '', r.car_detail || '',
       r.induction_ehs_date || '', r.induction_qual_date || '', r.medical_date || '',
       r.overall,
     ])
@@ -386,10 +404,10 @@ export function CrewConfirmationPanel() {
       {/* Legend */}
       <div style={{ padding: '6px 20px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', display: 'flex', gap: 16, flexShrink: 0, flexWrap: 'wrap' }}>
         {([
-          { icon: '✓', label: 'Booked / OK', bg: '#d1fae5', color: '#065f46' },
-          { icon: '✗', label: 'Not booked / Issue', bg: '#fee2e2', color: '#991b1b' },
+          { icon: '✓', label: 'Booked', bg: '#d1fae5', color: '#065f46' },
+          { icon: '✗', label: 'Required — not booked', bg: '#fee2e2', color: '#991b1b' },
           { icon: '⚠', label: 'Expiring soon', bg: '#fef3c7', color: '#92400e' },
-          { icon: '—', label: 'Not required / N/A', bg: 'var(--bg3)', color: 'var(--text3)' },
+          { icon: '—', label: 'Not required', bg: 'var(--bg3)', color: 'var(--text3)' },
           { icon: '?', label: 'No data', bg: '#f1f5f9', color: '#94a3b8' },
         ]).map(({ icon, label, bg, color }) => (
           <div key={icon} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text3)' }}>
@@ -444,9 +462,9 @@ export function CrewConfirmationPanel() {
                   : i % 2 === 0 ? 'var(--bg)' : 'var(--bg2)'
 
                 // Flight check
-                const flightCheck: CheckState = r.flights_text ? 'yes' : 'missing'
-                const accomCheck:  CheckState = r.accom_booked ? 'yes' : 'missing'
-                const carCheck:    CheckState = r.car_booked   ? 'yes' : 'missing'
+                const flightCheck: CheckState = !r.flight_required ? 'na' : r.flights_text ? 'yes' : 'no'
+                const accomCheck:  CheckState = !r.accom_required  ? 'na' : r.accom_detail  ? 'yes' : 'no'
+                const carCheck:    CheckState = !r.car_required    ? 'na' : r.car_detail    ? 'yes' : 'no'
                 const indCheck:    CheckState = r.ind_status === 'ok' ? 'yes' : r.ind_status === 'expiring' ? 'warn' : r.ind_status === 'expired' ? 'no' : 'missing'
                 const medCheck:    CheckState = r.med_status === 'ok' ? 'yes' : r.med_status === 'expiring' ? 'warn' : r.med_status === 'expired' ? 'no' : 'missing'
 
@@ -487,13 +505,13 @@ export function CrewConfirmationPanel() {
 
                     {/* Checks */}
                     <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <Check state={flightCheck} title={r.flights_text || 'No flight recorded'} />
+                      <Check state={flightCheck} title={!r.flight_required ? 'Not required' : r.flights_text ? r.flights_text : 'Required — not yet booked'} />
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <Check state={accomCheck} title={r.accom_booked ? 'Accommodation booked' : 'No accommodation booked'} />
+                      <Check state={accomCheck} title={!r.accom_required ? 'Not required' : r.accom_detail ? r.accom_detail : 'Required — not yet booked'} />
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <Check state={carCheck} title={r.car_booked ? 'Car booked' : 'No car booked'} />
+                      <Check state={carCheck} title={!r.car_required ? 'Not required' : r.car_detail ? r.car_detail : 'Required — not yet booked'} />
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                       <Check state={indCheck} title={indTitle} />
