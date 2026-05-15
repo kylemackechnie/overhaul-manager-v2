@@ -15,7 +15,8 @@ interface PanelHeaderProps {
 }
 
 /**
- * Sticky per-panel header. Sits below MobileTopBar.
+ * Sticky per-panel header. Top-most element of every mobile panel (the
+ * shell has no persistent topbar — each panel owns its title area).
  * Shows title + optional back chevron + optional right action button.
  */
 export function MobilePanelHeader({

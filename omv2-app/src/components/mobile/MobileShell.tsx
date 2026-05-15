@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react'
-import { MobileTopBar } from './MobileTopBar'
 import { MobileBottomTabs } from './MobileBottomTabs'
 import { MobileNavSheet } from './MobileNavSheet'
 import { supabase } from '../../lib/supabase'
@@ -15,23 +14,17 @@ interface Props {
 /**
  * Top-level mobile chrome:
  *   ┌──────────────────────────┐
- *   │  Top bar (project pill)  │  ← single line, just the active project
- *   ├──────────────────────────┤
  *   │                          │
- *   │  Panel content           │
- *   │  (scrollable)            │
+ *   │  Panel content           │  ← panel header (set by each panel)
+ *   │  (scrollable)            │     handles its own title + back chevron
  *   │                          │
  *   ├──────────────────────────┤
  *   │  Bottom tab bar (fixed)  │
  *   └──────────────────────────┘
  *
- * MobileNavSheet slides up from bottom when "More" is tapped, and contains:
- *  - Search at top
- *  - Module panels in middle
- *  - Project picker + user actions at bottom
- *
- * Search and profile were originally in the topbar but moved into the
- * sheet to declutter the visible chrome on small phones.
+ * No persistent top bar — each panel renders its own MobilePanelHeader so
+ * vertical space stays maximised. Search, project switching, and the user
+ * account live in the More sheet.
  */
 export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -47,7 +40,6 @@ export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
 
   return (
     <div className="mobile-shell">
-      <MobileTopBar onOpenPicker={onOpenPicker} />
       <main className="mobile-content">
         {children}
       </main>

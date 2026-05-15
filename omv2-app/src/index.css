@@ -602,7 +602,6 @@ th.resizable .col-resizer:active {
 
 /* iOS safe area variables */
 :root {
-  --mobile-topbar-h: 56px;
   --mobile-bottomtabs-h: 60px;
   --mobile-panel-header-h: 52px;
   --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -657,73 +656,15 @@ th.resizable .col-resizer:active {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  /* Top safe-area inset moved here from .mobile-topbar (topbar removed).
+     This pushes the panel header below the iOS status bar / notch. */
+  padding-top: env(safe-area-inset-top, 0);
   padding-bottom: calc(var(--mobile-bottomtabs-h) + var(--mobile-safe-bottom));
   background: var(--bg);
 }
 
-/* ── Top bar ─────────────────────────────────────────────────────────── */
-.mobile-topbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--mobile-topbar-h);
-  padding: 0 12px;
-  padding-top: var(--mobile-safe-top);
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  z-index: 50;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-}
-.mobile-topbar-project {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  cursor: pointer;
-  min-width: 0;
-  text-align: left;
-  height: 40px;
-}
-.mobile-topbar-project:active { background: var(--border); }
-.mobile-topbar-logo { font-size: 18px; flex-shrink: 0; }
-.mobile-topbar-project-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-.mobile-topbar-chevron { color: var(--text3); font-size: 12px; flex-shrink: 0; }
-.mobile-topbar-icon, .mobile-topbar-avatar {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  color: var(--text);
-}
-.mobile-topbar-avatar {
-  background: var(--accent);
-  color: white;
-  font-weight: 600;
-  font-size: 14px;
-  border-color: var(--accent);
-}
-.mobile-topbar-icon:active, .mobile-topbar-avatar:active { transform: scale(0.96); }
+/* (Mobile topbar removed — each panel renders its own MobilePanelHeader.
+   Search, project picker, profile, and sign-out live in the More sheet.) */
 
 /* ── Bottom tabs ─────────────────────────────────────────────────────── */
 .mobile-bottomtabs {
@@ -1221,8 +1162,8 @@ th.resizable .col-resizer:active {
     margin: 0;
     border-radius: 0;
     border: 0;
-    /* Account for iOS safe areas + clear the fixed mobile topbar (~56px) */
-    padding-top: calc(env(safe-area-inset-top, 0px) + 56px);
+    /* Account for iOS safe-area inset (status bar / notch) */
+    padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     width: 100%;
     overflow-y: auto;
@@ -2137,13 +2078,6 @@ th.resizable .col-resizer:active {
 /* ════════════════════════════════════════════════════════════════════
    Session 8 — Decluttered topbar + relocated search/picker/profile
    ════════════════════════════════════════════════════════════════════ */
-
-/* Wider project pill since it no longer shares space with search/avatar */
-.mobile-topbar-project-wide {
-  flex: 1;
-  /* Slight padding bump for the longer pill */
-  padding: 0 14px;
-}
 
 /* ── Search button at top of More sheet ──────────────────────────────── */
 .mobile-nav-search-btn {
