@@ -345,7 +345,7 @@ export function Ribbon() {
   const activeTab = RIBBON_MODULES.find(t => t.key === activeRibbonTab) ?? visibleTabs[0]
 
   return (
-    <div style={{
+    <div className="ribbon-nav" style={{
       background: 'var(--bg)', borderBottom: '1px solid var(--border)',
       position: 'sticky', top: 0, zIndex: 100,
     }}>
