@@ -575,9 +575,9 @@ export function ResourcesPanel() {
           onCatFilterChange={setCatFilter}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
-          onAddNew={openNew}
-          onEdit={openEdit}
+          onChange={load}
           canWrite={canWrite('personnel')}
+          projectId={activeProject?.id || ''}
         />
       </Suspense>
     ) : (<>
