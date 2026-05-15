@@ -226,15 +226,15 @@ function ExpensesPanelDesktop() {
 
   async function assignExpenseRef(expenseId: string): Promise<string> {
     // Get max existing ref number for this project
-    const { data } = await supabase
-      .from('expenses')
-      .select('expense_ref')
-      .eq('project_id', activeProject!.id)
-      .not('expense_ref', 'is', null)
-    const nums = (data || [])
-      .map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
-      .filter(n => n > 0)
-    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
+    // Get max number across BOTH expenses and invoices for a shared sequence
+    const [expData, invData] = await Promise.all([
+      supabase.from('expenses').select('expense_ref').eq('project_id', activeProject!.id).not('expense_ref', 'is', null),
+      supabase.from('invoices').select('invoice_ref').eq('project_id', activeProject!.id).not('invoice_ref', 'is', null),
+    ])
+    const expNums = (expData.data || []).map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
+    const invNums = (invData.data || []).map(e => { const m = (e.invoice_ref || '').match(/INV-(\d+)/); return m ? parseInt(m[1]) : 0 })
+    const allNums = [...expNums, ...invNums].filter(n => n > 0)
+    const next = allNums.length > 0 ? Math.max(...allNums) + 1 : 1
     const ref = `EXP-${String(next).padStart(4,'0')}_${buildRefSlug(form.description, form.cost_ex_gst)}`
     await supabase.from('expenses').update({ expense_ref: ref }).eq('id', expenseId)
     return ref
@@ -374,13 +374,15 @@ function ExpensesPanelDesktop() {
     const ids = [...selected]
     const srcExpenses = expenses.filter(e => ids.includes(e.id))
 
-    // Get current max ref number once
-    const { data: refData } = await supabase.from('expenses').select('expense_ref')
-      .eq('project_id', activeProject!.id).not('expense_ref', 'is', null)
-    const existingNums = (refData || [])
-      .map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
-      .filter(n => n > 0)
-    let nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1
+    // Get current max ref number across both expenses and invoices
+    const [refExpData, refInvData] = await Promise.all([
+      supabase.from('expenses').select('expense_ref').eq('project_id', activeProject!.id).not('expense_ref', 'is', null),
+      supabase.from('invoices').select('invoice_ref').eq('project_id', activeProject!.id).not('invoice_ref', 'is', null),
+    ])
+    const existingExpNums = (refExpData.data || []).map(e => { const m = (e.expense_ref || '').match(/EXP-(\d+)/); return m ? parseInt(m[1]) : 0 })
+    const existingInvNums = (refInvData.data || []).map(e => { const m = (e.invoice_ref || '').match(/INV-(\d+)/); return m ? parseInt(m[1]) : 0 })
+    const allExistingNums = [...existingExpNums, ...existingInvNums].filter(n => n > 0)
+    let nextNum = allExistingNums.length > 0 ? Math.max(...allExistingNums) + 1 : 1
 
     for (const src of srcExpenses) {
       // Build new ref: auto-numbered, same slug as source
