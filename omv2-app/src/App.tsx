@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { supabase } from './lib/supabase'
 import { useAppStore } from './store/appStore'
@@ -132,6 +132,15 @@ import { PartsSearchPanel } from './pages/site/PartsSearchPanel'
 import { MobileShell } from './components/mobile/MobileShell'
 import { MobileDesktopOnly } from './components/mobile/MobilePanelHeader'
 import { MOBILE_OPTIMISED, PANEL_FRIENDLY_NAMES } from './lib/mobilePanels'
+
+// Mobile-only hub pages — landing pages for the bottom tabs that group
+// multiple sub-panels (People, Parts). Lazy because phone-only code.
+const PeopleHub = lazy(() =>
+  import('./pages/mobile/PeopleHub').then(m => ({ default: m.PeopleHub }))
+)
+const PartsHub = lazy(() =>
+  import('./pages/mobile/PartsHub').then(m => ({ default: m.PartsHub }))
+)
 import { useIsMobile } from './hooks/useIsMobile'
 import type { Session } from '@supabase/supabase-js'
 import type { Project } from './types'
@@ -598,6 +607,23 @@ function PanelRouter({ panel }: { panel: string }) {
 // ════════════════════════════════════════════════════════════════════════
 
 function MobilePanelRouter({ panel }: { panel: string }) {
+  // Mobile-only hub pages — landing pages for bottom tabs that aggregate
+  // several sub-panels. Live here (not in PanelRouter) so they don't
+  // leak into the desktop dispatcher.
+  if (panel === 'mobile-people-hub') {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <PeopleHub />
+      </Suspense>
+    )
+  }
+  if (panel === 'mobile-parts-hub') {
+    return (
+      <Suspense fallback={<div className="mobile-loading"><span className="spinner" /> Loading…</div>}>
+        <PartsHub />
+      </Suspense>
+    )
+  }
   // Permission check still applies — uses same helper as desktop
   if (MOBILE_OPTIMISED.has(panel)) {
     return <PanelRouter panel={panel} />

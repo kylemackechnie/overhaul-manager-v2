@@ -19,6 +19,10 @@ export const MOBILE_OPTIMISED: ReadonlySet<string> = new Set([
   'profile',
   'help',
   'project-settings',
+  // Mobile-only hub pages — landing pages for bottom tabs that aggregate
+  // several sub-panels. Intercepted in MobilePanelRouter before this check.
+  'mobile-people-hub',
+  'mobile-parts-hub',
   // Personnel
   'hr-resources',
   'hr-accommodation',
