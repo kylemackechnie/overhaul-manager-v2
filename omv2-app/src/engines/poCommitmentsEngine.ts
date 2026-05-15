@@ -253,6 +253,30 @@ export function buildPoCommitments(
         }
         addCommitment(wbs, committed)
       }
+
+      // Also process subcon resources linked to same PO (e.g. rates PO with both dry hire and labour)
+      if (poHasSubconResources.has(po.id)) {
+        const subconRes = subconResourcesByPo[po.id]
+        const totalMobDays = subconRes.reduce((sum, r) => {
+          if (!r.mob_in || !r.mob_out) return sum
+          return sum + daysBetween(r.mob_in, r.mob_out)
+        }, 0)
+        for (const r of subconRes) {
+          if (!r.mob_in || !r.mob_out) continue
+          const mobDays = daysBetween(r.mob_in, r.mob_out)
+          const resourceShare = totalMobDays > 0 ? mobDays / totalMobDays : 1 / subconRes.length
+          // Use the remaining PO value minus bookings already accounted for
+          const bookingTotal = bookingPeriods.reduce((s, b) => s + b.cost, 0)
+          const remainingAfterBookings = Math.max(0, poValueAud - invoicedTotal - bookingTotal)
+          const committed = remainingAfterBookings * resourceShare
+          const wbs = r.wbs || resolvePoWbs(po)
+          if (!wbs) {
+            warnings.push({ type: 'no_wbs', poId: po.id, poNumber: po.po_number, resourceName: r.id, message: `PO ${po.po_number}: subcon resource has no WBS` })
+          }
+          addCommitment(wbs, committed)
+        }
+      }
+
       continue
     }
 
