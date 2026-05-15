@@ -7,6 +7,7 @@ import { MobileSearchBar, MobileFAB } from '../../components/mobile/ui/MobileSea
 import { MobileCard } from '../../components/mobile/ui/MobileCard'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 import type { Resource } from '../../types'
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
@@ -120,6 +121,9 @@ export function ResourcesMobile({
   statusFilter, onStatusFilterChange,
   onChange, canWrite, projectId,
 }: Props) {
+
+  // Pull-to-refresh: reload the parent panel's data via onChange
+  useRegisterRefresh(onChange)
 
   // Edit / new sheet state — owned by mobile, doesn't touch desktop modal
   const [mode, setMode]       = useState<'list' | 'edit' | 'new'>('list')

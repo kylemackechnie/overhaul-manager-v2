@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileCard } from '../../components/mobile/ui/MobileCard'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 
 const MobileBarcodeScanner = lazy(() =>
   import('../../components/mobile/ui/MobileBarcodeScanner').then(m => ({ default: m.MobileBarcodeScanner }))
@@ -67,6 +68,7 @@ export function PartsReceiveMobile() {
   const boxRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+  useRegisterRefresh(load)
 
   // Auto-focus material input on step 1
   useEffect(() => {

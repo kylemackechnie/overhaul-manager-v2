@@ -4,7 +4,8 @@ import { useAppStore } from '../../store/appStore'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileSearchBar } from '../../components/mobile/ui/MobileSearchBar'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
-import type { Resource } from '../../types'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
+import type { Resource, Project } from '../../types'
 
 // ════════════════════════════════════════════════════════════════════════
 // Types & constants — kept in sync with the desktop InductionsPanel so the
@@ -180,7 +181,7 @@ interface Row {
  * This is a read-only lookup view.
  */
 export function InductionsMobile() {
-  const { activeProject } = useAppStore()
+  const { activeProject, setActiveProject } = useAppStore()
   const [resources, setResources]   = useState<Resource[]>([])
   const [people, setPeople]         = useState<InductionPerson[]>([])
   const [loading, setLoading]       = useState(true)
@@ -206,14 +207,29 @@ export function InductionsMobile() {
     }
   }
 
-  // Load people from project.induction_data + lessons_data (already on the
-  // activeProject record, no Supabase round-trip needed). Resources do need
-  // a fetch.
-  useEffect(() => {
+  /**
+   * Load people + resources. Re-fetches the project record from Supabase
+   * so a fresh induction file upload (done on another device or by another
+   * user on desktop) is reflected on pull-to-refresh. Without that fetch
+   * we'd just rebuild from the same in-memory data.
+   */
+  async function load() {
     if (!activeProject) return
     setLoading(true)
-    const inductionData = (activeProject.induction_data || []) as unknown as InductionPerson[]
-    const lessonsData   = (activeProject.lessons_data   || []) as unknown as InductionPerson[]
+    const [projRes, resRes] = await Promise.all([
+      supabase.from('projects').select('*').eq('id', activeProject.id).single(),
+      supabase.from('resources').select('id,name,role,mob_in,mob_out,company,category,shift')
+        .eq('project_id', activeProject.id).order('name'),
+    ])
+
+    // Update Zustand if the project record changed (e.g. fresh induction
+    // file upload from desktop). This way the rest of the app sees the
+    // refreshed data too.
+    const project = (projRes.data || activeProject) as Project
+    if (projRes.data) setActiveProject(project)
+
+    const inductionData = (project.induction_data || []) as unknown as InductionPerson[]
+    const lessonsData   = (project.lessons_data   || []) as unknown as InductionPerson[]
 
     // Merge induction + lessons by name. Lessons data has the high-risk
     // work licence courses; induction data has the SEP/SQP + site certs.
@@ -228,15 +244,12 @@ export function InductionsMobile() {
       }
     }
     setPeople(Object.values(merged))
+    setResources((resRes.data || []) as Resource[])
+    setLoading(false)
+  }
 
-    supabase.from('resources').select('id,name,role,mob_in,mob_out,company,category,shift')
-      .eq('project_id', activeProject.id)
-      .order('name')
-      .then(({ data }) => {
-        setResources((data || []) as Resource[])
-        setLoading(false)
-      })
-  }, [activeProject?.id])
+  useEffect(() => { load() }, [activeProject?.id])
+  useRegisterRefresh(load)
 
   // Build rows — match resources to induction people via nameSimilarity
   const rows = useMemo<Row[]>(() => {

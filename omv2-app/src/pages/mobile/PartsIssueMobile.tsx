@@ -7,6 +7,7 @@ import { MobileSearchBar } from '../../components/mobile/ui/MobileSearchBar'
 import { MobileCard } from '../../components/mobile/ui/MobileCard'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 
 // Scanner is heavy (~500 KB with zxing) — lazy so the panel itself loads fast
 const MobileBarcodeScanner = lazy(() =>
@@ -55,6 +56,7 @@ export function PartsIssueMobile() {
   const [saving,     setSaving]     = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+  useRegisterRefresh(load)
 
   async function load() {
     if (!activeProject) return

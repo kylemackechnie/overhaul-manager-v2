@@ -6,6 +6,7 @@ import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileSearchBar } from '../../components/mobile/ui/MobileSearchBar'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 import type { Accommodation, Resource } from '../../types'
 
 type Mode = 'list' | 'edit' | 'new'
@@ -85,6 +86,7 @@ export function AccommodationMobile() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+  useRegisterRefresh(load)
 
   async function load() {
     if (!activeProject) return

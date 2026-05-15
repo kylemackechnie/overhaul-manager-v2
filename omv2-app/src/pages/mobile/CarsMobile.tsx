@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileSearchBar } from '../../components/mobile/ui/MobileSearchBar'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 import type { Car, Resource } from '../../types'
 
 type Mode = 'list' | 'edit' | 'new'
@@ -85,6 +86,7 @@ export function CarsMobile() {
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+  useRegisterRefresh(load)
 
   async function load() {
     if (!activeProject) return

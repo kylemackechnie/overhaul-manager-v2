@@ -661,6 +661,8 @@ th.resizable .col-resizer:active {
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: calc(var(--mobile-bottomtabs-h) + var(--mobile-safe-bottom));
   background: var(--bg);
+  /* Positioning context for the pull-to-refresh indicator */
+  position: relative;
 }
 
 /* (Mobile topbar removed — each panel renders its own MobilePanelHeader.
@@ -2143,4 +2145,63 @@ th.resizable .col-resizer:active {
   font-size: 14px !important;
   font-weight: 500;
   text-align: left;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Session 9 — Pull-to-refresh visual indicator
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Indicator card — fixed at the top of .mobile-content, transformed down
+   by the pull distance. Sits ABOVE the panel content via z-index. */
+.mobile-ptr-indicator {
+  position: absolute;
+  /* Centred horizontally; pulled down from above viewport via translate */
+  left: 50%;
+  top: env(safe-area-inset-top, 0px);
+  /* Initial transform set inline; defaults here so it's correct if inline is missing */
+  transform: translate(-50%, -32px);
+  z-index: 5;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-md);
+  /* Smooth movement during release/idle; touchmove sets transition:none inline */
+  pointer-events: none;
+  will-change: transform, opacity;
+  font-size: 13px;
+  color: var(--text);
+}
+.mobile-ptr-arrow {
+  display: inline-block;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  transition: transform 0.15s ease-out;
+}
+.mobile-ptr-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mobile-ptr-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: mobile-ptr-spin 0.7s linear infinite;
+  display: inline-block;
+}
+@keyframes mobile-ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Content shift wrapper — pulls down with the gesture so the indicator
+   appears to be attached to the top of the content (rather than the
+   viewport, which would feel disconnected). */
+.mobile-ptr-shift {
+  will-change: transform;
 }

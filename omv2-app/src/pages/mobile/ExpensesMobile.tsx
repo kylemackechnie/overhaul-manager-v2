@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/Toast'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
 import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
+import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 import { uploadReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
 // Compact categories list. Same as desktop — kept in sync intentionally.
@@ -111,6 +112,7 @@ export function ExpensesMobile() {
   const galleryInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (activeProject) load() }, [activeProject?.id])
+  useRegisterRefresh(load)
 
   async function load() {
     if (!activeProject) return
