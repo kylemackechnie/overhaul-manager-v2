@@ -1139,14 +1139,14 @@ export function NrgTcePanel() {
                                   <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).expense_ref as string || '—'}</td>
                                   <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).description as string || (e as unknown as Record<string,unknown>).vendor as string || '—'}</td>
                                   <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{e.date || '—'}</td>
-                                  <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt2(e.cost_ex_gst || e.amount || 0)}</td>
+                                  <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt2((e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst || e.amount || 0))}</td>
                                 </tr>
                               ))}
                             </tbody>
                             <tfoot><tr style={{ borderTop:'2px solid var(--border)', fontWeight:700 }}>
                               <td colSpan={4} style={{ padding:'8px' }}>Total</td>
                               <td style={{ padding:'8px', textAlign:'right', fontFamily:'var(--mono)', color:'var(--green)' }}>
-                                {fmt2(labInvoices.reduce((s,i)=>s+(i.amount||0),0) + labExpenses.reduce((s,e)=>s+(e.cost_ex_gst||e.amount||0),0))}
+                                {fmt2(labInvoices.reduce((s,i)=>s+(i.sell_price != null && i.sell_price !== 0 ? i.sell_price : (i.amount||0)),0) + labExpenses.reduce((s,e)=>s+((e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst||e.amount||0)),0))}
                               </td>
                             </tr></tfoot>
                           </table>
@@ -1160,7 +1160,7 @@ export function NrgTcePanel() {
                 const lineInvoices = invoices.filter(i => i.tce_item_id === drillLine.item_id && (i.status === 'approved' || i.status === 'paid'))
                 const lineExpenses = expenses.filter(e => e.tce_item_id === drillLine.item_id)
                 const lineVariations = variations.filter(v => v.tce_link === drillLine.item_id && v.status === 'approved')
-                const total = lineInvoices.reduce((s,i)=>s+(i.amount||0),0) + lineExpenses.reduce((s,e)=>s+(e.cost_ex_gst||e.amount||0),0) + lineVariations.reduce((s,v)=>s+(v.sell_total||0),0)
+                const total = lineInvoices.reduce((s,i)=>s+(i.sell_price != null && i.sell_price !== 0 ? i.sell_price : (i.amount||0)),0) + lineExpenses.reduce((s,e)=>s+((e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst||e.amount||0)),0) + lineVariations.reduce((s,v)=>s+(v.sell_total||0),0)
 
                 if (!lineInvoices.length && !lineExpenses.length && !lineVariations.length)
                   return <div style={{ color:'var(--text3)', fontSize:'13px' }}>No invoices, expenses or variations allocated to this line.</div>
@@ -1187,7 +1187,7 @@ export function NrgTcePanel() {
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px' }}>{(e as unknown as Record<string,unknown>).expense_ref as string || '—'}</td>
                         <td style={{ padding:'7px 8px', color:'var(--text2)', fontSize:'12px', maxWidth:'180px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{(e as unknown as Record<string,unknown>).description as string || (e as unknown as Record<string,unknown>).vendor as string || (e as unknown as Record<string,unknown>).category as string || '—'}</td>
                         <td style={{ padding:'7px 8px', fontFamily:'var(--mono)', fontSize:'12px', color:'var(--text3)' }}>{e.date || '—'}</td>
-                        <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt(e.cost_ex_gst || e.amount || 0)}</td>
+                        <td style={{ padding:'7px 8px', textAlign:'right', fontFamily:'var(--mono)', fontWeight:600, color:'#d97706' }}>{fmt((e.sell_price != null && e.sell_price !== 0) ? e.sell_price : (e.cost_ex_gst || e.amount || 0))}</td>
                       </tr>
                     ))}
                     {lineVariations.map((v, idx) => (
