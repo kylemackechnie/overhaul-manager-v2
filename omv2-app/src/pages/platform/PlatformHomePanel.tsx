@@ -64,7 +64,7 @@ function buildModules(openPicker: () => void): (Module & { onClick: () => void }
       icon: '🧰',
       label: 'Tooling',
       description: 'SEA-owned asset fleet — status board, year timeline, deployment planning, calibration tracking',
-      panel: 'resource-assets',
+      panel: 'tooling-manager',
       color: '#7c3aed',
       accent: '#7c3aed',
       stats: s => `${s.sea_assets} assets`,
