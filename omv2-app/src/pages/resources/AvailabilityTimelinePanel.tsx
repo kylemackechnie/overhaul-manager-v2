@@ -48,8 +48,8 @@ const CAT_STYLE: Record<string, { bg: string; color: string }> = {
   subcontractor: { bg: '#d1fae5', color: '#065f46' },
 }
 
-const ROW_H = 30
-const NAME_W = 200
+const ROW_H = 32
+const NAME_W = 220
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -371,15 +371,15 @@ export function AvailabilityTimelinePanel() {
                       width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
                       background: isAvail ? 'var(--green)' : 'var(--text3)',
                     }} />
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
                       <div style={{
                         fontSize: 11, fontWeight: 600, color: 'var(--text)',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1,
                       }}>
                         {person.full_name}
                       </div>
                       {cat && catStyle && (
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 2, textTransform: 'capitalize', ...catStyle }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 2, textTransform: 'capitalize', flexShrink: 0, ...catStyle }}>
                           {cat === 'management' ? 'Mgmt' : cat === 'subcontractor' ? 'Sub' : cat === 'seag' ? 'SE AG' : 'Trades'}
                         </span>
                       )}
