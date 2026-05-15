@@ -122,7 +122,38 @@ function Check({ state, title }: { state: CheckState; title?: string }) {
   )
 }
 
-// ── Main Panel ────────────────────────────────────────────────────────────────
+// Shows booking detail text when booked, icon-only otherwise
+function LogisticsCell({ required, detail, notRequiredLabel = '—' }: {
+  required: boolean
+  detail: string | null
+  notRequiredLabel?: string
+}) {
+  if (!required) {
+    return <span style={{ fontSize: 11, color: 'var(--text3)' }}>{notRequiredLabel}</span>
+  }
+  if (!detail) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: '#991b1b' }}>
+        <span style={{ width: 16, height: 16, borderRadius: 3, background: '#fee2e2', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>✗</span>
+        Required
+      </span>
+    )
+  }
+  return (
+    <span title={detail} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontSize: 10, fontWeight: 600, color: '#065f46',
+      background: '#d1fae5', border: '1px solid #6ee7b7',
+      borderRadius: 4, padding: '2px 6px', maxWidth: 160,
+      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    }}>
+      <span style={{ flexShrink: 0 }}>✓</span>
+      {detail}
+    </span>
+  )
+}
+
+
 
 export function CrewConfirmationPanel() {
   const { activeProject } = useAppStore()
@@ -462,9 +493,6 @@ export function CrewConfirmationPanel() {
                   : i % 2 === 0 ? 'var(--bg)' : 'var(--bg2)'
 
                 // Flight check
-                const flightCheck: CheckState = !r.flight_required ? 'na' : r.flights_text ? 'yes' : 'no'
-                const accomCheck:  CheckState = !r.accom_required  ? 'na' : r.accom_detail  ? 'yes' : 'no'
-                const carCheck:    CheckState = !r.car_required    ? 'na' : r.car_detail    ? 'yes' : 'no'
                 const indCheck:    CheckState = r.ind_status === 'ok' ? 'yes' : r.ind_status === 'expiring' ? 'warn' : r.ind_status === 'expired' ? 'no' : 'missing'
                 const medCheck:    CheckState = r.med_status === 'ok' ? 'yes' : r.med_status === 'expiring' ? 'warn' : r.med_status === 'expired' ? 'no' : 'missing'
 
@@ -503,16 +531,18 @@ export function CrewConfirmationPanel() {
                       {fmtDate(r.mob_out)}
                     </td>
 
-                    {/* Checks */}
-                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <Check state={flightCheck} title={!r.flight_required ? 'Not required' : r.flights_text ? r.flights_text : 'Required — not yet booked'} />
+                    {/* Logistics */}
+                    <td style={{ padding: '8px 10px' }}>
+                      <LogisticsCell required={r.flight_required} detail={r.flights_text} />
                     </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <Check state={accomCheck} title={!r.accom_required ? 'Not required' : r.accom_detail ? r.accom_detail : 'Required — not yet booked'} />
+                    <td style={{ padding: '8px 10px' }}>
+                      <LogisticsCell required={r.accom_required} detail={r.accom_detail} />
                     </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <Check state={carCheck} title={!r.car_required ? 'Not required' : r.car_detail ? r.car_detail : 'Required — not yet booked'} />
+                    <td style={{ padding: '8px 10px' }}>
+                      <LogisticsCell required={r.car_required} detail={r.car_detail} />
                     </td>
+
+                    {/* Inductions / Medical */}
                     <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                       <Check state={indCheck} title={indTitle} />
                     </td>
