@@ -57,7 +57,7 @@ interface Deployment {
   mob_out: string | null
   role: string | null
   project_id: string | null
-  projects: { id: string; name: string; client: string | null }[] | null
+  projects: { id: string; name: string; client: string | null } | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -630,7 +630,7 @@ export function PersonProfileDrawer({ personId, onClose, onNavigateToProject }: 
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>No project deployments</div>
               </div>
             ) : deployments.map(d => {
-              const proj = d.projects?.[0] ?? null
+              const proj = d.projects ?? null
               return (
                 <div
                   key={d.id}
