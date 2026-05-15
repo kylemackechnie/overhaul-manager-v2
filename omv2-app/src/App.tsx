@@ -156,6 +156,24 @@ function AppInner() {
       .then(({ data }) => { if (data?.rules) setPayrollRules(data.rules) })
   }, [])
   const [pickerOpen, setPickerOpen] = useState(false)
+
+  // Panels that don't need a project — refreshing on these should NOT open the picker
+  const NO_PROJECT_PANELS = new Set([
+    'profile', 'user-management', 'admin', 'audit-trail', 'sites',
+    'payroll-rules', 'rate-defaults', 'hertz-rates', 'hertz-locations',
+    'resource-manager', 'tooling-manager',
+    'resource-board', 'resource-crew-confirm', 'resource-inductions',
+    'resource-timeline', 'resource-demand', 'resource-assets',
+    'resource-asset-timeline', 'resource-tooling-demand',
+    'hr-directory', 'hr-year-view',
+  ])
+
+  function needsProject(): boolean {
+    const panel = useAppStore.getState().activePanel
+    // null panel = platform home, no project needed
+    if (!panel) return false
+    return !NO_PROJECT_PANELS.has(panel)
+  }
   const [cmdOpen, setCmdOpen] = useState(false)
   const [restoringProject, setRestoringProject] = useState(false)
   const isMobile = useIsMobile()
@@ -201,16 +219,16 @@ function AppInner() {
               .then(({ data, error }) => {
                 setRestoringProject(false)
                 if (error || !data) {
-                  console.warn(`[App] project restore failed:`, error?.message ?? 'no data — opening picker')
-                  setPickerOpen(true)
+                  console.warn(`[App] project restore failed:`, error?.message ?? 'no data')
+                  if (needsProject()) setPickerOpen(true)
                 } else {
                   console.log(`[App] project restored: ${data.name}`)
                   restoreProject(data as Project)
                 }
               })
           } else {
-            console.log(`[App] ${ms()} INITIAL_SESSION — no persisted project, opening picker`)
-            setPickerOpen(true)
+            console.log(`[App] ${ms()} INITIAL_SESSION — no persisted project`)
+            if (needsProject()) setPickerOpen(true)
           }
         }
       } else if (event === 'SIGNED_IN') {
@@ -219,7 +237,7 @@ function AppInner() {
           return
         }
         setSession(s)
-        if (s && !useAppStore.getState().activeProject) setPickerOpen(true)
+        if (s && !useAppStore.getState().activeProject && needsProject()) setPickerOpen(true)
       } else if (event === 'TOKEN_REFRESHED') {
         setSession(s)
       } else if (event === 'SIGNED_OUT') {
@@ -354,7 +372,7 @@ function AppInner() {
       {pickerOpen && (
         <ProjectPicker onClose={() => {
           setPickerOpen(false)
-          if (!activeProject) setPickerOpen(true) // keep open if no project selected
+          if (!activeProject && needsProject()) setPickerOpen(true) // keep open if no project needed
         }} />
       )}
 
