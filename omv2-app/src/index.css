@@ -2133,3 +2133,80 @@ th.resizable .col-resizer:active {
   font-size: 22px;
   color: var(--text3);
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Session 8 — Decluttered topbar + relocated search/picker/profile
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Wider project pill since it no longer shares space with search/avatar */
+.mobile-topbar-project-wide {
+  flex: 1;
+  /* Slight padding bump for the longer pill */
+  padding: 0 14px;
+}
+
+/* ── Search button at top of More sheet ──────────────────────────────── */
+.mobile-nav-search-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  touch-action: manipulation;
+  transition: background 0.12s;
+}
+.mobile-nav-search-btn:active { background: var(--border); }
+.mobile-nav-search-icon { font-size: 18px; flex-shrink: 0; }
+.mobile-nav-search-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text2);
+}
+.mobile-nav-search-hint {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: var(--mono);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* ── Account section at the bottom of nav sheet ──────────────────────── */
+.mobile-nav-section-account {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.mobile-nav-item-full {
+  /* Override grid behaviour from the regular nav-item — these go full-width
+     and use a horizontal layout with left-aligned text. */
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 14px !important;
+  text-align: left !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+.mobile-nav-item-full .mobile-nav-item-icon {
+  font-size: 22px !important;
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+.mobile-nav-item-full .mobile-nav-item-label {
+  flex: 1;
+  font-size: 14px !important;
+  font-weight: 500;
+  text-align: left;
+}

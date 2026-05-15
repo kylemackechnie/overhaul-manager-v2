@@ -152,9 +152,17 @@ interface Props {
   open: boolean
   onClose: () => void
   onSignOut: () => void
+  /** Open search/command palette (was in topbar, now top of sheet) */
+  onOpenSearch: () => void
+  /** Open project picker (was in topbar, now in profile section at bottom) */
+  onOpenPicker: () => void
+  /** Navigate to profile panel */
+  onOpenProfile: () => void
 }
 
-export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
+export function MobileNavSheet({
+  open, onClose, onSignOut, onOpenSearch, onOpenPicker, onOpenProfile,
+}: Props) {
   const { setActivePanel, activeProject } = useAppStore()
   const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canRead } = usePermissions()
@@ -213,6 +221,16 @@ export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
         </div>
 
         <div className="mobile-sheet-body">
+          {/* Search — moved here from topbar. Sits at the very top so it's
+              the first thing users see when opening More. */}
+          <button
+            className="mobile-nav-search-btn"
+            onClick={() => { onClose(); onOpenSearch() }}
+          >
+            <span className="mobile-nav-search-icon">🔍</span>
+            <span className="mobile-nav-search-text">Search everywhere…</span>
+            <span className="mobile-nav-search-hint">⌘K</span>
+          </button>
           {SECTIONS.map(section => {
             // Permission gate: hide whole section if user can't read
             if (section.module && !canRead(section.module)) return null
@@ -243,11 +261,30 @@ export function MobileNavSheet({ open, onClose, onSignOut }: Props) {
               </div>
             )
           })}
-          <div className="mobile-nav-section">
+          <div className="mobile-nav-section mobile-nav-section-account">
+            <h3 className="mobile-nav-section-label">Account</h3>
             <button
-              className="mobile-nav-item"
+              className="mobile-nav-item mobile-nav-item-full"
+              onClick={() => { onClose(); onOpenPicker() }}
+            >
+              <span className="mobile-nav-item-icon">⚙️</span>
+              <span className="mobile-nav-item-label">
+                Switch project
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--text3)', fontWeight: 400, marginTop: 2 }}>
+                  Currently: {activeProject?.name || 'None'}
+                </span>
+              </span>
+            </button>
+            <button
+              className="mobile-nav-item mobile-nav-item-full"
+              onClick={() => { onClose(); onOpenProfile() }}
+            >
+              <span className="mobile-nav-item-icon">👤</span>
+              <span className="mobile-nav-item-label">My profile</span>
+            </button>
+            <button
+              className="mobile-nav-item mobile-nav-item-full"
               onClick={() => { onClose(); setMobileOverride('desktop') }}
-              style={{ width: '100%' }}
               title="Force desktop view. Tap again from desktop menu to return to auto-detect."
             >
               <span className="mobile-nav-item-icon">🖥️</span>

@@ -15,7 +15,7 @@ interface Props {
 /**
  * Top-level mobile chrome:
  *   ┌──────────────────────────┐
- *   │  Top bar (sticky top)    │
+ *   │  Top bar (project pill)  │  ← single line, just the active project
  *   ├──────────────────────────┤
  *   │                          │
  *   │  Panel content           │
@@ -25,7 +25,13 @@ interface Props {
  *   │  Bottom tab bar (fixed)  │
  *   └──────────────────────────┘
  *
- * MobileNavSheet slides up from bottom when "More" is tapped or via menu.
+ * MobileNavSheet slides up from bottom when "More" is tapped, and contains:
+ *  - Search at top
+ *  - Module panels in middle
+ *  - Project picker + user actions at bottom
+ *
+ * Search and profile were originally in the topbar but moved into the
+ * sheet to declutter the visible chrome on small phones.
  */
 export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -41,11 +47,7 @@ export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
 
   return (
     <div className="mobile-shell">
-      <MobileTopBar
-        onOpenPicker={onOpenPicker}
-        onOpenSearch={onOpenSearch}
-        onOpenProfile={openProfile}
-      />
+      <MobileTopBar onOpenPicker={onOpenPicker} />
       <main className="mobile-content">
         {children}
       </main>
@@ -53,6 +55,9 @@ export function MobileShell({ children, onOpenPicker, onOpenSearch }: Props) {
       <MobileNavSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
+        onOpenSearch={onOpenSearch}
+        onOpenPicker={onOpenPicker}
+        onOpenProfile={openProfile}
         onSignOut={signOut}
       />
     </div>
