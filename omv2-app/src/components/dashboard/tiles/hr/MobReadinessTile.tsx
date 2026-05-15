@@ -56,7 +56,7 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     queryFn: async () => {
       const [resR, accomR, carsR] = await Promise.all([
         supabase.from('resources')
-          .select('id,name,mob_in,mob_out,category,flight_required,flight_booked,accom_required,accom_booked,car_required,linked_po_id,person_id')
+          .select('id,name,mob_in,mob_out,category,flight_required,flights,accom_required,accom_booked,car_required,linked_po_id,person_id')
           .eq('project_id', ctx.projectId!)
           .gte('mob_in', todayStr)
           .lte('mob_in', next14)
@@ -127,15 +127,17 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     const daysAway = daysBetween(todayStr, r.mob_in!)
     const mobIn = r.mob_in!
 
-    // Flight check: flight_required is the trigger; flight_booked must be true
+    // Flight check: flight_required is the trigger; flights text present = booked
     const flight: ReadinessRow['flight'] = !r.flight_required
       ? 'na'
-      : r.flight_booked ? 'ok' : 'pending'
+      : (r.flights && r.flights.trim()) ? 'ok' : 'pending'
 
     // Accommodation: required → look for an accom booking that covers the mob period
     let accom: ReadinessRow['accom'] = 'na'
     if (r.accom_required) {
-      const personAccom = (r.person_id ? accomByPerson.get(r.person_id) : undefined) || []
+      const personAccom = (r.person_id ? accomByPerson.get(r.person_id) : undefined)
+        || accomByPerson.get(r.id)
+        || []
       const covered = personAccom.some(a =>
         a.check_in <= mobIn && (!a.check_out || a.check_out >= mobIn))
       // Also accept the explicit flag
@@ -145,7 +147,7 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     // Car: required → look for car covering mob date
     let car: ReadinessRow['car'] = 'na'
     if (r.car_required) {
-      const personCars = (r.person_id ? carsByPerson.get(r.person_id) : undefined) || []
+      const personCars = carsByPerson.get(r.id) || []
       const covered = personCars.some(c =>
         c.start_date <= mobIn && (!c.end_date || c.end_date >= mobIn))
       car = covered ? 'ok' : 'pending'
@@ -257,7 +259,7 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
 
 interface ResourceRow {
   id: string; name: string | null; mob_in: string | null; mob_out: string | null;
-  category: string | null; flight_required: boolean | null; flight_booked: boolean | null;
+  category: string | null; flight_required: boolean | null; flights: string | null;
   accom_required: boolean | null; accom_booked: boolean | null; car_required: boolean | null;
   linked_po_id: string | null; person_id: string | null;
 }
