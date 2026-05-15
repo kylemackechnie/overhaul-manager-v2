@@ -7,6 +7,7 @@ import { useAuth } from './hooks/useAuth'
 import { setPayrollRules } from './engines/costEngine'
 import { LoginPage } from './pages/LoginPage'
 import { Header } from './components/layout/Header'
+import { ResourceManagerRibbon, ToolingRibbon, useModuleRibbon } from './components/layout/ModuleRibbons'
 import { Ribbon } from './components/layout/Ribbon'
 import { ProjectPicker } from './components/layout/ProjectPicker'
 import { CommandPalette } from './components/layout/CommandPalette'
@@ -143,6 +144,7 @@ function AppInner() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   const { activePanel, activeProject, setActivePanel, setActiveProject, restoreProject } = useAppStore()
+  const { isResourceModule, isToolingModule } = useModuleRibbon(activePanel)
 
   // Force password reset — redirect to profile before anything else loads
   useEffect(() => {
@@ -367,8 +369,13 @@ function AppInner() {
         onGoHome={() => { setPickerOpen(false); setActiveProject(null); setActivePanel(null) }}
       />
 
-      {/* Ribbon — only when project selected */}
-      {activeProject && <Ribbon />}
+      {/* Ribbon — project ribbon OR module ribbon */}
+      {activeProject
+        ? <Ribbon />
+        : isResourceModule ? <ResourceManagerRibbon />
+        : isToolingModule  ? <ToolingRibbon />
+        : null
+      }
 
       {/* Main panel */}
       <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
