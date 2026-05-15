@@ -139,8 +139,40 @@ Use this for client-initiated descopes or any case where a previously approved v
 
 ### Outputs
 
-- **🖨 Print Register** — prints all variations as a summary report for client meetings
-- Individual **Print Variation Notice** — a formal one-page document for each variation, ready to send
+The panel has two views, toggled by the tab row at the top:
+
+- **Register** — the list of all variations with status, value, and action buttons
+- **⚙ VN Settings** — project-wide settings for the printed variation notice document (see below)
+
+From the Register view:
+
+- **🖨 Print Register** — prints all variations as a summary table (landscape, suitable for client meetings)
+- **🖨 Print VN** — on each variation card and in the edit modal — generates a properly formatted `.docx` Variation Notice using the official Siemens Energy template, ready to send to the client
+
+### VN Settings tab
+
+The **⚙ VN Settings** tab stores project-wide values that appear on every printed Variation Notice. Fill these in once per project and they apply to all VNs.
+
+| Field | Where it appears on the form |
+|---|---|
+| **For the Attention of** | "For the Attention of:" header row |
+| **Signatory 1 Name + Title** | First "Variation Accepted By" block |
+| **Signatory 2 Name + Title** | Second "Variation Accepted By" block |
+| **Custom terms paragraph** | Replaces the standard SE pricing/payment terms if provided; leave blank to use the default SE boilerplate |
+
+The remaining fields on the notice (Siemens Project No., Contract No., Commercial PM) come from **Project Settings → Contract Details**. The PM name comes from the Project Manager field in Project Settings.
+
+### What goes into the printed VN
+
+The generated `.docx` fills the template with:
+
+- Client name, Siemens Project No., Contract No., Reference No. (auto-built from VN number + unit + SF number)
+- Raised date (formatted DD-MM-YY)
+- Valid Until date (set per variation in the Details tab)
+- Scope of works text
+- Cost breakdown table (one row per cost line, with description, category, and sell value; total at the bottom)
+- PM and CPM names
+- Client signatory names and titles
 
 ### How they feed the EAC
 
