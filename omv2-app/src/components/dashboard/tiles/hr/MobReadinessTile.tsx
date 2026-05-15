@@ -29,8 +29,6 @@ const def = {
   defaultVisible: true,
 }
 
-const todayStr = new Date().toISOString().slice(0, 10)
-const next14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
 const daysBetween = (a: string, b: string) =>
   Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000)
 
@@ -54,6 +52,8 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
   const { data, isLoading } = useQuery({
     queryKey: ['mob_readiness', ctx.projectId],
     queryFn: async () => {
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const next14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
       const [resR, accomR, carsR] = await Promise.all([
         supabase.from('resources')
           .select('id,name,mob_in,mob_out,category,flight_required,flights,accom_required,accom_booked,car_required,linked_po_id,person_id')
@@ -124,6 +124,7 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
   }
 
   const rows: ReadinessRow[] = data.resources.map(r => {
+    const todayStr = new Date().toISOString().slice(0, 10)
     const daysAway = daysBetween(todayStr, r.mob_in!)
     const mobIn = r.mob_in!
 
