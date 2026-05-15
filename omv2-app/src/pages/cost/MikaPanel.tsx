@@ -58,6 +58,7 @@ export function MikaPanel() {
   const [saving, setSaving] = useState(false)
   const [variations, setVariations] = useState<{ status: string; line_items: unknown[] }[]>([])
   const [poWarnings, setPoWarnings] = useState<PoCommitmentWarning[]>([])
+  const [poList, setPoList] = useState<PurchaseOrder[]>([])
   const [wbsAgg, setWbsAgg] = useState<import('../../engines/wbsAggregator').WbsAggregate>({})
   const [committedMap, setCommittedMap] = useState<Record<string, number>>({})
   const [drillCell, setDrillCell] = useState<{ wbs: string; col: 'actuals' | 'committed' | 'forecast' | 'eac' } | null>(null)
@@ -128,6 +129,7 @@ export function MikaPanel() {
       ])
 
       const poList = (posR.data || []) as PurchaseOrder[]
+      setPoList(poList)
       const invoiceList = (invoicesR.data || []) as Invoice[]
 
       const agg = aggregateAllCostsByWbs({
@@ -797,16 +799,33 @@ export function MikaPanel() {
                       <thead>
                         <tr style={{ background: 'var(--bg2)' }}>
                           <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>WBS</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>PO Number</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>Description</th>
                           <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 600, fontFamily: 'var(--mono)' }}>Committed</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {committedRows.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([code, val]) => (
-                          <tr key={code} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '4px 8px', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{code}</td>
-                            <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#f97316' }}>{fmtD(val)}</td>
-                          </tr>
-                        ))}
+                        {(() => {
+                          // Build WBS → PO lookup from PO line items
+                          const wbsToPo: Record<string, { po_number: string; description: string }> = {}
+                          for (const po of poList) {
+                            const lines = ((po as unknown as { line_items?: { wbs?: string; description?: string }[] }).line_items || [])
+                            for (const l of lines) {
+                              if (l.wbs) wbsToPo[l.wbs] = {
+                                po_number: po.po_number || po.id,
+                                description: po.description || l.description || '',
+                              }
+                            }
+                          }
+                          return committedRows.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([code, val]) => (
+                            <tr key={code} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td style={{ padding: '4px 8px', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{code}</td>
+                              <td style={{ padding: '4px 8px', color: 'var(--accent)', fontFamily: 'var(--mono)', fontSize: '10px', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.po_number || '—'}</td>
+                              <td style={{ padding: '4px 8px', color: 'var(--text3)', fontSize: '11px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.description || '—'}</td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#f97316' }}>{fmtD(val)}</td>
+                            </tr>
+                          ))
+                        })()}
                       </tbody>
                     </table>
                   </div>
