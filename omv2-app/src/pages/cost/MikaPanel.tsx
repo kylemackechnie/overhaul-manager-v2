@@ -800,6 +800,7 @@ export function MikaPanel() {
                         <tr style={{ background: 'var(--bg2)' }}>
                           <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>WBS</th>
                           <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>PO Number</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>Vendor</th>
                           <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600 }}>Description</th>
                           <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 600, fontFamily: 'var(--mono)' }}>Committed</th>
                         </tr>
@@ -807,12 +808,13 @@ export function MikaPanel() {
                       <tbody>
                         {(() => {
                           // Build WBS → PO lookup from PO line items
-                          const wbsToPo: Record<string, { po_number: string; description: string }> = {}
+                          const wbsToPo: Record<string, { po_number: string; vendor: string; description: string }> = {}
                           for (const po of poList) {
                             const lines = ((po as unknown as { line_items?: { wbs?: string; description?: string }[] }).line_items || [])
                             for (const l of lines) {
                               if (l.wbs) wbsToPo[l.wbs] = {
                                 po_number: po.po_number || po.id,
+                                vendor: po.vendor || '—',
                                 description: po.description || l.description || '',
                               }
                             }
@@ -821,6 +823,7 @@ export function MikaPanel() {
                             <tr key={code} style={{ borderBottom: '1px solid var(--border)' }}>
                               <td style={{ padding: '4px 8px', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{code}</td>
                               <td style={{ padding: '4px 8px', color: 'var(--accent)', fontFamily: 'var(--mono)', fontSize: '10px', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.po_number || '—'}</td>
+                              <td style={{ padding: '4px 8px', color: 'var(--text2)', fontSize: '11px', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.vendor || '—'}</td>
                               <td style={{ padding: '4px 8px', color: 'var(--text3)', fontSize: '11px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.description || '—'}</td>
                               <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#f97316' }}>{fmtD(val)}</td>
                             </tr>
