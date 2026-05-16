@@ -215,6 +215,7 @@ export function NrgInvoicingPanel() {
       }
       for (const exp of expenseItems) {
         if (exp.tce_item_id !== line.item_id) continue
+        if (exp.chargeable === false) continue
         if (!inPeriod(exp.date as string, fromWE, toWE)) continue
         const sell = Number(exp.sell_price), cost = Number(exp.cost_ex_gst)
         total += (!isNaN(sell) && sell !== 0) ? sell : ((!isNaN(cost) && cost !== 0) ? cost : (Number(exp.amount) || 0))
@@ -244,6 +245,7 @@ export function NrgInvoicingPanel() {
     }
     for (const exp of expenseItems) {
       if (exp.tce_item_id !== line.item_id) continue
+      if (exp.chargeable === false) continue
       if (!inPeriod(exp.date as string, fromWE, toWE)) continue
       const sell = Number(exp.sell_price), cost = Number(exp.cost_ex_gst)
       total += (!isNaN(sell) && sell !== 0) ? sell : ((!isNaN(cost) && cost !== 0) ? cost : (Number(exp.amount) || 0))
@@ -609,7 +611,7 @@ export function NrgInvoicingPanel() {
 
         // Non-labour: expenses across all item_ids
         const periodExps = expenseItems
-          .filter(e => allIds.includes(e.tce_item_id as string) && inPeriod(e.date as string, fromWE, toWE))
+          .filter(e => allIds.includes(e.tce_item_id as string) && e.chargeable !== false && inPeriod(e.date as string, fromWE, toWE))
 
         const fmtDate = (d: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }) : '—'
         const fmtWE   = (we: string) => `WE ${fmtDate(we)}`

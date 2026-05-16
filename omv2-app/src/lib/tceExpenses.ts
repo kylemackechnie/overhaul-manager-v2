@@ -29,6 +29,7 @@ export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow
       .from('expenses')
       .select('tce_item_id,cost_ex_gst,amount,sell_price,gm_pct,chargeable,date,expense_ref,description,vendor')
       .eq('project_id', projectId)
+      .eq('chargeable', true)
       .not('tce_item_id', 'is', null),
 
     // Exploded expense line items — join to parent for date/expense_ref/project
@@ -36,6 +37,7 @@ export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow
       .from('expense_lines')
       .select('tce_item_id,cost_ex_gst,amount,sell_price,gm_pct,chargeable,description,expenses!inner(date,expense_ref,vendor,project_id)')
       .eq('expenses.project_id', projectId)
+      .eq('chargeable', true)
       .not('tce_item_id', 'is', null),
 
     // Exploded invoice line items — join to parent invoice for date/ref/project
@@ -44,6 +46,7 @@ export async function fetchTceExpenses(projectId: string): Promise<TceExpenseRow
       .select('tce_item_id,amount,sell_price,gm_pct,chargeable,description,invoices!inner(invoice_date,date_processed,invoice_ref,vendor_details,project_id)')
       .eq('invoices.project_id', projectId)
       .eq('invoices.status', 'approved')
+      .eq('chargeable', true)
       .not('tce_item_id', 'is', null),
   ])
 
