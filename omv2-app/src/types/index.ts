@@ -328,6 +328,15 @@ export interface Resource {
   drive_km: number
   meal_break_adj: boolean
   flights: string
+  // Booking-status flags (existing DB columns, previously accessed via type assertions)
+  flight_required?: boolean
+  flight_booked?: boolean
+  accom_required?: boolean
+  accom_booked?: boolean
+  car_required?: boolean
+  // Walk-Away: cost component for flights when flight_required = true.
+  // Total return cost in forecast = 2 × flight_cost_each.
+  flight_cost_each: number
   flags: Record<string, unknown>
   notes: string
   created_at: string
@@ -747,6 +756,24 @@ export interface ToolingCosting {
   export_wbs: string;             export_project_id: string | null
   linked_po_id: string | null; notes: string
   created_at: string; updated_at: string
+}
+
+// SEA local tools — monthly freight invoices treated as expense-style actuals.
+// Feeds Cost Register and WBS aggregator. Sunk once invoice is entered.
+export interface LocalToolFreight {
+  id: string
+  project_id: string
+  invoice_date: string         // YYYY-MM-DD
+  vendor: string
+  invoice_number: string
+  amount: number
+  currency: string             // 'AUD' default; rarely anything else for local freight
+  wbs: string
+  linked_po_id: string | null
+  attachment_url: string | null
+  notes: string
+  created_at: string
+  updated_at: string
 }
 
 // ─── NRG ─────────────────────────────────────────────────────────────────────
