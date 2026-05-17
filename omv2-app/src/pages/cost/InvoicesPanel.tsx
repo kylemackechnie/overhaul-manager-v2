@@ -230,7 +230,7 @@ export function InvoicesPanel() {
 
   const invRefPreview = `INV-####_${buildInvRefSlug(formVendor(), form.amount)}`
 
-  async function assignInvoiceRef(invoiceId: string): Promise<string> {
+  async function assignInvoiceRef(invoiceId: string, vendorOverride?: string, amountOverride?: string): Promise<string> {
     // Get max number across BOTH expenses and invoices for a shared sequence
     const [expData, invData] = await Promise.all([
       supabase.from('expenses').select('expense_ref').eq('project_id', activeProject!.id).not('expense_ref', 'is', null),
@@ -240,7 +240,9 @@ export function InvoicesPanel() {
     const invNums = (invData.data || []).map((e: { invoice_ref?: string | null }) => { const m = (e.invoice_ref || '').match(/INV-(\d+)/); return m ? parseInt(m[1]) : 0 })
     const allNums = [...expNums, ...invNums].filter(n => n > 0)
     const next = allNums.length > 0 ? Math.max(...allNums) + 1 : 1
-    const ref = `INV-${String(next).padStart(4, '0')}_${buildInvRefSlug(formVendor(), form.amount)}`
+    const vendor = vendorOverride !== undefined ? vendorOverride : formVendor()
+    const amount = amountOverride !== undefined ? amountOverride : form.amount
+    const ref = `INV-${String(next).padStart(4, '0')}_${buildInvRefSlug(vendor, amount)}`
     await supabase.from('invoices').update({ invoice_ref: ref }).eq('id', invoiceId)
     return ref
   }
@@ -473,7 +475,7 @@ export function InvoicesPanel() {
     const user = currentUser?.email || 'local'
     let imported = 0
     for (const row of toImport) {
-      const { error } = await supabase.from('invoices').insert({
+      const { data: insertData, error } = await supabase.from('invoices').insert({
         project_id: activeProject!.id,
         po_id: row.matchedPOId || null,
         invoice_number: row.invoiceNumber,
@@ -486,10 +488,14 @@ export function InvoicesPanel() {
         amount: row.amount,
         invoice_date: row.invoiceDate || null,
         due_date: row.dueDate || null,
+        date_processed: now.slice(0, 10),
         notes: row.matchedPOId ? '' : `Imported unlinked — PO ${row.poNumber} not found`,
         created_at: now,
-      })
-      if (!error) imported++
+      }).select('id').single()
+      if (!error && insertData?.id) {
+        await assignInvoiceRef(insertData.id, row.vendorDetails, String(row.amount))
+        imported++
+      }
     }
     const unlinked = toImport.filter(r => !r.matchedPOId).length
     toast(`${imported} invoice${imported !== 1 ? 's' : ''} imported${unlinked ? ` (${unlinked} unlinked — link to POs in register)` : ''}`, 'success')
