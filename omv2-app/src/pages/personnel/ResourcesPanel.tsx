@@ -56,12 +56,16 @@ const SHIFTS = ['day','night','both'] as const
 // SEAG resources are typically flown from Europe (estimate EUR 5000 one-way).
 // All other categories default to AUD 500. Stored as raw number in the
 // resource's expected currency; FX is applied by the engine where needed.
+// Flight cost defaults — applied when auto-creating flight legs on resource save.
+// SEAG resources default to EUR 5000, all others to AUD 500. The values are
+// written into the new leg rows' planned_cost / planned_currency; the Flights
+// page is the single source of truth for editing per-leg costs thereafter.
 const DEFAULT_FLIGHT_COSTS = { seag: 5000, other: 500 } as const
 function defaultFlightCostForCategory(category: string | undefined): number {
   return category === 'seag' ? DEFAULT_FLIGHT_COSTS.seag : DEFAULT_FLIGHT_COSTS.other
 }
-function isDefaultFlightCost(value: number | undefined): boolean {
-  return value === DEFAULT_FLIGHT_COSTS.seag || value === DEFAULT_FLIGHT_COSTS.other
+function defaultFlightCurrencyForCategory(category: string | undefined): 'EUR' | 'AUD' {
+  return category === 'seag' ? 'EUR' : 'AUD'
 }
 
 const EMPTY: Partial<Resource> = {
@@ -215,6 +219,40 @@ export function ResourcesPanel() {
       const { error } = await supabase.from('resources').update(flagPatch).in('id', ids)
       if (error) { toast(error.message, 'error'); return }
     }
+
+    // If flight_required was bulk-set to true, auto-create flight legs for any
+    // selected resource that doesn't already have legs. Mirrors the single-save
+    // behaviour. Resources with existing legs are left alone.
+    if (bulkForm.applyFlightReq && bulkForm.flight_required) {
+      // Fetch existing flights and the selected resources' categories in parallel
+      const [flR, resR] = await Promise.all([
+        supabase.from('flights').select('resource_id').in('resource_id', ids),
+        supabase.from('resources').select('id,category').in('id', ids),
+      ])
+      const haveLegs = new Set(((flR.data as { resource_id: string }[] | null) || []).map(f => f.resource_id))
+      const resCats = new Map(((resR.data as { id: string; category: string }[] | null) || []).map(r => [r.id, r.category]))
+      const newLegs: Record<string, unknown>[] = []
+      const pid = activeProject!.id
+      for (const id of ids) {
+        if (haveLegs.has(id)) continue
+        const category = resCats.get(id) || 'trades'
+        const cost = defaultFlightCostForCategory(category)
+        const currency = defaultFlightCurrencyForCategory(category)
+        newLegs.push(
+          { project_id: pid, resource_id: id, leg_type: 'outbound', leg_order: 0,
+            planned_cost: cost, planned_currency: currency, status: 'pending' },
+          { project_id: pid, resource_id: id, leg_type: 'return', leg_order: 1,
+            planned_cost: cost, planned_currency: currency, status: 'pending' },
+        )
+      }
+      if (newLegs.length > 0) {
+        const { error: legErr } = await supabase.from('flights').insert(newLegs)
+        if (legErr) {
+          toast(`Resources updated, but some flight legs could not be created: ${legErr.message}`, 'error')
+        }
+      }
+    }
+
     toast(`Updated ${ids.length} resources`, 'success')
     setSelected(new Set()); setBulkModal(false); load()
   }
@@ -304,10 +342,48 @@ export function ResourcesPanel() {
       person_id: personId,
     }
     const isNew = modal === 'new'
-    const { error } = isNew
-      ? await supabase.from('resources').insert(payload)
-      : await supabase.from('resources').update(payload).eq('id', (modal as Resource).id)
-    if (error) { toast(error.message, 'error'); setSaving(false); return }
+    let resourceId: string
+    if (isNew) {
+      const { data, error } = await supabase.from('resources').insert(payload).select('id').single()
+      if (error || !data) { toast(error?.message || 'Save failed', 'error'); setSaving(false); return }
+      resourceId = (data as { id: string }).id
+    } else {
+      resourceId = (modal as Resource).id
+      const { error } = await supabase.from('resources').update(payload).eq('id', resourceId)
+      if (error) { toast(error.message, 'error'); setSaving(false); return }
+    }
+
+    // Auto-create flight legs when flight_required is on AND none exist yet.
+    // Replaces the FlightsPanel auto-backfill for resources saved with the
+    // flag ticked, so the legs (and therefore the forecast EAC contribution
+    // via path 1) appear immediately rather than at next Flights page visit.
+    // Unticking flight_required intentionally does NOT delete existing legs —
+    // those are surfaced via the orphan banner on the Flights page so admin
+    // can decide.
+    if (form.flight_required) {
+      const { data: existingFlights } = await supabase
+        .from('flights')
+        .select('id')
+        .eq('resource_id', resourceId)
+        .limit(1)
+      if (!existingFlights || existingFlights.length === 0) {
+        const category = form.category || 'trades'
+        const cost = defaultFlightCostForCategory(category)
+        const currency = defaultFlightCurrencyForCategory(category)
+        const { error: legErr } = await supabase.from('flights').insert([
+          { project_id: activeProject!.id, resource_id: resourceId,
+            leg_type: 'outbound', leg_order: 0,
+            planned_cost: cost, planned_currency: currency, status: 'pending' },
+          { project_id: activeProject!.id, resource_id: resourceId,
+            leg_type: 'return',   leg_order: 1,
+            planned_cost: cost, planned_currency: currency, status: 'pending' },
+        ])
+        if (legErr) {
+          toast(`Resource saved, but flight legs could not be created: ${legErr.message}`, 'error')
+        }
+      }
+    }
+
     toast(isNew ? 'Resource added' : 'Saved', 'success')
     setSaving(false); setModal(null); load()
   }
@@ -1059,23 +1135,7 @@ export function ResourcesPanel() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Category</label>
-                  <select className="input" value={form.category||'trades'} onChange={e=>{
-                    const newCat = e.target.value as Resource['category']
-                    setForm(f => {
-                      // Auto-flip flight cost to category default ONLY if the
-                      // user hasn't entered a custom value (i.e. it's still
-                      // sitting at one of the known defaults). Preserves any
-                      // deliberate override.
-                      const shouldFlipCost = isDefaultFlightCost(f.flight_cost_each)
-                      return {
-                        ...f,
-                        category: newCat,
-                        flight_cost_each: shouldFlipCost
-                          ? defaultFlightCostForCategory(newCat)
-                          : f.flight_cost_each,
-                      }
-                    })
-                  }}>
+                  <select className="input" value={form.category||'trades'} onChange={e=>setForm(f=>({...f,category:e.target.value as Resource['category']}))}>
                     {CATEGORIES.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                   </select>
                 </div>
@@ -1158,38 +1218,13 @@ export function ResourcesPanel() {
                     </label>
                   ))}
                 </div>
-                {/* Flight cost — appears only when Flight Required is ticked.
-                    SEAG resources default to EUR 5000, others to AUD 500.
-                    The currency follows the category, not a separate field. */}
-                {form.flight_required && (() => {
-                  const isSeag = form.category === 'seag'
-                  const ccy = isSeag ? 'EUR' : 'AUD'
-                  const fc = typeof form.flight_cost_each === 'number'
-                    ? form.flight_cost_each
-                    : defaultFlightCostForCategory(form.category)
-                  return (
-                    <div style={{marginTop:'10px',padding:'10px 12px',background:'var(--bg2)',borderRadius:'6px',border:'1px solid var(--border)'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
-                        <label style={{fontSize:'12px',color:'var(--text2)',minWidth:'140px'}}>Flight cost (each way)</label>
-                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                          <input
-                            type="number"
-                            className="input"
-                            style={{width:'110px'}}
-                            min={0}
-                            step={50}
-                            value={fc}
-                            onChange={e=>setForm(f=>({...f, flight_cost_each: parseFloat(e.target.value)||0}))}
-                          />
-                          <span style={{fontSize:'12px',color:'var(--text3)',fontWeight:600}}>{ccy}</span>
-                        </div>
-                        <span style={{fontSize:'11px',color:'var(--text3)'}}>
-                          → return total ≈ {ccy} {(fc * 2).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })()}
+                {form.flight_required && (
+                  <div style={{marginTop:'8px',fontSize:'11px',color:'var(--text3)'}}>
+                    ℹ️ Outbound + return legs auto-created on save at the default planned cost
+                    ({form.category === 'seag' ? '€5,000 each' : '$500 each'}).
+                    Edit per-leg costs on the <strong>Flights</strong> page after saving.
+                  </div>
+                )}
               </div>
               <div>
                 <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Allowances</div>
