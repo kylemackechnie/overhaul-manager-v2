@@ -161,7 +161,7 @@ export function ResourcesPanel() {
       supabase.from('cars').select('id,person_id,vehicle_type').eq('project_id', pid),
       supabase.from('accommodation').select('id,occupants,property,room').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
-      supabase.from('flights').select('id,resource_id,leg_type,status,linked_expense_id').eq('project_id', pid),
+      supabase.from('flights').select('id,resource_id,leg_type,leg_label,status,linked_expense_id,vendor,flight_number,depart_at,origin,destination').eq('project_id', pid),
     ])
     setResources((resData.data||[]) as Resource[])
     setFlights((flData.data||[]) as Flight[])
@@ -774,22 +774,68 @@ export function ResourcesPanel() {
                   const ss = STATUS_STYLE[st]
                   const car = cars.find(c => c.person_id === r.id)
                   const room = accom.find(a => (a.occupants||[]).includes(r.id))
-                  // Walk-Away Step 4f: flight summary from the flights table.
-                  // Replaces the old free-text `r.flights` column. Counts active legs
-                  // (non-cancelled) and how many are booked (have linked_expense_id).
+                  // Walk-Away Step 4f + UX update: flight cell shows a booked/total
+                  // counter plus the next upcoming flight's metadata.
+                  //
+                  // "Booked" here = status='booked' (operational), not linked_expense_id
+                  // (which is reconciliation). The cell answers the operational question
+                  // "is the next flight on the books yet?", not "have we filed the receipt?"
+                  //
+                  // Colour rule:
+                  //   - Amber: next-upcoming flight is within 2 weeks AND status != 'booked'
+                  //   - Green: anything else (no upcoming, far enough out, or already booked)
+                  //   - Grey:  flight_required = false
                   const resourceFlights = flights.filter(f => f.resource_id === r.id)
                   const activeFlights = resourceFlights.filter(f => f.status !== 'cancelled')
-                  const bookedFlights = activeFlights.filter(f => f.linked_expense_id).length
+                  const bookedCount = activeFlights.filter(f => f.status === 'booked').length
+                  const todayIso = new Date().toISOString().slice(0, 10)
+                  const twoWeeksIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
+                  // Resolve each leg's effective date (depart_at if set; else mob_in for
+                  // outbound, mob_out for return, undefined for custom). Mirrors the
+                  // forecast engine's own date attribution.
+                  function legDate(f: typeof activeFlights[number]): string | null {
+                    if (f.depart_at) return f.depart_at.slice(0, 10)
+                    if (f.leg_type === 'outbound') return r.mob_in || null
+                    if (f.leg_type === 'return')   return r.mob_out || r.mob_in || null
+                    return null
+                  }
+                  // Pick the next (earliest) leg with a date >= today
+                  const upcomingLegs = activeFlights
+                    .map(f => ({ flight: f, date: legDate(f) }))
+                    .filter(x => x.date && x.date >= todayIso)
+                    .sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : 0))
+                  const nextLeg = upcomingLegs[0] || null
+                  const nextDateShort = nextLeg?.date
+                    ? `${nextLeg.date.slice(8,10)}/${nextLeg.date.slice(5,7)}`
+                    : null
+                  // Compose a compact next-flight description
+                  let nextInfo = ''
+                  if (nextLeg) {
+                    const f = nextLeg.flight
+                    const route = f.origin && f.destination ? `${f.origin}→${f.destination}` : ''
+                    const flightNum = f.flight_number || ''
+                    const legName = f.leg_type === 'outbound' ? 'Out'
+                                  : f.leg_type === 'return'   ? 'Return'
+                                  : (f.leg_label || 'Leg')
+                    // Prefer flight number + route if booked; otherwise leg name + date
+                    if (f.status === 'booked' && (flightNum || route)) {
+                      nextInfo = [flightNum, nextDateShort, route].filter(Boolean).join(' ')
+                    } else {
+                      nextInfo = `${legName} ${nextDateShort || ''}`.trim()
+                    }
+                  }
                   const flightCellLabel =
                     !r.flight_required ? '—'
                     : activeFlights.length === 0 ? '⚠ REQUIRED'
-                    : bookedFlights === activeFlights.length ? `✈ ${bookedFlights}/${activeFlights.length} ✓`
-                    : `✈ ${bookedFlights}/${activeFlights.length}`
+                    : `✈ ${bookedCount}/${activeFlights.length}${nextInfo ? ' · ' + nextInfo : ''}`
+                  // Amber iff next upcoming flight is within 2 weeks AND not yet booked
+                  const nextWithin2w = nextLeg && nextLeg.date! <= twoWeeksIso
+                  const nextUnbooked = nextLeg && nextLeg.flight.status !== 'booked'
                   const flightCellColor =
                     !r.flight_required ? 'var(--text3)'
                     : activeFlights.length === 0 ? 'var(--amber)'
-                    : bookedFlights === activeFlights.length ? 'var(--mod-hr)'
-                    : 'var(--amber)'
+                    : (nextWithin2w && nextUnbooked) ? 'var(--amber)'
+                    : 'var(--mod-hr)'
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
                       {/* Pinned left col — checkbox + edit + duplicate + delete */}
@@ -894,7 +940,7 @@ export function ResourcesPanel() {
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>}
                       {isVisible('car') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined,color:car?'var(--mod-hr)':(r.car_required&&!car)?'var(--amber)':'var(--text3)'}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:(r.car_required?'⚠ REQUIRED':'—')}</td>}
-                      {isVisible('flights') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:r.flight_required?'pointer':undefined,color:flightCellColor}} onClick={r.flight_required?()=>setActivePanel('hr-flights'):undefined}>{flightCellLabel}</td>}
+                      {isVisible('flights') && <td title={flightCellLabel} style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:r.flight_required?'pointer':undefined,color:flightCellColor}} onClick={r.flight_required?()=>setActivePanel('hr-flights'):undefined}>{flightCellLabel}</td>}
                       {isVisible('room') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined,color:room?'var(--mod-hr)':(r.accom_required&&!room)?'var(--amber)':'var(--text3)'}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:(r.accom_required?'⚠ REQUIRED':'—')}</td>}
                       {isVisible('wbs') && <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>}
                       {isVisible('po') && <td style={{minWidth:'110px'}}>
