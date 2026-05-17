@@ -68,16 +68,18 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
         supabase.from('cars')
           .select('person_id,start_date,end_date')
           .eq('project_id', ctx.projectId!),
-        // Walk-Away Step 4f: a leg with a linked expense is the source of truth for "flight booked"
+        // Operational signal: a non-cancelled outbound leg with a flight_number
+        // entered = flight is confirmed and the readiness flag clears.
+        // (linked_expense_id is a stricter reconciliation check used elsewhere.)
         supabase.from('flights')
-          .select('resource_id,status,linked_expense_id')
+          .select('resource_id,leg_type,status,flight_number')
           .eq('project_id', ctx.projectId!),
       ])
       return {
         resources: (resR.data || []) as ResourceRow[],
         accom: (accomR.data || []) as { person_id: string | null; occupants: unknown; check_in: string | null; check_out: string | null }[],
         cars: (carsR.data || []) as { person_id: string | null; start_date: string | null; end_date: string | null }[],
-        flights: (flightsR.data || []) as { resource_id: string; status: string; linked_expense_id: string | null }[],
+        flights: (flightsR.data || []) as { resource_id: string; leg_type: string; status: string; flight_number: string | null }[],
       }
     },
     enabled: !!ctx.projectId,
@@ -128,12 +130,15 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     carsByPerson.set(c.person_id, arr)
   }
 
-  // Walk-Away Step 4f: a resource is considered "flight booked" if any
-  // non-cancelled leg in the flights table has a linked expense. This
-  // replaces the old check on r.flights free text.
+  // A resource is "flight ready" if their non-cancelled outbound leg has a
+  // flight_number entered. Entering a flight number is the operational sign
+  // the booking has been made; we don't wait for the receipt to be linked
+  // (that's reconciliation, tracked separately).
   const flightBookedIds = new Set<string>()
   for (const f of data.flights) {
-    if (f.status !== 'cancelled' && f.linked_expense_id) flightBookedIds.add(f.resource_id)
+    if (f.status === 'cancelled') continue
+    if (f.leg_type !== 'outbound') continue
+    if (f.flight_number && f.flight_number.trim()) flightBookedIds.add(f.resource_id)
   }
 
   const rows: ReadinessRow[] = data.resources.map(r => {
@@ -141,8 +146,8 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     const daysAway = daysBetween(todayStr, r.mob_in!)
     const mobIn = r.mob_in!
 
-    // Flight check: flight_required is the trigger; a leg with a linked
-    // expense in the flights table = booked (Walk-Away Step 4f).
+    // Flight check: flight_required is the trigger; outbound leg with a
+    // flight_number entered = booked. (See flightBookedIds construction.)
     const flight: ReadinessRow['flight'] = !r.flight_required
       ? 'na'
       : flightBookedIds.has(r.id) ? 'ok' : 'pending'

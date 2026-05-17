@@ -777,17 +777,21 @@ export function ResourcesPanel() {
                   // Walk-Away Step 4f + UX update: flight cell shows a booked/total
                   // counter plus the next upcoming flight's metadata.
                   //
-                  // "Booked" here = status='booked' (operational), not linked_expense_id
-                  // (which is reconciliation). The cell answers the operational question
-                  // "is the next flight on the books yet?", not "have we filed the receipt?"
+                  // "Booked" = the leg has a flight_number filled in. Entering a flight
+                  // number is the natural signal someone has booked; status='booked'
+                  // would require an extra manual dropdown flip. linked_expense_id is
+                  // still used elsewhere for reconciliation (forecast displacement,
+                  // walk-away classification) — that's a different question.
                   //
                   // Colour rule:
-                  //   - Amber: next-upcoming flight is within 2 weeks AND status != 'booked'
-                  //   - Green: anything else (no upcoming, far enough out, or already booked)
+                  //   - Amber: next-upcoming flight is within 2 weeks AND no flight_number
+                  //   - Green: anything else (no upcoming, far enough out, or has a flight #)
                   //   - Grey:  flight_required = false
                   const resourceFlights = flights.filter(f => f.resource_id === r.id)
                   const activeFlights = resourceFlights.filter(f => f.status !== 'cancelled')
-                  const bookedCount = activeFlights.filter(f => f.status === 'booked').length
+                  const legIsBooked = (f: typeof activeFlights[number]) =>
+                    !!(f.flight_number && f.flight_number.trim())
+                  const bookedCount = activeFlights.filter(legIsBooked).length
                   const todayIso = new Date().toISOString().slice(0, 10)
                   const twoWeeksIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
                   // Resolve each leg's effective date (depart_at if set; else mob_in for
@@ -817,8 +821,9 @@ export function ResourcesPanel() {
                     const legName = f.leg_type === 'outbound' ? 'Out'
                                   : f.leg_type === 'return'   ? 'Return'
                                   : (f.leg_label || 'Leg')
-                    // Prefer flight number + route if booked; otherwise leg name + date
-                    if (f.status === 'booked' && (flightNum || route)) {
+                    // Prefer flight number + route if booked (= flight # entered);
+                    // otherwise leg name + date
+                    if (legIsBooked(f) && (flightNum || route)) {
                       nextInfo = [flightNum, nextDateShort, route].filter(Boolean).join(' ')
                     } else {
                       nextInfo = `${legName} ${nextDateShort || ''}`.trim()
@@ -829,8 +834,9 @@ export function ResourcesPanel() {
                     : activeFlights.length === 0 ? '⚠ REQUIRED'
                     : `✈ ${bookedCount}/${activeFlights.length}${nextInfo ? ' · ' + nextInfo : ''}`
                   // Amber iff next upcoming flight is within 2 weeks AND not yet booked
+                  // (i.e. no flight_number entered)
                   const nextWithin2w = nextLeg && nextLeg.date! <= twoWeeksIso
-                  const nextUnbooked = nextLeg && nextLeg.flight.status !== 'booked'
+                  const nextUnbooked = nextLeg && !legIsBooked(nextLeg.flight)
                   const flightCellColor =
                     !r.flight_required ? 'var(--text3)'
                     : activeFlights.length === 0 ? 'var(--amber)'

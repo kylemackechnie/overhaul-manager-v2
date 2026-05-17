@@ -70,9 +70,10 @@ export function useAttentionItems(projectId: string | undefined) {
         supabase.from('accommodation')
           .select('occupants,check_in,check_out')
           .eq('project_id', pid),
-        // Walk-Away Step 4f: read flight legs instead of the old free-text r.flights column
+        // Operational signal: a non-cancelled outbound leg with a flight_number
+        // entered = flight is confirmed. (linked_expense_id is reconciliation.)
         supabase.from('flights')
-          .select('resource_id,status,linked_expense_id')
+          .select('resource_id,leg_type,status,flight_number')
           .eq('project_id', pid),
       ])
 
@@ -83,11 +84,14 @@ export function useAttentionItems(projectId: string | undefined) {
       const draftTs = (tsR.data || [])
       const pos = (poR.data || [])
       const visas = (indR.data || [])
-      const flights = (flR.data || []) as { resource_id: string; status: string; linked_expense_id: string | null }[]
-      // Build set of resources.ids with at least one booked (linked-expense) flight leg
+      const flights = (flR.data || []) as { resource_id: string; leg_type: string; status: string; flight_number: string | null }[]
+      // Build set of resources.ids whose outbound leg has a flight_number entered
+      // (= operationally confirmed; ready for the upcoming mob window).
       const flightBookedIds = new Set<string>()
       for (const f of flights) {
-        if (f.status !== 'cancelled' && f.linked_expense_id) flightBookedIds.add(f.resource_id)
+        if (f.status === 'cancelled') continue
+        if (f.leg_type !== 'outbound') continue
+        if (f.flight_number && f.flight_number.trim()) flightBookedIds.add(f.resource_id)
       }
       // Build set of resources.ids with accommodation booked
       const accomBookedIds = new Set<string>()
