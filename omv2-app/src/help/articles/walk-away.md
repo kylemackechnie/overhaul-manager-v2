@@ -53,7 +53,7 @@ For each past day × category:
 
 For future days, forecast is always used.
 
-**All timesheet statuses count** — draft, submitted, and approved. Once anyone has logged hours for a day, the cost has been incurred and Walk-Away treats it as real. This is different from the Cost Report and MIKA EAC, which only show actuals from *approved* timesheets.
+**Walk-Away reads all timesheet statuses** — draft, submitted, and approved. This is deliberate and specific to this panel. Logged hours sit in `timesheet_cost_lines` from save, but they aren't actuals until the week is approved — the Cost Report, NRG Actuals, and MIKA EAC all filter to approved-only and won't show pre-approval cost. Walk-Away takes a different view: for *"if we stopped now, what's the bill?"* the question is whether the work has been done, not whether the paperwork has caught up. So a draft week with hours logged counts as Sunk here.
 
 The descriptions on emitted Sunk lines show whether the bucket was built from actuals or forecast, so you can see at a glance which side of the merge dominates.
 

@@ -3,7 +3,7 @@ slug: timesheets
 title: Timesheets
 category: Personnel
 order: 30
-summary: Four timesheet variants (Trades / Mgmt / SE AG / Subcon), same workflow. Weekly Monday-start sheets with per-person per-day hours, Draft → Submitted → Approved status flow, payroll import from TasTK or UKG. Every save writes to timesheet_cost_lines as the source of truth for labour cost — most downstream consumers filter to approved-only.
+summary: Four timesheet variants (Trades / Mgmt / SE AG / Subcon), same workflow. Weekly Monday-start sheets with per-person per-day hours, Draft → Submitted → Approved status flow, payroll import from TasTK or UKG. Approved timesheets are the source of truth for labour actuals — that's what the Cost Report, NRG Actuals, and MIKA EAC read.
 relatedPanels: [hr-timesheets-trades, hr-timesheets-mgmt, hr-timesheets-seag, hr-timesheets-subcon]
 relatedTour: timesheets-tour
 ---
@@ -12,7 +12,9 @@ relatedTour: timesheets-tour
 
 Timesheets are how labour hours become labour cost. The app has **four variants** — Trades, Management, SE AG, and Subcontractor — but they all share the same shape and workflow.
 
-Each timesheet is a **Monday-start week** with a crew of people and their per-day hours. Every time a timesheet is saved, the app writes the per-person-per-day cost lines to `timesheet_cost_lines` — that table is the source of truth for labour cost. Most downstream consumers (the Cost Report, NRG Actuals, the MIKA EAC) filter to approved status only, so the actuals you see in those views step up when timesheets are approved, not on first save. The exception is the **Walk-Away** module, which treats any timesheet entry as an incurred cost regardless of status.
+Each timesheet is a **Monday-start week** with a crew of people and their per-day hours. The week's status (Draft → Submitted → Approved) controls when its cost becomes an actual. **Approved timesheets are the source of truth for labour actuals** — that's what the Cost Report, NRG Actuals, and the MIKA EAC read.
+
+Under the hood, the app writes cost rows to `timesheet_cost_lines` on every save, not only on approval. Those pre-approval rows aren't actuals — they're a projection of what the entry will be worth if approved as-is. They're stored so that the Walk-Away panel can read in-progress hours as already-incurred cost for cost-to-stop scenarios. Everywhere else in the app filters to approved-status rows; only Walk-Away looks at the wider set.
 
 Open via **Personnel → Timesheets (Trades / Mgmt / SE AG / Subcon)**.
 
@@ -60,13 +62,13 @@ Three statuses with a strict forward path:
 Draft → Submitted → Approved
 ```
 
-- **Draft** — being filled in; anyone with personnel write access can edit
-- **Submitted** — Project Administrator has flagged it ready for review
-- **Approved** — Project Manager has signed off and the week is locked
+- **Draft** — being filled in; anyone with personnel write access can edit. Cost rows exist in the database but are not actuals.
+- **Submitted** — Project Administrator has flagged it ready for review. Still not actuals.
+- **Approved** — Project Manager has signed off, the week is locked, and the cost is now an actual. Flows into Cost Report, NRG Actuals, and MIKA EAC.
 
 Only the **PM** can approve and unlock; the **PA** can submit for approval. (System admins can do both.) Both roles are set in Project Settings → Project Roles.
 
-`timesheet_cost_lines` are written on every save regardless of status, but most downstream consumers (Cost Report, NRG Actuals, MIKA EAC) filter to approved-only — so a draft timesheet has cost rows in the database but doesn't move the actuals on those views. Approval is what makes labour cost step up in the EAC. The Walk-Away panel is the exception; it reads all statuses so a draft week still counts as incurred Sunk cost there.
+A subtlety worth knowing: `timesheet_cost_lines` rows are written on every save, regardless of status, so a draft week sits in the table as a projection of what its cost will be if approved as-is. This is invisible to almost every view — the Cost Report, NRG Actuals, and MIKA EAC all filter to approved-only, so a draft doesn't move the actuals there. The Walk-Away panel is the exception: it reads all statuses, on the assumption that for "if we stop now" scenarios, any logged hour is an incurred cost regardless of whether the paperwork has caught up.
 
 ## Creating a week
 
