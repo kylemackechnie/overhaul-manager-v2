@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '../../store/appStore'
 import { usePermissions, type Module } from '../../lib/permissions'
-import { setMobileOverride } from '../../hooks/useIsMobile'
+import { setMobileOverride, getMobileOverride } from '../../hooks/useIsMobile'
 import { MOBILE_OPTIMISED } from '../../lib/mobilePanels'
 
 interface NavItem {
@@ -282,14 +282,31 @@ export function MobileNavSheet({
               <span className="mobile-nav-item-icon">👤</span>
               <span className="mobile-nav-item-label">My profile</span>
             </button>
-            <button
-              className="mobile-nav-item mobile-nav-item-full"
-              onClick={() => { onClose(); setMobileOverride('desktop') }}
-              title="Force desktop view. Tap again from desktop menu to return to auto-detect."
-            >
-              <span className="mobile-nav-item-icon">🖥️</span>
-              <span className="mobile-nav-item-label">Switch to desktop view</span>
-            </button>
+            {/* View mode controls. Two scenarios:
+                 - override=='mobile' : user is on mobile because they forced
+                   it (e.g. from a desktop preview). Offer Reset to clear.
+                 - else (override=='desktop' or null) : the desktop override
+                   case is unreachable here (mobile shell wouldn't be rendering)
+                   so we only need the "Switch to desktop" path. */}
+            {getMobileOverride() === 'mobile' ? (
+              <button
+                className="mobile-nav-item mobile-nav-item-full"
+                onClick={() => { onClose(); setMobileOverride(null) }}
+                title="Clear the manual override and return to auto-detection based on device."
+              >
+                <span className="mobile-nav-item-icon">🔄</span>
+                <span className="mobile-nav-item-label">Reset to auto-detect</span>
+              </button>
+            ) : (
+              <button
+                className="mobile-nav-item mobile-nav-item-full"
+                onClick={() => { onClose(); setMobileOverride('desktop') }}
+                title="Force desktop view. Switch back from the user menu (top-right) → 'Switch to mobile view', or append ?mobile=1 to the URL."
+              >
+                <span className="mobile-nav-item-icon">🖥️</span>
+                <span className="mobile-nav-item-label">Switch to desktop view</span>
+              </button>
+            )}
             <button
               className="mobile-nav-signout"
               onClick={() => { onClose(); onSignOut() }}

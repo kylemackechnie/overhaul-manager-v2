@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
-import { setMobileOverride } from '../../hooks/useIsMobile'
+import { setMobileOverride, getMobileOverride } from '../../hooks/useIsMobile'
 
 interface HeaderProps {
   onOpenPicker: () => void
@@ -128,13 +128,60 @@ export function Header({ onOpenPicker, onOpenSearch, onOpenSettings, onGoHome }:
                   👥 Manage Users
                 </button>
               )}
-              <button
-                className="header-dropdown-item"
-                onClick={() => { setUserMenuOpen(false); setMobileOverride('mobile') }}
-                title="Preview the phone layout. Switch back from the menu in mobile shell, or via ?mobile=0 in URL."
-              >
-                📱 Preview as mobile
-              </button>
+              {(() => {
+                const ov = getMobileOverride()
+                // Three scenarios:
+                //  - override=='desktop' : user is forced onto desktop. They
+                //    probably want to RETURN to mobile (e.g. trapped here from
+                //    a phone). Offer "Switch to mobile view" — sets override
+                //    back to mobile and the mobile shell takes over immediately.
+                //  - override=='mobile'  : impossible to hit this code path
+                //    (the desktop Header doesn't render on mobile shell), but
+                //    handled defensively as "Reset to auto-detect".
+                //  - override==null      : auto-detect is active. Offer
+                //    "Preview as mobile" as before, plus mention the user can
+                //    return via the same menu.
+                if (ov === 'desktop') {
+                  return (
+                    <>
+                      <button
+                        className="header-dropdown-item"
+                        onClick={() => { setUserMenuOpen(false); setMobileOverride('mobile') }}
+                        title="Force mobile view (e.g. if you got stuck on desktop from a phone)."
+                      >
+                        📱 Switch to mobile view
+                      </button>
+                      <button
+                        className="header-dropdown-item"
+                        onClick={() => { setUserMenuOpen(false); setMobileOverride(null) }}
+                        title="Clear the manual override and return to auto-detection based on device."
+                      >
+                        🔄 Reset to auto-detect
+                      </button>
+                    </>
+                  )
+                }
+                if (ov === 'mobile') {
+                  return (
+                    <button
+                      className="header-dropdown-item"
+                      onClick={() => { setUserMenuOpen(false); setMobileOverride(null) }}
+                      title="Clear the manual override and return to auto-detection based on device."
+                    >
+                      🔄 Reset to auto-detect
+                    </button>
+                  )
+                }
+                return (
+                  <button
+                    className="header-dropdown-item"
+                    onClick={() => { setUserMenuOpen(false); setMobileOverride('mobile') }}
+                    title="Preview the phone layout. Switch back from this menu, or append ?mobile=1 to the URL."
+                  >
+                    📱 Preview as mobile
+                  </button>
+                )
+              })()}
               <button className="header-dropdown-item danger" onClick={signOut}>
                 ↩ Sign Out
               </button>
