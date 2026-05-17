@@ -147,6 +147,9 @@ const NAV_PAGES: NavPage[] = [
   { icon: '📊', label: 'Site Dashboard',           panel: 'site-dashboard',     module: 'Site Specific' },
   { icon: '📑', label: 'NRG Reports',              panel: 'nrg-reports',        module: 'Site Specific' },
 
+  // Sandbox
+  { icon: '🚪', label: 'Walk-Away Analysis',       panel: 'sandbox-walkaway',   module: 'Sandbox', keywords: 'stop terminate sunk locked avoidable cost-to-terminate' },
+
   // Global
   { icon: '🧰', label: 'Global Tooling Register',  panel: 'global-tooling',     module: 'Global' },
   { icon: '📦', label: 'Global Kits',              panel: 'global-kits',        module: 'Global' },

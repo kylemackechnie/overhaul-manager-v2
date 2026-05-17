@@ -210,6 +210,14 @@ const RIBBON_MODULES: RibbonTab[] = [
     ],
   },
   {
+    key: 'sandbox', label: 'Sandbox', module: 'sandbox' as Module,
+    groups: [
+      { label: 'Analysis', buttons: [
+        { icon: '🚪', label: 'Walk-Away', panel: 'sandbox-walkaway' },
+      ]},
+    ],
+  },
+  {
     key: 'global', label: 'Global', module: 'global' as Module,
     groups: [
       { label: 'Global Registers', buttons: [

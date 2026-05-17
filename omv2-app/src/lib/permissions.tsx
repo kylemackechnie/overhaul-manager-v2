@@ -21,11 +21,12 @@ export type Module =
   | 'site_specific'
   | 'global'
   | 'resources'
+  | 'sandbox'
 
 export const ALL_MODULES: Module[] = [
   'project', 'cost_tracking', 'personnel', 'hse',
   'subcontractors', 'logistics', 'hardware', 'tooling',
-  'site_specific', 'global', 'resources',
+  'site_specific', 'global', 'resources', 'sandbox',
 ]
 
 export const MODULE_LABELS: Record<Module, string> = {
@@ -40,6 +41,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   site_specific:  'Site Specific',
   global:         'Global',
   resources:      'Resource Manager',
+  sandbox:        'Sandbox',
 }
 
 export const DEFAULT_PERMISSIONS: Record<Module, { read: boolean; write: boolean }> = {
@@ -54,6 +56,7 @@ export const DEFAULT_PERMISSIONS: Record<Module, { read: boolean; write: boolean
   site_specific:  { read: true,  write: false },
   global:         { read: true,  write: false },
   resources:      { read: false, write: false },
+  sandbox:        { read: true,  write: false },
 }
 
 export function usePermissions() {

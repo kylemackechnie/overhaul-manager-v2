@@ -241,6 +241,11 @@ export interface Project {
   hardware: HardwareState
   se_support: SeSupportEntry[]
   rfq_docs: RfqDoc[]
+  /** Walk-Away analysis settings: per-source notice periods (in days) used by
+   *  the engine to classify forecast as Locked vs Avoidable on a chosen date.
+   *  Keys are cost source identifiers; defaults to 1 day per source on project
+   *  creation, editable from the Walk-Away panel. */
+  walk_away_settings: { notice_days: Record<string, number> }
   created_at: string
   updated_at: string
   // Joined

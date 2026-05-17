@@ -92,6 +92,7 @@ import { DepartmentsPanel } from './pages/tooling/DepartmentsPanel'
 import { GlobalKitsPanel } from './pages/tooling/GlobalKitsPanel'
 import { ToolingCostingsPanel } from './pages/tooling/ToolingCostingsPanel'
 import { GlobalToolingPanel } from './pages/tooling/GlobalToolingPanel'
+import { WalkAwayPanel } from './pages/sandbox/WalkAwayPanel'
 // Settings
 import { UserManagementPanel } from './pages/settings/UserManagementPanel'
 import { GlobalRateDefaultsPanel } from './pages/settings/GlobalRateDefaultsPanel'
@@ -461,6 +462,7 @@ const PANEL_MODULE_MAP: Record<string, Module> = {
   'wo-':          'site_specific',
   'work-':        'site_specific',
   'site-':        'site_specific',
+  'sandbox-':     'sandbox',
 }
 
 function getPanelModule(panel: string): Module | null {
@@ -575,6 +577,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'tooling-kollos':        return <KollosPanel />
     case 'tooling-departments':   return <DepartmentsPanel />
     case 'tooling-costings':      return <ToolingCostingsPanel />
+    case 'sandbox-walkaway':      return <WalkAwayPanel />
     case 'global-tooling':        return <GlobalToolingPanel />
     case 'global-kits':           return <GlobalKitsPanel />
     case 'user-management':       return <UserManagementPanel />
