@@ -14,7 +14,7 @@ const ExpensesMobile = lazy(() =>
   import('../mobile/ExpensesMobile').then(m => ({ default: m.ExpensesMobile }))
 )
 
-const CATEGORIES = ['Travel','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Fixed Cost','Other']
+const CATEGORIES = ['Travel','Flight','Meals','Accommodation','Equipment','Tools','Freight','Consumables','PPE','Credit','Upfront Payment','Fixed Cost','Other']
 
 type ExpenseForm = {
   resource_id: string; category: string; description: string; vendor: string; date: string

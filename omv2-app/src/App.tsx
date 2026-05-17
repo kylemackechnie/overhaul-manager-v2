@@ -48,6 +48,7 @@ import { YearViewPanel } from './pages/personnel/YearViewPanel'
 import { TimesheetsPanel } from './pages/personnel/TimesheetsPanel'
 import { CarsPanel } from './pages/personnel/CarsPanel'
 import { AccommodationPanel } from './pages/personnel/AccommodationPanel'
+import { FlightsPanel } from './pages/personnel/FlightsPanel'
 import { BackOfficePanel } from './pages/personnel/BackOfficePanel'
 import { HirePanel } from './pages/personnel/HirePanel'
 import { HRDashboardPanel } from './pages/personnel/HRDashboardPanel'
@@ -522,6 +523,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'hr-backoffice':         return <BackOfficePanel />
     case 'hr-utilisation':        return <UtilisationPanel />
     case 'hr-cars':               return <CarsPanel />
+    case 'hr-flights':            return <FlightsPanel />
     case 'hr-accommodation':      return <AccommodationPanel />
     case 'hire-dashboard':        return <HireDashboard />
     case 'hire-reports':          return <HireReportsPanel />

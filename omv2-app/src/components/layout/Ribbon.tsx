@@ -96,8 +96,9 @@ const RIBBON_MODULES: RibbonTab[] = [
         { icon: '🏢', label: 'Back Office', panel: 'hr-backoffice' },
         { icon: '📊', label: 'Utilisation', panel: 'hr-utilisation' },
       ]},
-      { label: 'Accommodation', buttons: [
+      { label: 'Travel & Lodging', buttons: [
         { icon: '🚗', label: 'Cars', panel: 'hr-cars' },
+        { icon: '✈️', label: 'Flights', panel: 'hr-flights' },
         { icon: '🏨', label: 'Accommodation', panel: 'hr-accommodation' },
       ]},
     ],

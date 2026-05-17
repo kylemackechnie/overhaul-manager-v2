@@ -71,6 +71,7 @@ const NAV_PAGES: NavPage[] = [
   { icon: '⏱', label: 'Subcon Timesheets',         panel: 'hr-timesheets-subcon',module: 'Personnel' },
   { icon: '🏢', label: 'Back Office & SE Support', panel: 'hr-backoffice',      module: 'Personnel', keywords: 'bo hours' },
   { icon: '🚗', label: 'Car Hire',                 panel: 'hr-cars',            module: 'Personnel' },
+  { icon: '✈️', label: 'Flights',                  panel: 'hr-flights',         module: 'Personnel' },
   { icon: '🏨', label: 'Accommodation',            panel: 'hr-accommodation',   module: 'Personnel' },
 
   // HSE
