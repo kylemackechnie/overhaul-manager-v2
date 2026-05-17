@@ -103,7 +103,7 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
   const generatedDate = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
 
   return (
-    <div className="invoice-approval-print-root" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+    <div className="invoice-approval-print-root" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', background: 'rgba(0,0,0,0.55)' }}>
 
       {/* Controls — hidden on print */}
       <div className="no-print" style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)', padding: '10px 20px', display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', flexShrink: 0 }}>
@@ -150,9 +150,9 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
         </div>
       </div>
 
-      {/* Document */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '20px', display: 'flex', justifyContent: 'center' }}>
-        <div style={{ width: 800, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden', fontFamily: 'var(--font, system-ui, sans-serif)' }}>
+      {/* Document — scrollable area */}
+      <div className="invoice-approval-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '20px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+        <div className="invoice-approval-document" style={{ width: 800, maxWidth: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden', fontFamily: 'var(--font, system-ui, sans-serif)' }}>
 
           {/* Header strip */}
           <div style={{ background: 'var(--accent)', padding: '16px 28px 14px' }}>
@@ -307,8 +307,27 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
           .no-print { display: none !important; }
           body.print-modal-open > *:not(.invoice-approval-print-root) { display: none !important; }
           body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
-          .invoice-approval-print-root { position: static !important; overflow: visible !important; background: #fff !important; }
-          .invoice-approval-print-root > div:last-child { display: block !important; padding: 0 !important; }
+          .invoice-approval-print-root {
+            position: static !important;
+            display: block !important;
+            background: #fff !important;
+            overflow: visible !important;
+            width: 100% !important;
+            height: auto !important;
+          }
+          .invoice-approval-scroll {
+            display: block !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            height: auto !important;
+          }
+          .invoice-approval-document {
+            width: 100% !important;
+            max-width: 100% !important;
+            border: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+          }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
