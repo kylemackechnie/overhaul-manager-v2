@@ -82,7 +82,7 @@ Tap **☰ More** to open a sheet from the bottom that contains:
 
 - **Search at the top** — full-text search across everything (same as `Cmd+K` / `Ctrl+K` on desktop)
 - **Phone-ready / All panels toggle** — by default you see only mobile-friendly panels grouped by module. Tap "All panels" to see everything, including desktop-only ones.
-- **Account section at the bottom** — switch project, view your profile, switch to desktop view (forces the desktop layout if you want it for some reason), sign out.
+- **Account section at the bottom** — switch project, view your profile, sign out.
 
 The current project name is always shown next to "Switch project" so you can see at a glance which project you're in.
 
@@ -129,12 +129,9 @@ Don't rely on offline mode for *critical* data — it's a graceful-degradation l
 
 ## Switching between mobile and desktop
 
-The app auto-detects. On a phone, you get mobile; on a tablet or laptop, desktop. To override:
+The app auto-detects: on a phone you get mobile, on a tablet or laptop you get desktop. You can't manually switch from mobile to desktop — the mobile shell is the only experience field users get, so we don't risk anyone trapping themselves on a layout the phone can't render well.
 
-- **From mobile** → More → Switch to desktop view
-- **From desktop** → user menu (top-right) → Preview as mobile
-
-The override sticks until you toggle it back, and survives reloads.
+If you genuinely need the desktop view on a phone (rare — usually for testing), use a desktop browser and toggle **Preview as mobile** from the user menu, or append `?mobile=0` to the URL.
 
 ## Updates
 
@@ -151,8 +148,3 @@ If you've left the app in the iOS app switcher for a long time, the update check
 **Pull-to-refresh isn't firing.** Make sure your finger starts at the very top of the list (not in the middle of scrollable content). You need to be at scroll-position 0 for the gesture to engage.
 
 **Sheets dismiss when I drag down.** That's intentional — the drag-handle at the top of any sheet is for swipe-to-dismiss. Tap outside the sheet (on the dim backdrop) to also dismiss, or use the close ✕ if present.
-
-**I switched to desktop view by accident and now I'm stuck.** Two ways out:
-
-1. **From the URL bar** — append `?mobile=1` to the URL and load it. This forces the mobile shell back on temporarily and resets the override. Example: `https://overhaul-manager-v2.vercel.app/?mobile=1`
-2. **From the desktop user menu** — the user dropdown (top-right of the desktop header, your initials/avatar) now shows **📱 Switch to mobile view** and **🔄 Reset to auto-detect** when you're on desktop because of a manual override. Tap either to escape.

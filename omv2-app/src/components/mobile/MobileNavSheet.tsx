@@ -282,13 +282,13 @@ export function MobileNavSheet({
               <span className="mobile-nav-item-icon">👤</span>
               <span className="mobile-nav-item-label">My profile</span>
             </button>
-            {/* View mode controls. Two scenarios:
-                 - override=='mobile' : user is on mobile because they forced
-                   it (e.g. from a desktop preview). Offer Reset to clear.
-                 - else (override=='desktop' or null) : the desktop override
-                   case is unreachable here (mobile shell wouldn't be rendering)
-                   so we only need the "Switch to desktop" path. */}
-            {getMobileOverride() === 'mobile' ? (
+            {/* View mode control — only shown if an override is currently
+                set (e.g. someone arrived via ?mobile=1 or had override set
+                before we removed the toggle). Default users will never see
+                this. Removed the 'Switch to desktop view' button entirely:
+                production users were stranding themselves on desktop with
+                no easy way back to mobile. */}
+            {getMobileOverride() === 'mobile' && (
               <button
                 className="mobile-nav-item mobile-nav-item-full"
                 onClick={() => { onClose(); setMobileOverride(null) }}
@@ -296,15 +296,6 @@ export function MobileNavSheet({
               >
                 <span className="mobile-nav-item-icon">🔄</span>
                 <span className="mobile-nav-item-label">Reset to auto-detect</span>
-              </button>
-            ) : (
-              <button
-                className="mobile-nav-item mobile-nav-item-full"
-                onClick={() => { onClose(); setMobileOverride('desktop') }}
-                title="Force desktop view. Switch back from the user menu (top-right) → 'Switch to mobile view', or append ?mobile=1 to the URL."
-              >
-                <span className="mobile-nav-item-icon">🖥️</span>
-                <span className="mobile-nav-item-label">Switch to desktop view</span>
               </button>
             )}
             <button
