@@ -90,12 +90,14 @@ export function classifyFlights(
   asOf: string,
   flights: Flight[],
   resources: Resource[],
+  expenses: Expense[],
   fxRates: { code: string; rate: number }[],
   noticeDays: Partial<Record<WalkAwaySource, number>>,
 ): WalkAwayLineItem[] {
   const notice = noticeFor('flights', noticeDays)
   const cutoffLocked = addDays(asOf, notice)
   const resById = new Map(resources.map(r => [r.id, r]))
+  const expById = new Map(expenses.map(e => [e.id, e]))
   const lines: WalkAwayLineItem[] = []
 
   for (const f of flights) {
@@ -115,15 +117,22 @@ export function classifyFlights(
     // Custom legs without depart_at have no implied date — treat as Discretionary
     // since they're ad-hoc by design.
 
-    const amount = (f.planned_cost || 0) * fxToAud(f.planned_currency, fxRates)
+    // Use the LINKED EXPENSE'S amount when available (actuals beat planned for
+    // walk-away purposes — we want to know what's actually been paid, not what
+    // was forecast). For unlinked legs, fall back to the leg's planned cost.
+    const linkedExp = f.linked_expense_id ? expById.get(f.linked_expense_id) : null
+    let amount: number
+    if (linkedExp) {
+      amount = (linkedExp.cost_ex_gst || linkedExp.amount || 0) * fxToAud(linkedExp.currency, fxRates)
+    } else {
+      amount = (f.planned_cost || 0) * fxToAud(f.planned_currency, fxRates)
+    }
     if (amount <= 0) continue
 
     let bucket: WalkAwayBucket
-    if (f.linked_expense_id) {
-      // The expense itself is the source of truth for actual cost; this leg
-      // is just the planned mirror. We classify it as SUNK at planned_cost
-      // and then the expenses classifier SKIPS its linked counterpart to
-      // avoid double-counting. See classifyExpenses below.
+    if (linkedExp) {
+      // Linked expense exists — the cost has been paid. SUNK regardless of date.
+      // The expense itself is skipped in classifyExpenses to avoid double-count.
       bucket = 'sunk'
     } else if (!effectiveDate) {
       bucket = 'discretionary'
@@ -277,7 +286,7 @@ function aggregate(lines: WalkAwayLineItem[], asOf: string): WalkAwayResult {
 export function classifyWalkAway(input: WalkAwayInput, asOf: string): WalkAwayResult {
   const lines: WalkAwayLineItem[] = []
 
-  lines.push(...classifyFlights(asOf, input.flights, input.resources, input.fxRates, input.noticeDays))
+  lines.push(...classifyFlights(asOf, input.flights, input.resources, input.expenses, input.fxRates, input.noticeDays))
   lines.push(...classifyExpenses(asOf, input.expenses, input.flights, input.fxRates, input.noticeDays))
 
   return aggregate(lines, asOf)

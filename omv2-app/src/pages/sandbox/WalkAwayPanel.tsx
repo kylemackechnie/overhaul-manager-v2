@@ -238,12 +238,13 @@ export function WalkAwayPanel() {
           {(Object.keys(BUCKET_META) as (keyof typeof BUCKET_META)[]).map(b => {
             const meta = BUCKET_META[b]
             const amt = result.buckets[b].total
+            const isEmpty = Math.abs(amt) < 0.5
             return (
-              <div key={b} className="card" style={{ padding: '14px', borderLeft: `4px solid ${meta.color}` }}>
+              <div key={b} className="card" style={{ padding: '14px', borderLeft: `4px solid ${meta.color}`, opacity: isEmpty ? 0.55 : 1 }}>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{meta.label}</div>
                 <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--mono)', color: meta.color, marginTop: '4px' }}>{fmt(amt)}</div>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
-                  {pct(amt, result.total)} of total · {meta.desc}
+                  {isEmpty ? meta.desc : `${pct(amt, result.total)} of total · ${meta.desc}`}
                 </div>
               </div>
             )
