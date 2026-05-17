@@ -29,7 +29,7 @@
 import type {
   WalkAwayInput, WalkAwayResult, WalkAwayLineItem, WalkAwayBucket,
   WalkAwaySource, WalkAwayBucketTotals,
-  Flight, Expense, Resource, Car, Accommodation,
+  Flight, Expense, Resource, Car, Accommodation, HireItem, ToolingCosting,
 } from '../types'
 
 // ── Date helpers (string-based, YYYY-MM-DD to avoid Date timezone gotchas) ────
@@ -380,6 +380,107 @@ export function classifyAccommodation(
   return lines
 }
 
+// ── Source 5-7: Hire (dry, wet, local) ────────────────────────────────────────
+
+/**
+ * Classify all hire items. HireItem has a hire_type ('dry' | 'wet' | 'local')
+ * which maps to three separate WalkAwaySource keys so notice periods and
+ * row totals are tracked independently per type. All three share the
+ * classifyBookingPeriod model.
+ *
+ * Cost comes from hire_cost (planned). Currency is the item's currency, FX'd
+ * to AUD. transport_in / transport_out costs aren't included here — they're
+ * treated as separate one-off costs which would be captured via expenses or
+ * POs in practice; revisit if real data shows otherwise.
+ *
+ * Wet hire complication: a wet hire's full cost is structured around a
+ * shift calendar (ds/ns/wds/wns/sd day rates), not a flat daily rate. For
+ * walk-away purposes, the planned hire_cost field still represents the
+ * total committed amount, so we use that as the input to the pro-rata.
+ * This is approximate — a more precise model would walk the calendar
+ * day-by-day and only include shift days actually scheduled. Acceptable
+ * for the first cut; refine if wet hire dominates a real project's EAC.
+ */
+export function classifyHire(
+  asOf: string,
+  hireItems: HireItem[],
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+  fxRates: { code: string; rate: number }[],
+): WalkAwayLineItem[] {
+  const lines: WalkAwayLineItem[] = []
+  for (const h of hireItems) {
+    const source: WalkAwaySource =
+      h.hire_type === 'wet'   ? 'wet_hire'
+      : h.hire_type === 'local' ? 'local_hire'
+      : 'dry_hire'
+    const notice = noticeFor(source, noticeDays)
+    const costAud = (h.hire_cost || 0) * fxToAud(h.currency, fxRates)
+    lines.push(...classifyBookingPeriod({
+      source,
+      asOf,
+      start: h.start_date,
+      end:   h.end_date,
+      totalCost: costAud,
+      notice,
+      wbs: h.wbs || '',
+      description: [h.name, h.vendor, h.description].filter(Boolean).join(' · '),
+      refId: h.id,
+    }))
+  }
+  return lines
+}
+
+// ── Source 8: Tooling ─────────────────────────────────────────────────────────
+
+/**
+ * Classify tooling costings (Siemens tooling charge-out from cross-project
+ * shared pool). Each costing has charge_start, charge_end, and cost_eur.
+ *
+ * Simplification: this commit handles the basic single-project case
+ * (no splits[] entries). Multi-project tooling — where one costing is
+ * split across multiple projects via splits[] — needs per-split classification
+ * using each split's own date range and discount, and isn't worth the extra
+ * complexity until a real project's EAC has meaningful cross-project tooling.
+ * For now: ignore splits[], use the costing's own charge_start/end.
+ *
+ * Currency is always EUR for Siemens tooling — FX'd to AUD on the way out.
+ *
+ * Cost-side only: this engine doesn't consider sell_eur or sell_override_eur.
+ * Transport in/out costs (import_cost_eur, export_cost_eur) are typically
+ * separate POs in practice — ignored here; will appear via POs/invoices
+ * once that classifier comes online.
+ */
+export function classifyTooling(
+  asOf: string,
+  toolingCostings: ToolingCosting[],
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+  fxRates: { code: string; rate: number }[],
+): WalkAwayLineItem[] {
+  const notice = noticeFor('tooling', noticeDays)
+  const lines: WalkAwayLineItem[] = []
+  for (const t of toolingCostings) {
+    if (Array.isArray(t.splits) && t.splits.length > 0) {
+      // Multi-project tooling: skip for now. Total cost for this costing is
+      // distributed across projects via splits[]; doing it properly needs
+      // each split's discountPct + date range. See JSDoc above.
+      continue
+    }
+    const costAud = (t.cost_eur || 0) * fxToAud('EUR', fxRates)
+    lines.push(...classifyBookingPeriod({
+      source: 'tooling',
+      asOf,
+      start: t.charge_start,
+      end:   t.charge_end,
+      totalCost: costAud,
+      notice,
+      wbs: t.wbs || '',
+      description: `Tooling TV ${t.tv_no || '(no TV)'}`,
+      refId: t.id,
+    }))
+  }
+  return lines
+}
+
 // ── Aggregation ───────────────────────────────────────────────────────────────
 
 /** Build the empty bucket-totals scaffold. */
@@ -432,6 +533,8 @@ export function classifyWalkAway(input: WalkAwayInput, asOf: string): WalkAwayRe
   lines.push(...classifyExpenses(asOf, input.expenses, input.flights, input.fxRates, input.noticeDays))
   lines.push(...classifyCars(asOf, input.cars, input.noticeDays))
   lines.push(...classifyAccommodation(asOf, input.accommodation, input.noticeDays))
+  lines.push(...classifyHire(asOf, input.hireItems, input.noticeDays, input.fxRates))
+  lines.push(...classifyTooling(asOf, input.toolingCostings, input.noticeDays, input.fxRates))
 
   return aggregate(lines, asOf)
 }
