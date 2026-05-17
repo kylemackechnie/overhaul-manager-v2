@@ -59,7 +59,7 @@ const tour: Tour = {
     },
     {
       title: 'Inside a sheet',
-      body: "When you open a week you get the editor view. From there you can: Bulk Add crew (filtered to On-site only if you tick the box), enter per-day hours with day type and shift, run 'Allowances' to apply LAHA/Meal defaults, Import Payroll from TasTK or UKG, hit Next Week to roll the crew forward, and Save & Close when done. Approving the sheet writes timesheet_cost_lines — the source of truth for labour actuals everywhere else.",
+      body: "When you open a week you get the editor view. From there you can: Bulk Add crew (filtered to On-site only if you tick the box), enter per-day hours with day type and shift, run 'Allowances' to apply LAHA/Meal defaults, Import Payroll from TasTK or UKG, hit Next Week to roll the crew forward, and Save & Close when done. Approving the sheet turns its cost into an actual — that's what the Cost Report, NRG Actuals, and the MIKA EAC read.",
     },
     {
       title: 'Recalculate — when actuals look wrong',
