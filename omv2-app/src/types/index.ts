@@ -663,6 +663,34 @@ export interface Accommodation {
   wbs: string
 }
 
+// ─── Flights ──────────────────────────────────────────────────────────────────
+
+// Walk-Away Module 1: operational tracker for flight legs per resource.
+// Actuals live on the linked expense (linked_expense_id); this table does
+// not contribute to the wbsAggregator. Forecast engine reads it to displace
+// the resource-level estimate for outbound/return legs that have been
+// actualised (linked_expense_id IS NOT NULL).
+export interface Flight {
+  id: string
+  project_id: string
+  resource_id: string
+  leg_type: 'outbound' | 'return' | 'custom'
+  leg_label: string | null
+  leg_order: number
+  vendor: string
+  flight_number: string
+  depart_at: string | null     // ISO timestamp
+  origin: string
+  destination: string
+  planned_cost: number
+  planned_currency: string
+  status: 'pending' | 'booked' | 'cancelled'
+  linked_expense_id: string | null
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
 // ─── Hire Items ───────────────────────────────────────────────────────────────
 
 export interface HireItem {
