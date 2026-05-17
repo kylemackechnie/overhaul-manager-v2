@@ -14,7 +14,7 @@ import { toast } from '../../components/ui/Toast'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { ResourceCalendar } from './ResourceCalendar'
 import { PersonPicker } from '../../components/PersonPicker'
-import type { Resource, RateCard, PurchaseOrder } from '../../types'
+import type { Resource, RateCard, PurchaseOrder, Flight } from '../../types'
 
 // Lazy — mobile bundle only loads on phones
 const ResourcesMobile = lazy(() =>
@@ -68,7 +68,7 @@ const EMPTY: Partial<Resource> = {
   name:'', role:'', category:'trades', shift:'day', shift_phases: null, specialisation: null,
   mob_in:null, mob_out:null, travel_days:0, wbs:'',
   allow_laha:false, allow_fsa:false, allow_meal:false,
-  company:'', phone:'', email:'', notes:'', flights:'',
+  company:'', phone:'', email:'', notes:'',
   linked_po_id:null, rate_card_id:null,
   flight_required: false, accom_required: false, car_required: false,
   flight_cost_each: DEFAULT_FLIGHT_COSTS.other,
@@ -127,6 +127,7 @@ export function ResourcesPanel() {
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [cars, setCars] = useState<{id:string,person_id:string,vehicle_type:string}[]>([])
   const [accom, setAccom] = useState<{id:string,occupants:string[],property:string,room:string}[]>([])
+  const [flights, setFlights] = useState<Flight[]>([])
   const [wbsList, setWbsList] = useState<{id:string,code:string,name:string}[]>([])
   const [_rateCards, setRateCards] = useState<{id:string,role:string}[]>([])
   const [loading, setLoading] = useState(true)
@@ -153,16 +154,17 @@ export function ResourcesPanel() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [resData, rcData, poData, carData, accomData, wbsData] = await Promise.all([
+    const [resData, rcData, poData, carData, accomData, wbsData, flData] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid).order('name'),
       supabase.from('rate_cards').select('*').eq('project_id', pid).order('role'),
       supabase.from('purchase_orders').select('id,po_number,vendor,description,status').eq('project_id', pid).order('po_number'),
       supabase.from('cars').select('id,person_id,vehicle_type').eq('project_id', pid),
       supabase.from('accommodation').select('id,occupants,property,room').eq('project_id', pid),
       supabase.from('wbs_list').select('id,code,name').eq('project_id', pid).order('sort_order'),
-      supabase.from('rate_cards').select('id,role').eq('project_id', pid).order('role'),
+      supabase.from('flights').select('id,resource_id,leg_type,status,linked_expense_id').eq('project_id', pid),
     ])
     setResources((resData.data||[]) as Resource[])
+    setFlights((flData.data||[]) as Flight[])
     setRcs((rcData.data||[]) as RateCard[])
     setPos((poData.data||[]) as PurchaseOrder[])
     // Build per-person accommodation map
@@ -289,10 +291,9 @@ export function ResourcesPanel() {
       allow_laha: form.allow_laha||false, allow_fsa: form.allow_fsa||false, allow_meal: form.allow_meal||false,
       company: form.company||'', phone: form.phone||'', email: form.email||'',
       linked_po_id: form.linked_po_id||null, rate_card_id: form.rate_card_id||null, notes: form.notes||'',
-      flights: (form as Partial<Resource> & {flights?:string}).flights||'',
+      // free-text `flights` column intentionally not written — replaced by the
+      // Flights page (Walk-Away Step 4f). Existing values preserved in DB as backup.
       // Booking flags are now stored as dedicated columns.
-      // (Old code wrote them into flags.* too — drift fixed in migration
-      // resources_reconcile_booking_flags. Do not put them back in flags.)
       flight_required: !!form.flight_required,
       accom_required:  !!form.accom_required,
       car_required:    !!form.car_required,
@@ -773,6 +774,22 @@ export function ResourcesPanel() {
                   const ss = STATUS_STYLE[st]
                   const car = cars.find(c => c.person_id === r.id)
                   const room = accom.find(a => (a.occupants||[]).includes(r.id))
+                  // Walk-Away Step 4f: flight summary from the flights table.
+                  // Replaces the old free-text `r.flights` column. Counts active legs
+                  // (non-cancelled) and how many are booked (have linked_expense_id).
+                  const resourceFlights = flights.filter(f => f.resource_id === r.id)
+                  const activeFlights = resourceFlights.filter(f => f.status !== 'cancelled')
+                  const bookedFlights = activeFlights.filter(f => f.linked_expense_id).length
+                  const flightCellLabel =
+                    !r.flight_required ? '—'
+                    : activeFlights.length === 0 ? '⚠ REQUIRED'
+                    : bookedFlights === activeFlights.length ? `✈ ${bookedFlights}/${activeFlights.length} ✓`
+                    : `✈ ${bookedFlights}/${activeFlights.length}`
+                  const flightCellColor =
+                    !r.flight_required ? 'var(--text3)'
+                    : activeFlights.length === 0 ? 'var(--amber)'
+                    : bookedFlights === activeFlights.length ? 'var(--mod-hr)'
+                    : 'var(--amber)'
                   return (
                     <tr key={r.id} style={{verticalAlign:'middle',background:selected.has(r.id)?'rgba(15,118,110,.05)':undefined}}>
                       {/* Pinned left col — checkbox + edit + duplicate + delete */}
@@ -877,7 +894,7 @@ export function ResourcesPanel() {
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>}
                       {isVisible('car') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined,color:car?'var(--mod-hr)':(r.car_required&&!car)?'var(--amber)':'var(--text3)'}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:(r.car_required?'⚠ REQUIRED':'—')}</td>}
-                      {isVisible('flights') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:r.flights?'var(--text2)':(r.flight_required&&!r.flights)?'var(--amber)':'var(--text3)'}}>{r.flights||(r.flight_required?'⚠ REQUIRED':'—')}</td>}
+                      {isVisible('flights') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:r.flight_required?'pointer':undefined,color:flightCellColor}} onClick={r.flight_required?()=>setActivePanel('hr-flights'):undefined}>{flightCellLabel}</td>}
                       {isVisible('room') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined,color:room?'var(--mod-hr)':(r.accom_required&&!room)?'var(--amber)':'var(--text3)'}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:(r.accom_required?'⚠ REQUIRED':'—')}</td>}
                       {isVisible('wbs') && <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>}
                       {isVisible('po') && <td style={{minWidth:'110px'}}>
@@ -1062,10 +1079,6 @@ export function ResourcesPanel() {
                 <div className="fg">
                   <label>Notes</label>
                   <input className="input" value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Optional" />
-                </div>
-                <div className="fg">
-                  <label>✈️ Flights</label>
-                  <input className="input" value={(form as Partial<Resource> & {flights?:string}).flights||''} onChange={e=>setForm(f=>({...f,flights:e.target.value}))} placeholder="e.g. QF510 BNE→SYD 18/05 09:30" />
                 </div>
               </div>
               {form.category==='subcontractor' && (

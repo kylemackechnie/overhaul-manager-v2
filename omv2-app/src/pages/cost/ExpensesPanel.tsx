@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { usePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
-import type { Expense, ExpenseLine, Resource, WbsItem } from '../../types'
+import type { Expense, ExpenseLine, Resource, WbsItem, Flight } from '../../types'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName, RECEIPT_BUCKET } from '../../lib/receiptStorage'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -46,11 +46,12 @@ export function ExpensesPanel() {
 }
 
 function ExpensesPanelDesktop() {
-  const { activeProject } = useAppStore()
+  const { activeProject, setActivePanel } = useAppStore()
   const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [resources, setResources] = useState<Resource[]>([])
+  const [flights, setFlights] = useState<Flight[]>([])
   const [wbsList, setWbsList] = useState<WbsItem[]>([])
   const [tceLines, setTceLines] = useState<{id:string;item_id:string|null;description:string;source:string}[]>([])
   const [loading, setLoading] = useState(true)
@@ -81,7 +82,7 @@ function ExpensesPanelDesktop() {
   async function load() {
     setLoading(true)
     const pid = activeProject!.id
-    const [expData, resData, wbsData, tceData] = await Promise.all([
+    const [expData, resData, wbsData, tceData, flData] = await Promise.all([
       supabase.from('expenses').select('*').eq('project_id', pid).order('date', { ascending: false }),
       supabase.from('resources').select('id,name,role').eq('project_id', pid).order('name'),
       supabase.from('wbs_list').select('*').eq('project_id', pid).order('sort_order'),
@@ -93,9 +94,13 @@ function ExpensesPanelDesktop() {
       supabase.from('nrg_tce_lines').select('id,item_id,description,source')
         .eq('project_id', pid)
         .not('item_id', 'is', null).order('item_id'),
+      // Used to detect orphaned flight expenses (category='Flight' but no
+      // flight leg links here → user has double-cost-tracking risk).
+      supabase.from('flights').select('id,linked_expense_id').eq('project_id', pid),
     ])
     setExpenses((expData.data || []) as Expense[])
     setResources((resData.data || []) as Resource[])
+    setFlights((flData.data || []) as Flight[])
     setWbsList((wbsData.data || []) as WbsItem[])
     // Strip group-header rows (item_ids with exactly 3 numeric segments are headers).
     const leafLines = ((tceData.data || []) as {id:string;item_id:string|null;description:string;source:string}[])
@@ -278,6 +283,9 @@ function ExpensesPanelDesktop() {
 
   async function save() {
     if (!form.description.trim()) return toast('Description required', 'error')
+    if (form.category === 'Flight' && !form.resource_id) {
+      return toast('Person required for Flight category — pick who the flight is for', 'error')
+    }
     setSaving(true)
     const payload = {
       project_id: activeProject!.id,
@@ -532,6 +540,18 @@ function ExpensesPanelDesktop() {
       return 0
     })
   })()
+
+  // Orphaned flight expenses: category='Flight', resource_id set,
+  // but no flight leg has linked_expense_id pointing here.
+  // These risk double-counting cost (the expense is in actuals AND the
+  // resource's flight estimate is still in forecast). Surface in red.
+  const linkedExpenseIds = new Set(flights.map(f => f.linked_expense_id).filter((x): x is string => !!x))
+  const orphanedFlightIds = new Set(
+    expenses
+      .filter(e => e.category === 'Flight' && e.resource_id && !linkedExpenseIds.has(e.id))
+      .map(e => e.id)
+  )
+  const orphanCount = orphanedFlightIds.size
   function toggleSort(col: ExpSortCol) {
     if (sortCol === col) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
@@ -565,6 +585,21 @@ function ExpensesPanelDesktop() {
           <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ Add Expense</button>
         </div>
       </div>
+
+      {orphanCount > 0 && (
+        <div style={{
+          padding: '10px 14px', marginBottom: '12px',
+          background: 'rgba(239,68,68,0.08)', border: '1px solid #fca5a5', borderRadius: '6px',
+          color: '#991b1b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '10px',
+        }}>
+          <span style={{ fontSize: '14px' }}>⚠</span>
+          <div style={{ flex: 1 }}>
+            <strong>{orphanCount} flight {orphanCount === 1 ? 'expense is' : 'expenses are'} not linked to a flight leg.</strong>{' '}
+            These are flagged in red below — open the Flights page and use "🔗 Link expense" on the matching leg to reconcile. Until linked, EAC may double-count flight cost.
+          </div>
+          <button className="btn btn-sm" onClick={() => setActivePanel('hr-flights')}>Open Flights →</button>
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
@@ -629,12 +664,20 @@ function ExpensesPanelDesktop() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(e => (
+                {filtered.map(e => {
+                  const isOrphan = orphanedFlightIds.has(e.id)
+                  return (
                   <tr key={e.id}
                     onDragOver={ev=>{ev.preventDefault();setDragOverId(e.id)}}
                     onDragLeave={()=>setDragOverId(null)}
                     onDrop={async ev=>{ev.preventDefault();setDragOverId(null);const f=ev.dataTransfer.files[0];if(f)await handleReceiptUpload(e,f)}}
-                    style={{background: dragOverId===e.id ? 'rgba(16,185,129,0.08)' : undefined, outline: dragOverId===e.id ? '2px dashed var(--accent)' : undefined, transition:'background 0.1s'}}>
+                    title={isOrphan ? 'Flight expense not linked to a flight leg — risk of double-counting in EAC. Open the Flights page and link this expense to the matching leg.' : undefined}
+                    style={{
+                      background: dragOverId===e.id ? 'rgba(16,185,129,0.08)' : isOrphan ? 'rgba(239,68,68,0.06)' : undefined,
+                      outline: dragOverId===e.id ? '2px dashed var(--accent)' : undefined,
+                      borderLeft: isOrphan ? '3px solid #dc2626' : undefined,
+                      transition:'background 0.1s',
+                    }}>
                     <td style={{textAlign:'center',padding:'5px 6px'}}>
                       <input type="checkbox" checked={selected.has(e.id)} onChange={()=>toggleSelect(e.id)} style={{accentColor:'#f472b6'}} />
                     </td>
@@ -671,7 +714,7 @@ function ExpensesPanelDesktop() {
                       <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(e)}>✕</button>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -743,9 +786,14 @@ function ExpensesPanelDesktop() {
                     <option value="">— Select —</option>
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  {form.category === 'Flight' && (
+                    <div style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', padding: '6px 8px', borderRadius: '4px', marginTop: '4px' }}>
+                      After saving, link this expense to a flight leg on the Flights page to avoid double-counting in EAC.
+                    </div>
+                  )}
                 </div>
                 <div className="fg">
-                  <label>Person</label>
+                  <label>Person{form.category === 'Flight' ? ' *' : ''}</label>
                   <select className="input" value={form.resource_id} onChange={e => setForm(f => ({ ...f, resource_id: e.target.value }))}>
                     <option value="">— None —</option>
                     {resources.map(r => <option key={r.id} value={r.id}>{r.name} {r.role ? `— ${r.role}` : ''}</option>)}

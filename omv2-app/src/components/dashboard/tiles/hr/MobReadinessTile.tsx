@@ -54,9 +54,9 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     queryFn: async () => {
       const todayStr = new Date().toISOString().slice(0, 10)
       const next14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
-      const [resR, accomR, carsR] = await Promise.all([
+      const [resR, accomR, carsR, flightsR] = await Promise.all([
         supabase.from('resources')
-          .select('id,name,mob_in,mob_out,category,flight_required,flights,accom_required,accom_booked,car_required,linked_po_id,person_id')
+          .select('id,name,mob_in,mob_out,category,flight_required,accom_required,accom_booked,car_required,linked_po_id,person_id')
           .eq('project_id', ctx.projectId!)
           .gte('mob_in', todayStr)
           .lte('mob_in', next14)
@@ -68,11 +68,16 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
         supabase.from('cars')
           .select('person_id,start_date,end_date')
           .eq('project_id', ctx.projectId!),
+        // Walk-Away Step 4f: a leg with a linked expense is the source of truth for "flight booked"
+        supabase.from('flights')
+          .select('resource_id,status,linked_expense_id')
+          .eq('project_id', ctx.projectId!),
       ])
       return {
         resources: (resR.data || []) as ResourceRow[],
         accom: (accomR.data || []) as { person_id: string | null; occupants: unknown; check_in: string | null; check_out: string | null }[],
         cars: (carsR.data || []) as { person_id: string | null; start_date: string | null; end_date: string | null }[],
+        flights: (flightsR.data || []) as { resource_id: string; status: string; linked_expense_id: string | null }[],
       }
     },
     enabled: !!ctx.projectId,
@@ -123,15 +128,24 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
     carsByPerson.set(c.person_id, arr)
   }
 
+  // Walk-Away Step 4f: a resource is considered "flight booked" if any
+  // non-cancelled leg in the flights table has a linked expense. This
+  // replaces the old check on r.flights free text.
+  const flightBookedIds = new Set<string>()
+  for (const f of data.flights) {
+    if (f.status !== 'cancelled' && f.linked_expense_id) flightBookedIds.add(f.resource_id)
+  }
+
   const rows: ReadinessRow[] = data.resources.map(r => {
     const todayStr = new Date().toISOString().slice(0, 10)
     const daysAway = daysBetween(todayStr, r.mob_in!)
     const mobIn = r.mob_in!
 
-    // Flight check: flight_required is the trigger; flights text present = booked
+    // Flight check: flight_required is the trigger; a leg with a linked
+    // expense in the flights table = booked (Walk-Away Step 4f).
     const flight: ReadinessRow['flight'] = !r.flight_required
       ? 'na'
-      : (r.flights && r.flights.trim()) ? 'ok' : 'pending'
+      : flightBookedIds.has(r.id) ? 'ok' : 'pending'
 
     // Accommodation: required → look for an accom booking that covers the mob period
     let accom: ReadinessRow['accom'] = 'na'
@@ -260,7 +274,7 @@ function MobReadinessComp({ ctx }: { ctx: DashboardContext }) {
 
 interface ResourceRow {
   id: string; name: string | null; mob_in: string | null; mob_out: string | null;
-  category: string | null; flight_required: boolean | null; flights: string | null;
+  category: string | null; flight_required: boolean | null;
   accom_required: boolean | null; accom_booked: boolean | null; car_required: boolean | null;
   linked_po_id: string | null; person_id: string | null;
 }

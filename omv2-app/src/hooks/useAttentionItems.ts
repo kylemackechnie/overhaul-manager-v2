@@ -44,9 +44,9 @@ export function useAttentionItems(projectId: string | undefined) {
       const today = todayStr()
       const items: AttentionItem[] = []
 
-      const [resR, invR, rfqR, ppR, tsR, poR, indR, accomR] = await Promise.all([
+      const [resR, invR, rfqR, ppR, tsR, poR, indR, accomR, flR] = await Promise.all([
         supabase.from('resources')
-          .select('id,name,mob_in,category,linked_po_id,flight_required,flights,accom_required,accom_booked,car_required,person_id')
+          .select('id,name,mob_in,category,linked_po_id,flight_required,accom_required,accom_booked,car_required,person_id')
           .eq('project_id', pid),
         supabase.from('invoices')
           .select('id,invoice_number,amount,status,received_date,due_date,vendor_details')
@@ -70,6 +70,10 @@ export function useAttentionItems(projectId: string | undefined) {
         supabase.from('accommodation')
           .select('occupants,check_in,check_out')
           .eq('project_id', pid),
+        // Walk-Away Step 4f: read flight legs instead of the old free-text r.flights column
+        supabase.from('flights')
+          .select('resource_id,status,linked_expense_id')
+          .eq('project_id', pid),
       ])
 
       const resources = (resR.data || [])
@@ -79,6 +83,12 @@ export function useAttentionItems(projectId: string | undefined) {
       const draftTs = (tsR.data || [])
       const pos = (poR.data || [])
       const visas = (indR.data || [])
+      const flights = (flR.data || []) as { resource_id: string; status: string; linked_expense_id: string | null }[]
+      // Build set of resources.ids with at least one booked (linked-expense) flight leg
+      const flightBookedIds = new Set<string>()
+      for (const f of flights) {
+        if (f.status !== 'cancelled' && f.linked_expense_id) flightBookedIds.add(f.resource_id)
+      }
       // Build set of resources.ids with accommodation booked
       const accomBookedIds = new Set<string>()
       for (const a of (accomR?.data || []) as { occupants: string[] | null; check_in: string | null; check_out: string | null }[]) {
@@ -93,7 +103,7 @@ export function useAttentionItems(projectId: string | undefined) {
         if (days > 14) continue
 
         const missing: string[] = []
-        if (r.flight_required && !(r.flights && r.flights.trim())) missing.push('flight')
+        if (r.flight_required && !flightBookedIds.has(r.id)) missing.push('flight')
         if (r.accom_required && !accomBookedIds.has(r.id)) missing.push('accommodation')
         if (r.car_required) {
           // car_required has no "booked" mirror — flag for manual check
