@@ -221,8 +221,10 @@ export function ResourcesPanel() {
     }
 
     // If flight_required was bulk-set to true, auto-create flight legs for any
-    // selected resource that doesn't already have legs. Mirrors the single-save
-    // behaviour. Resources with existing legs are left alone.
+    // selected resource that doesn't already have legs. Resources that already
+    // have legs are left alone — bulk edit doesn't do the pristine refresh that
+    // single-save does (since each resource may have a different category).
+    // Admin can edit individual resources to trigger the refresh if needed.
     if (bulkForm.applyFlightReq && bulkForm.flight_required) {
       // Fetch existing flights and the selected resources' categories in parallel
       const [flR, resR] = await Promise.all([
@@ -353,30 +355,79 @@ export function ResourcesPanel() {
       if (error) { toast(error.message, 'error'); setSaving(false); return }
     }
 
-    // Auto-create flight legs when flight_required is on AND none exist yet.
-    // Replaces the FlightsPanel auto-backfill for resources saved with the
-    // flag ticked, so the legs (and therefore the forecast EAC contribution
-    // via path 1) appear immediately rather than at next Flights page visit.
-    // Unticking flight_required intentionally does NOT delete existing legs —
-    // those are surfaced via the orphan banner on the Flights page so admin
-    // can decide.
+    // Auto-manage flight legs when flight_required is on.
+    //
+    // Three cases:
+    //  1. No legs exist → create the default 2 (outbound + return) at the
+    //     category default cost. Same as the original auto-backfill.
+    //  2. Legs exist but are all "pristine" (no admin edits — see check below)
+    //     AND the category default would now be different (e.g. category was
+    //     switched between non-SEAG and SEAG, flipping AUD ↔ EUR) → delete
+    //     the pristine legs and recreate at the new default. This preserves
+    //     the principle that the auto-created defaults should track the
+    //     current category until admin makes a deliberate edit.
+    //  3. Legs exist and any of them has been edited → leave alone. Admin's
+    //     edits take precedence over category defaults.
+    //
+    // "Pristine" means: status=pending, vendor/flight_number/origin/destination
+    // all blank, no linked expense, no notes/depart_at, and planned_cost is
+    // still one of the known default values (500 or 5000). Custom legs count
+    // as edits — they're admin-added and never pristine.
+    //
+    // Unticking flight_required does NOT delete legs — those are surfaced via
+    // the orphan banner on the Flights page so admin can decide.
     if (form.flight_required) {
       const { data: existingFlights } = await supabase
         .from('flights')
-        .select('id')
+        .select('id,leg_type,status,vendor,flight_number,origin,destination,planned_cost,planned_currency,depart_at,notes,linked_expense_id')
         .eq('resource_id', resourceId)
-        .limit(1)
-      if (!existingFlights || existingFlights.length === 0) {
-        const category = form.category || 'trades'
-        const cost = defaultFlightCostForCategory(category)
-        const currency = defaultFlightCurrencyForCategory(category)
+
+      const category = form.category || 'trades'
+      const newCost = defaultFlightCostForCategory(category)
+      const newCurrency = defaultFlightCurrencyForCategory(category)
+
+      const legs = existingFlights || []
+      const knownDefaults = [DEFAULT_FLIGHT_COSTS.seag, DEFAULT_FLIGHT_COSTS.other] as readonly number[]
+      const isPristine = (f: typeof legs[number]) =>
+        f.leg_type !== 'custom' &&
+        f.status === 'pending' &&
+        !f.vendor &&
+        !f.flight_number &&
+        !f.origin &&
+        !f.destination &&
+        !f.linked_expense_id &&
+        !f.depart_at &&
+        !f.notes &&
+        knownDefaults.includes(Number(f.planned_cost))
+
+      const allPristine = legs.length > 0 && legs.every(isPristine)
+      const defaultsDiffer = legs.some(f =>
+        Number(f.planned_cost) !== newCost || f.planned_currency !== newCurrency,
+      )
+
+      let needsCreate = false
+      if (legs.length === 0) {
+        needsCreate = true
+      } else if (allPristine && defaultsDiffer) {
+        // Wipe pristine defaults so new ones can be inserted at the
+        // currently-correct category default.
+        const idsToWipe = legs.map(f => f.id)
+        const { error: delErr } = await supabase.from('flights').delete().in('id', idsToWipe)
+        if (delErr) {
+          toast(`Resource saved, but stale flight legs could not be refreshed: ${delErr.message}`, 'error')
+        } else {
+          needsCreate = true
+        }
+      }
+
+      if (needsCreate) {
         const { error: legErr } = await supabase.from('flights').insert([
           { project_id: activeProject!.id, resource_id: resourceId,
             leg_type: 'outbound', leg_order: 0,
-            planned_cost: cost, planned_currency: currency, status: 'pending' },
+            planned_cost: newCost, planned_currency: newCurrency, status: 'pending' },
           { project_id: activeProject!.id, resource_id: resourceId,
             leg_type: 'return',   leg_order: 1,
-            planned_cost: cost, planned_currency: currency, status: 'pending' },
+            planned_cost: newCost, planned_currency: newCurrency, status: 'pending' },
         ])
         if (legErr) {
           toast(`Resource saved, but flight legs could not be created: ${legErr.message}`, 'error')
