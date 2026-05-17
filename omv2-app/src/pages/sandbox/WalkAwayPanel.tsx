@@ -24,11 +24,12 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { HelpButton } from '../../components/HelpButton'
 import { classifyWalkAway, todayIso } from '../../engines/walkAwayEngine'
+import { buildForecast } from '../../engines/forecastEngine'
 import type {
   Resource, Flight, Expense, Car, Accommodation, HireItem,
   ToolingCosting, WeeklyTimesheet, BackOfficeHour,
   Variation, VariationLine, PurchaseOrder, Invoice, RateCard,
-  WalkAwayResult, WalkAwaySource,
+  WalkAwayResult, WalkAwaySource, GlobalTV, GlobalDepartment,
 } from '../../types'
 
 // ── Source display labels (order = panel row order) ──────────────────────────
@@ -41,10 +42,10 @@ const SOURCE_LABELS: { key: WalkAwaySource; label: string; implemented: boolean 
   { key: 'wet_hire',        label: 'Wet Hire',          implemented: true  },
   { key: 'local_hire',      label: 'Local Hire',        implemented: true  },
   { key: 'tooling',         label: 'Tooling',           implemented: true  },
-  { key: 'labour_trades',   label: 'Labour (Trades)',   implemented: false },
-  { key: 'labour_mgmt',     label: 'Labour (Mgmt)',     implemented: false },
-  { key: 'labour_seag',     label: 'Labour (SE AG)',    implemented: false },
-  { key: 'labour_subcon',   label: 'Labour (Subcon)',   implemented: false },
+  { key: 'labour_trades',   label: 'Labour (Trades)',   implemented: true  },
+  { key: 'labour_mgmt',     label: 'Labour (Mgmt)',     implemented: true  },
+  { key: 'labour_seag',     label: 'Labour (SE AG)',    implemented: true  },
+  { key: 'labour_subcon',   label: 'Labour (Subcon)',   implemented: true  },
   { key: 'back_office',     label: 'Back Office',       implemented: false },
   { key: 'se_ag_support',   label: 'SE AG Support',     implemented: false },
   { key: 'variations',      label: 'Variations',        implemented: false },
@@ -91,6 +92,8 @@ export function WalkAwayPanel() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [rateCards, setRateCards] = useState<RateCard[]>([])
+  const [globalTVs, setGlobalTVs] = useState<GlobalTV[]>([])
+  const [globalDepartments, setGlobalDepartments] = useState<GlobalDepartment[]>([])
   const [loading, setLoading] = useState(true)
 
   // Pick up FX rates + notice settings from the active project
@@ -114,7 +117,7 @@ export function WalkAwayPanel() {
     if (!activeProject) return
     setLoading(true)
     const pid = activeProject.id
-    const [resR, flR, expR, carR, accR, hireR, tcR, tsR, boR, varR, varLR, poR, invR, rcR] = await Promise.all([
+    const [resR, flR, expR, carR, accR, hireR, tcR, tsR, boR, varR, varLR, poR, invR, rcR, tvR, depR] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid),
       supabase.from('flights').select('*').eq('project_id', pid),
       supabase.from('expenses').select('*').eq('project_id', pid),
@@ -129,6 +132,8 @@ export function WalkAwayPanel() {
       supabase.from('purchase_orders').select('*').eq('project_id', pid),
       supabase.from('invoices').select('*').eq('project_id', pid),
       supabase.from('rate_cards').select('*').eq('project_id', pid),
+      supabase.from('global_tvs').select('*'),
+      supabase.from('global_departments').select('*'),
     ])
     setResources((resR.data || []) as Resource[])
     setFlights((flR.data || []) as Flight[])
@@ -144,6 +149,8 @@ export function WalkAwayPanel() {
     setPurchaseOrders((poR.data || []) as PurchaseOrder[])
     setInvoices((invR.data || []) as Invoice[])
     setRateCards((rcR.data || []) as RateCard[])
+    setGlobalTVs((tvR.data || []) as GlobalTV[])
+    setGlobalDepartments((depR.data || []) as GlobalDepartment[])
     setLoading(false)
   }
 
@@ -152,6 +159,32 @@ export function WalkAwayPanel() {
   // Run the engine against the current state + asOf + notice settings
   const result: WalkAwayResult | null = useMemo(() => {
     if (!activeProject || loading) return null
+
+    // Build the forecast first so the labour classifier can read per-day cost.
+    // Same call shape as MikaPanel / ForecastPanel — keeps labour cost agreement
+    // with whatever the user sees in the regular forecast.
+    const forecast = buildForecast(
+      resources,
+      rateCards,
+      backOfficeHours,
+      hireItems,
+      cars,
+      accom,
+      toolingCostings,
+      activeProject.std_hours,
+      activeProject.public_holidays || [],
+      activeProject.start_date,
+      activeProject.end_date,
+      fxRates,
+      expenses,
+      0,
+      globalTVs,
+      globalDepartments,
+      purchaseOrders,
+      invoices,
+      flights,
+    )
+
     return classifyWalkAway({
       project: activeProject,
       resources, flights, expenses, cars, accommodation: accom,
@@ -160,8 +193,9 @@ export function WalkAwayPanel() {
       variations, variationLines, purchaseOrders, invoices, rateCards,
       fxRates,
       noticeDays,
+      forecast,
     }, asOf)
-  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, variations, variationLines, purchaseOrders, invoices, rateCards, fxRates, noticeDays, asOf])
+  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, variations, variationLines, purchaseOrders, invoices, rateCards, globalTVs, globalDepartments, fxRates, noticeDays, asOf])
 
   async function saveNoticeDays() {
     if (!activeProject) return

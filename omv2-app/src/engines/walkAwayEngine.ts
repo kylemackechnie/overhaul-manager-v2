@@ -28,7 +28,7 @@
 
 import type {
   WalkAwayInput, WalkAwayResult, WalkAwayLineItem, WalkAwayBucket,
-  WalkAwaySource, WalkAwayBucketTotals,
+  WalkAwaySource, WalkAwayBucketTotals, WalkAwayTimesheetCostLine,
   Flight, Expense, Resource, Car, Accommodation, HireItem, ToolingCosting,
 } from '../types'
 
@@ -481,6 +481,108 @@ export function classifyTooling(
   return lines
 }
 
+// ── Source 9-12: Labour (from forecast.byDay) ─────────────────────────────────
+
+/**
+ * Classify labour from a pre-computed forecast's byDay map.
+ *
+ * Forecast.byDay gives us cost per category (trades/mgmt/seag/subcon) per day,
+ * already accounting for shift patterns, rate cards, public holidays, and
+ * travel days. We walk the day list and bucket each day's cost by category:
+ *
+ *   - day < asOf                       → SUNK (work day has passed)
+ *   - asOf ≤ day < asOf + notice       → LOCKED (demob notice window)
+ *   - day ≥ asOf + notice              → AVOIDABLE (can demob from cutoff)
+ *
+ * Each category gets its own notice period (labour_trades / labour_mgmt /
+ * labour_seag / labour_subcon) so admin can tune them independently — e.g.
+ * subcon notice tends to be longer due to contract clauses.
+ *
+ * WBS attribution: omitted at the line level. Labour is allocated to WBS
+ * in forecast.byWbs, not byDay. The Walk-Away WBS view will therefore
+ * show labour as '(unallocated)'. Improving this means walking
+ * forecast.byPo or running a separate per-day-per-resource WBS resolve;
+ * not worth the complexity for the first cut, since labour is usually
+ * dominated by one WBS code per category anyway.
+ *
+ * Past-day actuals vs forecast: this classifier trusts forecast cost for all
+ * past days. Even if no timesheet was logged for day D < asOf, we still
+ * count the forecast cost as SUNK on the assumption that work happened
+ * (the resource was mobilised). For higher fidelity, a future enhancement
+ * could substitute actuals from wbsAggregator on past days where they
+ * exist. Acceptable first-cut accuracy.
+ */
+export function classifyLabourFromForecast(
+  asOf: string,
+  forecast: { byDay: Record<string, {
+    trades: { cost: number }; mgmt: { cost: number }; seag: { cost: number }; subcon: { cost: number }
+  }>; days: string[] } | undefined,
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+): WalkAwayLineItem[] {
+  if (!forecast) return []
+
+  const noticeTrades = noticeFor('labour_trades', noticeDays)
+  const noticeMgmt   = noticeFor('labour_mgmt',   noticeDays)
+  const noticeSeag   = noticeFor('labour_seag',   noticeDays)
+  const noticeSubcon = noticeFor('labour_subcon', noticeDays)
+
+  // Pre-compute cutoff dates per category so we don't do it per-day
+  const cutTrades = addDays(asOf, noticeTrades)
+  const cutMgmt   = addDays(asOf, noticeMgmt)
+  const cutSeag   = addDays(asOf, noticeSeag)
+  const cutSubcon = addDays(asOf, noticeSubcon)
+
+  // Bucket totals across all days, then emit one summary line per
+  // category × bucket (not per-day — would be hundreds of micro-lines).
+  // refDate for emitted lines is the date of the first contributing day,
+  // for the drill-down view.
+  type Sum = { amount: number; firstDate: string | null }
+  const init = (): Sum => ({ amount: 0, firstDate: null })
+
+  const t = { sunk: init(), locked: init(), avoidable: init() }
+  const m = { sunk: init(), locked: init(), avoidable: init() }
+  const s = { sunk: init(), locked: init(), avoidable: init() }
+  const c = { sunk: init(), locked: init(), avoidable: init() }
+
+  function bucketFor(day: string, cutoff: string): 'sunk' | 'locked' | 'avoidable' {
+    if (day < asOf)     return 'sunk'
+    if (day < cutoff)   return 'locked'
+    return 'avoidable'
+  }
+
+  function add(b: Sum, amount: number, day: string) {
+    if (amount <= 0) return
+    b.amount += amount
+    if (!b.firstDate) b.firstDate = day
+  }
+
+  for (const day of forecast.days) {
+    const bucket = forecast.byDay[day]
+    if (!bucket) continue
+    add(t[bucketFor(day, cutTrades)], bucket.trades.cost || 0, day)
+    add(m[bucketFor(day, cutMgmt)],   bucket.mgmt.cost || 0,   day)
+    add(s[bucketFor(day, cutSeag)],   bucket.seag.cost || 0,   day)
+    add(c[bucketFor(day, cutSubcon)], bucket.subcon.cost || 0, day)
+  }
+
+  const lines: WalkAwayLineItem[] = []
+  function emit(source: WalkAwaySource, b: { sunk: Sum; locked: Sum; avoidable: Sum }, label: string) {
+    if (b.sunk.amount > 0)
+      lines.push({ source, bucket: 'sunk',      amount: b.sunk.amount,      wbs: '', description: `${label} — consumed days`, refDate: b.sunk.firstDate, refId: `${source}_sunk` })
+    if (b.locked.amount > 0)
+      lines.push({ source, bucket: 'locked',    amount: b.locked.amount,    wbs: '', description: `${label} — demob-notice days`, refDate: b.locked.firstDate, refId: `${source}_locked` })
+    if (b.avoidable.amount > 0)
+      lines.push({ source, bucket: 'avoidable', amount: b.avoidable.amount, wbs: '', description: `${label} — after notice`, refDate: b.avoidable.firstDate, refId: `${source}_avoidable` })
+  }
+
+  emit('labour_trades', t, 'Trades labour')
+  emit('labour_mgmt',   m, 'Management labour')
+  emit('labour_seag',   s, 'SE AG labour')
+  emit('labour_subcon', c, 'Subcon labour')
+
+  return lines
+}
+
 // ── Aggregation ───────────────────────────────────────────────────────────────
 
 /** Build the empty bucket-totals scaffold. */
@@ -535,6 +637,7 @@ export function classifyWalkAway(input: WalkAwayInput, asOf: string): WalkAwayRe
   lines.push(...classifyAccommodation(asOf, input.accommodation, input.noticeDays))
   lines.push(...classifyHire(asOf, input.hireItems, input.noticeDays, input.fxRates))
   lines.push(...classifyTooling(asOf, input.toolingCostings, input.noticeDays, input.fxRates))
+  lines.push(...classifyLabourFromForecast(asOf, input.forecast, input.noticeDays))
 
   return aggregate(lines, asOf)
 }

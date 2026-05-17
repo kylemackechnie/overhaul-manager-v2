@@ -1132,6 +1132,45 @@ export interface WalkAwayResult {
 }
 
 /**
+ * Minimal structural shape the Walk-Away labour classifier needs from a
+ * forecast. Matches a subset of ForecastData (defined in
+ * src/engines/forecastEngine.ts) — kept inline to avoid a circular
+ * type-import between types/ and engines/.
+ */
+export interface WalkAwayForecastInput {
+  byDay: Record<string, {
+    trades:    { cost: number }
+    mgmt:      { cost: number }
+    seag:      { cost: number }
+    subcon:    { cost: number }
+  }>
+  days: string[]
+}
+
+/**
+ * Minimal shape for a row in timesheet_cost_lines as consumed by the
+ * walk-away labour classifier. Each row represents one person × one day
+ * × one job, with cost already pre-computed by the timesheet engine.
+ *
+ * Used to substitute actuals for forecast on past days where timesheets
+ * exist — see classifyLabourFromForecast for the merge rules.
+ *
+ * Note: category values map to walk_away source keys:
+ *   'trades' → 'labour_trades'
+ *   'mgmt'   → 'labour_mgmt'
+ *   'seag'   → 'labour_seag'
+ *   'subcon' → 'labour_subcon'
+ */
+export interface WalkAwayTimesheetCostLine {
+  work_date: string
+  category: 'trades' | 'mgmt' | 'seag' | 'subcon'
+  cost_labour: number
+  cost_allowances: number
+  wbs: string
+  timesheet_status: 'draft' | 'submitted' | 'approved'
+}
+
+/**
  * Full input for the Walk-Away engine.
  *
  * Each cost-source array is the project's full set for that source (the engine
@@ -1139,6 +1178,12 @@ export interface WalkAwayResult {
  * not yet implemented — they contribute zero to the result.
  *
  * `noticeDays` defaults to 1 per source if a key is missing.
+ *
+ * `forecast` provides the per-day labour breakdown (trades/mgmt/seag/subcon)
+ * derived from the resource shift patterns and rate cards. Passed-in rather
+ * than re-derived so the walk-away engine doesn't need to know how to model
+ * shifts and timesheets; the panel runs buildForecast() and hands the
+ * result in.
  */
 export interface WalkAwayInput {
   project: Project
@@ -1159,4 +1204,13 @@ export interface WalkAwayInput {
   rateCards: RateCard[]
   fxRates: { code: string; rate: number }[]
   noticeDays: Partial<Record<WalkAwaySource, number>>
+  /** Optional pre-computed forecast. When provided, the labour classifier
+   *  reads per-day cost from here. When undefined, labour contributes zero. */
+  forecast?: WalkAwayForecastInput
+  /** Pre-loaded timesheet_cost_lines rows for the project (all statuses).
+   *  When present, the labour classifier prefers these actuals over the
+   *  forecast for past days where they exist. Past days without a matching
+   *  timesheet entry fall back to forecast cost. Future days always use
+   *  forecast. Empty array (default) = forecast-only mode. */
+  timesheetCostLines?: WalkAwayTimesheetCostLine[]
 }
