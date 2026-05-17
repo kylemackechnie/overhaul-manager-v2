@@ -234,6 +234,7 @@ export interface Project {
   sap_reconciliation: SapReconState
   pm_user_id: string | null
   pa_user_id: string | null
+  cpm_user_id: string | null
   nrg_config: { kpiTarget: unknown | null; ohfLineIds: string[] }
   report_log: ReportLogEntry[]
   wosit_lines: WositLine[]

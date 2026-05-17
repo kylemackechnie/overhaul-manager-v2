@@ -116,6 +116,33 @@ export function useTimesheetPermissions(project: import('../types').Project | nu
   return { isPM, isPA, canEdit, canSubmit, canApprove, canUnlock, isAdmin }
 }
 
+/**
+ * useInvoicePermissions — project-scoped PM/PA/CPM role checks for invoice approval workflow.
+ *
+ * isPM:        current user is the project's assigned PM, or a system admin
+ * isPA:        current user is the project's assigned PA (Project Administrator), or a system admin
+ * isCPM:       current user is the project's assigned CPM (Commercial Project Manager)
+ * canEdit:     can add, edit, or import invoices (PM, PA, or CPM)
+ * canCheck:    can move invoice received → checked (PM or PA only)
+ * canApprove:  can move invoice checked → approved (PM only)
+ * canDispute:  can raise a dispute (PM or PA only)
+ */
+export function useInvoicePermissions(project: import('../types').Project | null) {
+  const { currentUser } = useAppStore()
+  const isAdmin = currentUser?.role === 'admin'
+
+  const isPM  = isAdmin || (!!currentUser && !!project && project.pm_user_id  === currentUser.id)
+  const isPA  = isAdmin || (!!currentUser && !!project && project.pa_user_id  === currentUser.id)
+  const isCPM =            (!!currentUser && !!project && project.cpm_user_id === currentUser.id)
+
+  const canEdit    = isPM || isPA || isCPM
+  const canCheck   = isPM || isPA
+  const canApprove = isPM
+  const canDispute = isPM || isPA
+
+  return { isPM, isPA, isCPM, canEdit, canCheck, canApprove, canDispute, isAdmin }
+}
+
 /** AccessDenied placeholder — rendered when canRead() is false */
 export function AccessDenied({ module }: { module: string }) {
   return (

@@ -34,6 +34,7 @@ export function ProjectSettingsPanel() {
   const [appUsers, setAppUsers] = useState<{id:string,name:string,email:string}[]>([])
   const [pmUserId, setPmUserId] = useState<string>('')
   const [paUserId, setPaUserId] = useState<string>('')
+  const [cpmUserId, setCpmUserId] = useState<string>('')
   const tsPerms = useTimesheetPermissions(activeProject ?? null)
 
   // Shift patterns for wet hire calendars (keyed by DOW 0-6)
@@ -148,6 +149,7 @@ export function ProjectSettingsPanel() {
       .then(({data}) => setAppUsers((data||[]) as {id:string,name:string,email:string}[]))
     setPmUserId(activeProject.pm_user_id || '')
     setPaUserId(activeProject.pa_user_id || '')
+    setCpmUserId(activeProject.cpm_user_id || '')
     setForm({
       name: activeProject.name || '',
       wbs: activeProject.wbs || '',
@@ -198,11 +200,15 @@ export function ProjectSettingsPanel() {
       std_hours: { day: form.std_hours_day, night: form.std_hours_night },
       pm_user_id: pmUserId || null,
       pa_user_id: paUserId || null,
+      cpm_user_id: cpmUserId || null,
       site_info: {
         ...(activeProject!.site_info || {}),
         siemens_project_no: form.siemens_project_no.trim(),
         contract_no: form.contract_no.trim(),
-        cpm_name: form.cpm_name.trim(),
+        // Auto-populate cpm_name from selected CPM user so VNs keep working
+        cpm_name: cpmUserId
+          ? (appUsers.find(u => u.id === cpmUserId)?.name || form.cpm_name.trim())
+          : form.cpm_name.trim(),
       },
     }
     const { data, error } = await supabase.from('projects').update(payload)
@@ -349,7 +355,7 @@ export function ProjectSettingsPanel() {
         <div className="card" style={{marginBottom:'16px'}}>
           {section('Project Roles')}
           <p style={{fontSize:'12px',color:'var(--text3)',marginBottom:'12px'}}>
-            The Project Manager can approve and unlock timesheets. The Project Administrator can enter and submit timesheets for PM approval.
+            The <strong>Project Manager</strong> can approve and unlock timesheets, and approve invoices. The <strong>Project Administrator</strong> can enter timesheets, check invoices, and raise disputes. The <strong>Commercial Project Manager</strong> can add and edit invoices but cannot check or approve them.
             {!tsPerms.isAdmin && ' (Only a system admin can change the Project Manager.)'}
           </p>
           <div className="fg-row">
@@ -381,10 +387,19 @@ export function ProjectSettingsPanel() {
                 ))}
               </select>
             </div>
+            <div className="fg">
+              <label>Commercial Project Manager</label>
+              <select className="input" value={cpmUserId} onChange={e => setCpmUserId(e.target.value)}>
+                <option value="">— Not assigned —</option>
+                {appUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+            </div>
           </div>
           {!pmUserId && (
             <div style={{marginTop:'10px',padding:'8px 12px',background:'var(--orange-bg,#fff7ed)',border:'1px solid var(--orange,#f97316)',borderRadius:'6px',fontSize:'12px',color:'var(--orange,#c2410c)'}}>
-              ⚠ No Project Manager assigned — timesheets cannot be approved until a PM is set.
+              ⚠ No Project Manager assigned — timesheets cannot be approved and invoices cannot be approved until a PM is set.
             </div>
           )}
         </div>

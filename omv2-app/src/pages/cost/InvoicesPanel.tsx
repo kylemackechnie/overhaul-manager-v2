@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { naturalSortItemId } from '../../lib/dates'
 import { supabase } from '../../lib/supabase'
-import { usePermissions } from '../../lib/permissions'
+import { useInvoicePermissions } from '../../lib/permissions'
 import { useAppStore } from '../../store/appStore'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { SavedViewsBar } from '../../components/ui/SavedViewsBar'
@@ -143,7 +143,7 @@ function excelSerialToISO(serial: unknown): string {
 export function InvoicesPanel() {
   const { activeProject, currentUser } = useAppStore()
   const isTce = activeProject?.cost_method === 'nrg_tce'
-  const { canWrite } = usePermissions()
+  const invPerms = useInvoicePermissions(activeProject ?? null)
   const { prefs, setPref } = useUserPrefs()
 
   // Column visibility
@@ -295,7 +295,13 @@ export function InvoicesPanel() {
 
   // ── Approval workflow transition ──────────────────────────────────────────
   async function transition(inv: Invoice, toStatus: string) {
-    if (toStatus === 'disputed') { setDisputeModal({ inv, note:'' }); return }
+    // Permission check
+    if (toStatus === 'disputed') {
+      if (!invPerms.canDispute) return toast('Only the Project Manager or Administrator can raise a dispute', 'error')
+      setDisputeModal({ inv, note:'' }); return
+    }
+    if (toStatus === 'checked' && !invPerms.canCheck)   return toast('Only the Project Manager or Administrator can check invoices', 'error')
+    if (toStatus === 'approved' && !invPerms.canApprove) return toast('Only the Project Manager can approve invoices', 'error')
     await doTransition(inv, toStatus, '')
   }
 
@@ -568,12 +574,24 @@ export function InvoicesPanel() {
           <p style={{fontSize:'12px',color:'var(--text3)',marginTop:'2px'}}>
             {invoices.length} invoice{invoices.length!==1?'s':''} · {fmtK(invoices.reduce((s,i)=>s+(i.amount||0),0))} total
           </p>
+          {invPerms.isCPM && !invPerms.isPM && !invPerms.isPA && (
+            <p style={{fontSize:'11px',color:'#d97706',marginTop:'2px'}}>
+              ℹ️ You are the Commercial Project Manager — you can add and edit invoices but cannot check or approve them.
+            </p>
+          )}
+          {!invPerms.canEdit && (
+            <p style={{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}}>
+              👁 Read-only — contact the Project Manager or Administrator to make changes.
+            </p>
+          )}
         </div>
         <div style={{display:'flex',gap:'8px'}}>
-          <label className="btn btn-sm" style={{cursor:'pointer',background:'#1e40af',color:'#fff',border:'none',position:'relative'}} title="Import from SAP Excel export">
-            {sapParsing ? <span className="spinner" style={{width:'12px',height:'12px'}}/> : '📥 SAP Import'}
-            <input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={e => { const f = e.target.files?.[0]; if (f) { e.target.value=''; parseSapFile(f) } }} disabled={sapParsing} />
-          </label>
+          {invPerms.canEdit && (
+            <label className="btn btn-sm" style={{cursor:'pointer',background:'#1e40af',color:'#fff',border:'none',position:'relative'}} title="Import from SAP Excel export">
+              {sapParsing ? <span className="spinner" style={{width:'12px',height:'12px'}}/> : '📥 SAP Import'}
+              <input type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={e => { const f = e.target.files?.[0]; if (f) { e.target.value=''; parseSapFile(f) } }} disabled={sapParsing} />
+            </label>
+          )}
           <button className="btn btn-sm" onClick={() => {
             const rows = [['Invoice #','Vendor Ref','PO','Status','Amount','Currency','Invoice Date','Due Date']]
             filtered.forEach(i => {
@@ -582,7 +600,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          <button className="btn btn-primary" disabled={!canWrite('cost_tracking')} onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>
+          {invPerms.canEdit && <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>}
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
@@ -761,7 +779,14 @@ export function InvoicesPanel() {
                     {isInvVisible('actions') && <td style={{padding:'8px 10px',verticalAlign:'top',whiteSpace:'nowrap'}}>
                       <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
                         <div style={{display:'flex',gap:'3px'}}>
-                          {transitions.map(t => (
+                          {transitions
+                            .filter(t => {
+                              if (t === 'approved') return invPerms.canApprove
+                              if (t === 'checked')  return invPerms.canCheck
+                              if (t === 'disputed') return invPerms.canDispute
+                              return true
+                            })
+                            .map(t => (
                             <button key={t} onClick={()=>transition(inv, t)} style={{fontSize:'10px',padding:'3px 7px',borderRadius:'4px',cursor:'pointer',fontWeight:600,...Object.fromEntries(BTN_STYLE[t].split(';').map(s=>{const [k,v]=s.split(':');return [k?.trim()?.replace(/-([a-z])/g,(_:string,g:string)=>g.toUpperCase()),v?.trim()]}))}}>
                               {BTN_LABEL[t]}
                             </button>
@@ -781,7 +806,7 @@ export function InvoicesPanel() {
                         }
                       </div>
                       <div style={{display:'flex',gap:'3px'}}>
-                          <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>{
+                          {invPerms.canEdit && <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>{
                             setForm({
                               invoice_number: inv.invoice_number||'', vendor_ref: inv.vendor_ref||'',
                               vendor_details: inv.vendor_details||'', po_id: inv.po_id||'',
@@ -800,9 +825,9 @@ export function InvoicesPanel() {
                               setShowLines(existingLines.length > 0)
                             })
                             setModal(inv)
-                          }}>Edit</button>
+                          }}>Edit</button>}
                           <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>setHistoryModal(inv)}>History</button>
-                          <button className="btn btn-sm" style={{fontSize:'10px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>
+                          {invPerms.canEdit && <button className="btn btn-sm" style={{fontSize:'10px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>}
                         </div>
                       </div>
                     </td>}
