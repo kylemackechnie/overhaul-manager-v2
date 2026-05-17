@@ -587,7 +587,7 @@ function ExpensesPanelDesktop() {
       </div>
 
       {orphanCount > 0 && (
-        <div style={{
+        <div data-tour="expenses-flight-orphan-banner" style={{
           padding: '10px 14px', marginBottom: '12px',
           background: 'rgba(239,68,68,0.08)', border: '1px solid #fca5a5', borderRadius: '6px',
           color: '#991b1b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '10px',

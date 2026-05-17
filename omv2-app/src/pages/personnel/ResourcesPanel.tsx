@@ -1254,7 +1254,7 @@ export function ResourcesPanel() {
               )}
               <div>
                 <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Logistics Requirements</div>
-                <div style={{display:'flex',gap:'20px',flexWrap:'wrap'}}>
+                <div data-tour="resource-modal-flight-required" style={{display:'flex',gap:'20px',flexWrap:'wrap'}}>
                   {([
                     {key:'car_required',  label:'🚗 Car Required'},
                     {key:'flight_required',label:'✈️ Flight Required'},

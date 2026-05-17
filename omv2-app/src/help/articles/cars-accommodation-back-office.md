@@ -4,7 +4,7 @@ title: Cars, Accommodation & Back Office
 category: Personnel
 order: 50
 summary: People-related logistics — car hire, accommodation bookings, and back-office or SE Support hours that aren't on regular timesheets. All flow into the WBS aggregator alongside labour.
-relatedPanels: [hr-cars, hr-flights, hr-accommodation, hr-backoffice]
+relatedPanels: [hr-cars, hr-accommodation, hr-backoffice]
 ---
 
 # Cars, Accommodation & Back Office

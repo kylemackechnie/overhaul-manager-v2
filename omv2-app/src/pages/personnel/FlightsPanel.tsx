@@ -414,7 +414,7 @@ export function FlightsPanel() {
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <div>
+        <div data-tour="flights-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>Flights</h1>
             <HelpButton panelId="hr-flights" />
@@ -425,6 +425,7 @@ export function FlightsPanel() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
+            data-tour="flights-search"
             type="text"
             className="input"
             placeholder="Search person..."
@@ -432,9 +433,9 @@ export function FlightsPanel() {
             onChange={e => setSearch(e.target.value)}
             style={{ width: '200px' }}
           />
-          <button className="btn btn-sm" onClick={expandAll}>Expand all</button>
+          <button data-tour="flights-expand-all" className="btn btn-sm" onClick={expandAll}>Expand all</button>
           <button className="btn btn-sm" onClick={collapseAll}>Collapse all</button>
-          <button className="btn btn-primary" onClick={() => openNew()}>+ Add Flight Leg</button>
+          <button data-tour="flights-add-leg" className="btn btn-primary" onClick={() => openNew()}>+ Add Flight Leg</button>
         </div>
       </div>
 
@@ -797,7 +798,7 @@ function FlightGroup(props: FlightGroupProps) {
               {linkedExp ? (
                 <span style={{ color: 'var(--mod-hr)' }}>✓ Linked</span>
               ) : (
-                <button className="btn btn-sm" onClick={() => onLinkExpense(leg)}>🔗 Link expense</button>
+                <button data-tour="flights-link-expense" className="btn btn-sm" onClick={() => onLinkExpense(leg)}>🔗 Link expense</button>
               )}
             </td>
             <td style={{ fontSize: '11px' }}>
