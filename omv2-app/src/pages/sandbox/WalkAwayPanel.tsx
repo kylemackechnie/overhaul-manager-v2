@@ -29,7 +29,7 @@ import type {
   Resource, Flight, Expense, Car, Accommodation, HireItem,
   ToolingCosting, WeeklyTimesheet, BackOfficeHour,
   Variation, VariationLine, PurchaseOrder, Invoice, RateCard,
-  WalkAwayResult, WalkAwaySource, GlobalTV, GlobalDepartment,
+  WalkAwayResult, WalkAwaySource, WalkAwayTimesheetCostLine, GlobalTV, GlobalDepartment,
 } from '../../types'
 
 // ── Source display labels (order = panel row order) ──────────────────────────
@@ -94,6 +94,7 @@ export function WalkAwayPanel() {
   const [rateCards, setRateCards] = useState<RateCard[]>([])
   const [globalTVs, setGlobalTVs] = useState<GlobalTV[]>([])
   const [globalDepartments, setGlobalDepartments] = useState<GlobalDepartment[]>([])
+  const [timesheetCostLines, setTimesheetCostLines] = useState<WalkAwayTimesheetCostLine[]>([])
   const [loading, setLoading] = useState(true)
 
   // Pick up FX rates + notice settings from the active project
@@ -117,7 +118,7 @@ export function WalkAwayPanel() {
     if (!activeProject) return
     setLoading(true)
     const pid = activeProject.id
-    const [resR, flR, expR, carR, accR, hireR, tcR, tsR, boR, varR, varLR, poR, invR, rcR, tvR, depR] = await Promise.all([
+    const [resR, flR, expR, carR, accR, hireR, tcR, tsR, boR, varR, varLR, poR, invR, rcR, tvR, depR, tclR] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid),
       supabase.from('flights').select('*').eq('project_id', pid),
       supabase.from('expenses').select('*').eq('project_id', pid),
@@ -134,6 +135,11 @@ export function WalkAwayPanel() {
       supabase.from('rate_cards').select('*').eq('project_id', pid),
       supabase.from('global_tvs').select('*'),
       supabase.from('global_departments').select('*'),
+      // All statuses (draft/submitted/approved) — walk-away treats any timesheet
+      // entry as an incurred cost, regardless of approval workflow position.
+      supabase.from('timesheet_cost_lines')
+        .select('work_date,category,cost_labour,cost_allowances,wbs,timesheet_status')
+        .eq('project_id', pid),
     ])
     setResources((resR.data || []) as Resource[])
     setFlights((flR.data || []) as Flight[])
@@ -151,6 +157,7 @@ export function WalkAwayPanel() {
     setRateCards((rcR.data || []) as RateCard[])
     setGlobalTVs((tvR.data || []) as GlobalTV[])
     setGlobalDepartments((depR.data || []) as GlobalDepartment[])
+    setTimesheetCostLines((tclR.data || []) as WalkAwayTimesheetCostLine[])
     setLoading(false)
   }
 
@@ -194,8 +201,9 @@ export function WalkAwayPanel() {
       fxRates,
       noticeDays,
       forecast,
+      timesheetCostLines,
     }, asOf)
-  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, variations, variationLines, purchaseOrders, invoices, rateCards, globalTVs, globalDepartments, fxRates, noticeDays, asOf])
+  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, variations, variationLines, purchaseOrders, invoices, rateCards, globalTVs, globalDepartments, timesheetCostLines, fxRates, noticeDays, asOf])
 
   async function saveNoticeDays() {
     if (!activeProject) return

@@ -1155,15 +1155,14 @@ export interface WalkAwayForecastInput {
  * Used to substitute actuals for forecast on past days where timesheets
  * exist — see classifyLabourFromForecast for the merge rules.
  *
- * Note: category values map to walk_away source keys:
- *   'trades' → 'labour_trades'
- *   'mgmt'   → 'labour_mgmt'
- *   'seag'   → 'labour_seag'
- *   'subcon' → 'labour_subcon'
+ * Note: category values in this table match the resources/rate_cards
+ * category enum ('trades', 'management', 'seag', 'subcontractor') —
+ * which differs from weekly_timesheets.type ('trades', 'mgmt', 'seag',
+ * 'subcon'). The walk-away labour classifier handles the mapping.
  */
 export interface WalkAwayTimesheetCostLine {
   work_date: string
-  category: 'trades' | 'mgmt' | 'seag' | 'subcon'
+  category: string  // 'trades' | 'management' | 'seag' | 'subcontractor'
   cost_labour: number
   cost_allowances: number
   wbs: string

@@ -484,33 +484,38 @@ export function classifyTooling(
 // ── Source 9-12: Labour (from forecast.byDay) ─────────────────────────────────
 
 /**
- * Classify labour from a pre-computed forecast's byDay map.
+ * Classify labour from a pre-computed forecast's byDay map, with optional
+ * timesheet-actuals override for past days.
  *
- * Forecast.byDay gives us cost per category (trades/mgmt/seag/subcon) per day,
- * already accounting for shift patterns, rate cards, public holidays, and
- * travel days. We walk the day list and bucket each day's cost by category:
+ * Two data sources feed the classifier:
  *
- *   - day < asOf                       → SUNK (work day has passed)
- *   - asOf ≤ day < asOf + notice       → LOCKED (demob notice window)
- *   - day ≥ asOf + notice              → AVOIDABLE (can demob from cutoff)
+ *  1. **forecast.byDay** — predicted cost per category per day, derived from
+ *     resources × shift patterns × rate cards. Reliable for forward-looking
+ *     days but a guess for past days where work has already happened.
+ *
+ *  2. **timesheet_cost_lines** — actual cost per person × day × job (any
+ *     status: draft, submitted, or approved). Once a timesheet entry exists
+ *     for a day, the cost has been incurred — the approval workflow is just
+ *     paperwork. We treat all three statuses as actuals.
+ *
+ * Merge rule per day × category:
+ *  - day < asOf AND timesheet entry exists  → use timesheet cost (SUNK)
+ *  - day < asOf AND no timesheet entry       → use forecast cost (SUNK)
+ *  - asOf ≤ day < asOf + notice              → use forecast cost (LOCKED)
+ *  - day ≥ asOf + notice                     → use forecast cost (AVOIDABLE)
+ *
+ * The merge is per day × category — if Monday has trades timesheet entries
+ * but not mgmt, trades uses actuals and mgmt uses forecast for that day.
  *
  * Each category gets its own notice period (labour_trades / labour_mgmt /
  * labour_seag / labour_subcon) so admin can tune them independently — e.g.
  * subcon notice tends to be longer due to contract clauses.
  *
- * WBS attribution: omitted at the line level. Labour is allocated to WBS
- * in forecast.byWbs, not byDay. The Walk-Away WBS view will therefore
- * show labour as '(unallocated)'. Improving this means walking
- * forecast.byPo or running a separate per-day-per-resource WBS resolve;
- * not worth the complexity for the first cut, since labour is usually
- * dominated by one WBS code per category anyway.
- *
- * Past-day actuals vs forecast: this classifier trusts forecast cost for all
- * past days. Even if no timesheet was logged for day D < asOf, we still
- * count the forecast cost as SUNK on the assumption that work happened
- * (the resource was mobilised). For higher fidelity, a future enhancement
- * could substitute actuals from wbsAggregator on past days where they
- * exist. Acceptable first-cut accuracy.
+ * WBS attribution: timesheet lines carry real WBS; forecast doesn't. So
+ * actuals-derived lines will eventually be able to populate WBS view
+ * correctly, but the current implementation still rolls up to '(unallocated)'
+ * because we emit per-category summary lines (not per-WBS sub-lines). Could
+ * be improved later if WBS-view fidelity matters for labour.
  */
 export function classifyLabourFromForecast(
   asOf: string,
@@ -518,6 +523,7 @@ export function classifyLabourFromForecast(
     trades: { cost: number }; mgmt: { cost: number }; seag: { cost: number }; subcon: { cost: number }
   }>; days: string[] } | undefined,
   noticeDays: Partial<Record<WalkAwaySource, number>>,
+  timesheetCostLines: WalkAwayTimesheetCostLine[] = [],
 ): WalkAwayLineItem[] {
   if (!forecast) return []
 
@@ -526,18 +532,32 @@ export function classifyLabourFromForecast(
   const noticeSeag   = noticeFor('labour_seag',   noticeDays)
   const noticeSubcon = noticeFor('labour_subcon', noticeDays)
 
-  // Pre-compute cutoff dates per category so we don't do it per-day
   const cutTrades = addDays(asOf, noticeTrades)
   const cutMgmt   = addDays(asOf, noticeMgmt)
   const cutSeag   = addDays(asOf, noticeSeag)
   const cutSubcon = addDays(asOf, noticeSubcon)
 
-  // Bucket totals across all days, then emit one summary line per
-  // category × bucket (not per-day — would be hundreds of micro-lines).
-  // refDate for emitted lines is the date of the first contributing day,
-  // for the drill-down view.
-  type Sum = { amount: number; firstDate: string | null }
-  const init = (): Sum => ({ amount: 0, firstDate: null })
+  // Build per-day × per-category totals from timesheet actuals.
+  // Map key = `${work_date}|${category}` → total cost (labour + allowances).
+  // Only used for past days (work_date < asOf); future timesheets — rare but
+  // possible if someone pre-enters — are ignored, forecast wins.
+  //
+  // Category values in the table:
+  //   'trades'        → labour_trades
+  //   'management'    → labour_mgmt   (note: differs from weekly_timesheets.type 'mgmt')
+  //   'seag'          → labour_seag
+  //   'subcontractor' → labour_subcon (note: differs from weekly_timesheets.type 'subcon')
+  const actualsByDayCat = new Map<string, number>()
+  for (const tcl of timesheetCostLines) {
+    if (!tcl.work_date || !tcl.category) continue
+    const cost = (tcl.cost_labour || 0) + (tcl.cost_allowances || 0)
+    if (cost <= 0) continue
+    const key = `${tcl.work_date}|${tcl.category}`
+    actualsByDayCat.set(key, (actualsByDayCat.get(key) || 0) + cost)
+  }
+
+  type Sum = { amount: number; firstDate: string | null; hasActuals: boolean }
+  const init = (): Sum => ({ amount: 0, firstDate: null, hasActuals: false })
 
   const t = { sunk: init(), locked: init(), avoidable: init() }
   const m = { sunk: init(), locked: init(), avoidable: init() }
@@ -550,25 +570,49 @@ export function classifyLabourFromForecast(
     return 'avoidable'
   }
 
-  function add(b: Sum, amount: number, day: string) {
+  function add(b: Sum, amount: number, day: string, isActual: boolean) {
     if (amount <= 0) return
     b.amount += amount
     if (!b.firstDate) b.firstDate = day
+    if (isActual) b.hasActuals = true
   }
 
+  // For past days: prefer actuals where they exist. For future days: forecast.
+  // The merge is per day × category; we look up each category independently.
   for (const day of forecast.days) {
-    const bucket = forecast.byDay[day]
-    if (!bucket) continue
-    add(t[bucketFor(day, cutTrades)], bucket.trades.cost || 0, day)
-    add(m[bucketFor(day, cutMgmt)],   bucket.mgmt.cost || 0,   day)
-    add(s[bucketFor(day, cutSeag)],   bucket.seag.cost || 0,   day)
-    add(c[bucketFor(day, cutSubcon)], bucket.subcon.cost || 0, day)
+    const dayBucket = forecast.byDay[day]
+    if (!dayBucket) continue
+    const isPast = day < asOf
+
+    // Trades
+    const tActual = isPast ? actualsByDayCat.get(`${day}|trades`) : undefined
+    const tCost = tActual !== undefined ? tActual : (dayBucket.trades.cost || 0)
+    add(t[bucketFor(day, cutTrades)], tCost, day, tActual !== undefined)
+
+    // Management — timesheet_cost_lines rows use 'management' (matches the
+    // resources/rate_cards category enum). weekly_timesheets.type uses 'mgmt'
+    // but the cost-lines table doesn't.
+    const mActual = isPast ? actualsByDayCat.get(`${day}|management`) : undefined
+    const mCost = mActual !== undefined ? mActual : (dayBucket.mgmt.cost || 0)
+    add(m[bucketFor(day, cutMgmt)], mCost, day, mActual !== undefined)
+
+    // SE AG
+    const sActual = isPast ? actualsByDayCat.get(`${day}|seag`) : undefined
+    const sCost = sActual !== undefined ? sActual : (dayBucket.seag.cost || 0)
+    add(s[bucketFor(day, cutSeag)], sCost, day, sActual !== undefined)
+
+    // Subcontractor — same naming difference: cost-lines uses 'subcontractor'
+    const cActual = isPast ? actualsByDayCat.get(`${day}|subcontractor`) : undefined
+    const cCost = cActual !== undefined ? cActual : (dayBucket.subcon.cost || 0)
+    add(c[bucketFor(day, cutSubcon)], cCost, day, cActual !== undefined)
   }
 
   const lines: WalkAwayLineItem[] = []
   function emit(source: WalkAwaySource, b: { sunk: Sum; locked: Sum; avoidable: Sum }, label: string) {
-    if (b.sunk.amount > 0)
-      lines.push({ source, bucket: 'sunk',      amount: b.sunk.amount,      wbs: '', description: `${label} — consumed days`, refDate: b.sunk.firstDate, refId: `${source}_sunk` })
+    if (b.sunk.amount > 0) {
+      const suffix = b.sunk.hasActuals ? ' — consumed days (actuals)' : ' — consumed days (forecast)'
+      lines.push({ source, bucket: 'sunk', amount: b.sunk.amount, wbs: '', description: label + suffix, refDate: b.sunk.firstDate, refId: `${source}_sunk` })
+    }
     if (b.locked.amount > 0)
       lines.push({ source, bucket: 'locked',    amount: b.locked.amount,    wbs: '', description: `${label} — demob-notice days`, refDate: b.locked.firstDate, refId: `${source}_locked` })
     if (b.avoidable.amount > 0)
@@ -637,7 +681,7 @@ export function classifyWalkAway(input: WalkAwayInput, asOf: string): WalkAwayRe
   lines.push(...classifyAccommodation(asOf, input.accommodation, input.noticeDays))
   lines.push(...classifyHire(asOf, input.hireItems, input.noticeDays, input.fxRates))
   lines.push(...classifyTooling(asOf, input.toolingCostings, input.noticeDays, input.fxRates))
-  lines.push(...classifyLabourFromForecast(asOf, input.forecast, input.noticeDays))
+  lines.push(...classifyLabourFromForecast(asOf, input.forecast, input.noticeDays, input.timesheetCostLines))
 
   return aggregate(lines, asOf)
 }
