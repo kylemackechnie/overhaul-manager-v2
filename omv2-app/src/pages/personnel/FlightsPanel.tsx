@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAppStore } from '../../store/appStore'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
 import { toast } from '../../components/ui/Toast'
 import type { Flight, Resource, Expense, PurchaseOrder } from '../../types'
 import { HelpButton } from '../../components/HelpButton'
@@ -108,6 +109,7 @@ function splitDepart(ts: string | null): { date: string; time: string } {
 export function FlightsPanel() {
   const { activeProject } = useAppStore()
   const projectId = activeProject?.id
+  const { prefs, setPref } = useUserPrefs()
 
   const [loading, setLoading] = useState(true)
   const [flights, setFlights] = useState<Flight[]>([])
@@ -121,8 +123,22 @@ export function FlightsPanel() {
     return rates.find(r => r.code === 'EUR')?.rate ?? 1.65
   }, [activeProject])
 
-  // Expanded groups — keyed by resource_id. Default: all expanded with pending legs.
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Expanded groups — keyed by resource_id. Persisted in user prefs
+  // (flights_expanded). Default: all collapsed. The lazy initialiser
+  // reads prefs once on mount; subsequent changes are written back via
+  // setExpanded which also calls setPref.
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set((prefs.flights_expanded as string[] | undefined) || [])
+  )
+
+  // Persist whenever expansion state changes
+  function updateExpanded(updater: (prev: Set<string>) => Set<string>) {
+    setExpanded(prev => {
+      const next = updater(prev)
+      setPref('flights_expanded', Array.from(next))
+      return next
+    })
+  }
 
   // Modals
   const [flightModal, setFlightModal] = useState<'new' | Flight | null>(null)
@@ -187,11 +203,8 @@ export function FlightsPanel() {
     setFlights(allFlights)
     setResources(allResources)
 
-    // Default expansion: any group that has at least one non-cancelled pending leg
-    const pendingResIds = new Set(
-      allFlights.filter(f => f.status === 'pending').map(f => f.resource_id),
-    )
-    setExpanded(pendingResIds)
+    // Expansion state is persisted in user prefs (flights_expanded) and seeded
+    // by the useState lazy initialiser. We do NOT auto-expand on load.
 
     setLoading(false)
   }
@@ -383,7 +396,7 @@ export function FlightsPanel() {
   }, [linkModal, expenses, flights])
 
   function toggleExpand(resourceId: string) {
-    setExpanded(prev => {
+    updateExpanded(prev => {
       const n = new Set(prev)
       if (n.has(resourceId)) n.delete(resourceId)
       else n.add(resourceId)
@@ -391,8 +404,8 @@ export function FlightsPanel() {
     })
   }
 
-  function expandAll()   { setExpanded(new Set(grouped.map(g => g.resource.id))) }
-  function collapseAll() { setExpanded(new Set()) }
+  function expandAll()   { updateExpanded(() => new Set(grouped.map(g => g.resource.id))) }
+  function collapseAll() { updateExpanded(() => new Set()) }
 
   if (loading) {
     return <div style={{ padding: '24px' }}><div className="loading-center"><span className="spinner" /> Loading flights...</div></div>

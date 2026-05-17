@@ -128,6 +128,11 @@ export interface UserPrefs {
   res_cal_preset?: string    // ViewPreset for resource calendar ('2w' | '4w' | '8w' | 'span')
   hidden_cols?: Record<string, string[]>  // tableId → array of hidden column IDs
 
+  // ── Flights panel ─────────────────────────────────────────────────────────
+  /** Resource IDs whose flight groups are currently expanded. Persists per user
+   *  across sessions. Default empty (all collapsed). */
+  flights_expanded?: string[]
+
   // ── Ribbon tabs ───────────────────────────────────────────────────────────
   ribbon_tabs?: { key: string; hidden: boolean; order: number }[]  // tab personalisation
 
