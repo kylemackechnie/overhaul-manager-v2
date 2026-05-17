@@ -63,18 +63,36 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
   const { activeProject } = useAppStore()
   const weekPresets = useMemo(() => getWeekPresets(), [])
 
+  function printDocument() {
+    const doc = document.querySelector('.invoice-approval-document') as HTMLElement
+    if (!doc) return
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) { alert('Allow popups to print'); return }
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Invoice Approval Record</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; padding: 20px; font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #0f172a; }
+  @media print {
+    body { padding: 0; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head><body>${doc.outerHTML}</body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 400)
+  }
+
   const [dateFrom, setDateFrom] = useState(weekPresets[0].from)
   const [dateTo, setDateTo] = useState(weekPresets[0].to)
   const [showFilingRef, setShowFilingRef] = useState(true)
   const [showTce, setShowTce] = useState(isTce)
 
+  // Lock body scroll while modal is open
   useEffect(() => {
     document.body.style.overflow = 'hidden'
-    document.body.classList.add('print-modal-open')
-    return () => {
-      document.body.style.overflow = ''
-      document.body.classList.remove('print-modal-open')
-    }
+    return () => { document.body.style.overflow = '' }
   }, [])
 
   const poMap = useMemo(() => Object.fromEntries(pos.map(p => [p.id, p])), [pos])
@@ -145,7 +163,7 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button onClick={() => window.print()} className="btn btn-primary" style={{ fontSize: 12 }}>🖨 Print / PDF</button>
+          <button onClick={printDocument} className="btn btn-primary" style={{ fontSize: 12 }}>🖨 Print / PDF</button>
           <button onClick={onClose} className="btn btn-sm" style={{ fontSize: 12 }}>✕ Close</button>
         </div>
       </div>
@@ -302,35 +320,6 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body.print-modal-open > *:not(.invoice-approval-print-root) { display: none !important; }
-          body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
-          .invoice-approval-print-root {
-            position: static !important;
-            display: block !important;
-            background: #fff !important;
-            overflow: visible !important;
-            width: 100% !important;
-            height: auto !important;
-          }
-          .invoice-approval-scroll {
-            display: block !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            height: auto !important;
-          }
-          .invoice-approval-document {
-            width: 100% !important;
-            max-width: 100% !important;
-            border: none !important;
-            border-radius: 0 !important;
-            overflow: visible !important;
-          }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-      `}</style>
     </div>
   )
 }
