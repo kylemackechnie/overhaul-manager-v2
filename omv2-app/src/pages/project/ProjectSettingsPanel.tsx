@@ -27,7 +27,7 @@ export function ProjectSettingsPanel() {
     site_id: '',
     siemens_project_no: '',
     contract_no: '',
-    cpm_name: '',
+    cpm_name: '',  // derived from cpm_user_id — not directly editable
   })
   const [saving, setSaving] = useState(false)
   const [sites, setSites] = useState<{id:string,name:string}[]>([])
@@ -205,10 +205,10 @@ export function ProjectSettingsPanel() {
         ...(activeProject!.site_info || {}),
         siemens_project_no: form.siemens_project_no.trim(),
         contract_no: form.contract_no.trim(),
-        // Auto-populate cpm_name from selected CPM user so VNs keep working
+        // cpm_name always derived from selected CPM user so VNs and reports use consistent name
         cpm_name: cpmUserId
-          ? (appUsers.find(u => u.id === cpmUserId)?.name || form.cpm_name.trim())
-          : form.cpm_name.trim(),
+          ? (appUsers.find(u => u.id === cpmUserId)?.name || (activeProject!.site_info?.cpm_name as string) || '')
+          : (activeProject!.site_info?.cpm_name as string) || '',
       },
     }
     const { data, error } = await supabase.from('projects').update(payload)
@@ -324,13 +324,6 @@ export function ProjectSettingsPanel() {
               <label>Contract No.</label>
               <input className="input" value={form.contract_no} onChange={e=>setForm(f=>({...f,contract_no:e.target.value}))} placeholder="e.g. NRG00173164" />
             </div>
-          </div>
-          <div className="fg-row">
-            <div className="fg">
-              <label>Commercial Project Manager</label>
-              <input className="input" value={form.cpm_name} onChange={e=>setForm(f=>({...f,cpm_name:e.target.value}))} placeholder="Full name" />
-            </div>
-            <div className="fg" />
           </div>
         </div>
       </div>

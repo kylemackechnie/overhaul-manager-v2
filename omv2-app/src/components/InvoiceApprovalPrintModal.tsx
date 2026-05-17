@@ -98,7 +98,7 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
   const siemensNo   = (activeProject?.site_info?.siemens_project_no as string) || '—'
   const contractNo  = (activeProject?.site_info?.contract_no as string) || '—'
   const client      = activeProject?.client || '—'
-  const cpmName     = (activeProject?.site_info?.cpm_name as string) || '—'
+  const cpmName = (activeProject?.site_info?.cpm_name as string) || '—'
   const pmName      = activeProject?.pm || '—'
   const generatedDate = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
 
