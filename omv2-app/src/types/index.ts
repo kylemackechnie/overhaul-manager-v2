@@ -1062,3 +1062,101 @@ export interface PersonDay {
   cost: number; sell: number; hours: number
   isMob?: boolean; isDemob?: boolean; isBackOffice?: boolean
 }
+
+// ── Walk-Away Analysis (Sandbox › Walk-Away) ────────────────────────────────
+
+/** The four buckets every dollar in EAC classifies into for a chosen walk-away date. */
+export type WalkAwayBucket = 'sunk' | 'locked' | 'avoidable' | 'discretionary'
+
+/**
+ * Stable identifiers for cost sources contributing to Walk-Away.
+ * These match the keys in projects.walk_away_settings.notice_days,
+ * and they're the row identifiers in the breakdown table on the panel.
+ */
+export type WalkAwaySource =
+  | 'flights'
+  | 'expenses'
+  | 'cars'
+  | 'accommodation'
+  | 'dry_hire'
+  | 'wet_hire'
+  | 'local_hire'
+  | 'tooling'
+  | 'labour_trades'
+  | 'labour_mgmt'
+  | 'labour_seag'
+  | 'labour_subcon'
+  | 'back_office'
+  | 'se_ag_support'
+  | 'variations'
+
+/** A single contributing line item in the Walk-Away analysis, post-classification. */
+export interface WalkAwayLineItem {
+  /** Which cost source this came from. */
+  source: WalkAwaySource
+  /** Bucket assigned by the engine. */
+  bucket: WalkAwayBucket
+  /** AUD-converted amount. */
+  amount: number
+  /** WBS code attributed (may be empty string if unallocated). */
+  wbs: string
+  /** Human-readable description for the drill-down view. */
+  description: string
+  /** The reference date used to classify this line (e.g. depart_at for a flight leg,
+   *  expense.date for an expense, accom check_in for accommodation, etc.). YYYY-MM-DD. */
+  refDate: string | null
+  /** Stable id from the underlying record, so the drill-down can deep-link. */
+  refId: string
+}
+
+/** Sum totals for one bucket. */
+export interface WalkAwayBucketTotals {
+  /** Total AUD across all sources in this bucket. */
+  total: number
+  /** Per-cost-source breakdown within this bucket. */
+  bySource: Partial<Record<WalkAwaySource, number>>
+}
+
+/** Result of running classifyWalkAway() for a given as-of date. */
+export interface WalkAwayResult {
+  /** The walk-away date used for classification. YYYY-MM-DD. */
+  asOfDate: string
+  /** Sunk + Locked + Avoidable + Discretionary. Should equal current EAC within rounding. */
+  total: number
+  /** Headline bucket totals + per-source breakdowns. */
+  buckets: Record<WalkAwayBucket, WalkAwayBucketTotals>
+  /** Bucket totals grouped by WBS code (used by the WBS view toggle on the panel). */
+  byWbs: Record<string, Record<WalkAwayBucket, number>>
+  /** Every contributing line item, for drill-down. */
+  lines: WalkAwayLineItem[]
+}
+
+/**
+ * Full input for the Walk-Away engine.
+ *
+ * Each cost-source array is the project's full set for that source (the engine
+ * filters internally based on the as-of date). Pass empty arrays for sources
+ * not yet implemented — they contribute zero to the result.
+ *
+ * `noticeDays` defaults to 1 per source if a key is missing.
+ */
+export interface WalkAwayInput {
+  project: Project
+  resources: Resource[]
+  flights: Flight[]
+  expenses: Expense[]
+  cars: Car[]
+  accommodation: Accommodation[]
+  hireItems: HireItem[]
+  toolingCostings: ToolingCosting[]
+  weeklyTimesheets: WeeklyTimesheet[]
+  backOfficeHours: BackOfficeHour[]
+  seSupport: SeSupportEntry[]
+  variations: Variation[]
+  variationLines: VariationLine[]
+  purchaseOrders: PurchaseOrder[]
+  invoices: Invoice[]
+  rateCards: RateCard[]
+  fxRates: { code: string; rate: number }[]
+  noticeDays: Partial<Record<WalkAwaySource, number>>
+}
