@@ -25,6 +25,7 @@ import type {
   Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation,
   ToolingCosting, Expense, GlobalTV, GlobalDepartment,
   PurchaseOrder, Invoice, WeeklyTimesheet, Variation, VariationLine, Flight,
+  PlannedCost,
 } from '../../types'
 
 // ───────── helpers ─────────
@@ -109,7 +110,7 @@ export function ReconcilePanel() {
       const [
         resR, rcR, boR, hireR, carsR, accomR, tcOwnR, tcCrossR,
         expR, tvsR, deptsR, posR, invR, tsR, costLinesR, varsR, varLinesR,
-        seR, holsR, mikaR, flR,
+        seR, holsR, mikaR, flR, plR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -137,6 +138,7 @@ export function ReconcilePanel() {
         supabase.from('public_holidays').select('date').eq('project_id', pid),
         supabase.from('mika_wbs_lines').select('wbs,level').eq('project_id', pid),
         supabase.from('flights').select('*').eq('project_id', pid),
+        supabase.from('planned_costs').select('*').eq('project_id', pid),
       ])
 
       const resources = (resR.data || []) as Resource[]
@@ -157,6 +159,7 @@ export function ReconcilePanel() {
       const variations = (varsR.data || []) as Variation[]
       const variationLines = (varLinesR.data || []) as VariationLine[]
       const flights = (flR.data || []) as Flight[]
+      const plannedCosts = (plR.data || []) as PlannedCost[]
       const mikaRows = (mikaR.data || []) as { wbs: string; level: number | null }[]
 
       const stdHours = (activeProject.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day: {}, night: {} }
@@ -169,7 +172,7 @@ export function ReconcilePanel() {
         resources, rateCards, backOffice, hireItems, cars, accom, toolingAll,
         stdHours, publicHolidays,
         activeProject.start_date, activeProject.end_date,
-        fxRates, expenses, 0, tvs, depts, pos, invoices, flights,
+        fxRates, expenses, 0, tvs, depts, pos, invoices, flights, plannedCosts,
       )
       const fcBreakdown = computeForecastBreakdown(forecast, eurRate)
 
@@ -183,6 +186,7 @@ export function ReconcilePanel() {
         backOfficeHours: backOffice,
         seSupport: (seR.data || []) as Parameters<typeof aggregateAllCostsByWbs>[0]['seSupport'],
         variations, variationLines, invoices, purchaseOrders: pos,
+        plannedCosts,
         publicHolidays: publicHolidays.map(h => h.date),
         activeProjectId: pid,
       })

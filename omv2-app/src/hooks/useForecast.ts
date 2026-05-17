@@ -16,6 +16,7 @@ import type { ForecastData } from '../engines/forecastEngine'
 import type {
   Resource, RateCard, BackOfficeHour, HireItem, Car,
   Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment, Flight,
+  PlannedCost,
 } from '../types'
 
 export interface ForecastWeekSummary {
@@ -35,7 +36,7 @@ export function useForecast(projectId: string | undefined) {
     queryKey: ['forecast', projectId],
     queryFn: async () => {
       const pid = projectId!
-      const [resData, rcData, boData, hireData, carData, acData, tcData, expData, tvsData, deptsData, flData] =
+      const [resData, rcData, boData, hireData, carData, acData, tcData, expData, tvsData, deptsData, flData, plData] =
         await Promise.all([
           supabase.from('resources').select('*').eq('project_id', pid),
           supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -48,6 +49,7 @@ export function useForecast(projectId: string | undefined) {
           supabase.from('global_tvs').select('*'),
           supabase.from('global_departments').select('*'),
           supabase.from('flights').select('*').eq('project_id', pid),
+          supabase.from('planned_costs').select('*').eq('project_id', pid),
         ])
 
       const proj = activeProject!
@@ -75,6 +77,7 @@ export function useForecast(projectId: string | undefined) {
         [],                                          // purchaseOrders — unused by dashboard tile
         [],                                          // invoices — unused by dashboard tile
         (flData.data || []) as Flight[],
+        (plData.data || []) as PlannedCost[],
       )
     },
     enabled: !!projectId && !!activeProject,

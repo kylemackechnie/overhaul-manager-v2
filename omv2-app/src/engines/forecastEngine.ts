@@ -1,4 +1,4 @@
-import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment, PurchaseOrder, Invoice, Flight } from '../types'
+import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment, PurchaseOrder, Invoice, Flight, PlannedCost } from '../types'
 import { calcRentalCost } from '../lib/calculations'
 import { resolveShift } from '../lib/shiftPhases'
 
@@ -188,6 +188,7 @@ export function buildForecast(
   purchaseOrders: PurchaseOrder[] = [],
   invoices: Invoice[] = [],
   flights: Flight[] = [],
+  plannedCosts: PlannedCost[] = [],
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
@@ -953,6 +954,24 @@ export function buildForecast(
       totalCost += b[cat].cost * factor
       totalSell += b[cat].sell * factor
     }
+  }
+
+  // ── Planned costs (PM100 lines without receipts) ─────────────────────────
+  // These contribute to the per-WBS plan total so MIKA's
+  //   forecast = max(0, plan − actuals − committed)
+  // correctly reflects them. Both actualised and non-actualised rows fold
+  // in here: when a row is marked actualised it's separately rolled up as
+  // an actual by wbsAggregator, and MIKA's max(0, ...) subtraction nets it
+  // out so it doesn't double-count. For the totalCost roll-up we use the
+  // AUD-equivalent amount.
+  for (const pc of plannedCosts) {
+    const amount = Number(pc.amount) || 0
+    if (amount <= 0) continue
+    const fx = pc.currency === 'AUD' ? 1 : (pc.fx_rate || fxRates.find(f => f.code === pc.currency)?.rate || 1)
+    const aud = amount * fx
+    const wbsKey = pc.wbs || '(unallocated)'
+    byWbs[wbsKey] = (byWbs[wbsKey] || 0) + aud
+    totalCost += aud
   }
 
   return { byDay, byPo, byWbs, days, totalCost, totalSell, accomWarnings }

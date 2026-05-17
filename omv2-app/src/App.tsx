@@ -38,6 +38,7 @@ import { POsPanel } from './pages/cost/POsPanel'
 import { InvoicesPanel } from './pages/cost/InvoicesPanel'
 import { VariationsPanel } from './pages/cost/VariationsPanel'
 import { ExpensesPanel } from './pages/cost/ExpensesPanel'
+import { PlannedCostsPanel } from './pages/cost/PlannedCostsPanel'
 import { SapReconPanel } from './pages/cost/SapReconPanel'
 import { CostRegisterPanel } from './pages/cost/CostRegisterPanel'
 // Personnel
@@ -445,7 +446,8 @@ const PANEL_MODULE_MAP: Record<string, Module> = {
   'cost-':        'cost_tracking',
   'purchase-':    'cost_tracking',
   'invoices':     'cost_tracking',
-  'expenses':     'cost_tracking',
+  'expenses':       'cost_tracking',
+  'planned-costs':  'cost_tracking',
   'sap-':         'cost_tracking',
   'variations':   'cost_tracking',
   'hr-':          'personnel',
@@ -506,6 +508,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'po-manager':             return <POsPanel />
     case 'invoices':              return <InvoicesPanel />
     case 'expenses':              return <ExpensesPanel />
+    case 'planned-costs':         return <PlannedCostsPanel />
     case 'sap-recon':             return <SapReconPanel />
     case 'subcon-rfq':            return <SubconCostModelPanel />
     case 'subcon-dashboard':      return <SubconDashboard />

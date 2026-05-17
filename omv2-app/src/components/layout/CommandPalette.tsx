@@ -56,6 +56,7 @@ const NAV_PAGES: NavPage[] = [
   { icon: '📑', label: 'Cost Summary Report',      panel: 'cost-report',        module: 'Cost Tracking' },
   { icon: '👤', label: 'Customer Report',          panel: 'cost-customer-report', module: 'Cost Tracking' },
   { icon: '📚', label: 'Cost Register',            panel: 'cost-register',      module: 'Cost Tracking', keywords: 'ledger transactions' },
+  { icon: '💰', label: 'Planned Costs',             panel: 'planned-costs',      module: 'Cost Tracking', keywords: 'contingency warranty financing fixed pm100' },
   { icon: '📦', label: 'Reports Database',         panel: 'reports-db',         module: 'Cost Tracking', keywords: 'saved snapshots' },
 
   // Personnel

@@ -537,6 +537,57 @@ export interface Expense {
   updated_at: string
 }
 
+/**
+ * planned_costs: PM100 cost items that contribute to EAC without a vendor
+ * receipt. Two main use cases:
+ *
+ *  1. Fixed-cost overheads — risk contingency, warranty allowance, financing
+ *     costs, bank guarantees. These exist in the cost plan by design, accrue
+ *     over the project, and typically never have a receipt.
+ *
+ *  2. Placeholder forecasts — local tooling transport, planned consumables.
+ *     A forecast number now that will later convert to real expenses or POs.
+ *     The `actualised` flag flips them from Forecast → Actual once their
+ *     cost has occurred in reality.
+ *
+ * Walk-Away and EAC both read this table; the timing model (accrual_mode +
+ * dates) controls how the amount is spread across the project window for
+ * day-by-day classification.
+ */
+export type PlannedCostCategory =
+  | 'fixed_cost' | 'contingency' | 'warranty'
+  | 'financing' | 'forecast_only' | 'other'
+
+export type PlannedCostAccrualMode =
+  | 'lump_sum'           // whole amount lands on start_date
+  | 'monthly'            // even spread, calendar-month granularity
+  | 'project_duration'   // even spread across project start → end
+  | 'date_range'         // even spread across explicit start_date → end_date
+
+export interface PlannedCost {
+  id: string
+  project_id: string
+  number: string                       // 'PC-0001' per project
+  title: string
+  category: PlannedCostCategory
+  wbs: string
+  amount: number
+  currency: string
+  fx_rate: number | null
+
+  accrual_mode: PlannedCostAccrualMode
+  start_date: string | null
+  end_date: string | null
+
+  actualised: boolean
+  actualised_date: string | null
+
+  notes: string
+  created_at: string
+  updated_at: string
+  created_by: string | null
+}
+
 export interface Car {
   id: string
   project_id: string

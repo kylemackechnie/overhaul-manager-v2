@@ -24,7 +24,7 @@ import type {
   HireItem, Car, Accommodation, Expense,
   BackOfficeHour, Variation, VariationLine,
   ToolingCosting, GlobalTV, GlobalDepartment,
-  Invoice, PurchaseOrder,
+  Invoice, PurchaseOrder, PlannedCost,
 } from '../types'
 
 /** Minimum shape of se_support_costs rows needed for WBS rollup. */
@@ -122,6 +122,10 @@ export interface WbsAggregatorInput {
   invoices?: Invoice[]
   /** Purchase orders — used for WBS resolution when joining invoices */
   purchaseOrders?: PurchaseOrder[]
+  /** Planned cost rows (PM100 lines without receipts). Only actualised rows
+   *  contribute to the aggregator's actuals — non-actualised rows are
+   *  Forecast and live in buildForecast.byWbs, not here. */
+  plannedCosts?: PlannedCost[]
   publicHolidays?: string[]
   /** Required to scope tooling splits — tooling on other projects flows in via splits.projectId === activeProjectId */
   activeProjectId: string
@@ -280,6 +284,25 @@ export function aggregateAllCostsByWbs(input: WbsAggregatorInput): WbsAggregate 
     const sell = e.currency && e.currency !== 'AUD' ? convertEurOrCurrencyToBase(rawSell, e.currency, project) : rawSell
     if (!cost && !sell) continue
     add(e.wbs, cost, sell, 'expenses', `Expense: ${e.vendor || ''} ${e.description || ''}`.trim())
+  }
+
+  // ── Planned costs (PM100 lines without receipts) ──────────────────────────
+  // Only actualised rows feed the actuals roll-up here — non-actualised rows
+  // are Forecast and contribute via buildForecast.byWbs. Folded into the
+  // 'expenses' bucket since that's the closest semantic match (ad-hoc cost
+  // line not tied to a vendor invoice), and matches where these rows used to
+  // live before the planned_costs table existed. Drill-down labels distinguish
+  // them with the PC- prefix.
+  const plannedCostsArr = input.plannedCosts || []
+  for (const pc of plannedCostsArr) {
+    if (!pc.actualised) continue
+    if (!pc.wbs) continue
+    const rawCost = Number(pc.amount) || 0
+    if (rawCost <= 0) continue
+    const cost = pc.currency && pc.currency !== 'AUD'
+      ? convertEurOrCurrencyToBase(rawCost, pc.currency, project)
+      : rawCost
+    add(pc.wbs, cost, 0, 'expenses', `${pc.number}: ${pc.title}`)
   }
 
   // ── Approved variations (per-line WBS) ────────────────────────────────────

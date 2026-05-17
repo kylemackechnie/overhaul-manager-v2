@@ -8,7 +8,7 @@ import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCo
 import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
   HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine,
-  PurchaseOrder, Invoice, Flight } from '../../types'
+  PurchaseOrder, Invoice, Flight, PlannedCost } from '../../types'
 
 interface MikaLine {
   wbs: string; desc: string; level: number
@@ -100,7 +100,7 @@ export function MikaPanel() {
         tcOwnedR, tcCrossR, tvsR, deptsR,
         hireR, carsR, accomR, expensesR, boR,
         varsR, varLinesR, holsR, costLinesR, seR,
-        posR, invoicesR, flightsR,
+        posR, invoicesR, flightsR, plannedR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -127,6 +127,7 @@ export function MikaPanel() {
         supabase.from('purchase_orders').select('*').eq('project_id', pid),
         supabase.from('invoices').select('*').eq('project_id', pid),
         supabase.from('flights').select('*').eq('project_id', pid),
+        supabase.from('planned_costs').select('*').eq('project_id', pid),
       ])
 
       const poList = (posR.data || []) as PurchaseOrder[]
@@ -152,6 +153,7 @@ export function MikaPanel() {
         variationLines: (varLinesR.data || []) as VariationLine[],
         invoices: invoiceList,
         purchaseOrders: poList,
+        plannedCosts: (plannedR.data || []) as PlannedCost[],
         publicHolidays: ((holsR.data || []) as {date:string}[]).map(h => h.date),
         activeProjectId: pid,
       })
@@ -214,6 +216,7 @@ export function MikaPanel() {
         poList,
         invoiceList,
         (flightsR.data || []) as Flight[],
+        (plannedR.data || []) as PlannedCost[],
       )
       const planRolled: Record<string, number> = {}
       for (const [code, val] of Object.entries(forecast.byWbs)) {

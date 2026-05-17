@@ -67,6 +67,7 @@ const RIBBON_MODULES: RibbonTab[] = [
       ]},
       { label: 'Records', buttons: [
         { icon: '🧾', label: 'Expenses', panel: 'expenses' },
+        { icon: '💰', label: 'Planned Costs', panel: 'planned-costs' },
         { icon: '📄', label: 'Purchase Orders', panel: 'purchase-orders' },
         { icon: '💳', label: 'Invoices', panel: 'invoices' },
         { icon: '📒', label: 'Cost Register', panel: 'cost-register' },
