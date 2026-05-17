@@ -328,14 +328,17 @@ export interface Resource {
   drive_km: number
   meal_break_adj: boolean
   flights: string
-  // Booking-status flags (existing DB columns, previously accessed via type assertions)
-  flight_required?: boolean
+  // Booking flags — now first-class columns (drift between flags jsonb and columns
+  // fixed in migration resources_reconcile_booking_flags; flags.* keys removed).
+  flight_required: boolean
+  accom_required: boolean
+  car_required: boolean
   flight_booked?: boolean
-  accom_required?: boolean
   accom_booked?: boolean
-  car_required?: boolean
   // Walk-Away: cost component for flights when flight_required = true.
   // Total return cost in forecast = 2 × flight_cost_each.
+  // Stored as raw number in the resource's expected currency (AUD for AU resources,
+  // EUR for SEAG resources). Engine applies project FX where needed.
   flight_cost_each: number
   flags: Record<string, unknown>
   notes: string

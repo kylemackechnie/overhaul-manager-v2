@@ -51,12 +51,27 @@ const RES_COL_GROUPS = ['Identity', 'Mob', 'Contact', 'Allowances', 'Logistics',
 
 const CATEGORIES = ['trades','management','seag','subcontractor'] as const
 const SHIFTS = ['day','night','both'] as const
+
+// Walk-Away: smart default for flight cost based on category.
+// SEAG resources are typically flown from Europe (estimate EUR 5000 one-way).
+// All other categories default to AUD 500. Stored as raw number in the
+// resource's expected currency; FX is applied by the engine where needed.
+const DEFAULT_FLIGHT_COSTS = { seag: 5000, other: 500 } as const
+function defaultFlightCostForCategory(category: string | undefined): number {
+  return category === 'seag' ? DEFAULT_FLIGHT_COSTS.seag : DEFAULT_FLIGHT_COSTS.other
+}
+function isDefaultFlightCost(value: number | undefined): boolean {
+  return value === DEFAULT_FLIGHT_COSTS.seag || value === DEFAULT_FLIGHT_COSTS.other
+}
+
 const EMPTY: Partial<Resource> = {
   name:'', role:'', category:'trades', shift:'day', shift_phases: null, specialisation: null,
   mob_in:null, mob_out:null, travel_days:0, wbs:'',
   allow_laha:false, allow_fsa:false, allow_meal:false,
   company:'', phone:'', email:'', notes:'', flights:'',
   linked_po_id:null, rate_card_id:null,
+  flight_required: false, accom_required: false, car_required: false,
+  flight_cost_each: DEFAULT_FLIGHT_COSTS.other,
   flags: {},
 }
 
@@ -189,16 +204,14 @@ export function ResourcesPanel() {
       const { error } = await supabase.from('resources').update(updates).in('id', ids)
       if (error) { toast(error.message, 'error'); return }
     }
-    // Flag fields: per-resource merge to preserve existing JSONB keys
+    // Flag fields are now first-class columns — patch them directly.
     if (anyFlagUpdate) {
       const flagPatch: Record<string,boolean> = {}
       if (bulkForm.applyCarReq)    flagPatch.car_required    = bulkForm.car_required
       if (bulkForm.applyFlightReq) flagPatch.flight_required = bulkForm.flight_required
       if (bulkForm.applyAccomReq)  flagPatch.accom_required  = bulkForm.accom_required
-      for (const r of resources.filter(r => selected.has(r.id))) {
-        const merged = { ...(r.flags||{}), ...flagPatch }
-        await supabase.from('resources').update({ flags: merged }).eq('id', r.id)
-      }
+      const { error } = await supabase.from('resources').update(flagPatch).in('id', ids)
+      if (error) { toast(error.message, 'error'); return }
     }
     toast(`Updated ${ids.length} resources`, 'success')
     setSelected(new Set()); setBulkModal(false); load()
@@ -277,12 +290,16 @@ export function ResourcesPanel() {
       company: form.company||'', phone: form.phone||'', email: form.email||'',
       linked_po_id: form.linked_po_id||null, rate_card_id: form.rate_card_id||null, notes: form.notes||'',
       flights: (form as Partial<Resource> & {flights?:string}).flights||'',
-      flags: {
-        ...(form.flags||{}),
-        car_required: !!((form.flags||{} as Record<string,unknown>).car_required),
-        flight_required: !!((form.flags||{} as Record<string,unknown>).flight_required),
-        accom_required: !!((form.flags||{} as Record<string,unknown>).accom_required),
-      },
+      // Booking flags are now stored as dedicated columns.
+      // (Old code wrote them into flags.* too — drift fixed in migration
+      // resources_reconcile_booking_flags. Do not put them back in flags.)
+      flight_required: !!form.flight_required,
+      accom_required:  !!form.accom_required,
+      car_required:    !!form.car_required,
+      flight_cost_each: typeof form.flight_cost_each === 'number'
+        ? form.flight_cost_each
+        : defaultFlightCostForCategory(form.category),
+      flags: form.flags || {},
       person_id: personId,
     }
     const isNew = modal === 'new'
@@ -859,9 +876,9 @@ export function ResourcesPanel() {
                         <input type="checkbox" checked={!!r.allow_fsa} style={{accentColor:'var(--mod-hr)',width:'13px',height:'13px',cursor:'pointer'}}
                           onChange={e=>saveInline(r.id,'allow_fsa',e.target.checked)} />
                       </td>}
-                      {isVisible('car') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined,color:car?'var(--mod-hr)':((r.flags as Record<string,unknown>)?.car_required&&!car)?'var(--amber)':'var(--text3)'}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:((r.flags as Record<string,unknown>)?.car_required?'⚠ REQUIRED':'—')}</td>}
-                      {isVisible('flights') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:r.flights?'var(--text2)':((r.flags as Record<string,unknown>)?.flight_required&&!r.flights)?'var(--amber)':'var(--text3)'}}>{r.flights||(((r.flags as Record<string,unknown>)?.flight_required)?'⚠ REQUIRED':'—')}</td>}
-                      {isVisible('room') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined,color:room?'var(--mod-hr)':((r.flags as Record<string,unknown>)?.accom_required&&!room)?'var(--amber)':'var(--text3)'}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:((r.flags as Record<string,unknown>)?.accom_required?'⚠ REQUIRED':'—')}</td>}
+                      {isVisible('car') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:car?'pointer':undefined,color:car?'var(--mod-hr)':(r.car_required&&!car)?'var(--amber)':'var(--text3)'}} onClick={car?()=>setActivePanel('hr-cars'):undefined}>{car?`🚗 ${car.vehicle_type}`:(r.car_required?'⚠ REQUIRED':'—')}</td>}
+                      {isVisible('flights') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:r.flights?'var(--text2)':(r.flight_required&&!r.flights)?'var(--amber)':'var(--text3)'}}>{r.flights||(r.flight_required?'⚠ REQUIRED':'—')}</td>}
+                      {isVisible('room') && <td style={{fontSize:'11px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:room?'pointer':undefined,color:room?'var(--mod-hr)':(r.accom_required&&!room)?'var(--amber)':'var(--text3)'}} onClick={room?()=>setActivePanel('hr-accommodation'):undefined}>{room?`🏨 ${room.property}${room.room?' '+room.room:''}`:(r.accom_required?'⚠ REQUIRED':'—')}</td>}
                       {isVisible('wbs') && <td style={{fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.wbs||'—'}</td>}
                       {isVisible('po') && <td style={{minWidth:'110px'}}>
                         {r.category==='subcontractor' ? (
@@ -974,7 +991,23 @@ export function ResourcesPanel() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Category</label>
-                  <select className="input" value={form.category||'trades'} onChange={e=>setForm(f=>({...f,category:e.target.value as Resource['category']}))}>
+                  <select className="input" value={form.category||'trades'} onChange={e=>{
+                    const newCat = e.target.value as Resource['category']
+                    setForm(f => {
+                      // Auto-flip flight cost to category default ONLY if the
+                      // user hasn't entered a custom value (i.e. it's still
+                      // sitting at one of the known defaults). Preserves any
+                      // deliberate override.
+                      const shouldFlipCost = isDefaultFlightCost(f.flight_cost_each)
+                      return {
+                        ...f,
+                        category: newCat,
+                        flight_cost_each: shouldFlipCost
+                          ? defaultFlightCostForCategory(newCat)
+                          : f.flight_cost_each,
+                      }
+                    })
+                  }}>
                     {CATEGORIES.map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                   </select>
                 </div>
@@ -1051,16 +1084,48 @@ export function ResourcesPanel() {
                     {key:'car_required',  label:'🚗 Car Required'},
                     {key:'flight_required',label:'✈️ Flight Required'},
                     {key:'accom_required', label:'🏨 Accom Required'},
-                  ] as {key:string;label:string}[]).map(({key,label}) => (
+                  ] as {key:'car_required'|'flight_required'|'accom_required';label:string}[]).map(({key,label}) => (
                     <label key={key} style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer',fontSize:'13px'}}>
                       <input type="checkbox"
-                        checked={!!((form.flags||{} as Record<string,unknown>)[key])}
-                        onChange={e=>setForm(f=>({...f,flags:{...(f.flags||{}), [key]:e.target.checked}}))}
+                        checked={!!form[key]}
+                        onChange={e=>setForm(f=>({...f, [key]:e.target.checked}))}
                         style={{accentColor:'var(--amber)'}} />
                       {label}
                     </label>
                   ))}
                 </div>
+                {/* Flight cost — appears only when Flight Required is ticked.
+                    SEAG resources default to EUR 5000, others to AUD 500.
+                    The currency follows the category, not a separate field. */}
+                {form.flight_required && (() => {
+                  const isSeag = form.category === 'seag'
+                  const ccy = isSeag ? 'EUR' : 'AUD'
+                  const fc = typeof form.flight_cost_each === 'number'
+                    ? form.flight_cost_each
+                    : defaultFlightCostForCategory(form.category)
+                  return (
+                    <div style={{marginTop:'10px',padding:'10px 12px',background:'var(--bg2)',borderRadius:'6px',border:'1px solid var(--border)'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+                        <label style={{fontSize:'12px',color:'var(--text2)',minWidth:'140px'}}>Flight cost (each way)</label>
+                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                          <input
+                            type="number"
+                            className="input"
+                            style={{width:'110px'}}
+                            min={0}
+                            step={50}
+                            value={fc}
+                            onChange={e=>setForm(f=>({...f, flight_cost_each: parseFloat(e.target.value)||0}))}
+                          />
+                          <span style={{fontSize:'12px',color:'var(--text3)',fontWeight:600}}>{ccy}</span>
+                        </div>
+                        <span style={{fontSize:'11px',color:'var(--text3)'}}>
+                          → return total ≈ {ccy} {(fc * 2).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
               <div>
                 <div style={{fontSize:'12px',fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'8px'}}>Allowances</div>
