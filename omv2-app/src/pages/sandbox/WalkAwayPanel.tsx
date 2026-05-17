@@ -35,8 +35,8 @@ import type {
 const SOURCE_LABELS: { key: WalkAwaySource; label: string; implemented: boolean }[] = [
   { key: 'flights',         label: 'Flights',           implemented: true  },
   { key: 'expenses',        label: 'Expenses',          implemented: true  },
-  { key: 'cars',            label: 'Cars',              implemented: false },
-  { key: 'accommodation',   label: 'Accommodation',     implemented: false },
+  { key: 'cars',            label: 'Cars',              implemented: true  },
+  { key: 'accommodation',   label: 'Accommodation',     implemented: true  },
   { key: 'dry_hire',        label: 'Dry Hire',          implemented: false },
   { key: 'wet_hire',        label: 'Wet Hire',          implemented: false },
   { key: 'local_hire',      label: 'Local Hire',        implemented: false },

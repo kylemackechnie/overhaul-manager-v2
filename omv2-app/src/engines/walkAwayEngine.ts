@@ -29,7 +29,7 @@
 import type {
   WalkAwayInput, WalkAwayResult, WalkAwayLineItem, WalkAwayBucket,
   WalkAwaySource, WalkAwayBucketTotals,
-  Flight, Expense, Resource,
+  Flight, Expense, Resource, Car, Accommodation,
 } from '../types'
 
 // ── Date helpers (string-based, YYYY-MM-DD to avoid Date timezone gotchas) ────
@@ -238,6 +238,123 @@ export function classifyExpenses(
   return lines
 }
 
+// ── Helper: classify a time-bounded booking ──────────────────────────────────
+
+/**
+ * Generic classifier for a time-bounded booking (cars, accommodation, hire,
+ * eventually tooling rentals). Splits the cost based on where asOf lands
+ * relative to [start, end].
+ *
+ * Returns up to two line items (one for the consumed pre-asOf portion as
+ * Sunk, one for the remaining post-asOf portion as Locked) — or a single
+ * line item classified Sunk/Locked/Avoidable depending on where the booking
+ * sits relative to the walk-away date.
+ *
+ * Pro-rata model: when asOf falls inside the booking period, the cost is
+ * split by day count: Sunk portion = (asOf - start) / (end - start + 1)
+ * × total_cost; the remainder is Locked. Real-world hire contracts almost
+ * never pro-rata after start — once the rental's begun, the rest is owed.
+ *
+ * Returns [] if the booking has missing dates or zero cost.
+ */
+function classifyBookingPeriod(args: {
+  source: WalkAwaySource
+  asOf: string
+  start: string | null
+  end: string | null
+  totalCost: number
+  notice: number
+  wbs: string
+  description: string
+  refId: string
+}): WalkAwayLineItem[] {
+  const { source, asOf, start, end, totalCost, notice, wbs, description, refId } = args
+  if (!start || !end || totalCost <= 0) return []
+
+  const out: WalkAwayLineItem[] = []
+  const cutoffLocked = addDays(asOf, notice)
+
+  if (end < asOf) {
+    // Fully past — all Sunk
+    out.push({ source, bucket: 'sunk', amount: totalCost, wbs, description, refDate: start, refId })
+  } else if (start <= asOf && asOf <= end) {
+    // Mid-rental — pro-rata split into Sunk (consumed) + Locked (rest of period)
+    const startMs = new Date(start + 'T00:00:00Z').getTime()
+    const endMs   = new Date(end   + 'T00:00:00Z').getTime()
+    const asMs    = new Date(asOf  + 'T00:00:00Z').getTime()
+    const dayMs   = 86400000
+    const totalDays    = Math.max(1, Math.round((endMs - startMs) / dayMs) + 1)
+    const consumedDays = Math.max(0, Math.round((asMs - startMs) / dayMs))
+    const consumedFrac = Math.min(1, consumedDays / totalDays)
+    const sunk = totalCost * consumedFrac
+    const locked = totalCost - sunk
+    if (sunk > 0)   out.push({ source, bucket: 'sunk',   amount: sunk,   wbs, description: description + ' (consumed)', refDate: start, refId })
+    if (locked > 0) out.push({ source, bucket: 'locked', amount: locked, wbs, description: description + ' (remainder of period)', refDate: asOf, refId })
+  } else if (start < cutoffLocked) {
+    // Starts within notice window — can't cancel in time
+    out.push({ source, bucket: 'locked', amount: totalCost, wbs, description, refDate: start, refId })
+  } else {
+    // Far enough in the future — cancellable
+    out.push({ source, bucket: 'avoidable', amount: totalCost, wbs, description, refDate: start, refId })
+  }
+  return out
+}
+
+// ── Source 3: Cars ────────────────────────────────────────────────────────────
+
+/**
+ * Classify all car rentals. Uses total_cost (planned). Future enhancement: if
+ * linked_po_id is set and the PO has been drawn, prefer the drawn value as
+ * actual Sunk — requires cross-reference with PO commitments / invoices.
+ */
+export function classifyCars(
+  asOf: string,
+  cars: Car[],
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+): WalkAwayLineItem[] {
+  const notice = noticeFor('cars', noticeDays)
+  const lines: WalkAwayLineItem[] = []
+  for (const c of cars) {
+    lines.push(...classifyBookingPeriod({
+      source: 'cars',
+      asOf,
+      start: c.start_date,
+      end:   c.end_date,
+      totalCost: c.total_cost || 0,
+      notice,
+      wbs: c.wbs || '',
+      description: [c.vehicle_type, c.rego, c.vendor].filter(Boolean).join(' · '),
+      refId: c.id,
+    }))
+  }
+  return lines
+}
+
+// ── Source 4: Accommodation ───────────────────────────────────────────────────
+
+export function classifyAccommodation(
+  asOf: string,
+  accom: Accommodation[],
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+): WalkAwayLineItem[] {
+  const notice = noticeFor('accommodation', noticeDays)
+  const lines: WalkAwayLineItem[] = []
+  for (const a of accom) {
+    lines.push(...classifyBookingPeriod({
+      source: 'accommodation',
+      asOf,
+      start: a.check_in,
+      end:   a.check_out,
+      totalCost: a.total_cost || 0,
+      notice,
+      wbs: a.wbs || '',
+      description: [a.property, a.room, a.vendor].filter(Boolean).join(' · '),
+      refId: a.id,
+    }))
+  }
+  return lines
+}
+
 // ── Aggregation ───────────────────────────────────────────────────────────────
 
 /** Build the empty bucket-totals scaffold. */
@@ -288,6 +405,8 @@ export function classifyWalkAway(input: WalkAwayInput, asOf: string): WalkAwayRe
 
   lines.push(...classifyFlights(asOf, input.flights, input.resources, input.expenses, input.fxRates, input.noticeDays))
   lines.push(...classifyExpenses(asOf, input.expenses, input.flights, input.fxRates, input.noticeDays))
+  lines.push(...classifyCars(asOf, input.cars, input.noticeDays))
+  lines.push(...classifyAccommodation(asOf, input.accommodation, input.noticeDays))
 
   return aggregate(lines, asOf)
 }
