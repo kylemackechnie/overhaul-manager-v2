@@ -24,7 +24,7 @@ import { HelpButton } from '../../components/HelpButton'
 import type {
   Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation,
   ToolingCosting, Expense, GlobalTV, GlobalDepartment,
-  PurchaseOrder, Invoice, WeeklyTimesheet, Variation, VariationLine,
+  PurchaseOrder, Invoice, WeeklyTimesheet, Variation, VariationLine, Flight,
 } from '../../types'
 
 // ───────── helpers ─────────
@@ -109,7 +109,7 @@ export function ReconcilePanel() {
       const [
         resR, rcR, boR, hireR, carsR, accomR, tcOwnR, tcCrossR,
         expR, tvsR, deptsR, posR, invR, tsR, costLinesR, varsR, varLinesR,
-        seR, holsR, mikaR,
+        seR, holsR, mikaR, flR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -136,6 +136,7 @@ export function ReconcilePanel() {
           .eq('project_id', pid),
         supabase.from('public_holidays').select('date').eq('project_id', pid),
         supabase.from('mika_wbs_lines').select('wbs,level').eq('project_id', pid),
+        supabase.from('flights').select('*').eq('project_id', pid),
       ])
 
       const resources = (resR.data || []) as Resource[]
@@ -155,6 +156,7 @@ export function ReconcilePanel() {
       const timesheets = (tsR.data || []) as WeeklyTimesheet[]
       const variations = (varsR.data || []) as Variation[]
       const variationLines = (varLinesR.data || []) as VariationLine[]
+      const flights = (flR.data || []) as Flight[]
       const mikaRows = (mikaR.data || []) as { wbs: string; level: number | null }[]
 
       const stdHours = (activeProject.std_hours as { day: Record<string,number>; night: Record<string,number> }) || { day: {}, night: {} }
@@ -167,7 +169,7 @@ export function ReconcilePanel() {
         resources, rateCards, backOffice, hireItems, cars, accom, toolingAll,
         stdHours, publicHolidays,
         activeProject.start_date, activeProject.end_date,
-        fxRates, expenses, 0, tvs, depts, pos, invoices,
+        fxRates, expenses, 0, tvs, depts, pos, invoices, flights,
       )
       const fcBreakdown = computeForecastBreakdown(forecast, eurRate)
 

@@ -1,4 +1,4 @@
-import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment, PurchaseOrder, Invoice } from '../types'
+import type { Resource, RateCard, BackOfficeHour, HireItem, Car, Accommodation, ToolingCosting, Expense, GlobalTV, GlobalDepartment, PurchaseOrder, Invoice, Flight } from '../types'
 import { calcRentalCost } from '../lib/calculations'
 import { resolveShift } from '../lib/shiftPhases'
 
@@ -187,6 +187,7 @@ export function buildForecast(
   globalDepartments: GlobalDepartment[] = [],
   purchaseOrders: PurchaseOrder[] = [],
   invoices: Invoice[] = [],
+  flights: Flight[] = [],
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
@@ -563,25 +564,84 @@ export function buildForecast(
     addToWbs((e as Expense & { wbs?: string }).wbs || '', cost)
   }
 
-  // ── Flights — Walk-Away Module 1 Step 3 ──
-  // For each resource with flight_required = true and a mob_in date,
-  // book the outbound flight cost on mob_in and the return flight cost on
-  // mob_out (falling back to mob_in if mob_out is missing). SEAG resources
-  // store flight_cost_each in EUR; others in AUD. Convert to AUD before writing.
+  // ── Flights — Walk-Away Module 1 Steps 3 + 4d ──
+  // Two cost paths feed into byDay.expenses for flights:
+  //   1. Legs in the flights table (operational tracker, populated by FlightsPanel)
+  //   2. Resource-level estimate (2 × flight_cost_each) for resources with
+  //      flight_required = true but NO canonical legs yet
   //
-  // Flights are rolled into the `expenses` bucket for now — they're a flat
-  // one-off cash cost with no calendar shape, and adding a dedicated bucket
-  // would force changes across ~50 consumer references. A future module can
-  // promote flights to their own bucket if visibility becomes valuable.
-  // PoBucket has no expenses field today, so flights are not attributed at the
-  // PO-bucket level — matches the existing treatment of ordinary expenses.
+  // The flights table is the source of truth WHEN populated. Path 2 is a
+  // fallback so projects that have not yet opened the Flights page (and
+  // therefore have not triggered auto-backfill) still get a flight forecast.
   //
-  // Sequenced BEFORE the daily-estimate gap fill so that a flight day is
-  // already "populated" and the estimate skips it (the estimate is meant
-  // to model unknown misc petty cash, not displace known booked costs).
+  // Per leg:
+  //   - linked_expense_id IS NOT NULL → actualised, skip estimate. The
+  //     expense itself flows in via the expenses loop above. MIKA's
+  //     max(0, plan - actuals - committed) then correctly reports the leg.
+  //   - status = 'cancelled' → skip; no cost
+  //   - Otherwise → write planned_cost on (depart date OR mob date fallback),
+  //     converting EUR to AUD where needed.
+  //
+  // Custom legs (leg_type = 'custom') are intentionally ignored — they are
+  // ad-hoc and become actuals via the expense path the moment they're booked.
+  //
+  // Sequencing: this block runs after the expense loop and before the
+  // daily-estimate gap fill, so flight days are seen as "already populated"
+  // and the estimate skips them.
+
+  // Group flights by resource_id for fast lookup
+  const flightsByResource: Record<string, Flight[]> = {}
+  for (const f of flights) {
+    if (!flightsByResource[f.resource_id]) flightsByResource[f.resource_id] = []
+    flightsByResource[f.resource_id].push(f)
+  }
+
   for (const r of resources) {
     if (!r.flight_required) continue
     if (!r.mob_in) continue
+
+    const resourceFlights = flightsByResource[r.id] || []
+    const canonicalLegs = resourceFlights.filter(f => f.leg_type === 'outbound' || f.leg_type === 'return')
+
+    // Path 1: flights table has canonical legs for this resource — drive from it.
+    if (canonicalLegs.length > 0) {
+      for (const leg of canonicalLegs) {
+        if (leg.status === 'cancelled') continue
+        if (leg.linked_expense_id) continue   // actualised; expense path handles cost
+
+        const legCostAud = leg.planned_currency === 'EUR'
+          ? toBase(leg.planned_cost || 0, 'EUR')
+          : (leg.planned_cost || 0)
+        if (legCostAud <= 0) continue
+
+        // Use the leg's depart_at date if set; otherwise fall back to the
+        // resource's mob_in (outbound) or mob_out (return). This lets admin
+        // book a flight on a date earlier or later than mob without losing
+        // forecast accuracy.
+        let bookDate: string | null = null
+        if (leg.depart_at) {
+          bookDate = leg.depart_at.slice(0, 10)
+        } else if (leg.leg_type === 'outbound') {
+          bookDate = r.mob_in
+        } else {
+          bookDate = (r as Resource & { mob_out?: string }).mob_out || r.mob_in
+        }
+        if (!bookDate) continue
+
+        const day = ensure(bookDate)
+        day.expenses.cost += legCostAud
+        day.expenses.sell += legCostAud
+
+        addToWbs(
+          resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
+          legCostAud,
+        )
+      }
+      continue   // done with this resource — don't run path 2
+    }
+
+    // Path 2: no canonical legs in flights table yet — fall back to the
+    // resource-level 2 × flight_cost_each estimate. Same as Step 3 originally.
     const isSeag = r.category === 'seag'
     const perFlightAud = isSeag
       ? toBase(r.flight_cost_each || 0, 'EUR')
@@ -599,7 +659,6 @@ export function buildForecast(
     returnDay.expenses.cost += perFlightAud
     returnDay.expenses.sell += perFlightAud
 
-    // WBS attribution — resource's own wbs, falling back to linked PO's wbs
     addToWbs(
       resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
       perFlightAud * 2,

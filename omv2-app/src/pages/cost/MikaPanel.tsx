@@ -8,7 +8,7 @@ import { buildPoCommitments, type PoCommitmentWarning } from '../../engines/poCo
 import { HelpButton } from '../../components/HelpButton'
 import type { Resource, RateCard, WeeklyTimesheet, ToolingCosting, GlobalTV, GlobalDepartment,
   HireItem, Car, Accommodation, Expense, BackOfficeHour, Variation, VariationLine,
-  PurchaseOrder, Invoice } from '../../types'
+  PurchaseOrder, Invoice, Flight } from '../../types'
 
 interface MikaLine {
   wbs: string; desc: string; level: number
@@ -100,7 +100,7 @@ export function MikaPanel() {
         tcOwnedR, tcCrossR, tvsR, deptsR,
         hireR, carsR, accomR, expensesR, boR,
         varsR, varLinesR, holsR, costLinesR, seR,
-        posR, invoicesR,
+        posR, invoicesR, flightsR,
       ] = await Promise.all([
         supabase.from('resources').select('*').eq('project_id', pid),
         supabase.from('rate_cards').select('*').eq('project_id', pid),
@@ -126,6 +126,7 @@ export function MikaPanel() {
           .eq('project_id', pid),
         supabase.from('purchase_orders').select('*').eq('project_id', pid),
         supabase.from('invoices').select('*').eq('project_id', pid),
+        supabase.from('flights').select('*').eq('project_id', pid),
       ])
 
       const poList = (posR.data || []) as PurchaseOrder[]
@@ -212,6 +213,7 @@ export function MikaPanel() {
         (deptsR.data || []) as GlobalDepartment[],
         poList,
         invoiceList,
+        (flightsR.data || []) as Flight[],
       )
       const planRolled: Record<string, number> = {}
       for (const [code, val] of Object.entries(forecast.byWbs)) {
