@@ -562,6 +562,50 @@ export function buildForecast(
     day.expenses.sell += sell
     addToWbs((e as Expense & { wbs?: string }).wbs || '', cost)
   }
+
+  // ── Flights — Walk-Away Module 1 Step 3 ──
+  // For each resource with flight_required = true and a mob_in date,
+  // book the outbound flight cost on mob_in and the return flight cost on
+  // mob_out (falling back to mob_in if mob_out is missing). SEAG resources
+  // store flight_cost_each in EUR; others in AUD. Convert to AUD before writing.
+  //
+  // Flights are rolled into the `expenses` bucket for now — they're a flat
+  // one-off cash cost with no calendar shape, and adding a dedicated bucket
+  // would force changes across ~50 consumer references. A future module can
+  // promote flights to their own bucket if visibility becomes valuable.
+  // PoBucket has no expenses field today, so flights are not attributed at the
+  // PO-bucket level — matches the existing treatment of ordinary expenses.
+  //
+  // Sequenced BEFORE the daily-estimate gap fill so that a flight day is
+  // already "populated" and the estimate skips it (the estimate is meant
+  // to model unknown misc petty cash, not displace known booked costs).
+  for (const r of resources) {
+    if (!r.flight_required) continue
+    if (!r.mob_in) continue
+    const isSeag = r.category === 'seag'
+    const perFlightAud = isSeag
+      ? toBase(r.flight_cost_each || 0, 'EUR')
+      : (r.flight_cost_each || 0)
+    if (perFlightAud <= 0) continue
+
+    const outboundDate = r.mob_in
+    const returnDate = (r as Resource & { mob_out?: string }).mob_out || r.mob_in
+
+    const outboundDay = ensure(outboundDate)
+    outboundDay.expenses.cost += perFlightAud
+    outboundDay.expenses.sell += perFlightAud
+
+    const returnDay = ensure(returnDate)
+    returnDay.expenses.cost += perFlightAud
+    returnDay.expenses.sell += perFlightAud
+
+    // WBS attribution — resource's own wbs, falling back to linked PO's wbs
+    addToWbs(
+      resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
+      perFlightAud * 2,
+    )
+  }
+
   // Fill gaps with daily estimate (HTML fcAggregate cfg.expenses.dailyEstimate)
   if (dailyExpenseEstimate > 0 && _projStart && projEnd) {
     for (const d of dateRange(_projStart, projEnd)) {
