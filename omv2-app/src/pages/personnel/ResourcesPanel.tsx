@@ -818,15 +818,14 @@ export function ResourcesPanel() {
                     const f = nextLeg.flight
                     const route = f.origin && f.destination ? `${f.origin}→${f.destination}` : ''
                     const flightNum = f.flight_number || ''
-                    const legName = f.leg_type === 'outbound' ? 'Out'
-                                  : f.leg_type === 'return'   ? 'Return'
-                                  : (f.leg_label || 'Leg')
                     // Prefer flight number + route if booked (= flight # entered);
-                    // otherwise leg name + date
+                    // otherwise generic "Next Planned Flight" + date. Leg type
+                    // (outbound/return/custom) is intentionally not shown — the
+                    // counter and the Flights page give that context.
                     if (legIsBooked(f) && (flightNum || route)) {
                       nextInfo = [flightNum, nextDateShort, route].filter(Boolean).join(' ')
                     } else {
-                      nextInfo = `${legName} ${nextDateShort || ''}`.trim()
+                      nextInfo = `Next Planned Flight ${nextDateShort || ''}`.trim()
                     }
                   }
                   const flightCellLabel =
