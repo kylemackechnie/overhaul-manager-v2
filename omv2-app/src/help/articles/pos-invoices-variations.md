@@ -81,6 +81,45 @@ Tabs across the top filter the table by status, with live counts per status. "Al
 
 Each invoice can be linked to a PO (via PO ID), which lets the system compute invoiced-against-PO totals for the PO Manager view (planned vs actuals vs invoiced vs variance).
 
+### ISO Filing Ref (SPOL ref)
+
+Every invoice is automatically assigned an **ISO Filing Reference** when first saved — a unique sequential identifier shared across invoices and expenses. Format: `INV-0035_ACL-Industrial_11958.00`. This is the canonical document reference for filing and customer evidence purposes.
+
+The ref appears in its own sortable **ISO Filing Ref** column in the table (toggleable via ⚙ Columns). SAP-imported invoices are also assigned a ref automatically on import.
+
+The counter is shared with expenses — so if the last expense was EXP-0034, the next invoice will be INV-0035. This ensures every document in the project has a unique sequential number.
+
+### Date Processed
+
+In addition to **Invoice Date** (the date on the supplier's invoice), each invoice has a **Date Processed** field — the date it was entered into the system. This auto-fills with today's date on new invoices but is editable.
+
+**Date Processed is what flows into the TCE and NRG invoicing panels**, not Invoice Date. This means costs are reported in the period they were actually captured, which better aligns with customer invoicing cycles.
+
+### Chargeable to customer
+
+Each invoice can be marked as **Chargeable to customer**. When ticked:
+
+- Enter a **GM %** and the **Sell Price** auto-calculates from the invoice amount
+- The sell price (not cost amount) flows into TCE actuals and the NRG Expenses Report
+- The invoice appears in customer-facing reports
+
+When unticked, the invoice is excluded from all TCE actuals, NRG panels, and exports — it still appears in the internal cost register.
+
+**Only Approved or Paid invoices flow into TCE actuals.** Invoices in Received, Checked, or Disputed status are excluded from all downstream calculations until approved.
+
+### Split line items
+
+A single invoice can be split across multiple TCE lines, WBS codes, or chargeable/non-chargeable allocations using **Split this invoice into line items**. Click the toggle at the bottom of the invoice modal to expand the line items section.
+
+Each line has its own:
+- Description
+- Amount (cost)
+- Chargeable checkbox
+- GM% (auto-calculates sell price)
+- TCE Item link
+
+When lines exist, the top-level Amount, Chargeable, Sell Price, and TCE Item fields are locked — all allocation happens at line level. The parent invoice shows the rolled-up totals.
+
 ### SAP Import
 
 **📥 SAP Import** button (top right) reads a SAP Excel export (.xlsx) and creates or updates invoice records in bulk. The matching logic finds existing invoices by vendor reference number and updates them; new ones are created. Useful for end-of-week reconciliation when finance has issued a batch.
@@ -183,6 +222,30 @@ On the MIKA panel:
 - **Revised Budget** = PM100 + Approved VNs
 
 So an approved variation increases the budget the project is working to, and is therefore reflected in the EAC variance.
+
+## Expenses
+
+Open via **Cost Tracking → Expenses**.
+
+Expenses are site receipts and internal costs — consumables, PPE, travel, accommodation, tools hire. Unlike invoices (which come from suppliers against POs), expenses are typically entered by site staff from receipts.
+
+### ISO Filing Ref
+
+Every expense gets an auto-assigned **ISO Filing Ref** on save: `EXP-0018_Busteed-Ply_733.63`. The counter is shared with invoices, so all documents in the project have a unique sequential number.
+
+The ref appears in its own sortable **ISO Filing Ref** column in the table.
+
+### Chargeable to customer
+
+Same concept as invoices — tick **Chargeable to customer** and enter a GM%. The sell price auto-calculates from the cost (ex GST) and GM%. Only chargeable expenses flow into TCE actuals and the NRG Expenses Report.
+
+### Split line items
+
+An expense receipt can be split across multiple TCE lines using **Split this receipt into line items**. Each line has its own description, cost, chargeable toggle, GM%, sell price, and TCE item. When lines exist, the top-level cost and TCE fields are locked.
+
+### Categories
+
+Expenses are tagged with a category (Consumables, PPE, Travel, Accommodation, Tools, Other) for reporting and filtering.
 
 ## How the three connect
 
