@@ -65,11 +65,26 @@ const fmt = (v: number) => {
 }
 const pct = (n: number, of: number) => of <= 0 ? '0%' : `${Math.round((n / of) * 100)}%`
 
+// Render a signed delta with sign + thousands separator. "—" for near-zero
+// to keep the eye from chasing rounding noise.
+const fmtDelta = (delta: number) => {
+  if (Math.abs(delta) < 0.5) return '—'
+  const sign = delta >= 0 ? '+' : '−'
+  return sign + '$' + Math.abs(Math.round(delta)).toLocaleString('en-AU')
+}
+
 export function WalkAwayPanel() {
   const { activeProject } = useAppStore()
 
   // The walk-away date the engine runs against (default = today)
   const [asOf, setAsOf] = useState<string>(todayIso())
+
+  // Compare-two-dates mode. When enabled, the engine also runs against asOfB
+  // and the panel renders A → B side-by-side. Default B is project end date
+  // (most useful "what gets locked between now and finish" question), with
+  // today + 30 days as a fallback if the project has no end date set.
+  const [compareMode, setCompareMode] = useState<boolean>(false)
+  const [asOfB, setAsOfB] = useState<string>(todayIso())
 
   // Per-source notice periods, sourced from projects.walk_away_settings.notice_days.
   // Editable inline via the popover; saves back to the project record.
@@ -113,6 +128,15 @@ export function WalkAwayPanel() {
       seeded[s.key] = typeof saved[s.key] === 'number' ? saved[s.key] : 1
     }
     setNoticeDays(seeded)
+    // Seed compare date B with the project end date (most useful default).
+    // Falls back to today + 30 if no end date is set.
+    if (activeProject.end_date) {
+      setAsOfB(activeProject.end_date)
+    } else {
+      const d = new Date()
+      d.setDate(d.getDate() + 30)
+      setAsOfB(d.toISOString().slice(0, 10))
+    }
   }, [activeProject])
 
   async function load() {
@@ -166,14 +190,12 @@ export function WalkAwayPanel() {
 
   useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeProject?.id])
 
-  // Run the engine against the current state + asOf + notice settings
-  const result: WalkAwayResult | null = useMemo(() => {
+  // Build the forecast once per data change. Reused for both walk-away dates
+  // when compare mode is active — buildForecast is heavy, no need to re-run
+  // it for the same project state just because asOfB changes.
+  const forecast = useMemo(() => {
     if (!activeProject || loading) return null
-
-    // Build the forecast first so the labour classifier can read per-day cost.
-    // Same call shape as MikaPanel / ForecastPanel — keeps labour cost agreement
-    // with whatever the user sees in the regular forecast.
-    const forecast = buildForecast(
+    return buildForecast(
       resources,
       rateCards,
       backOfficeHours,
@@ -194,8 +216,13 @@ export function WalkAwayPanel() {
       invoices,
       flights,
     )
+  }, [activeProject, loading, resources, rateCards, backOfficeHours, hireItems, cars, accom, toolingCostings, fxRates, expenses, globalTVs, globalDepartments, purchaseOrders, invoices, flights])
 
-    return classifyWalkAway({
+  // Common input bag for classifyWalkAway — extracted so the A and B runs
+  // can't drift in what they're given.
+  const engineInput = useMemo(() => {
+    if (!activeProject || !forecast) return null
+    return {
       project: activeProject,
       resources, flights, expenses, cars, accommodation: accom,
       hireItems, toolingCostings, weeklyTimesheets, backOfficeHours,
@@ -205,8 +232,19 @@ export function WalkAwayPanel() {
       noticeDays,
       forecast,
       timesheetCostLines,
-    }, asOf)
-  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, seSupport, variations, variationLines, purchaseOrders, invoices, rateCards, globalTVs, globalDepartments, timesheetCostLines, fxRates, noticeDays, asOf])
+    }
+  }, [activeProject, forecast, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, seSupport, variations, variationLines, purchaseOrders, invoices, rateCards, fxRates, noticeDays, timesheetCostLines])
+
+  // Run the engine for date A (always) and date B (only in compare mode)
+  const result: WalkAwayResult | null = useMemo(() => {
+    if (!engineInput) return null
+    return classifyWalkAway(engineInput, asOf)
+  }, [engineInput, asOf])
+
+  const resultB: WalkAwayResult | null = useMemo(() => {
+    if (!engineInput || !compareMode) return null
+    return classifyWalkAway(engineInput, asOfB)
+  }, [engineInput, compareMode, asOfB])
 
   async function saveNoticeDays() {
     if (!activeProject) return
@@ -238,10 +276,23 @@ export function WalkAwayPanel() {
       {/* Date picker + notice-period editor */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
         <label style={{ fontSize: '12px', color: 'var(--text2)' }}>
-          Walk-away date:&nbsp;
+          {compareMode ? 'Date A:' : 'Walk-away date:'}&nbsp;
           <input type="date" className="input" value={asOf} onChange={e => setAsOf(e.target.value)} style={{ width: '160px' }} />
         </label>
         <button className="btn btn-sm" onClick={() => setAsOf(todayIso())}>Today</button>
+        {compareMode && (
+          <label style={{ fontSize: '12px', color: 'var(--text2)' }}>
+            Date B:&nbsp;
+            <input type="date" className="input" value={asOfB} onChange={e => setAsOfB(e.target.value)} style={{ width: '160px' }} />
+          </label>
+        )}
+        <button
+          className={'btn btn-sm' + (compareMode ? ' btn-primary' : '')}
+          onClick={() => setCompareMode(c => !c)}
+          title="Run the engine for two dates and show A → B with deltas"
+        >
+          {compareMode ? '✓ Compare' : '⇄ Compare two dates'}
+        </button>
         <button className="btn btn-sm" onClick={() => setShowNoticeEditor(s => !s)}>
           ⚙️ Notice periods {showNoticeEditor ? '▲' : '▼'}
         </button>
@@ -283,11 +334,18 @@ export function WalkAwayPanel() {
           {(Object.keys(BUCKET_META) as (keyof typeof BUCKET_META)[]).map(b => {
             const meta = BUCKET_META[b]
             const amt = result.buckets[b].total
-            const isEmpty = Math.abs(amt) < 0.5
+            const amtB = resultB?.buckets[b].total ?? 0
+            const delta = amtB - amt
+            const isEmpty = Math.abs(amt) < 0.5 && (!compareMode || Math.abs(amtB) < 0.5)
             return (
               <div key={b} className="card" style={{ padding: '14px', borderLeft: `4px solid ${meta.color}`, opacity: isEmpty ? 0.55 : 1 }}>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{meta.label}</div>
                 <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: 'var(--mono)', color: meta.color, marginTop: '4px' }}>{fmt(amt)}</div>
+                {compareMode && resultB ? (
+                  <div style={{ fontSize: '12px', fontFamily: 'var(--mono)', color: 'var(--text2)', marginTop: '4px' }}>
+                    → {fmt(amtB)} <span style={{ color: 'var(--text3)' }}>({fmtDelta(delta)})</span>
+                  </div>
+                ) : null}
                 <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
                   {isEmpty ? meta.desc : `${pct(amt, result.total)} of total · ${meta.desc}`}
                 </div>
@@ -301,9 +359,16 @@ export function WalkAwayPanel() {
       {result && (
         <div className="card" style={{ padding: '14px', marginBottom: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>If we stop on {asOf}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>
+              If we stop on {asOf}{compareMode && resultB ? ` vs ${asOfB}` : ''}
+            </div>
             <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)', color: '#b45309' }}>
               {fmt(result.buckets.sunk.total + result.buckets.locked.total)}
+              {compareMode && resultB && (
+                <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text2)', marginLeft: '8px' }}>
+                  → {fmt(resultB.buckets.sunk.total + resultB.buckets.locked.total)}
+                </span>
+              )}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Sunk + Locked</div>
           </div>
@@ -311,12 +376,24 @@ export function WalkAwayPanel() {
             <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>We'd save</div>
             <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)', color: '#059669' }}>
               {fmt(result.buckets.avoidable.total + result.buckets.discretionary.total)}
+              {compareMode && resultB && (
+                <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text2)', marginLeft: '8px' }}>
+                  → {fmt(resultB.buckets.avoidable.total + resultB.buckets.discretionary.total)}
+                </span>
+              )}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Avoidable + Discretionary</div>
           </div>
           <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: '20px' }}>
             <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>Total EAC contribution</div>
-            <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmt(result.total)}</div>
+            <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)' }}>
+              {fmt(result.total)}
+              {compareMode && resultB && (
+                <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text2)', marginLeft: '8px' }}>
+                  → {fmt(resultB.total)}
+                </span>
+              )}
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text3)' }}>All 15 cost sources combined</div>
           </div>
         </div>
@@ -342,7 +419,15 @@ export function WalkAwayPanel() {
                 const avoidable = result.buckets.avoidable.bySource[s.key] || 0
                 const discretionary = result.buckets.discretionary.bySource[s.key] || 0
                 const rowTotal = sunk + locked + avoidable + discretionary
-                if (!s.implemented && rowTotal === 0) {
+                // B-side values (only meaningful when compareMode + resultB)
+                const sunkB = resultB?.buckets.sunk.bySource[s.key] || 0
+                const lockedB = resultB?.buckets.locked.bySource[s.key] || 0
+                const avoidableB = resultB?.buckets.avoidable.bySource[s.key] || 0
+                const discretionaryB = resultB?.buckets.discretionary.bySource[s.key] || 0
+                const rowTotalB = sunkB + lockedB + avoidableB + discretionaryB
+                const isComparing = compareMode && !!resultB
+
+                if (!s.implemented && rowTotal === 0 && rowTotalB === 0) {
                   return (
                     <tr key={s.key} style={{ opacity: 0.45 }}>
                       <td>{s.label}</td>
@@ -352,14 +437,28 @@ export function WalkAwayPanel() {
                     </tr>
                   )
                 }
+                // Per-cell A → B rendering. When not comparing, just A.
+                const cell = (a: number, b: number, color: string) => (
+                  <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color }}>
+                    {fmt(a)}
+                    {isComparing && (
+                      <div style={{ fontSize: '10.5px', color: 'var(--text3)', fontWeight: 400 }}>→ {fmt(b)}</div>
+                    )}
+                  </td>
+                )
                 return (
                   <tr key={s.key}>
                     <td style={{ fontWeight: 500 }}>{s.label}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.sunk.color }}>{fmt(sunk)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.locked.color }}>{fmt(locked)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.avoidable.color }}>{fmt(avoidable)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.discretionary.color }}>{fmt(discretionary)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>{fmt(rowTotal)}</td>
+                    {cell(sunk, sunkB, BUCKET_META.sunk.color)}
+                    {cell(locked, lockedB, BUCKET_META.locked.color)}
+                    {cell(avoidable, avoidableB, BUCKET_META.avoidable.color)}
+                    {cell(discretionary, discretionaryB, BUCKET_META.discretionary.color)}
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
+                      {fmt(rowTotal)}
+                      {isComparing && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--text3)', fontWeight: 400 }}>→ {fmt(rowTotalB)}</div>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -367,11 +466,28 @@ export function WalkAwayPanel() {
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
                 <td style={{ padding: '10px 12px' }}>Totals</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.sunk.color }}>{fmt(result.buckets.sunk.total)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.locked.color }}>{fmt(result.buckets.locked.total)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.avoidable.color }}>{fmt(result.buckets.avoidable.total)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META.discretionary.color }}>{fmt(result.buckets.discretionary.total)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(result.total)}</td>
+                {(Object.keys(BUCKET_META) as (keyof typeof BUCKET_META)[]).map(b => {
+                  const a = result.buckets[b].total
+                  const bVal = resultB?.buckets[b].total ?? 0
+                  return (
+                    <td key={b} style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: BUCKET_META[b].color }}>
+                      {fmt(a)}
+                      {compareMode && resultB && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--text3)', fontWeight: 400 }}>
+                          → {fmt(bVal)} <span style={{ marginLeft: 4 }}>({fmtDelta(bVal - a)})</span>
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
+                <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>
+                  {fmt(result.total)}
+                  {compareMode && resultB && (
+                    <div style={{ fontSize: '10.5px', color: 'var(--text3)', fontWeight: 400 }}>
+                      → {fmt(resultB.total)} <span style={{ marginLeft: 4 }}>({fmtDelta(resultB.total - result.total)})</span>
+                    </div>
+                  )}
+                </td>
               </tr>
             </tfoot>
           </table>
