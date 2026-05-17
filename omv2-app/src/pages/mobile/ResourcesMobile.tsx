@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { toast } from '../../components/ui/Toast'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
@@ -124,6 +124,59 @@ export function ResourcesMobile({
 
   // Pull-to-refresh: reload the parent panel's data via onChange
   useRegisterRefresh(onChange)
+
+  // ── Accom + car lookups ──────────────────────────────────────────────
+  // Loaded independently of the parent so the at-a-glance view doesn't
+  // depend on the parent passing data down. Re-fetched whenever the
+  // project changes or the parent triggers onChange (via the same effect
+  // dependency the parent uses for its resources list).
+  type AccomLite = { property: string; room: string; check_in: string | null; check_out: string | null }
+  type CarLite   = { vehicle_type: string; rego: string; collected: boolean | null; start_date: string | null; end_date: string | null }
+  const [accomByPerson, setAccomByPerson] = useState<Record<string, AccomLite>>({})
+  const [carByPerson,   setCarByPerson]   = useState<Record<string, CarLite>>({})
+
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    ;(async () => {
+      const [accomRes, carRes] = await Promise.all([
+        supabase.from('accommodation')
+          .select('property,room,check_in,check_out,occupants')
+          .eq('project_id', projectId),
+        supabase.from('cars')
+          .select('person_id,vehicle_type,rego,collected,start_date,end_date')
+          .eq('project_id', projectId),
+      ])
+      if (cancelled) return
+      // Build per-person map for accom: a person can be an occupant of one
+      // booking at a time (overlap-prevented at the DB level). If somehow
+      // listed in multiple, last-write wins.
+      const accomMap: Record<string, AccomLite> = {}
+      for (const a of (accomRes.data || []) as Array<{ property: string; room: string; check_in: string | null; check_out: string | null; occupants: unknown }>) {
+        const occ = (a.occupants as string[]) || []
+        for (const oId of occ) {
+          accomMap[oId] = { property: a.property, room: a.room, check_in: a.check_in, check_out: a.check_out }
+        }
+      }
+      const carMap: Record<string, CarLite> = {}
+      for (const c of (carRes.data || []) as Array<{ person_id: string | null; vehicle_type: string; rego: string; collected: boolean | null; start_date: string | null; end_date: string | null }>) {
+        if (c.person_id) {
+          carMap[c.person_id] = {
+            vehicle_type: c.vehicle_type,
+            rego: c.rego,
+            collected: c.collected,
+            start_date: c.start_date,
+            end_date: c.end_date,
+          }
+        }
+      }
+      setAccomByPerson(accomMap)
+      setCarByPerson(carMap)
+    })()
+    return () => { cancelled = true }
+    // Re-runs when the parent's resource list changes, since `resources`
+    // is updated by onChange — keeps the lookups in sync with edits.
+  }, [projectId, resources])
 
   // Edit / new sheet state — owned by mobile, doesn't touch desktop modal
   const [mode, setMode]       = useState<'list' | 'edit' | 'new'>('list')
@@ -276,6 +329,69 @@ export function ResourcesMobile({
             if (r.allow_laha) allowFlags.push('LAHA')
             if (r.allow_meal) allowFlags.push('Meal')
             if (r.allow_fsa)  allowFlags.push('FSA')
+            const accom = accomByPerson[r.id]
+            const car   = carByPerson[r.id]
+            const hasPills = allowFlags.length > 0 || !!r.category
+            const hasBookings = !!accom || !!car
+
+            // Compose footer: optional pill row + optional booking row(s).
+            // Skip footer entirely if there's nothing to show, to keep
+            // sparse cards compact.
+            let footer: ReactNode = undefined
+            if (hasPills || hasBookings) {
+              footer = (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {hasPills && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {allowFlags.map(f => (
+                        <span key={f} style={{
+                          fontSize: 10, padding: '2px 6px',
+                          background: 'var(--bg3)', border: '1px solid var(--border)',
+                          borderRadius: 4, color: 'var(--text2)', fontWeight: 500,
+                        }}>{f}</span>
+                      ))}
+                      {r.category && (
+                        <span style={{
+                          fontSize: 10, padding: '2px 6px',
+                          background: 'var(--accent-light)', border: '1px solid var(--accent)',
+                          borderRadius: 4, color: 'var(--accent2)', fontWeight: 500,
+                        }}>{categoryLabel(r.category)}</span>
+                      )}
+                    </div>
+                  )}
+                  {accom && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text2)' }}>
+                      <span>🏨</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {accom.property}
+                        {accom.room && <span style={{ color: 'var(--text3)' }}> · Rm {accom.room}</span>}
+                      </span>
+                      {(accom.check_in || accom.check_out) && (
+                        <span style={{ color: 'var(--text3)', flexShrink: 0 }}>
+                          {fmtDate(accom.check_in)} → {fmtDate(accom.check_out)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {car && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text2)' }}>
+                      <span>🚗</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {car.vehicle_type || 'Vehicle'}
+                        {car.rego && <span style={{ color: 'var(--text3)' }}> · {car.rego}</span>}
+                      </span>
+                      <span style={{
+                        fontSize: 10, padding: '1px 5px', borderRadius: 3, flexShrink: 0,
+                        background: car.collected ? '#dcfce7' : 'var(--bg3)',
+                        color:      car.collected ? '#166534' : 'var(--text3)',
+                      }}>
+                        {car.collected ? 'Collected' : 'Pending'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )
+            }
 
             return (
               <MobileCard
@@ -295,32 +411,7 @@ export function ResourcesMobile({
                   </span>
                 }
                 metaSub={dateStr}
-                footer={allowFlags.length > 0 ? (
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {allowFlags.map(f => (
-                      <span key={f} style={{
-                        fontSize: 10, padding: '2px 6px',
-                        background: 'var(--bg3)', border: '1px solid var(--border)',
-                        borderRadius: 4, color: 'var(--text2)', fontWeight: 500,
-                      }}>{f}</span>
-                    ))}
-                    {r.category && (
-                      <span style={{
-                        fontSize: 10, padding: '2px 6px',
-                        background: 'var(--accent-light)', border: '1px solid var(--accent)',
-                        borderRadius: 4, color: 'var(--accent2)', fontWeight: 500,
-                      }}>{categoryLabel(r.category)}</span>
-                    )}
-                  </div>
-                ) : (r.category ? (
-                  <div>
-                    <span style={{
-                      fontSize: 10, padding: '2px 6px',
-                      background: 'var(--accent-light)', border: '1px solid var(--accent)',
-                      borderRadius: 4, color: 'var(--accent2)', fontWeight: 500,
-                    }}>{categoryLabel(r.category)}</span>
-                  </div>
-                ) : undefined)}
+                footer={footer}
                 onClick={() => openEdit(r)}
               />
             )
