@@ -9,6 +9,21 @@ import type { Expense, ExpenseLine, Resource, WbsItem, Flight } from '../../type
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName, RECEIPT_BUCKET } from '../../lib/receiptStorage'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useUserPrefs } from '../../hooks/useUserPrefs'
+
+const EXP_COLS = [
+  { id: 'date',        label: 'Date',          defaultVisible: true,  group: 'Core' },
+  { id: 'description', label: 'Description',   defaultVisible: true,  group: 'Core' },
+  { id: 'expense_ref', label: 'ISO Filing Ref', defaultVisible: true, group: 'Core' },
+  { id: 'category',   label: 'Category',       defaultVisible: true,  group: 'Core' },
+  { id: 'person',     label: 'Person',          defaultVisible: false, group: 'Core' },
+  { id: 'cost',       label: 'Cost (ex GST)',   defaultVisible: true,  group: 'Cost' },
+  { id: 'sell',       label: 'Sell',            defaultVisible: true,  group: 'Cost' },
+  { id: 'receipts',   label: 'Receipts',        defaultVisible: true,  group: 'Core' },
+  { id: 'wbs',        label: 'WBS',             defaultVisible: true,  group: 'Core' },
+  { id: 'notes',      label: 'Notes',           defaultVisible: false, group: 'Core' },
+] as const
+type ExpColId = typeof EXP_COLS[number]['id']
 
 const ExpensesMobile = lazy(() =>
   import('../mobile/ExpensesMobile').then(m => ({ default: m.ExpensesMobile }))
@@ -49,6 +64,17 @@ function ExpensesPanelDesktop() {
   const { activeProject, setActivePanel } = useAppStore()
   const isTce = activeProject?.cost_method === 'nrg_tce'
   const { canWrite } = usePermissions()
+  const { prefs, setPref } = useUserPrefs()
+  const [showColPicker, setShowColPicker] = useState(false)
+  const expHiddenStored = (prefs.hidden_cols as Record<string, string[]> | undefined)?.['expenses']
+  const expHidden = new Set<string>(expHiddenStored ?? EXP_COLS.filter(c => !c.defaultVisible).map(c => c.id))
+  function isExpVisible(id: ExpColId) { return !expHidden.has(id) }
+  function toggleExpCol(id: ExpColId) {
+    const next = new Set(expHidden)
+    next.has(id) ? next.delete(id) : next.add(id)
+    const existing = (prefs.hidden_cols as Record<string, string[]> | undefined) || {}
+    setPref('hidden_cols', { ...existing, expenses: Array.from(next) })
+  }
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [resources, setResources] = useState<Resource[]>([])
   const [flights, setFlights] = useState<Flight[]>([])
@@ -571,7 +597,7 @@ function ExpensesPanelDesktop() {
   const bulkTotalSelected = bulkWeekGroups.filter(w => bulkDlWeeks.has(w.key)).reduce((s, w) => s + w.count, 0)
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1100px' }}>
+    <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
           <h1 style={{ fontSize: '18px', fontWeight: 700 }}>Expenses</h1>
@@ -582,6 +608,7 @@ function ExpensesPanelDesktop() {
         <div style={{display:'flex',gap:'8px'}}>
           <button className="btn btn-sm" onClick={exportCSV}>⬇ CSV</button>
           <button className="btn btn-sm" onClick={() => { setBulkDlWeeks(new Set()); setShowBulkDownload(true) }}>📦 Receipts ZIP</button>
+          <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{expHidden.size > EXP_COLS.filter(c => !c.defaultVisible).length ? ` (${expHidden.size - EXP_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
           <button className="btn btn-primary" onClick={openNew} disabled={!canWrite('cost_tracking')}>+ Add Expense</button>
         </div>
       </div>
@@ -645,22 +672,24 @@ function ExpensesPanelDesktop() {
           </div>
         ) : (
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-            <table>
+            <table style={{ width: '100%' }}>
               <thead>
                 <tr>
                   <th style={{width:'28px',textAlign:'center',padding:'8px 6px'}}>
                     <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
                       onChange={e=>toggleAll(e.target.checked)} style={{accentColor:'#f472b6'}} />
                   </th>
-                  <SortTh col="date" label="Date" />
-                  <SortTh col="description" label="Description" />
-                  <SortTh col="expense_ref" label="ISO Filing Ref" />
-                  <SortTh col="category" label="Category" />
-                  <SortTh col="cost" label="Cost (ex GST)" align="right" />
-                  <SortTh col="sell" label="Sell" align="right" />
-                  <th>Receipts</th>
-                  <SortTh col="wbs" label="WBS" />
-                  <th></th>
+                  {isExpVisible('date')        && <SortTh col="date" label="Date" />}
+                  {isExpVisible('description') && <SortTh col="description" label="Description" />}
+                  {isExpVisible('expense_ref') && <SortTh col="expense_ref" label="ISO Filing Ref" />}
+                  {isExpVisible('category')    && <SortTh col="category" label="Category" />}
+                  {isExpVisible('person')      && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Person</th>}
+                  {isExpVisible('cost')        && <SortTh col="cost" label="Cost (ex GST)" align="right" />}
+                  {isExpVisible('sell')        && <SortTh col="sell" label="Sell" align="right" />}
+                  {isExpVisible('receipts')    && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Receipts</th>}
+                  {isExpVisible('wbs')         && <SortTh col="wbs" label="WBS" />}
+                  {isExpVisible('notes')       && <th style={{padding:'8px 10px',background:'var(--bg3)',fontSize:'11px',color:'var(--text2)'}}>Notes</th>}
+                  <th style={{background:'var(--bg3)'}}></th>
                 </tr>
               </thead>
               <tbody>
@@ -681,15 +710,16 @@ function ExpensesPanelDesktop() {
                     <td style={{textAlign:'center',padding:'5px 6px'}}>
                       <input type="checkbox" checked={selected.has(e.id)} onChange={()=>toggleSelect(e.id)} style={{accentColor:'#f472b6'}} />
                     </td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '12px' }}>{e.date || '—'}</td>
-                    <td style={{ fontWeight: 500 }}>{e.description}</td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{e.expense_ref || '—'}</td>
-                    <td style={{ fontSize: '12px', color: 'var(--text3)' }}>{e.category || '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(e.cost_ex_gst || 0)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : e.sell_price < 0 ? 'var(--red)' : 'var(--text3)' }}>
+                    {isExpVisible('date')        && <td style={{ fontFamily: 'var(--mono)', fontSize: '12px', whiteSpace: 'nowrap' }}>{e.date || '—'}</td>}
+                    {isExpVisible('description') && <td style={{ fontWeight: 500 }}>{e.description}</td>}
+                    {isExpVisible('expense_ref') && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{e.expense_ref || '—'}</td>}
+                    {isExpVisible('category')    && <td style={{ fontSize: '12px', color: 'var(--text3)' }}>{e.category || '—'}</td>}
+                    {isExpVisible('person')      && <td style={{ fontSize: '12px', color: 'var(--text2)' }}>{e.resource_id ? (resources.find(r => r.id === e.resource_id)?.name || '—') : '—'}</td>}
+                    {isExpVisible('cost')        && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px' }}>{fmt(e.cost_ex_gst || 0)}</td>}
+                    {isExpVisible('sell')        && <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: '12px', color: e.sell_price > 0 ? 'var(--green)' : e.sell_price < 0 ? 'var(--red)' : 'var(--text3)' }}>
                       {e.sell_price !== 0 ? fmt(e.sell_price) : '—'}
-                    </td>
-                    <td>
+                    </td>}
+                    {isExpVisible('receipts')    && <td>
                       <div style={{display:'flex',gap:'4px',flexWrap:'wrap',alignItems:'center'}}>
                         {(e.receipt_paths||[]).map(p => (
                           <span key={p} style={{display:'inline-flex',alignItems:'center',gap:'2px',fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg3)',border:'1px solid var(--border)',cursor:'pointer',color:'var(--text2)'}}
@@ -707,8 +737,9 @@ function ExpensesPanelDesktop() {
                             </label>
                         }
                       </div>
-                    </td>
-                    <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.wbs || '—'}</td>
+                    </td>}
+                    {isExpVisible('wbs')   && <td style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.wbs || '—'}</td>}
+                    {isExpVisible('notes') && <td style={{ fontSize: '11px', color: 'var(--text3)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.notes || undefined}>{e.notes || '—'}</td>}
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm" onClick={() => openEdit(e)}>Edit</button>
                       <button className="btn btn-sm" style={{ marginLeft: '4px', color: 'var(--red)' }} onClick={() => del(e)}>✕</button>
@@ -1019,6 +1050,35 @@ function ExpensesPanelDesktop() {
                 disabled={bulkDlWeeks.size === 0 || bulkDlLoading}>
                 {bulkDlLoading ? 'Downloading...' : `Download ${bulkTotalSelected} file${bulkTotalSelected !== 1 ? 's' : ''}`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Column picker */}
+      {showColPicker && (
+        <div className="modal-overlay" onClick={() => setShowColPicker(false)}>
+          <div className="modal" style={{ maxWidth: '340px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Columns</h3>
+              <button className="btn btn-sm" onClick={() => setShowColPicker(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '12px 16px' }}>
+              {(['Core', 'Cost'] as const).map(group => (
+                <div key={group} style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{group}</div>
+                  {EXP_COLS.filter(c => c.group === group).map(col => {
+                    const visible = !expHidden.has(col.id)
+                    return (
+                      <label key={col.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', borderRadius: 4, cursor: 'pointer', background: visible ? 'var(--accent-light)' : 'transparent', marginBottom: 2 }}>
+                        <span style={{ fontSize: 13, color: visible ? 'var(--accent)' : 'var(--text2)', fontWeight: visible ? 600 : 400 }}>{col.label}</span>
+                        <input type="checkbox" checked={visible} onChange={() => toggleExpCol(col.id)} />
+                        {visible && <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--accent)' }}>✓</span>}
+                      </label>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         </div>
