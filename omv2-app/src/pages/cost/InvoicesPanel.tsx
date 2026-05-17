@@ -9,6 +9,7 @@ import { toast } from '../../components/ui/Toast'
 import { HelpButton } from '../../components/HelpButton'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
+import { InvoiceApprovalPrintModal } from '../../components/InvoiceApprovalPrintModal'
 
 // ── Invoice column registry ───────────────────────────────────────────────────
 const INV_COLS = [
@@ -173,6 +174,7 @@ export function InvoicesPanel() {
   function setSortDir(v: SortDir)      { _setSortDir(v);      setPref('inv_sort_dir', v) }
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
   const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
+  const [showPrintModal, setShowPrintModal] = useState(false)
   const [lines, setLines] = useState<InvoiceLine[]>([])
   const [showLines, setShowLines] = useState(false)
   const [sapModal, setSapModal] = useState(false)
@@ -601,6 +603,7 @@ export function InvoicesPanel() {
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
           {invPerms.canEdit && <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>}
+          <button className="btn btn-sm" onClick={() => setShowPrintModal(true)} title="Print invoice approval record">🖨 Approval Report</button>
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
       </div>
@@ -1234,6 +1237,14 @@ export function InvoicesPanel() {
             </div>
           </div>
         </div>
+      )}
+      {showPrintModal && (
+        <InvoiceApprovalPrintModal
+          invoices={invoices}
+          pos={pos}
+          isTce={isTce}
+          onClose={() => setShowPrintModal(false)}
+        />
       )}
     </div>
   )
