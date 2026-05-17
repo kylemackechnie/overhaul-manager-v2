@@ -534,6 +534,7 @@ export function MikaPanel() {
                   {preview.lines.slice(0, 50).map((l, i) => {
                     const indent = '\u00a0'.repeat(Math.max(0, l.level - 1) * 3)
                     const variance = l.pm100 - l.actuals - l.forecast
+                    const hasSignal = l.pm100 || l.actuals || l.forecast
                     return (
                       <tr key={i} style={{ fontWeight: l.level <= 2 ? 600 : 400 }}>
                         <td style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>{l.wbs}</td>
@@ -542,7 +543,7 @@ export function MikaPanel() {
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(l.pm80tot)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)' }}>{fmt(l.pm100)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmt(l.actuals)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance >= 0 ? 'var(--green)' : 'var(--red)' }}>{l.pm100 ? fmt(variance) : '—'}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance >= 0 ? 'var(--green)' : 'var(--red)' }}>{hasSignal ? fmt(variance) : '—'}</td>
                       </tr>
                     )
                   })}
@@ -683,7 +684,13 @@ export function MikaPanel() {
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: l.poCommitted ? '#f97316' : 'var(--text3)', cursor: l.poCommitted ? 'pointer' : 'default', textDecoration: l.poCommitted ? 'underline dotted' : 'none' }} onClick={() => l.poCommitted && setDrillCell({ wbs: l.wbs, col: 'committed' })}>{l.poCommitted ? fmt(l.poCommitted) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--amber)', cursor: l.forecast ? 'pointer' : 'default', textDecoration: l.forecast ? 'underline dotted' : 'none' }} onClick={() => l.forecast && setDrillCell({ wbs: l.wbs, col: 'forecast' })}>{l.forecast ? fmt(l.forecast) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: '#7c3aed', fontWeight: 600, cursor: eac ? 'pointer' : 'default', textDecoration: eac ? 'underline dotted' : 'none' }} onClick={() => eac && setDrillCell({ wbs: l.wbs, col: 'eac' })}>{fmt(eac)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance >= 0 ? 'var(--green)' : 'var(--red)' }}>{l.pm100 ? fmt(variance) : '—'}</td>
+                        {/* Variance column — show whenever there's signal (PM100 OR an EAC component).
+                            Previously gated on l.pm100 alone, which hid real overrun on rows like a
+                            Subcontractor child that has POs against it but no PM100 line in the
+                            imported cost plan. The header total includes those rows in its variance
+                            roll-up, so hiding them at the leaf level made the header inexplicably
+                            larger than the visible children summed. */}
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: variance >= 0 ? 'var(--green)' : 'var(--red)' }}>{(l.pm100 || eac) ? fmt(variance) : '—'}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', color: pct > 100 ? 'var(--red)' : pct > 85 ? 'var(--amber)' : 'var(--text2)' }}>{l.pm100 ? fmtPct(pct) : '—'}</td>
                       </tr>
                     )
