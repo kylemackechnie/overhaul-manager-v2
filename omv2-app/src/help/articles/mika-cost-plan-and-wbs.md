@@ -5,6 +5,7 @@ category: Cost Tracking
 order: 10
 summary: MIKA is the financial backbone — importing it populates PM80/PM100 budgets, the full WBS hierarchy, and PTD actuals that every other cost panel reads from. The WBS list is the simplified view.
 relatedPanels: [cost-mika, wbs-list]
+relatedTour: mika-tour
 ---
 
 # MIKA Cost Plan & WBS

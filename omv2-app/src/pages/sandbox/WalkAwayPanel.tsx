@@ -265,7 +265,7 @@ export function WalkAwayPanel() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '1400px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+      <div data-tour="walkaway-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
         <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>🚪 Walk-Away Analysis</h1>
         <HelpButton panelId="sandbox-walkaway" />
       </div>
@@ -275,7 +275,7 @@ export function WalkAwayPanel() {
 
       {/* Date picker + notice-period editor */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
-        <label style={{ fontSize: '12px', color: 'var(--text2)' }}>
+        <label data-tour="walkaway-date" style={{ fontSize: '12px', color: 'var(--text2)' }}>
           {compareMode ? 'Date A:' : 'Walk-away date:'}&nbsp;
           <input type="date" className="input" value={asOf} onChange={e => setAsOf(e.target.value)} style={{ width: '160px' }} />
         </label>
@@ -287,13 +287,14 @@ export function WalkAwayPanel() {
           </label>
         )}
         <button
+          data-tour="walkaway-compare"
           className={'btn btn-sm' + (compareMode ? ' btn-primary' : '')}
           onClick={() => setCompareMode(c => !c)}
           title="Run the engine for two dates and show A → B with deltas"
         >
           {compareMode ? '✓ Compare' : '⇄ Compare two dates'}
         </button>
-        <button className="btn btn-sm" onClick={() => setShowNoticeEditor(s => !s)}>
+        <button data-tour="walkaway-notice" className="btn btn-sm" onClick={() => setShowNoticeEditor(s => !s)}>
           ⚙️ Notice periods {showNoticeEditor ? '▲' : '▼'}
         </button>
         {loading && <span style={{ fontSize: '12px', color: 'var(--text3)' }}><span className="spinner" style={{ width: 12, height: 12 }} /> Loading…</span>}
@@ -330,7 +331,7 @@ export function WalkAwayPanel() {
 
       {/* KPI strip */}
       {result && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+        <div data-tour="walkaway-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
           {(Object.keys(BUCKET_META) as (keyof typeof BUCKET_META)[]).map(b => {
             const meta = BUCKET_META[b]
             const amt = result.buckets[b].total
@@ -357,7 +358,7 @@ export function WalkAwayPanel() {
 
       {/* Cost-to-stop / cost-to-continue headline */}
       {result && (
-        <div className="card" style={{ padding: '14px', marginBottom: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+        <div data-tour="walkaway-headline" className="card" style={{ padding: '14px', marginBottom: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>
               If we stop on {asOf}{compareMode && resultB ? ` vs ${asOfB}` : ''}
@@ -401,7 +402,7 @@ export function WalkAwayPanel() {
 
       {/* Breakdown table */}
       {result && (
-        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+        <div data-tour="walkaway-breakdown" className="card" style={{ padding: 0, overflow: 'auto' }}>
           <table>
             <thead>
               <tr>

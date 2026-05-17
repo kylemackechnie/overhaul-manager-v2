@@ -4,6 +4,7 @@ title: Walk-Away Analysis
 category: Sandbox
 order: 10
 relatedPanels: [sandbox-walkaway]
+relatedTour: walk-away-tour
 summary: If we stopped the project on a chosen date, what's the bill? The Walk-Away panel classifies the project's entire EAC into Sunk, Locked, Avoidable, and Discretionary based on a date you pick — across all 15 cost sources the project tracks.
 ---
 

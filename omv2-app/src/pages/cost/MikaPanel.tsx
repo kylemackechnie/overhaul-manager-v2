@@ -459,7 +459,7 @@ export function MikaPanel() {
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+      <div data-tour="mika-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>MIKA Cost Plan</h1>
@@ -483,7 +483,7 @@ export function MikaPanel() {
 
       {/* Import zone — always visible at top */}
       <div style={{ display: 'grid', gridTemplateColumns: preview ? '1fr 1fr' : '1fr', gap: '16px', marginBottom: '16px' }}>
-        <div className="card" style={{ padding: '16px' }}>
+        <div data-tour="mika-import" className="card" style={{ padding: '16px' }}>
           <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '8px' }}>Import MIKA Cost Plan</div>
           <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '12px' }}>
             Upload the MIKA CSV export (Project Planning main tab). Imports WBS structure, PM80 baseline, PM100 approved budget, and PTD actuals. <strong>Replaces existing MIKA data.</strong>
@@ -553,7 +553,7 @@ export function MikaPanel() {
       {/* KPI cards when MIKA data exists */}
       {mika && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '10px', marginBottom: '16px' }}>
+          <div data-tour="mika-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: '10px', marginBottom: '16px' }}>
             {[
               { label: 'PM80 Baseline',   val: totPM80,      color: 'var(--accent)' },
               { label: 'PM100 Budget',    val: totPM100,     color: '#3b82f6' },
@@ -577,7 +577,7 @@ export function MikaPanel() {
           </div>
 
           {/* Filters */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' }}>
+          <div data-tour="mika-filters" style={{ display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'center' }}>
             <input className="input" style={{ width: '260px' }} placeholder="Search WBS or description…" value={search} onChange={e => setSearch(e.target.value)} />
             <select className="input" style={{ width: '160px' }} value={levelFilter} onChange={e => setLevelFilter(e.target.value)}>
               <option value="all">All levels</option>
@@ -601,7 +601,7 @@ export function MikaPanel() {
           )}
 
           {/* Full MIKA table */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div data-tour="mika-table" className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: '11px', width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
