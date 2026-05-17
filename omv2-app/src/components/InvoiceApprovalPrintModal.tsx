@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '../store/appStore'
 
 interface StatusHistoryEntry { status: string; setBy: string; setAt: string; note?: string }
@@ -64,6 +64,16 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
   const { activeProject } = useAppStore()
   const weekPresets = useMemo(() => getWeekPresets(), [])
 
+  // Lock body scroll and mark for print isolation while modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    document.body.classList.add('print-modal-open')
+    return () => {
+      document.body.style.overflow = ''
+      document.body.classList.remove('print-modal-open')
+    }
+  }, [])
+
   // Default to current week
   const [dateFrom, setDateFrom] = useState(weekPresets[0].from)
   const [dateTo, setDateTo] = useState(weekPresets[0].to)
@@ -96,7 +106,7 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
   const generatedDate = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+    <div className="invoice-approval-print-root" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
 
       {/* Controls bar — hidden on print */}
       <div className="no-print" style={{ background: '#1a1a2e', padding: '12px 24px', display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap', flexShrink: 0 }}>
@@ -310,7 +320,10 @@ export function InvoiceApprovalPrintModal({ invoices, pos, isTce, onClose }: Pro
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          body.print-modal-open > *:not(.invoice-approval-print-root) { display: none !important; }
+          body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
+          .invoice-approval-print-root { position: static !important; overflow: visible !important; background: #fff !important; }
+          .invoice-approval-print-root > div:last-child { display: block !important; padding: 0 !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
