@@ -9,6 +9,8 @@ import { toast } from '../../components/ui/Toast'
 import { HelpButton } from '../../components/HelpButton'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
+import { calcInvoiceExpectedValue, type ExpectedValueResult } from '../../engines/invoiceExpectedValue'
+import type { RateCard, HireItem, Resource } from '../../types'
 import { InvoiceApprovalPrintModal } from '../../components/InvoiceApprovalPrintModal'
 
 // ── Invoice column registry ───────────────────────────────────────────────────
@@ -175,6 +177,9 @@ export function InvoicesPanel() {
   const [historyModal, setHistoryModal] = useState<Invoice|null>(null)
   const [disputeModal, setDisputeModal] = useState<{inv:Invoice;note:string}|null>(null)
   const [showPrintModal, setShowPrintModal] = useState(false)
+  // Expected value calculator
+  const [evResult, setEvResult] = useState<ExpectedValueResult | null>(null)
+  const [evLoading, setEvLoading] = useState(false)
   const [lines, setLines] = useState<InvoiceLine[]>([])
   const [showLines, setShowLines] = useState(false)
   const [sapModal, setSapModal] = useState(false)
@@ -320,7 +325,30 @@ export function InvoicesPanel() {
     load()
   }
 
-  // ── Save modal ────────────────────────────────────────────────────────────
+  // ── Expected value calculator ─────────────────────────────────────────────
+  async function calcExpectedValue(poId: string, periodFrom: string, periodTo: string) {
+    if (!poId || !periodFrom || !periodTo || !activeProject) { setEvResult(null); return }
+    setEvLoading(true)
+    try {
+      const [hireRes, resourcesRes, rateCardsRes] = await Promise.all([
+        supabase.from('hire_items').select('*').eq('project_id', activeProject.id).eq('linked_po_id', poId),
+        supabase.from('resources').select('*,rate_card:rate_cards(*)').eq('project_id', activeProject.id).eq('linked_po_id', poId),
+        supabase.from('rate_cards').select('*').eq('project_id', activeProject.id),
+      ])
+      const hireItems = (hireRes.data || []) as HireItem[]
+      const resources = (resourcesRes.data || []) as Resource[]
+      const rateCards = (rateCardsRes.data || []) as RateCard[]
+
+      if (hireItems.length === 0 && resources.length === 0) { setEvResult(null); setEvLoading(false); return }
+
+      const stdHours = (activeProject.std_hours as { day: Record<string, number>; night: Record<string, number> }) || { day: {}, night: {} }
+      const holidays = new Set<string>((activeProject.public_holidays || []).map((h: { date: string }) => h.date))
+
+      const result = calcInvoiceExpectedValue({ periodFrom, periodTo, hireItems, resources, rateCards, stdHours, holidays })
+      setEvResult(result)
+    } catch { setEvResult(null) }
+    setEvLoading(false)
+  }
   async function save() {
     setSaving(true)
     const payload = {
@@ -602,7 +630,7 @@ export function InvoicesPanel() {
             })
             downloadCSV(rows, `Invoices_${activeProject?.name}_${new Date().toISOString().slice(0,10)}`)
           }}>↓ CSV</button>
-          {invPerms.canEdit && <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>}
+          {invPerms.canEdit && <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setPendingFiles([]);setLines([]);setShowLines(false);setEvResult(null);setModal('new')}}>+ New Invoice</button>}
           <button className="btn btn-sm" onClick={() => setShowPrintModal(true)} title="Print invoice approval record">🖨 Approval Report</button>
           <button className="btn btn-sm" onClick={() => setShowColPicker(true)} title="Show/hide columns">⚙ Columns{invHidden.size > INV_COLS.filter(c => !c.defaultVisible).length ? ` (${invHidden.size - INV_COLS.filter(c => !c.defaultVisible).length} hidden)` : ''}</button>
         </div>
@@ -649,7 +677,7 @@ export function InvoicesPanel() {
           <div style={{fontSize:'36px',marginBottom:'12px'}}>🧾</div>
           <div style={{fontSize:'16px',fontWeight:600,marginBottom:'4px'}}>No invoices yet</div>
           <div style={{fontSize:'13px',color:'var(--text3)',marginBottom:'20px'}}>Add invoices against active POs to track what's been billed.</div>
-          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setLines([]);setShowLines(false);setModal('new')}}>+ New Invoice</button>
+          <button className="btn btn-primary" onClick={()=>{setForm({...EMPTY_FORM, date_processed: new Date().toISOString().slice(0,10), gm_pct: String(activeProject?.default_gm || 15)});setLines([]);setShowLines(false);setEvResult(null);setModal('new')}}>+ New Invoice</button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{padding:'32px',textAlign:'center',color:'var(--text3)'}}>No invoices match the current filters.</div>
@@ -828,6 +856,12 @@ export function InvoicesPanel() {
                               setShowLines(existingLines.length > 0)
                             })
                             setModal(inv)
+                            // Trigger expected value if PO + period already set
+                            if (inv.po_id && inv.period_from && inv.period_to) {
+                              calcExpectedValue(inv.po_id, inv.period_from, inv.period_to)
+                            } else {
+                              setEvResult(null)
+                            }
                           }}>Edit</button>}
                           <button className="btn btn-sm" style={{fontSize:'10px'}} onClick={()=>setHistoryModal(inv)}>History</button>
                           {invPerms.canEdit && <button className="btn btn-sm" style={{fontSize:'10px',color:'var(--red)'}} onClick={()=>deleteInvoice(inv)}>✕</button>}
@@ -864,7 +898,7 @@ export function InvoicesPanel() {
               <div className="fg-row">
                 <div className="fg">
                   <label>Linked PO</label>
-                  <select className="input" value={form.po_id} onChange={e=>setForm(f=>({...f,po_id:e.target.value}))}>
+                  <select className="input" value={form.po_id} onChange={e=>{setForm(f=>({...f,po_id:e.target.value}));if(form.period_from && form.period_to) calcExpectedValue(e.target.value, form.period_from, form.period_to)}}>
                     <option value="">— No PO —</option>
                     {pos.map(p=><option key={p.id} value={p.id}>{p.po_number||p.internal_ref||'—'} {p.vendor}</option>)}
                   </select>
@@ -912,9 +946,46 @@ export function InvoicesPanel() {
                 </div>
               </div>
               <div className="fg-row">
-                <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>setForm(f=>({...f,period_from:e.target.value}))} /></div>
-                <div className="fg"><label>Period To</label><input type="date" className="input" value={form.period_to} onChange={e=>setForm(f=>({...f,period_to:e.target.value}))} /></div>
+                <div className="fg"><label>Period From</label><input type="date" className="input" value={form.period_from} onChange={e=>{setForm(f=>({...f,period_from:e.target.value}));if(form.po_id && form.period_to) calcExpectedValue(form.po_id, e.target.value, form.period_to)}} /></div>
+                <div className="fg"><label>Period To</label><input type="date" className="input" value={form.period_to} onChange={e=>{setForm(f=>({...f,period_to:e.target.value}));if(form.po_id && form.period_from) calcExpectedValue(form.po_id, form.period_from, e.target.value)}} /></div>
               </div>
+              {/* Expected value calculator */}
+              {(evLoading || evResult) && (
+                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'6px',padding:'10px 12px',fontSize:'12px'}}>
+                  <div style={{fontWeight:600,fontSize:'11px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'6px'}}>
+                    Expected Value — PO Breakdown
+                  </div>
+                  {evLoading ? (
+                    <div style={{display:'flex',alignItems:'center',gap:'8px',color:'var(--text3)'}}><span className="spinner" style={{width:'12px',height:'12px'}}/>Calculating...</div>
+                  ) : evResult && evResult.lines.length > 0 ? (<>
+                    {evResult.lines.map((line, i) => (
+                      <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',padding:'3px 0',borderBottom:'1px solid var(--border)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                          <span style={{fontSize:'9px',padding:'1px 5px',borderRadius:'3px',fontWeight:700,
+                            background:line.type==='hire'?'#eff6ff':'#f0fdf4',
+                            color:line.type==='hire'?'#1e40af':'#166534'}}>
+                            {line.type==='hire'?'HIRE':'LABOUR'}
+                          </span>
+                          <span style={{color:'var(--text2)'}}>{line.label}</span>
+                          {line.days && <span style={{fontSize:'10px',color:'var(--text3)'}}>({line.days}d)</span>}
+                        </div>
+                        <span style={{fontFamily:'var(--mono)',fontWeight:600}}>${line.cost.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                      </div>
+                    ))}
+                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:'6px',fontWeight:700}}>
+                      <span>Total expected cost</span>
+                      <span style={{fontFamily:'var(--mono)',color:'var(--accent)'}}>${evResult.totalCost.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+                    </div>
+                    <div style={{marginTop:'8px',display:'flex',justifyContent:'flex-end'}}>
+                      <button className="btn btn-sm" style={{fontSize:'11px'}} onClick={()=>setForm(f=>({...f,expected_amount:String(Math.round(evResult!.totalCost*100)/100)}))}>
+                        ↑ Apply as Expected Amount
+                      </button>
+                    </div>
+                  </>) : (
+                    <div style={{color:'var(--text3)',fontSize:'11px'}}>No hire items or resources linked to this PO.</div>
+                  )}
+                </div>
+              )}
               {hasLines && (
                 <div style={{fontSize:'11px',color:'var(--text3)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'5px',padding:'6px 10px',margin:'4px 0'}}>
                   ℹ️ Amount, sell price, chargeable and TCE scope are set per line item below — top-level fields are locked.
