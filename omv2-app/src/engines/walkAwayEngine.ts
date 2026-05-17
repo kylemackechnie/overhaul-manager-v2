@@ -245,15 +245,27 @@ export function classifyExpenses(
  * eventually tooling rentals). Splits the cost based on where asOf lands
  * relative to [start, end].
  *
- * Returns up to two line items (one for the consumed pre-asOf portion as
- * Sunk, one for the remaining post-asOf portion as Locked) — or a single
- * line item classified Sunk/Locked/Avoidable depending on where the booking
- * sits relative to the walk-away date.
+ * Returns 1-3 line items depending on the booking's relationship to asOf:
  *
- * Pro-rata model: when asOf falls inside the booking period, the cost is
- * split by day count: Sunk portion = (asOf - start) / (end - start + 1)
- * × total_cost; the remainder is Locked. Real-world hire contracts almost
- * never pro-rata after start — once the rental's begun, the rest is owed.
+ *   end < asOf
+ *     → single line: SUNK (rental fully consumed before walk-away)
+ *
+ *   start <= asOf <= end (mid-rental)
+ *     → up to THREE lines using the day-count split:
+ *       Sunk      = days in [start, asOf)             — already consumed
+ *       Locked    = days in [asOf, asOf + notice)     — inside notice window
+ *       Avoidable = days in [asOf + notice, end]      — cancellable via off-hire
+ *
+ *   start in [asOf, asOf + notice)
+ *     → single line: LOCKED (starts inside notice window, can't cancel in time)
+ *
+ *   start >= asOf + notice
+ *     → single line: AVOIDABLE (enough lead time to cancel)
+ *
+ * Day-count pro-rata uses (end - start + 1) total days; each portion is
+ * (portion_days / total_days) × total_cost. This mirrors how most hire
+ * contracts work: you pay for days you used + days inside the notice
+ * window once you give notice; the rest is avoided.
  *
  * Returns [] if the booking has missing dates or zero cost.
  */
@@ -275,26 +287,39 @@ function classifyBookingPeriod(args: {
   const cutoffLocked = addDays(asOf, notice)
 
   if (end < asOf) {
-    // Fully past — all Sunk
     out.push({ source, bucket: 'sunk', amount: totalCost, wbs, description, refDate: start, refId })
   } else if (start <= asOf && asOf <= end) {
-    // Mid-rental — pro-rata split into Sunk (consumed) + Locked (rest of period)
+    // Mid-rental — three-way day-count split.
+    const dayMs = 86400000
     const startMs = new Date(start + 'T00:00:00Z').getTime()
     const endMs   = new Date(end   + 'T00:00:00Z').getTime()
     const asMs    = new Date(asOf  + 'T00:00:00Z').getTime()
-    const dayMs   = 86400000
-    const totalDays    = Math.max(1, Math.round((endMs - startMs) / dayMs) + 1)
-    const consumedDays = Math.max(0, Math.round((asMs - startMs) / dayMs))
-    const consumedFrac = Math.min(1, consumedDays / totalDays)
-    const sunk = totalCost * consumedFrac
-    const locked = totalCost - sunk
-    if (sunk > 0)   out.push({ source, bucket: 'sunk',   amount: sunk,   wbs, description: description + ' (consumed)', refDate: start, refId })
-    if (locked > 0) out.push({ source, bucket: 'locked', amount: locked, wbs, description: description + ' (remainder of period)', refDate: asOf, refId })
+    const cutMs   = new Date(cutoffLocked + 'T00:00:00Z').getTime()
+
+    const totalDays = Math.max(1, Math.round((endMs - startMs) / dayMs) + 1)
+    const perDay = totalCost / totalDays
+
+    // Days already consumed (start ≤ d < asOf)
+    const sunkDays = Math.max(0, Math.round((asMs - startMs) / dayMs))
+    // Days in the notice window after asOf, capped by booking end (asOf ≤ d < cutoff)
+    const cutForBooking = Math.min(cutMs, endMs + dayMs)
+    const lockedDays = Math.max(0, Math.round((cutForBooking - asMs) / dayMs))
+    // Remainder is avoidable: end - cutoff (inclusive of end day)
+    const avoidableDays = Math.max(0, totalDays - sunkDays - lockedDays)
+
+    const sunk      = perDay * sunkDays
+    const locked    = perDay * lockedDays
+    const avoidable = perDay * avoidableDays
+
+    if (sunk > 0)
+      out.push({ source, bucket: 'sunk',      amount: sunk,      wbs, description: description + ' (consumed)',         refDate: start, refId })
+    if (locked > 0)
+      out.push({ source, bucket: 'locked',    amount: locked,    wbs, description: description + ' (notice-window days)', refDate: asOf,  refId })
+    if (avoidable > 0)
+      out.push({ source, bucket: 'avoidable', amount: avoidable, wbs, description: description + ' (after notice)',       refDate: cutoffLocked, refId })
   } else if (start < cutoffLocked) {
-    // Starts within notice window — can't cancel in time
     out.push({ source, bucket: 'locked', amount: totalCost, wbs, description, refDate: start, refId })
   } else {
-    // Far enough in the future — cancellable
     out.push({ source, bucket: 'avoidable', amount: totalCost, wbs, description, refDate: start, refId })
   }
   return out
