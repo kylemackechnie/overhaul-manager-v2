@@ -27,7 +27,7 @@ import { classifyWalkAway, todayIso } from '../../engines/walkAwayEngine'
 import { buildForecast } from '../../engines/forecastEngine'
 import type {
   Resource, Flight, Expense, Car, Accommodation, HireItem,
-  ToolingCosting, WeeklyTimesheet, BackOfficeHour,
+  ToolingCosting, WeeklyTimesheet, BackOfficeHour, SeSupportEntry,
   Variation, VariationLine, PurchaseOrder, Invoice, RateCard,
   WalkAwayResult, WalkAwaySource, WalkAwayTimesheetCostLine, GlobalTV, GlobalDepartment,
 } from '../../types'
@@ -46,9 +46,9 @@ const SOURCE_LABELS: { key: WalkAwaySource; label: string; implemented: boolean 
   { key: 'labour_mgmt',     label: 'Labour (Mgmt)',     implemented: true  },
   { key: 'labour_seag',     label: 'Labour (SE AG)',    implemented: true  },
   { key: 'labour_subcon',   label: 'Labour (Subcon)',   implemented: true  },
-  { key: 'back_office',     label: 'Back Office',       implemented: false },
-  { key: 'se_ag_support',   label: 'SE AG Support',     implemented: false },
-  { key: 'variations',      label: 'Variations',        implemented: false },
+  { key: 'back_office',     label: 'Back Office',       implemented: true  },
+  { key: 'se_ag_support',   label: 'SE AG Support',     implemented: true  },
+  { key: 'variations',      label: 'Variations',        implemented: true  },
 ]
 
 const BUCKET_META = {
@@ -95,6 +95,7 @@ export function WalkAwayPanel() {
   const [globalTVs, setGlobalTVs] = useState<GlobalTV[]>([])
   const [globalDepartments, setGlobalDepartments] = useState<GlobalDepartment[]>([])
   const [timesheetCostLines, setTimesheetCostLines] = useState<WalkAwayTimesheetCostLine[]>([])
+  const [seSupport, setSeSupport] = useState<SeSupportEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   // Pick up FX rates + notice settings from the active project
@@ -118,7 +119,7 @@ export function WalkAwayPanel() {
     if (!activeProject) return
     setLoading(true)
     const pid = activeProject.id
-    const [resR, flR, expR, carR, accR, hireR, tcR, tsR, boR, varR, varLR, poR, invR, rcR, tvR, depR, tclR] = await Promise.all([
+    const [resR, flR, expR, carR, accR, hireR, tcR, tsR, boR, varR, varLR, poR, invR, rcR, tvR, depR, tclR, seR] = await Promise.all([
       supabase.from('resources').select('*').eq('project_id', pid),
       supabase.from('flights').select('*').eq('project_id', pid),
       supabase.from('expenses').select('*').eq('project_id', pid),
@@ -140,6 +141,7 @@ export function WalkAwayPanel() {
       supabase.from('timesheet_cost_lines')
         .select('work_date,category,cost_labour,cost_allowances,wbs,timesheet_status')
         .eq('project_id', pid),
+      supabase.from('se_support_costs').select('*').eq('project_id', pid),
     ])
     setResources((resR.data || []) as Resource[])
     setFlights((flR.data || []) as Flight[])
@@ -158,6 +160,7 @@ export function WalkAwayPanel() {
     setGlobalTVs((tvR.data || []) as GlobalTV[])
     setGlobalDepartments((depR.data || []) as GlobalDepartment[])
     setTimesheetCostLines((tclR.data || []) as WalkAwayTimesheetCostLine[])
+    setSeSupport((seR.data || []) as SeSupportEntry[])
     setLoading(false)
   }
 
@@ -196,14 +199,14 @@ export function WalkAwayPanel() {
       project: activeProject,
       resources, flights, expenses, cars, accommodation: accom,
       hireItems, toolingCostings, weeklyTimesheets, backOfficeHours,
-      seSupport: [],   // wired later when SE AG classifier comes online
+      seSupport,
       variations, variationLines, purchaseOrders, invoices, rateCards,
       fxRates,
       noticeDays,
       forecast,
       timesheetCostLines,
     }, asOf)
-  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, variations, variationLines, purchaseOrders, invoices, rateCards, globalTVs, globalDepartments, timesheetCostLines, fxRates, noticeDays, asOf])
+  }, [activeProject, loading, resources, flights, expenses, cars, accom, hireItems, toolingCostings, weeklyTimesheets, backOfficeHours, seSupport, variations, variationLines, purchaseOrders, invoices, rateCards, globalTVs, globalDepartments, timesheetCostLines, fxRates, noticeDays, asOf])
 
   async function saveNoticeDays() {
     if (!activeProject) return
@@ -314,7 +317,7 @@ export function WalkAwayPanel() {
           <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: '20px' }}>
             <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase' }}>Total EAC contribution</div>
             <div style={{ fontSize: '20px', fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmt(result.total)}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text3)' }}>From implemented sources only</div>
+            <div style={{ fontSize: '11px', color: 'var(--text3)' }}>All 15 cost sources combined</div>
           </div>
         </div>
       )}
@@ -376,7 +379,7 @@ export function WalkAwayPanel() {
       )}
 
       <p style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '14px', fontStyle: 'italic' }}>
-        Flights + Expenses classified. Cars, Accommodation, Hire, Tooling, Labour, Variations, Back Office, and SE AG Support are wired up incrementally — each row above will populate as its classifier comes online. Total reflects only the implemented sources today.
+        All 15 cost sources classified. Labour on past days prefers timesheet actuals where present, with forecast as the fallback. Variations classify by status (approved → Locked; draft/submitted → Discretionary). Empty rows mean no data in this project for that source.
       </p>
     </div>
   )

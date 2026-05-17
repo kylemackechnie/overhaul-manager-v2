@@ -30,6 +30,7 @@ import type {
   WalkAwayInput, WalkAwayResult, WalkAwayLineItem, WalkAwayBucket,
   WalkAwaySource, WalkAwayBucketTotals, WalkAwayTimesheetCostLine,
   Flight, Expense, Resource, Car, Accommodation, HireItem, ToolingCosting,
+  BackOfficeHour, SeSupportEntry, Variation,
 } from '../types'
 
 // ── Date helpers (string-based, YYYY-MM-DD to avoid Date timezone gotchas) ────
@@ -627,6 +628,154 @@ export function classifyLabourFromForecast(
   return lines
 }
 
+// ── Source 13: Back Office Hours ──────────────────────────────────────────────
+
+/**
+ * Classify back office hours. These are individual logged work-day entries
+ * for back-office support (PMs, admins, planners working from the office on
+ * the project, not on site). Each row has a date and a pre-computed cost.
+ *
+ * Structurally identical to expenses for classification — date-driven, no
+ * forecast/actual distinction (the row IS the actual). In practice almost
+ * everything will be SUNK because back office hours are only entered after
+ * the work is done. The notice-period path exists for consistency but is
+ * rarely meaningful for this source.
+ */
+export function classifyBackOfficeHours(
+  asOf: string,
+  rows: BackOfficeHour[],
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+): WalkAwayLineItem[] {
+  const notice = noticeFor('back_office', noticeDays)
+  const cutoffLocked = addDays(asOf, notice)
+  const lines: WalkAwayLineItem[] = []
+  for (const r of rows) {
+    const amount = r.cost || 0
+    if (amount <= 0) continue
+    const refDate = r.date || null
+    let bucket: WalkAwayBucket
+    if (!refDate) bucket = 'sunk'   // undated = treat as already incurred
+    else if (refDate < asOf) bucket = 'sunk'
+    else if (refDate < cutoffLocked) bucket = 'locked'
+    else bucket = 'avoidable'
+    lines.push({
+      source: 'back_office',
+      bucket,
+      amount,
+      wbs: r.wbs || '',
+      description: [r.name, r.role, r.hours ? `${r.hours}h` : ''].filter(Boolean).join(' · '),
+      refDate,
+      refId: r.id,
+    })
+  }
+  return lines
+}
+
+// ── Source 14: SE AG Support ──────────────────────────────────────────────────
+
+/**
+ * Classify SE AG support entries (German-entity assistance billed to the
+ * project: design help, technical advisory, etc). One row = one logged item
+ * with a date and amount. Currency is often EUR.
+ *
+ * Date-driven classification like back office hours and expenses. In
+ * practice usually SUNK by the time it's entered, but the notice-period
+ * rule applies if a future-dated entry is created (e.g. a planned commit).
+ */
+export function classifySeSupport(
+  asOf: string,
+  entries: SeSupportEntry[],
+  fxRates: { code: string; rate: number }[],
+  noticeDays: Partial<Record<WalkAwaySource, number>>,
+): WalkAwayLineItem[] {
+  const notice = noticeFor('se_ag_support', noticeDays)
+  const cutoffLocked = addDays(asOf, notice)
+  const lines: WalkAwayLineItem[] = []
+  for (const e of entries) {
+    const amount = (e.amount || 0) * fxToAud(e.currency, fxRates)
+    if (amount <= 0) continue
+    const refDate = e.date || null
+    let bucket: WalkAwayBucket
+    if (!refDate) bucket = 'sunk'
+    else if (refDate < asOf) bucket = 'sunk'
+    else if (refDate < cutoffLocked) bucket = 'locked'
+    else bucket = 'avoidable'
+    lines.push({
+      source: 'se_ag_support',
+      bucket,
+      amount,
+      wbs: e.wbs || '',
+      description: [e.person, e.description, e.category].filter(Boolean).join(' · '),
+      refDate,
+      refId: e.id,
+    })
+  }
+  return lines
+}
+
+// ── Source 15: Variations ─────────────────────────────────────────────────────
+
+/**
+ * Classify variations. Unlike every other source, variations are NOT
+ * classified by date — they're classified by status:
+ *
+ *   - draft / submitted        → DISCRETIONARY (we've proposed it but
+ *                                 nothing is committed; we could withdraw)
+ *   - approved                 → LOCKED (customer-approved scope addition;
+ *                                 contractually owed delivery)
+ *   - rejected / cancelled     → excluded (not happening; contributes \$0)
+ *   - any other (closed etc.)  → excluded (treated as historical; the cost
+ *                                 has already flowed through the normal
+ *                                 channels — labour, expenses, hire, etc.)
+ *
+ * The notice-period setting for 'variations' has no effect on classification
+ * (status overrides date) but is kept in the project settings map for
+ * consistency with other sources. May be repurposed later if e.g. approved
+ * variations within a notice window should be SUNK rather than LOCKED.
+ *
+ * Cost: variation.cost_total is the sum-of-lines total kept in sync by the
+ * variations panel. Falls back to variation.value (legacy single-value field)
+ * if cost_total is zero.
+ *
+ * SUBTLE: approved variations may have already had their cost spent through
+ * labour timesheets (variation work IS being done now). This classifier
+ * doesn't try to net that out — Locked variations will double-count any
+ * cost that's also already in timesheet actuals. To fix properly would
+ * need linking variation_lines to timesheet_cost_lines via WBS or TCE.
+ * Acceptable for now since variations are usually small relative to total
+ * cost; flag if a project's variation total dominates.
+ */
+export function classifyVariations(
+  _asOf: string,
+  variations: Variation[],
+): WalkAwayLineItem[] {
+  const lines: WalkAwayLineItem[] = []
+  for (const v of variations) {
+    const amount = v.cost_total || v.value || 0
+    if (amount <= 0) continue
+    const status = (v.status || '').toLowerCase()
+    let bucket: WalkAwayBucket
+    if (status === 'approved') {
+      bucket = 'locked'
+    } else if (status === 'draft' || status === 'submitted') {
+      bucket = 'discretionary'
+    } else {
+      // rejected, cancelled, closed, unknown — skip
+      continue
+    }
+    lines.push({
+      source: 'variations',
+      bucket,
+      amount,
+      wbs: '',  // variations roll up at header level; line-level WBS would need variation_lines walk
+      description: `${v.number || 'VN'} — ${v.title || '(no title)'} (${status})`,
+      refDate: v.approved_date || v.submitted_date || v.raised_date,
+      refId: v.id,
+    })
+  }
+  return lines
+}
+
 // ── Aggregation ───────────────────────────────────────────────────────────────
 
 /** Build the empty bucket-totals scaffold. */
@@ -682,6 +831,9 @@ export function classifyWalkAway(input: WalkAwayInput, asOf: string): WalkAwayRe
   lines.push(...classifyHire(asOf, input.hireItems, input.noticeDays, input.fxRates))
   lines.push(...classifyTooling(asOf, input.toolingCostings, input.noticeDays, input.fxRates))
   lines.push(...classifyLabourFromForecast(asOf, input.forecast, input.noticeDays, input.timesheetCostLines))
+  lines.push(...classifyBackOfficeHours(asOf, input.backOfficeHours, input.noticeDays))
+  lines.push(...classifySeSupport(asOf, input.seSupport, input.fxRates, input.noticeDays))
+  lines.push(...classifyVariations(asOf, input.variations))
 
   return aggregate(lines, asOf)
 }
