@@ -4,7 +4,6 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { MobilePanelHeader } from '../../components/mobile/MobilePanelHeader'
 import { MobileBottomSheet } from '../../components/mobile/ui/MobileBottomSheet'
-import { MobileQtyStepper } from '../../components/mobile/ui/MobileQtyStepper'
 import { useRegisterRefresh } from '../../components/mobile/ui/RefreshContext'
 import { uploadReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
 
@@ -443,12 +442,27 @@ export function ExpensesMobile() {
 
           <div>
             <label className="mobile-form-label">Amount (inc GST) *</label>
-            <MobileQtyStepper
-              value={amountIncGst}
-              onChange={setAmountIncGst}
-              min={0}
-              step={1}
-              size="lg"
+            {/* Plain decimal input — the previous MobileQtyStepper here was
+                forcing inputMode="numeric" which hides the decimal point on
+                iOS, so users couldn't enter cents. Stepper buttons aren't
+                useful for money anyway (nobody wants to tap +50 times for
+                a \$50 receipt). */}
+            <input
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*[.,]?[0-9]*"
+              className="mobile-form-input"
+              style={{ fontSize: 24, fontWeight: 600, textAlign: 'center', padding: '12px 16px' }}
+              placeholder="0.00"
+              value={amountIncGst === 0 ? '' : String(amountIncGst)}
+              onChange={e => {
+                // Accept comma as decimal separator (some users will type it
+                // by habit), strip anything that isn't digits or dot/comma.
+                const cleaned = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')
+                // Tolerate a trailing dot while the user is mid-type
+                const n = parseFloat(cleaned)
+                setAmountIncGst(isNaN(n) ? 0 : n)
+              }}
             />
             {amountIncGst > 0 && (
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
