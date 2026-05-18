@@ -202,7 +202,12 @@ export function RateCardsPanel() {
           <table>
             <thead>
               <tr>
-                <th>Role</th><th>Category</th><th>Vendor</th>
+                {/* Vendor info for subcons is shown stacked inside the Role
+                    cell (see rc.subcon_vendor below) — no separate column for
+                    it. A previous version had an orphan 'Vendor' header here
+                    which left every bucket cell shifted one column to the left
+                    of its label. */}
+                <th>Role</th><th>Category</th>
                 {(['dnt','dt15','ddt','ddt15','nnt','ndt','ndt15'] as const).map(b => (
                   <th key={b} style={{textAlign:'right',fontSize:'10px'}}>{BUCKET_LABELS[b]}</th>
                 ))}
