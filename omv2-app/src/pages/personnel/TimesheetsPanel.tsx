@@ -5,6 +5,7 @@ import { usePermissions, useTimesheetPermissions } from '../../lib/permissions'
 import { resolveShift } from '../../lib/shiftPhases'
 import { useAppStore } from '../../store/appStore'
 import { writeTimesheetCostLines, calcPersonTotals } from '../../engines/timesheetCostEngine'
+import { exportTimesheetDetail } from '../../lib/timesheetDetailExport'
 import { splitHours } from '../../engines/costEngine'
 import { getEurToBase } from '../../lib/currency'
 import { toast } from '../../components/ui/Toast'
@@ -1761,6 +1762,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             </select>
             <button className="btn btn-sm" onClick={() => printTimesheet(activeWeek, activeProject?.name||'', rateCards, holidays)}>🖨 Print</button>
             <button className="btn btn-sm" onClick={() => printCostBreakdown(activeWeek, activeProject?.name||'', rateCards, activeWeek.regime||'')}>💰 Cost Breakdown</button>
+            <button className="btn btn-sm" onClick={() => exportTimesheetDetail(activeWeek, activeProject?.name||'', rateCards)} title="Download an Excel report with per-person daily detail (hours by shift bucket, allowances, sell + cost)">📊 Excel Report</button>
             <span style={{ fontSize: '11px', color: 'var(--text3)', padding: '0 4px' }}>● Auto-saving</span>
           </div>
         </div>
