@@ -125,6 +125,15 @@ function calcDay(
     if (day.laha) { allowSell += asNum(rcAny.laha_sell, 212); allowCost += asNum(rcAny.laha_cost, 212) }
     if (day.meal) { allowSell += asNum(rcAny.meal_sell, 94);  allowCost += asNum(rcAny.meal_cost, 94) }
   }
+  // Travel allowance — hours-based, applies for all categories. Mirrors the
+  // branch in calcPersonTotals; only triggers when both `travel` is ticked
+  // AND day.hours > 0 (the rate is paid per worked hour, not per day).
+  const dxTravel = day as DayEntry & { travel?: boolean }
+  const h0 = day.hours || 0
+  if (dxTravel.travel && h0 > 0) {
+    allowSell += h0 * asNum(rcAny.travel_sell, 30)
+    allowCost += h0 * asNum(rcAny.travel_cost, 30)
+  }
 
   // Identify the date key in member.days — we need calendarDayType for
   // splitHours, which depends on which day of the week the iso falls on.
@@ -219,9 +228,19 @@ export function exportTimesheetDetail(
 
     const dayCalcs = dayLabels.map(({ iso }) => {
       const day = (m.days || {})[iso] as DayEntry | undefined
-      if (!day || !day.hours && !(day as DayEntry & { travel_hours?: number }).travel_hours && !day.laha && !day.meal) {
-        return null
+      if (!day) return null
+      // Render the day if it has work hours, travel hours, OR any allowance
+      // flag set. The previous version only checked LAHA/meal, which dropped
+      // mgmt-only days (FSA/Camp) with no hours — e.g. a Sunday with FSA
+      // ticked for a manager who didn't work that day.
+      const dx = day as DayEntry & {
+        travel_hours?: number; fsa?: boolean; camp?: boolean; travel?: boolean
       }
+      const hasAny =
+        (day.hours || 0) > 0 ||
+        (dx.travel_hours || 0) > 0 ||
+        day.laha || day.meal || dx.fsa || dx.camp || dx.travel
+      if (!hasAny) return null
       return { iso, calc: calcDay(m, day, rc, isMgmt), day }
     })
 
