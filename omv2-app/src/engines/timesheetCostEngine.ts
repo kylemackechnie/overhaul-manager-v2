@@ -30,6 +30,9 @@ interface CostLineInsert {
   wbs: string
   tce_item_id: string | null
   work_order: string | null
+  /** Approved variation this line belongs to (NULL = original-scope work).
+   *  Set when the daily scope alloc references a vn:<id> option. */
+  variation_id?: string | null
   day_type: string
   shift_type: string
   /** Legacy field — column has default '' since hours are now driven by
@@ -169,6 +172,11 @@ export async function writeTimesheetCostLines(
         nrgWoAllocations?: Array<{
           tceItemId?: string
           wo?: string
+          /** Approved variation this allocation belongs to. When set, the
+           *  writer stamps timesheet_cost_lines.variation_id so variation
+           *  labour can be reported separately from parent-scope labour
+           *  even when they share the same tce_link / wo_ref. */
+          variationId?: string
           hours: number
           payCode?: string
           _tceMode?: boolean
@@ -180,8 +188,9 @@ export async function writeTimesheetCostLines(
       const dayType = day.dayType || 'weekday'
       const isCompositeDayType = dayType === 'travel_and_work' || dayType === 'sea_travel_and_work'
       const allocs = day.nrgWoAllocations || []
-      // Allocations carry hours-based labour. Filter to TCE/WO-tagged only.
-      const tceAllocs = allocs.filter(a => a.tceItemId || a.wo)
+      // Allocations carry hours-based labour. An alloc is considered TCE-tagged
+      // when it has at least one identifier (tceItemId, wo, or variationId).
+      const tceAllocs = allocs.filter(a => a.tceItemId || a.wo || a.variationId)
       // TCE timesheets require alloc rows; WBS timesheets just need hours > 0
       const hasLabour = dayHours > 0 && (isTce ? tceAllocs.length > 0 : true)
 
@@ -330,6 +339,7 @@ export async function writeTimesheetCostLines(
               wbs: memberWbs,
               tce_item_id: resolvedItemId,
               work_order: alloc.wo || null,
+              variation_id: alloc.variationId || null,
               day_type: dayType,
               shift_type: shiftType,
               allocated_hours: allocHours,

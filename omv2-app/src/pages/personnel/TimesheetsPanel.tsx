@@ -327,12 +327,18 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
 // 1. TasTK-imported: { wo, hours } — no _tceMode, no tceItemId — NEVER overwrite
 // 2. Manual WO-keyed: { wo, tceItemId:null, _tceMode:true, hours, label } — skilled labour by WO
 // 3. Manual item-keyed: { wo:'', tceItemId, _tceMode:true, hours, label } — overheads or skilled no-WO
+// 4. Manual variation-keyed: { variationId, wo?, tceItemId?, _tceMode:true, hours, label } — approved variation labour
 interface NrgWoAlloc {
   wo: string
   tceItemId: string | null
+  /** Approved variation this allocation belongs to. When set, the
+   *  writer stamps timesheet_cost_lines.variation_id so variation
+   *  labour reports separately even when sharing a tce_link / wo_ref. */
+  variationId?: string
   _tceMode?: true
   hours: number
   label?: string
+  payCode?: string
 }
 
 // One row in the multi-match resolver modal. Identifies a single TasTK-imported
@@ -398,6 +404,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number;payCode?:string}[]>([])
   const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null}[]>([])
+  // Approved variations available as scope options in the daily allocation
+  // modal. Only approved status — draft/submitted variations aren't
+  // customer-committed yet and shouldn't accumulate labour cost.
+  const [approvedVariations, setApprovedVariations] = useState<{
+    id: string; number: string; title: string; wbs: string | null;
+    tce_link: string | null; wo_ref: string | null;
+  }[]>([])
   // Multi-match resolver — opens a modal listing every TasTK-imported alloc whose
   // WO maps to >1 TCE candidate item. User splits the hours, then save replaces
   // each ambiguous alloc with explicit {wo, tceItemId, hours} rows.
@@ -411,6 +424,36 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       // Always load TCE lines when project has them — needed for allocation modal regardless of scope_tracking
       supabase.from('nrg_tce_lines').select('item_id,description,work_order,source,line_type,unit_type').eq('project_id', activeProject.id).order('sort_order').order('item_id')
         .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null}[]))
+
+      // Approved variations + their primary WBS (first non-empty line WBS).
+      // One dropdown entry per variation header; multi-line variations on a
+      // single WBS are the common case, so picking the first line's WBS is
+      // accurate. The label preview surfaces "(+N more)" when there are
+      // multiple lines so it's visible to the user.
+      ;(async () => {
+        const vRes = await supabase
+          .from('variations')
+          .select('id,number,title,status,tce_link,wo_ref')
+          .eq('project_id', activeProject.id)
+          .eq('status', 'approved')
+          .order('number')
+        const vs = (vRes.data || []) as { id: string; number: string; title: string; status: string; tce_link: string | null; wo_ref: string | null }[]
+        if (vs.length === 0) { setApprovedVariations([]); return }
+        const vlRes = await supabase
+          .from('variation_lines')
+          .select('variation_id,wbs')
+          .eq('project_id', activeProject.id)
+          .in('variation_id', vs.map(v => v.id))
+        const wbsByVar: Record<string, string | null> = {}
+        for (const ln of (vlRes.data || []) as { variation_id: string; wbs: string | null }[]) {
+          if (!wbsByVar[ln.variation_id] && ln.wbs) wbsByVar[ln.variation_id] = ln.wbs
+        }
+        setApprovedVariations(vs.map(v => ({
+          id: v.id, number: v.number, title: v.title,
+          tce_link: v.tce_link, wo_ref: v.wo_ref,
+          wbs: wbsByVar[v.id] || null,
+        })))
+      })()
     }
   }, [activeProject?.id])
 
@@ -726,15 +769,34 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
     // Show all rows that have any scope identity — _tceMode manual rows, tceItemId rows, and WO-keyed TasTK rows
     const tceRows = allAllocs
-      .filter(a => a._tceMode || a.tceItemId || a.wo)
-      .map(a => ({
-        key: a.tceItemId ? `tce:${a.tceItemId}` : `wo:${a.wo}`,
-        label: a.label || (a.tceItemId ? a.tceItemId : a.wo) || '',
-        hours: a.hours,
-        wo: a.wo || '',
-        tceItemId: a.tceItemId || null,
-        payCode: (a as NrgWoAlloc & {payCode?:string}).payCode,
-      }))
+      .filter(a => a._tceMode || a.tceItemId || a.wo || a.variationId)
+      .map(a => {
+        // Round-trip key resolution. variationId wins (variation labour is a
+        // distinct scope even when sharing a tce_link / wo_ref with the
+        // original). Otherwise fall back to tce:item or wo:number.
+        let key: string
+        let label = a.label || ''
+        if (a.variationId) {
+          key = `vn:${a.variationId}`
+          if (!label) {
+            const v = approvedVariations.find(x => x.id === a.variationId)
+            label = v ? `[VN] ${v.number} — ${v.title.slice(0, 50)}` : `[VN] ${a.variationId}`
+          }
+        } else if (a.tceItemId) {
+          key = `tce:${a.tceItemId}`
+          if (!label) label = a.tceItemId
+        } else {
+          key = `wo:${a.wo}`
+          if (!label) label = a.wo
+        }
+        return {
+          key, label,
+          hours: a.hours,
+          wo: a.wo || '',
+          tceItemId: a.tceItemId || null,
+          payCode: (a as NrgWoAlloc & {payCode?:string}).payCode,
+        }
+      })
 
     // For composite travel+work days, auto-add a travel row if not already present
     if (isTravelAndWork(dayType) && travelHours > 0 && tceRows.length === 0) {
@@ -774,6 +836,22 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         if (r.key.startsWith('wo:')) {
           const wo = r.key.slice(3)
           return { wo, tceItemId: null, _tceMode: true as const, hours: r.hours, label: r.label, ...(r.payCode ? { payCode: r.payCode } : {}) }
+        } else if (r.key.startsWith('vn:')) {
+          // Variation allocation — carry the variation id so the writer
+          // stamps timesheet_cost_lines.variation_id. The variation's own
+          // tce_link / wo_ref also flow through so MIKA and the cost
+          // aggregator can resolve the underlying TCE item / WO without
+          // a second lookup.
+          const vId = r.key.slice(3)
+          const v = approvedVariations.find(x => x.id === vId)
+          return {
+            wo: v?.wo_ref || '',
+            tceItemId: v?.tce_link || null,
+            variationId: vId,
+            _tceMode: true as const,
+            hours: r.hours, label: r.label,
+            ...(r.payCode ? { payCode: r.payCode } : {}),
+          }
         } else {
           const tceItemId = r.key.startsWith('tce:') ? r.key.slice(4) : r.key
           return { wo: '', tceItemId, _tceMode: true as const, hours: r.hours, label: r.label, ...(r.payCode ? { payCode: r.payCode } : {}) }
@@ -821,6 +899,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     // Tier 3: Overhead lines (not WO-tracked, allocate by item_id; exclude fixed unit types)
     tceLines.filter(l => l.source === 'overhead' && !isGroupHeader(l.item_id) && !isFixedUnit(l)).forEach(l => {
       opts.push({ key: `tce:${l.item_id}`, label: `[OH] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
+    })
+
+    // Tier 4: Approved variations — one entry per variation header. Variation
+    // labour goes into timesheet_cost_lines with variation_id set, so it can be
+    // separated from parent-scope labour at report time even when the variation
+    // shares a tce_link or wo_ref with the original scope. The key is
+    // 'vn:<id>' so it survives renumbering / retitling.
+    approvedVariations.forEach(v => {
+      const title = (v.title || '').slice(0, 50)
+      opts.push({ key: `vn:${v.id}`, label: `[VN] ${v.number} — ${title}` })
     })
 
     // Fixed Price/Fixed Hours lines excluded — not allocatable labour
@@ -1353,16 +1441,21 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     {/* Bulk TCE scope selector — mgmt/seag/subcon most common use case */}
                     {scopeMode === 'nrg_tce' && (() => {
                       const tceOpts = getTceOptions()
-                      // Detect current bulk scope: if all worked days share one TCE-mode alloc, pre-select it
+                      // Detect current bulk scope: if all worked days share one TCE-mode alloc, pre-select it.
+                      // Round-trip key for variations is vn:<id>, otherwise tce:item or wo:wo.
+                      const allocKey = (a: NrgWoAlloc) =>
+                        a.variationId ? `vn:${a.variationId}`
+                        : a.tceItemId ? `tce:${a.tceItemId}`
+                        : `wo:${a.wo}`
                       const workedDays = days.filter(d => ((member.days[d] as Record<string,unknown>)?.hours as number || 0) > 0)
                       let currentKey = ''
                       if (workedDays.length > 0) {
-                        const firstAllocs = ((member.days[workedDays[0]] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId || a.wo)
+                        const firstAllocs = ((member.days[workedDays[0]] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId || a.wo || a.variationId)
                         if (firstAllocs.length === 1) {
-                          const fk = firstAllocs[0].tceItemId ? `tce:${firstAllocs[0].tceItemId}` : `wo:${firstAllocs[0].wo}`
+                          const fk = allocKey(firstAllocs[0])
                           const allMatch = workedDays.every(d => {
-                            const da = ((member.days[d] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId || a.wo)
-                            return da.length === 1 && (da[0].tceItemId ? `tce:${da[0].tceItemId}` : `wo:${da[0].wo}`) === fk
+                            const da = ((member.days[d] as Record<string,unknown>)?.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => a._tceMode || a.tceItemId || a.wo || a.variationId)
+                            return da.length === 1 && allocKey(da[0]) === fk
                           })
                           if (allMatch) currentKey = fk
                         }
@@ -1390,9 +1483,23 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                                     if (h <= 0) return
                                     // Preserve TasTK rows, replace TCE-mode rows
                                     const existing = (dayEntry.nrgWoAllocations as NrgWoAlloc[] || []).filter(a => !a._tceMode && !a.tceItemId)
-                                    const newAlloc: NrgWoAlloc = key.startsWith('wo:')
-                                      ? { wo: key.slice(3), tceItemId: null, _tceMode: true, hours: h, label: opt.label }
-                                      : { wo: '', tceItemId: key.startsWith('tce:') ? key.slice(4) : key, _tceMode: true, hours: h, label: opt.label }
+                                    let newAlloc: NrgWoAlloc
+                                    if (key.startsWith('wo:')) {
+                                      newAlloc = { wo: key.slice(3), tceItemId: null, _tceMode: true, hours: h, label: opt.label }
+                                    } else if (key.startsWith('vn:')) {
+                                      const vId = key.slice(3)
+                                      const v = approvedVariations.find(x => x.id === vId)
+                                      newAlloc = {
+                                        wo: v?.wo_ref || '',
+                                        tceItemId: v?.tce_link || null,
+                                        variationId: vId,
+                                        _tceMode: true,
+                                        hours: h,
+                                        label: opt.label,
+                                      }
+                                    } else {
+                                      newAlloc = { wo: '', tceItemId: key.startsWith('tce:') ? key.slice(4) : key, _tceMode: true, hours: h, label: opt.label }
+                                    }
                                     newDays[d] = { ...dayEntry, nrgWoAllocations: [...existing, newAlloc] } as unknown as DayEntry
                                   })
                                   return { ...m, days: newDays }
@@ -2026,6 +2133,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     {getTceOptions().filter(o => o.label.startsWith('[OH]')).length > 0 && (
                       <optgroup label="Overheads">
                         {getTceOptions().filter(o => o.label.startsWith('[OH]')).map(o => (
+                          <option key={o.key} value={o.key}>{o.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {getTceOptions().filter(o => o.key.startsWith('vn:')).length > 0 && (
+                      <optgroup label="Variations (Approved)">
+                        {getTceOptions().filter(o => o.key.startsWith('vn:')).map(o => (
                           <option key={o.key} value={o.key}>{o.label}</option>
                         ))}
                       </optgroup>
