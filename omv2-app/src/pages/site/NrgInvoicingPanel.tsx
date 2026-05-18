@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { addDays } from '../../lib/dates'
 import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
@@ -624,7 +625,12 @@ export function NrgInvoicingPanel() {
                   <h3 style={{ margin: 0 }}>Cost Breakdown</h3>
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                     {inv.label || inv.week_ending} · <span style={{ fontFamily: 'var(--mono)' }}>{cs}</span>
-                    {fromWE && <span> · {fmtDate(fromWE)} → {fmtDate(toWE)}</span>}
+                    {/* Period filter is (fromWE, toWE] — exclusive on the
+                        from side. For display, show the first day that's
+                        actually included (fromWE + 1 day), so users see a
+                        Mon-Sun span on weekly billing rather than the
+                        confusing Sun-Sun appearance. */}
+                    {fromWE && <span> · {fmtDate(addDays(fromWE, 1))} → {fmtDate(toWE)}</span>}
                   </div>
                 </div>
                 <button className="btn btn-sm" onClick={() => setDrillCell(null)}>✕</button>
