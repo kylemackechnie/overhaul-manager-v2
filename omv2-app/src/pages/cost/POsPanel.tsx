@@ -173,7 +173,9 @@ export function POsPanel() {
     const hasBookings = la > 0 || ha > 0 || ca > 0 || aa > 0
       || resources.some(r => (r as Resource & { linked_po_id?: string }).linked_po_id === id)
     const planned = (b?.total ?? 0) === 0 && !hasBookings && bgt > 0 ? bgt : (b?.total ?? 0)
-    return { actTotal: la+ha+ca+aa, planned, labAct: la, hireAct: ha, carAct: ca, accomAct: aa, budget: bgt }
+    // ACTUALS = approved timesheet labour only (matches MIKA/accounting).
+    // Equipment proration is COMMITTED — moves to actuals only when an invoice posts.
+    return { actTotal: la, equipCommitted: ha+ca+aa, planned, labAct: la, hireAct: ha, carAct: ca, accomAct: aa, budget: bgt }
   }
 
   function openDetail(po: PurchaseOrder) {
@@ -261,7 +263,10 @@ export function POsPanel() {
     const hireActTotal = hireActuals.reduce((s,h)=>s+h.actualToDate,0)
     const carActTotal = carActuals.reduce((s,c)=>s+c.actualToDate,0)
     const accomActTotal = accomActuals.reduce((s,a)=>s+a.actualToDate,0)
-    const totalActuals = labActTotal+hireActTotal+carActTotal+accomActTotal
+    // ACTUALS = approved timesheet labour only. Equipment is committed (will move
+    // to actuals when invoiced). This matches MIKA's wbsAggregator and accounting.
+    const totalActuals = labActTotal
+    const equipCommittedToDate = hireActTotal+carActTotal+accomActTotal
     const planned = (() => {
       // For fixed price POs with no linked resources or bookings, the PO value IS the plan
       if ((bucket?.total ?? 0) === 0) {
@@ -423,27 +428,32 @@ export function POsPanel() {
                     <th style={{...TH,textAlign:'left'}}>Category</th>
                     <th style={{...TH,textAlign:'right'}}>Planned</th>
                     <th style={{...TH,textAlign:'right'}}>Actuals to date</th>
+                    <th style={{...TH,textAlign:'right'}}>Committed to date</th>
                     <th style={{...TH,textAlign:'right'}}>Variance</th>
                   </tr></thead>
                   <tbody>
                     {[
-                      {label:'👷 Labour',planned:bucket?.labour.cost??0,actual:labActTotal},
-                      {label:'🚜 Dry Hire',planned:bucket?.dryHire.cost??0,actual:hireActuals.filter(h=>h.hire_type==='dry').reduce((s,h)=>s+h.actualToDate,0)},
-                      {label:'🏗️ Wet Hire',planned:bucket?.wetHire.cost??0,actual:hireActuals.filter(h=>h.hire_type==='wet').reduce((s,h)=>s+h.actualToDate,0)},
-                      {label:'🧰 Local Hire',planned:bucket?.localHire.cost??0,actual:hireActuals.filter(h=>h.hire_type==='local').reduce((s,h)=>s+h.actualToDate,0)},
-                      {label:'🚗 Cars',planned:bucket?.cars.cost??0,actual:carActTotal},
-                      {label:'🏠 Accommodation',planned:bucket?.accom.cost??0,actual:accomActTotal},
-                    ].filter(r=>r.planned>0||r.actual>0).map(row=>{
-                      const v=row.planned-row.actual
+                      {label:'👷 Labour',planned:bucket?.labour.cost??0,actual:labActTotal,committed:0},
+                      {label:'🚜 Dry Hire',planned:bucket?.dryHire.cost??0,actual:0,committed:hireActuals.filter(h=>h.hire_type==='dry').reduce((s,h)=>s+h.actualToDate,0)},
+                      {label:'🏗️ Wet Hire',planned:bucket?.wetHire.cost??0,actual:0,committed:hireActuals.filter(h=>h.hire_type==='wet').reduce((s,h)=>s+h.actualToDate,0)},
+                      {label:'🧰 Local Hire',planned:bucket?.localHire.cost??0,actual:0,committed:hireActuals.filter(h=>h.hire_type==='local').reduce((s,h)=>s+h.actualToDate,0)},
+                      {label:'🚗 Cars',planned:bucket?.cars.cost??0,actual:0,committed:carActTotal},
+                      {label:'🏠 Accommodation',planned:bucket?.accom.cost??0,actual:0,committed:accomActTotal},
+                    ].filter(r=>r.planned>0||r.actual>0||r.committed>0).map(row=>{
+                      const v=row.planned-row.actual-row.committed
                       return <tr key={row.label} style={{borderBottom:'1px solid var(--border)'}}>
                         <td style={TD}>{row.label}</td>
                         <td style={TDR}>{fmt(row.planned)}</td>
-                        <td style={TDR}>{fmt(row.actual)}</td>
+                        <td style={TDR}>{row.actual>0?fmt(row.actual):<span style={{color:'var(--text3)'}}>—</span>}</td>
+                        <td style={{...TDR,color:row.committed>0?'#d97706':'var(--text3)'}}>{row.committed>0?fmt(row.committed):'—'}</td>
                         <td style={{...TDR,color:v<0?'var(--red)':'var(--green)',fontWeight:600}}>{v>=0?'+':''}{fmt(v)}</td>
                       </tr>
                     })}
                     <tr style={{background:'var(--bg2)',fontWeight:700}}>
-                      <td style={TD}>Total</td><td style={TDR}>{fmt(planned)}</td><td style={TDR}>{fmt(totalActuals)}</td>
+                      <td style={TD}>Total</td>
+                      <td style={TDR}>{fmt(planned)}</td>
+                      <td style={TDR}>{fmt(totalActuals)}</td>
+                      <td style={{...TDR,color:'#d97706'}}>{fmt(equipCommittedToDate)}</td>
                       <td style={{...TDR,color:varianceToDate<0?'var(--red)':'var(--green)'}}>{varianceToDate>=0?'+':''}{fmt(varianceToDate)}</td>
                     </tr>
                   </tbody>
@@ -590,16 +600,17 @@ export function POsPanel() {
               </div>
             )}
             {detailTab==='eac'&&(() => {
-              // EAC = Actuals to Date + Forecast Forward (matches MIKA formula:
-              // forecast forward = engine's days >= today, per PO).
+              // EAC = Actuals (labour timesheets) + Forecast Forward
+              // Forecast Forward = engine's days >= forecastStart (labour + equip future)
+              //                  + equipment committed to today (prorated, not yet invoiced)
+              // This treats equipment as "committed until invoiced" — matches MIKA's
+              // accounting view and keeps the EAC value internally consistent.
               const equipPlanned = (bucket?.dryHire.cost||0)+(bucket?.wetHire.cost||0)+(bucket?.localHire.cost||0)+(bucket?.cars.cost||0)+(bucket?.accom.cost||0)
-              const equipActTotal = hireActTotal+carActTotal+accomActTotal
+              const equipActTotal = hireActTotal+carActTotal+accomActTotal  // = equipCommittedToDate, kept locally for clarity
               const equipFutureFromEngine = (bucket?.dryHire.futureCost||0)+(bucket?.wetHire.futureCost||0)+(bucket?.localHire.futureCost||0)+(bucket?.cars.futureCost||0)+(bucket?.accom.futureCost||0)
-              // Use engine futureTotal (forward from forecast start) as forecast forward — same
-              // basis as MIKA byWbsFuture, so single-PO-on-WBS cases reconcile exactly.
               // Fallback for fixed-price POs with no engine bookings: planned - actuals.
               const fwdForecast = (bucket?.futureTotal != null && (bucket.labour.cost > 0 || equipPlanned > 0))
-                ? bucket.futureTotal
+                ? bucket.futureTotal + equipActTotal
                 : Math.max(0, planned - totalActuals)
               const eac = totalActuals + fwdForecast
               const eacVsBudget = budget - eac
@@ -783,11 +794,63 @@ export function POsPanel() {
                   </div>
                 )}
 
+                {/* Equipment committed to date — prorated equipment for days <= today,
+                    not yet invoiced. Lives in the forecast bucket because it hasn't
+                    been actualised (matches MIKA / accounting). Will move to actuals
+                    when invoices post. */}
+                {equipActTotal>0&&(
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                      <span>📋 COMMITTED — Equipment to date (no invoices yet)</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(equipActTotal)}</span>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead><tr>{['Type','Item','Start','End','Contract','To-date'].map(h=><th key={h} style={{...TH,textAlign:['Contract','To-date'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {hireActuals.filter(h=>h.actualToDate>0).map(h=>(
+                          <tr key={h.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{h.hire_type} hire</span></td>
+                            <td style={TD}>{h.name}</td>
+                            <td style={TD}>{fmtDate(h.start_date)}</td>
+                            <td style={TD}>{fmtDate(h.end_date)}</td>
+                            <td style={TDR}>{fmtFull(h.hire_cost||0)}</td>
+                            <td style={{...TDR,color:'#d97706',fontWeight:600}}>{fmtFull(h.actualToDate)}</td>
+                          </tr>
+                        ))}
+                        {carActuals.filter(c=>c.actualToDate>0).map(c=>(
+                          <tr key={c.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>car</span></td>
+                            <td style={TD}>{c.label}</td>
+                            <td style={TD}>{fmtDate(c.start_date)}</td>
+                            <td style={TD}>{fmtDate(c.end_date)}</td>
+                            <td style={TDR}>{fmtFull(c.total_cost||0)}</td>
+                            <td style={{...TDR,color:'#d97706',fontWeight:600}}>{fmtFull(c.actualToDate)}</td>
+                          </tr>
+                        ))}
+                        {accomActuals.filter(a=>a.actualToDate>0).map(a=>(
+                          <tr key={a.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>accom</span></td>
+                            <td style={TD}>{a.property}{a.room?` — ${a.room}`:''}</td>
+                            <td style={TD}>{fmtDate(a.check_in)}</td>
+                            <td style={TD}>{fmtDate(a.check_out)}</td>
+                            <td style={TDR}>{fmtFull(a.total_cost||0)}</td>
+                            <td style={{...TDR,color:'#d97706',fontWeight:600}}>{fmtFull(a.actualToDate)}</td>
+                          </tr>
+                        ))}
+                        <tr style={{background:'var(--bg2)',fontWeight:700}}>
+                          <td colSpan={5} style={TD}>Subtotal — Equipment committed</td>
+                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(equipActTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 {/* Total forecast forward */}
-                {totalFwdFromRows>0&&(
+                {(totalFwdFromRows+equipActTotal)>0&&(
                   <div style={{padding:'8px 14px',background:'var(--bg2)',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'12px',fontWeight:700,border:'1px solid var(--border)'}}>
-                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST FORWARD (from {fmtDate(fcStart)})</span>
-                    <span style={{fontFamily:'var(--mono)',color:'#d97706',fontSize:'14px'}}>{fmtFull(totalFwdFromRows)}</span>
+                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST FORWARD (incl. committed equipment to date)</span>
+                    <span style={{fontFamily:'var(--mono)',color:'#d97706',fontSize:'14px'}}>{fmtFull(totalFwdFromRows+equipActTotal)}</span>
                   </div>
                 )}
 
@@ -818,54 +881,6 @@ export function POsPanel() {
                           <td style={TDR}>{fmtFull(labActuals.reduce((s,r)=>s+(r.cost_labour||0),0))}</td>
                           <td style={TDR}>{fmtFull(labActuals.reduce((s,r)=>s+(r.cost_allowances||0),0))}</td>
                           <td style={{...TDR,color:'var(--green)'}}>{fmtFull(labActTotal)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {equipActTotal>0&&(
-                  <div className="card" style={{padding:0,overflow:'hidden'}}>
-                    <div style={{padding:'8px 12px',background:'#d1fae5',color:'#065f46',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-                      <span>✓ ACTUALS — Equipment (prorated to today)</span>
-                      <span style={{fontFamily:'var(--mono)'}}>{fmt(equipActTotal)}</span>
-                    </div>
-                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                      <thead><tr>{['Type','Item','Start','End','Contract','To-date'].map(h=><th key={h} style={{...TH,textAlign:['Contract','To-date'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
-                      <tbody>
-                        {hireActuals.filter(h=>h.actualToDate>0).map(h=>(
-                          <tr key={h.id} style={{borderBottom:'1px solid var(--border)'}}>
-                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{h.hire_type} hire</span></td>
-                            <td style={TD}>{h.name}</td>
-                            <td style={TD}>{fmtDate(h.start_date)}</td>
-                            <td style={TD}>{fmtDate(h.end_date)}</td>
-                            <td style={TDR}>{fmtFull(h.hire_cost||0)}</td>
-                            <td style={{...TDR,color:'var(--green)',fontWeight:600}}>{fmtFull(h.actualToDate)}</td>
-                          </tr>
-                        ))}
-                        {carActuals.filter(c=>c.actualToDate>0).map(c=>(
-                          <tr key={c.id} style={{borderBottom:'1px solid var(--border)'}}>
-                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>car</span></td>
-                            <td style={TD}>{c.label}</td>
-                            <td style={TD}>{fmtDate(c.start_date)}</td>
-                            <td style={TD}>{fmtDate(c.end_date)}</td>
-                            <td style={TDR}>{fmtFull(c.total_cost||0)}</td>
-                            <td style={{...TDR,color:'var(--green)',fontWeight:600}}>{fmtFull(c.actualToDate)}</td>
-                          </tr>
-                        ))}
-                        {accomActuals.filter(a=>a.actualToDate>0).map(a=>(
-                          <tr key={a.id} style={{borderBottom:'1px solid var(--border)'}}>
-                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>accom</span></td>
-                            <td style={TD}>{a.property}{a.room?` — ${a.room}`:''}</td>
-                            <td style={TD}>{fmtDate(a.check_in)}</td>
-                            <td style={TD}>{fmtDate(a.check_out)}</td>
-                            <td style={TDR}>{fmtFull(a.total_cost||0)}</td>
-                            <td style={{...TDR,color:'var(--green)',fontWeight:600}}>{fmtFull(a.actualToDate)}</td>
-                          </tr>
-                        ))}
-                        <tr style={{background:'var(--bg2)',fontWeight:700}}>
-                          <td colSpan={5} style={TD}>Subtotal — Equipment actuals</td>
-                          <td style={{...TDR,color:'var(--green)'}}>{fmtFull(equipActTotal)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -939,14 +954,16 @@ export function POsPanel() {
               for (const p of bucket?.labour.people ?? []) {
                 spread(p.mobIn, p.mobOut || p.mobIn, p.totalCost, false)  // labour actuals come from timesheets
               }
+              // Equipment: forecast only, NOT actuals. Equipment is committed until
+              // invoiced — it doesn't become an actual just because time passed.
               for (const h of hireActuals) {
-                if (h.start_date && h.hire_cost) spread(h.start_date, h.end_date || h.start_date, h.hire_cost, true)
+                if (h.start_date && h.hire_cost) spread(h.start_date, h.end_date || h.start_date, h.hire_cost, false)
               }
               for (const c of carActuals) {
-                if (c.start_date && c.total_cost) spread(c.start_date, c.end_date || c.start_date, c.total_cost, true)
+                if (c.start_date && c.total_cost) spread(c.start_date, c.end_date || c.start_date, c.total_cost, false)
               }
               for (const a of accomActuals) {
-                if (a.check_in && a.total_cost) spread(a.check_in, a.check_out || a.check_in, a.total_cost, true)
+                if (a.check_in && a.total_cost) spread(a.check_in, a.check_out || a.check_in, a.total_cost, false)
               }
 
               // ── LABOUR ACTUALS — real timesheet rows ──
