@@ -909,7 +909,9 @@ export function buildForecast(
     // ── Case 2: subcon resources with mob dates (checked FIRST — a PO can have
     //    both hire items and labour resources, e.g. a scaffolding PO) ──────────
     if (subconByPo[po.id]) {
-      const subRes = subconByPo[po.id]
+      // Resources with a rate card are already fully costed in the labour loop above.
+      // Only use the PO spread for subcon resources that have no rate card.
+      const subRes = subconByPo[po.id].filter(r => !getRC(r.role))
 
       // If the same PO has linked bookings (hire/cars/accom), those booking costs
       // are already in the forecast. Deduct them from the PO value so we only
