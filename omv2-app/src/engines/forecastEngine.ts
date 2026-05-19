@@ -10,16 +10,19 @@ export interface PoBucketPerson {
   mobOut: string
   totalCost: number
   totalHours: number
+  futureCost: number   // cost for days >= today
+  futureHours: number  // hours for days >= today
 }
 
 export interface PoBucket {
-  labour:    { cost: number; hours: number; people: PoBucketPerson[] }
-  dryHire:   { cost: number; items: string[] }  // item names
-  wetHire:   { cost: number; items: string[] }
-  localHire: { cost: number; items: string[] }
-  cars:      { cost: number }
-  accom:     { cost: number }
+  labour:    { cost: number; hours: number; futureCost: number; futureHours: number; people: PoBucketPerson[] }
+  dryHire:   { cost: number; futureCost: number; items: string[] }
+  wetHire:   { cost: number; futureCost: number; items: string[] }
+  localHire: { cost: number; futureCost: number; items: string[] }
+  cars:      { cost: number; futureCost: number }
+  accom:     { cost: number; futureCost: number }
   total:     number
+  futureTotal: number   // forward-from-today total — matches MIKA byWbsFuture per WBS
 }
 
 export interface DayPerson {
@@ -235,13 +238,14 @@ export function buildForecast(
 
   function ensurePo(poId: string): PoBucket {
     if (!byPo[poId]) byPo[poId] = {
-      labour:    { cost: 0, hours: 0, people: [] },
-      dryHire:   { cost: 0, items: [] },
-      wetHire:   { cost: 0, items: [] },
-      localHire: { cost: 0, items: [] },
-      cars:      { cost: 0 },
-      accom:     { cost: 0 },
+      labour:    { cost: 0, hours: 0, futureCost: 0, futureHours: 0, people: [] },
+      dryHire:   { cost: 0, futureCost: 0, items: [] },
+      wetHire:   { cost: 0, futureCost: 0, items: [] },
+      localHire: { cost: 0, futureCost: 0, items: [] },
+      cars:      { cost: 0, futureCost: 0 },
+      accom:     { cost: 0, futureCost: 0 },
       total:     0,
+      futureTotal: 0,
     }
     return byPo[poId]
   }
@@ -355,8 +359,13 @@ export function buildForecast(
 
         // ── PO accumulation — cost rates only (not sell) ──
         const poKey = (r as Resource & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
-        ensurePo(poKey).labour.cost += labCost
-        ensurePo(poKey).labour.hours += hours
+        const pb = ensurePo(poKey)
+        pb.labour.cost += labCost
+        pb.labour.hours += hours
+        if (d >= todayStr) {
+          pb.labour.futureCost += labCost
+          pb.labour.futureHours += hours
+        }
       }
     }
     // ── PoBucketPerson summary (one entry per resource, after all days) ──
@@ -364,39 +373,36 @@ export function buildForecast(
     const poBucket = ensurePo(poKey)
     const existing = poBucket.labour.people.find(p => p.resourceId === r.id)
     if (!existing) {
-      const totalCostForResource = days.reduce((sum, d) => {
+      const acc = days.reduce((a, d) => {
         const dow = dayOfWeek(d)
         const dayType = getDayType(d, holidays)
         const shift = resolveShift(r, d)
         const rcCost = (rc.rates as { cost: Record<string,number> })?.cost || {}
         const rcRegime = (rc as RateCard & { regime?: FcRegimeConfig }).regime
-        let c = 0
+        let c = 0, h = 0
         if (shift === 'day' || shift === 'both') {
-          const h = stdHours.day?.[dow] ?? 0
-          if (h > 0) c += costForSplit(splitHours(h, dayType, 'day', rcRegime), rcCost)
+          const dh = stdHours.day?.[dow] ?? 0
+          if (dh > 0) { c += costForSplit(splitHours(dh, dayType, 'day', rcRegime), rcCost); h += dh }
         }
         if (shift === 'night' || shift === 'both') {
-          const h = stdHours.night?.[dow] ?? 0
-          if (h > 0) c += costForSplit(splitHours(h, dayType, 'night', rcRegime), rcCost)
+          const nh = stdHours.night?.[dow] ?? 0
+          if (nh > 0) { c += costForSplit(splitHours(nh, dayType, 'night', rcRegime), rcCost); h += nh }
         }
-        return sum + c
-      }, 0)
-      const totalHoursForResource = days.reduce((sum, d) => {
-        const dow = dayOfWeek(d)
-        const shift = resolveShift(r, d)
-        let h = 0
-        if (shift === 'day' || shift === 'both') h += stdHours.day?.[dow] ?? 0
-        if (shift === 'night' || shift === 'both') h += stdHours.night?.[dow] ?? 0
-        return sum + h
-      }, 0)
+        a.totalCost += c
+        a.totalHours += h
+        if (d >= todayStr) { a.futureCost += c; a.futureHours += h }
+        return a
+      }, { totalCost: 0, totalHours: 0, futureCost: 0, futureHours: 0 })
       poBucket.labour.people.push({
         resourceId: r.id,
         name: r.name,
         role: r.role || '',
         mobIn: r.mob_in!,
         mobOut: (r as Resource & { mob_out?: string }).mob_out || r.mob_in!,
-        totalCost: totalCostForResource,
-        totalHours: totalHoursForResource,
+        totalCost: acc.totalCost,
+        totalHours: acc.totalHours,
+        futureCost: acc.futureCost,
+        futureHours: acc.futureHours,
       })
     }
   }
@@ -437,6 +443,8 @@ export function buildForecast(
       const totalSell = toBase(item.customer_total || calcGm(item.hire_cost || 0, item.gm_pct || 0), (item as HireItem & {currency?:string}).currency)
       const perDayCost = totalCost / days.length
       const perDaySell = totalSell / days.length
+      const poKey = (item as HireItem & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+      const pb = ensurePo(poKey)
       for (const d of days) {
         const day = ensure(d)
         day[catKey].cost += perDayCost
@@ -449,6 +457,7 @@ export function buildForecast(
           perDayCost,
           d,
         )
+        if (d >= todayStr) pb[catKey].futureCost += perDayCost
       }
       // ── byWbs — item.wbs with linked PO fallback ──
       addToWbs(
@@ -459,8 +468,6 @@ export function buildForecast(
         totalCost,
       )
       // ── PO accumulation ──
-      const poKey = (item as HireItem & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
-      const pb = ensurePo(poKey)
       pb[catKey].cost += totalCost
       const itemName = (item as HireItem & { name?: string }).name || (item as HireItem & { description?: string }).description || 'Hire item'
       if (!pb[catKey].items.includes(itemName)) pb[catKey].items.push(itemName)
@@ -489,6 +496,8 @@ export function buildForecast(
     if (!days.length) continue
     const perDayCost = (c.total_cost || 0) / days.length
     const perDaySell = (c.customer_total || c.total_cost || 0) / days.length
+    const carPoKey = (c as Car & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+    const carPb = ensurePo(carPoKey)
     for (const d of days) {
       const day = ensure(d)
       day.cars.cost += perDayCost
@@ -501,6 +510,7 @@ export function buildForecast(
         perDayCost,
         d,
       )
+      if (d >= todayStr) carPb.cars.futureCost += perDayCost
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -511,8 +521,7 @@ export function buildForecast(
       c.total_cost || 0,
     )
     // ── PO accumulation ──
-    const poKey = (c as Car & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
-    ensurePo(poKey).cars.cost += c.total_cost || 0
+    carPb.cars.cost += c.total_cost || 0
   }
 
   const accomWarnings: ForecastData['accomWarnings'] = []
@@ -539,6 +548,8 @@ export function buildForecast(
     if (!nights.length) continue
     const perNightCost = (a.total_cost || 0) / nights.length
     const perNightSell = (a.customer_total || a.total_cost || 0) / nights.length
+    const accomPoKey = (a as Accommodation & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
+    const accomPb = ensurePo(accomPoKey)
     for (const d of nights) {
       const day = ensure(d)
       day.accom.cost += perNightCost
@@ -551,6 +562,7 @@ export function buildForecast(
         perNightCost,
         d,
       )
+      if (d >= todayStr) accomPb.accom.futureCost += perNightCost
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -561,8 +573,7 @@ export function buildForecast(
       a.total_cost || 0,
     )
     // ── PO accumulation ──
-    const poKey = (a as Accommodation & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
-    ensurePo(poKey).accom.cost += a.total_cost || 0
+    accomPb.accom.cost += a.total_cost || 0
 
     // Flag occupants whose mob dates fall outside the booking window
     if (aX.occupant_ids?.length && (a.check_in || a.check_out)) {
@@ -1002,6 +1013,7 @@ export function buildForecast(
   // Compute byPo totals
   for (const pb of Object.values(byPo)) {
     pb.total = pb.labour.cost + pb.dryHire.cost + pb.wetHire.cost + pb.localHire.cost + pb.cars.cost + pb.accom.cost
+    pb.futureTotal = pb.labour.futureCost + pb.dryHire.futureCost + pb.wetHire.futureCost + pb.localHire.futureCost + pb.cars.futureCost + pb.accom.futureCost
   }
 
   // Snapshot days and grand totals AFTER all writes (including PO subcon block)

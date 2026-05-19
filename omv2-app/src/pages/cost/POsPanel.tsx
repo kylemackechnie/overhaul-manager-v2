@@ -585,12 +585,17 @@ export function POsPanel() {
               </div>
             )}
             {detailTab==='eac'&&(() => {
-              // EAC = Actuals to Date + Forecast Forward
-              // Forecast Forward = max(0, Engine Planned - Actuals to Date)
-              // So EAC = max(Engine Planned, Actuals to Date)
+              // EAC = Actuals to Date + Forecast Forward (matches MIKA formula:
+              // forecast forward = engine's days >= today, per PO).
               const equipPlanned = (bucket?.dryHire.cost||0)+(bucket?.wetHire.cost||0)+(bucket?.localHire.cost||0)+(bucket?.cars.cost||0)+(bucket?.accom.cost||0)
               const equipActTotal = hireActTotal+carActTotal+accomActTotal
-              const fwdForecast = Math.max(0, planned - totalActuals)
+              const equipFutureFromEngine = (bucket?.dryHire.futureCost||0)+(bucket?.wetHire.futureCost||0)+(bucket?.localHire.futureCost||0)+(bucket?.cars.futureCost||0)+(bucket?.accom.futureCost||0)
+              // Use engine futureTotal (forward from today) as forecast forward — same
+              // basis as MIKA byWbsFuture, so single-PO-on-WBS cases reconcile exactly.
+              // Fallback for fixed-price POs with no engine bookings: planned - actuals.
+              const fwdForecast = (bucket?.futureTotal != null && (bucket.labour.cost > 0 || equipPlanned > 0))
+                ? bucket.futureTotal
+                : Math.max(0, planned - totalActuals)
               const eac = totalActuals + fwdForecast
               const eacVsBudget = budget - eac
               const hasAnyData = labActuals.length>0 || hireActuals.length>0 || carActuals.length>0 || accomActuals.length>0 || poInvoices.length>0 || linkedResources.length>0 || planned>0
@@ -601,7 +606,7 @@ export function POsPanel() {
                 </div>
               }
 
-              // ── Forward-portion helper: prorate any item's planned cost from today ──
+              // ── Forward-portion helper (still used for date display + equipment hours) ──
               const todayStr = new Date().toISOString().slice(0,10)
               const todayMs = new Date(todayStr+'T12:00:00').getTime()
               const fwd = (start?: string|null, end?: string|null) => {
@@ -618,17 +623,21 @@ export function POsPanel() {
                 return { totalDays, fwdDays, fwdPct: Math.min(1, fwdDays/totalDays), fwdFrom, isPartial: !startsInFuture && sMs < todayMs }
               }
 
-              // Pre-compute forward rows so subtotals can be shown
+              // Per-resource forward — use engine's futureCost directly (exact, not prorated)
               const labourFwdRows = linkedResources.map(r => {
                 const pb = bucket?.labour.people.find(p => p.resourceId === r.id)
                 const mobIn = (r as Resource & {mob_in?:string}).mob_in
                 const mobOut = (r as Resource & {mob_out?:string}).mob_out
                 const f = fwd(mobIn, mobOut)
-                return { r, pb, mobIn, mobOut, ...f, fwdCost: (pb?.totalCost ?? 0) * f.fwdPct, fwdHours: (pb?.totalHours ?? 0) * f.fwdPct, plannedCost: pb?.totalCost ?? 0 }
-              }).filter(x => x.fwdDays > 0)
+                return { r, pb, mobIn, mobOut, ...f, fwdCost: pb?.futureCost ?? 0, fwdHours: pb?.futureHours ?? 0, plannedCost: pb?.totalCost ?? 0 }
+              }).filter(x => x.fwdDays > 0 || x.fwdCost > 0)
               const labourFwdCostSubtotal = labourFwdRows.reduce((s,x)=>s+x.fwdCost,0)
               const labourFwdHoursSubtotal = labourFwdRows.reduce((s,x)=>s+x.fwdHours,0)
 
+              // Equipment forward — also use engine's per-PO future when item is on this PO
+              // (the row-level proration on hire_cost still equals the engine result here
+              // because hire/cars/accom cost is uniform-daily — but engine future is the
+              // source of truth).
               const hireFwdRows = hireActuals.map(h => {
                 const f = fwd(h.start_date, h.end_date)
                 return { h, ...f, fwdCost: (h.hire_cost || 0) * f.fwdPct }
@@ -641,7 +650,10 @@ export function POsPanel() {
                 const f = fwd(a.check_in, a.check_out)
                 return { a, ...f, fwdCost: (a.total_cost || 0) * f.fwdPct }
               }).filter(x => x.fwdDays > 0)
-              const equipFwdSubtotal = hireFwdRows.reduce((s,x)=>s+x.fwdCost,0) + carFwdRows.reduce((s,x)=>s+x.fwdCost,0) + accomFwdRows.reduce((s,x)=>s+x.fwdCost,0)
+              // Reconcile equipment subtotal with engine future (uses engine if available)
+              const equipFwdSubtotal = equipFutureFromEngine > 0
+                ? equipFutureFromEngine
+                : hireFwdRows.reduce((s,x)=>s+x.fwdCost,0) + carFwdRows.reduce((s,x)=>s+x.fwdCost,0) + accomFwdRows.reduce((s,x)=>s+x.fwdCost,0)
               const totalFwdFromRows = labourFwdCostSubtotal + equipFwdSubtotal
 
               return <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
