@@ -1029,8 +1029,31 @@ export function POsPanel() {
                         }}
                       />
                       <Legend wrapperStyle={{fontSize:11}} />
-                      <Line type="monotone" dataKey="cumForecast" name="Forecast (cumulative)" stroke="#d97706" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="chartActuals" name="Actuals (cumulative)" stroke="#059669" strokeWidth={2} dot={false} connectNulls={false} />
+                      <Line type="monotone" dataKey="cumForecast" name="Forecast (cumulative)" stroke="#d97706" strokeWidth={2} dot={false} activeDot={{r:5}} />
+                      <Line
+                        type="monotone"
+                        dataKey="chartActuals"
+                        name="Actuals (cumulative)"
+                        stroke="#059669"
+                        strokeWidth={2.5}
+                        connectNulls={false}
+                        dot={(props: { cx?: number; cy?: number; index?: number; payload?: { chartActuals?: number | null } }) => {
+                          const { cx, cy, index, payload } = props
+                          if (cx == null || cy == null || payload?.chartActuals == null) return <g key={`a-${index}`} />
+                          // Find the last index with non-null actuals — emphasise that endpoint
+                          const lastActIdx = rows.reduce((last, r, i) => r.chartActuals != null ? i : last, -1)
+                          const isEndpoint = index === lastActIdx
+                          return <circle
+                            key={`a-${index}`}
+                            cx={cx} cy={cy}
+                            r={isEndpoint ? 5 : 3}
+                            fill="#059669"
+                            stroke={isEndpoint ? '#fff' : '#059669'}
+                            strokeWidth={isEndpoint ? 2 : 0}
+                          />
+                        }}
+                        activeDot={{r:6}}
+                      />
                       {todayRow && <ReferenceLine x={todayRow.xLabel} stroke="var(--amber)" strokeDasharray="4 4" label={{value:'Today',position:'insideTopRight',fontSize:10,fill:'var(--amber)'}} />}
                     </LineChart>
                   </ResponsiveContainer>
