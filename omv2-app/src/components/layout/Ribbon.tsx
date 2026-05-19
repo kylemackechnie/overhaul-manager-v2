@@ -1,7 +1,6 @@
 import { useAppStore } from '../../store/appStore'
-import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { usePermissions } from '../../lib/permissions'
 import { useUserPrefs } from '../../hooks/useUserPrefs'
 import type { Module } from '../../lib/permissions'
@@ -258,7 +257,9 @@ export function Ribbon() {
   const { signOut, currentUser } = useAuth()
   const { canRead } = usePermissions()
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
-  const [counts, setCounts] = useState<Record<string,number>>({})
+  // Badge counts removed — 12 simultaneous count:exact HEAD queries on every
+  // project open were exhausting PostgREST threads and causing timeout crashes.
+  const counts: Record<string,number> = {}
 
   const { prefs, setPref } = useUserPrefs()
   const [showTabPicker, setShowTabPicker] = useState(false)
@@ -327,28 +328,7 @@ export function Ribbon() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const [moreOpen, setMoreOpen] = useState(false)
-  useEffect(() => {
-    if (!activeProject) return
-    const pid = activeProject.id
-    Promise.all([
-      supabase.from('resources').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hr-resources',r.count||0]),
-      supabase.from('weekly_timesheets').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hr-timesheets-trades',r.count||0]),
-      supabase.from('purchase_orders').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['purchase-orders',r.count||0]),
-      supabase.from('invoices').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['invoices',r.count||0]),
-      supabase.from('variations').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['variations',r.count||0]),
-      supabase.from('work_orders').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['work-orders',r.count||0]),
-      supabase.from('wosit_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['parts-list',r.count||0]),
-      supabase.from('wosit_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['parts-dashboard',r.count||0]),
-      supabase.from('hire_items').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hire-dashboard',r.count||0]),
-      supabase.from('hire_items').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['hire-dry',r.count||0]),
-      supabase.from('nrg_tce_lines').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['nrg-tce',r.count||0]),
-      supabase.from('shipments').select('id',{count:'exact',head:true}).eq('project_id',pid).then(r=>['shipping-inbound',r.count||0]),
-    ]).then(results => {
-      const c: Record<string,number> = {}
-      results.forEach(([panel, count]) => { c[panel as string] = count as number })
-      setCounts(c)
-    })
-  }, [activeProject?.id])
+
 
   if (!activeProject) return null
 
