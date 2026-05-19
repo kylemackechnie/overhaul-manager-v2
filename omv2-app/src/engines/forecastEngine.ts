@@ -967,6 +967,10 @@ export function buildForecast(
     if (!spreadDays.length) continue
     const dailyRate = remaining / spreadDays.length
 
+    // ── byWbs line items — needed both for standalonePOWbs check and post-loop attribution
+    const lineItemsForByWbs = ((po as unknown as { line_items?: unknown[] }).line_items || []) as { wbs?: string; value?: number }[]
+    const totalLineValue = lineItemsForByWbs.reduce((s, l) => s + (Number(l.value) || 0), 0)
+
     const standalonePOWbs = lineItemsForByWbs.length > 0 && totalLineValue > 0
       ? null  // will be handled per-line below
       : resolvePoWbsLocal(po)
@@ -982,11 +986,6 @@ export function buildForecast(
       if (day >= todayStr) poDayCostFuture += dayCost
       if (standalonePOWbs) addToWbsFuture(standalonePOWbs, dayCost, day)
     }
-
-    // ── byWbs — split poDayCostTotal across PO line items proportional to line.value;
-    //    fall back to PO top-level wbs / sap_wbs. Matches poCommitmentsEngine Type C.
-    const lineItemsForByWbs = ((po as unknown as { line_items?: unknown[] }).line_items || []) as { wbs?: string; value?: number }[]
-    const totalLineValue = lineItemsForByWbs.reduce((s, l) => s + (Number(l.value) || 0), 0)
     if (lineItemsForByWbs.length > 0 && totalLineValue > 0) {
       for (const line of lineItemsForByWbs) {
         const share = (Number(line.value) || 0) / totalLineValue
