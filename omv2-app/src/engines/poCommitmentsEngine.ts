@@ -68,17 +68,26 @@ function resolvePoWbs(po: PurchaseOrder): string | null {
 export function buildPoCommitments(
   purchaseOrders: PurchaseOrder[],
   invoices: Invoice[],
-  // These params kept for call-site compatibility — not used in this engine
   _hireItems: HireItem[],
   _cars: Car[],
   _accommodation: Accommodation[],
-  _resources: PoCommitmentResource[],
+  resources: PoCommitmentResource[],
   project: PoCommitmentProject,
 ): PoCommitmentsResult {
   const byWbs: Record<string, number> = {}
   const warnings: PoCommitmentWarning[] = []
 
   const invoicedTotalByPo = buildInvoicedByPo(invoices)
+
+  // POs that are driven by subcon resources with mob dates — forecastEngine spreads
+  // their full value day-by-day, so they must NOT appear in committed (would double-count in EAC).
+  const posWithSubconResources = new Set<string>()
+  for (const r of resources) {
+    if (!r.linked_po_id || r.category !== 'subcontractor') continue
+    const hasRateCard = !!r.rate_card
+    if (hasRateCard) continue  // rate-card subcon is already in labour forecast
+    posWithSubconResources.add(r.linked_po_id)
+  }
 
   function addCommitment(wbs: string | null | undefined, amount: number) {
     if (!wbs || !amount) return
@@ -89,6 +98,10 @@ export function buildPoCommitments(
     if (!['raised', 'active'].includes(po.status)) continue
     const poValue = Number(po.po_value) || 0
     if (!poValue) continue
+
+    // Skip POs driven by subcon resources — forecastEngine covers them via mob-date spread.
+    // Including them in committed would double-count in EAC (actuals + committed + forecast).
+    if (posWithSubconResources.has(po.id)) continue
 
     // FX conversion
     const poCurrency = po.currency || 'AUD'
