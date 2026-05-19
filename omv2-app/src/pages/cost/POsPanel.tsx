@@ -46,7 +46,7 @@ interface PoLine { id: string; description: string; wbs: string; value: number; 
 const mkLine = (): PoLine => ({ id: Math.random().toString(36).slice(2), description: '', wbs: '', value: 0, notes: '' })
 type PoForm = { po_number: string; internal_ref: string; vendor: string; description: string; status: string; currency: string; po_type: string; notes: string; effective_start: string; effective_end: string; raised_date: string; forecast_start: string; forecast_end: string; tce_item_id: string | null; lines: PoLine[] }
 const EMPTY_FORM: PoForm = { po_number: '', internal_ref: '', vendor: '', description: '', status: 'draft', currency: 'AUD', po_type: 'fixed', notes: '', effective_start: '', effective_end: '', forecast_start: '', forecast_end: '', tce_item_id: null, raised_date: '', lines: [mkLine()] }
-type DetailTab = 'overview' | 'labour' | 'equipment' | 'invoices'
+type DetailTab = 'overview' | 'labour' | 'equipment' | 'invoices' | 'eac'
 interface ActualsRow { person_name: string; role: string; work_date: string; week_start: string; allocated_hours: number; cost_labour: number; cost_allowances: number; po_id?: string }
 
 export function POsPanel() {
@@ -406,8 +406,8 @@ export function POsPanel() {
             </div>
           )}
           <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginTop:'12px',paddingLeft:'16px',flexShrink:0}}>
-            {(['overview','labour','equipment','invoices'] as DetailTab[]).map(t=>(
-              <button key={t} onClick={()=>setDetailTab(t)} style={{padding:'6px 14px',fontSize:'12px',fontWeight:detailTab===t?600:400,border:'none',background:'none',borderBottom:detailTab===t?'2px solid var(--accent)':'2px solid transparent',color:detailTab===t?'var(--accent)':'var(--text2)',cursor:'pointer',marginBottom:'-1px',textTransform:'capitalize'}}>{t}</button>
+            {(['overview','labour','equipment','invoices','eac'] as DetailTab[]).map(t=>(
+              <button key={t} onClick={()=>setDetailTab(t)} style={{padding:'6px 14px',fontSize:'12px',fontWeight:detailTab===t?600:400,border:'none',background:'none',borderBottom:detailTab===t?'2px solid var(--accent)':'2px solid transparent',color:detailTab===t?'var(--accent)':'var(--text2)',cursor:'pointer',marginBottom:'-1px',textTransform:t==='eac'?'uppercase':'capitalize'}}>{t}</button>
             ))}
           </div>
           <div style={{padding:'12px 16px',flex:1}}>
@@ -584,6 +584,276 @@ export function POsPanel() {
                 )}
               </div>
             )}
+            {detailTab==='eac'&&(() => {
+              // EAC = Actuals to Date + Forecast Forward
+              // Forecast Forward = max(0, Engine Planned - Actuals to Date)
+              // So EAC = max(Engine Planned, Actuals to Date)
+              const equipPlanned = (bucket?.dryHire.cost||0)+(bucket?.wetHire.cost||0)+(bucket?.localHire.cost||0)+(bucket?.cars.cost||0)+(bucket?.accom.cost||0)
+              const equipActTotal = hireActTotal+carActTotal+accomActTotal
+              const fwdForecast = Math.max(0, planned - totalActuals)
+              const eac = totalActuals + fwdForecast
+              const eacVsBudget = budget - eac
+              const hasAnyData = labActuals.length>0 || hireActuals.length>0 || carActuals.length>0 || accomActuals.length>0 || poInvoices.length>0 || linkedResources.length>0 || planned>0
+              if (!hasAnyData) {
+                return <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--text3)',fontSize:'12px'}}>
+                  <div style={{fontSize:'24px',marginBottom:'8px'}}>📊</div>
+                  <div>No EAC components yet. Link resources, hire items, cars, accommodation or invoices to see the breakdown.</div>
+                </div>
+              }
+              return <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+                {/* EAC build-up summary */}
+                <div className="card" style={{padding:'10px 14px'}}>
+                  <div style={{fontSize:'10px',fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'8px'}}>EAC build-up</div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 14px 1fr 14px 1fr 14px 1fr',gap:'8px',alignItems:'center'}}>
+                    <div>
+                      <div style={{fontSize:'10px',color:'var(--text3)'}}>Actuals to date</div>
+                      <div style={{fontSize:'15px',fontWeight:700,fontFamily:'var(--mono)',color:'var(--green)'}}>{fmt(totalActuals)}</div>
+                    </div>
+                    <div style={{textAlign:'center',fontSize:'16px',color:'var(--text3)'}}>+</div>
+                    <div>
+                      <div style={{fontSize:'10px',color:'var(--text3)'}}>Forecast forward</div>
+                      <div style={{fontSize:'15px',fontWeight:700,fontFamily:'var(--mono)',color:'#f97316'}}>{fmt(fwdForecast)}</div>
+                    </div>
+                    <div style={{textAlign:'center',fontSize:'16px',color:'var(--text3)'}}>=</div>
+                    <div>
+                      <div style={{fontSize:'10px',color:'var(--text3)'}}>EAC</div>
+                      <div style={{fontSize:'15px',fontWeight:700,fontFamily:'var(--mono)',color:'#7c3aed'}}>{fmt(eac)}</div>
+                    </div>
+                    <div style={{textAlign:'center',fontSize:'16px',color:'var(--text3)'}}>{eacVsBudget>=0?'≤':'>'}</div>
+                    <div>
+                      <div style={{fontSize:'10px',color:'var(--text3)'}}>vs Budget ({fmt(budget)})</div>
+                      <div style={{fontSize:'15px',fontWeight:700,fontFamily:'var(--mono)',color:eacVsBudget<0?'var(--red)':'var(--green)'}}>{(eacVsBudget>=0?'+':'')+fmt(eacVsBudget)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ═══ FORECAST (engine calc) ═══ */}
+                {linkedResources.length>0&&(
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                      <span>📋 FORECAST — Labour engine calc · {linkedResources.length} resource{linkedResources.length===1?'':'s'}</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(bucket?.labour.cost??0)}</span>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead><tr>{['Name','Role','Mob In','Mob Out','Days','Hours','Cost (planned)'].map(h=><th key={h} style={{...TH,textAlign:['Days','Hours','Cost (planned)'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {linkedResources.map(r=>{
+                          const pb=bucket?.labour.people.find(p=>p.resourceId===r.id)
+                          const mobIn=(r as Resource & {mob_in?:string}).mob_in
+                          const mobOut=(r as Resource & {mob_out?:string}).mob_out
+                          let dayCount:string|number='—'
+                          if(mobIn&&mobOut){
+                            const ms=new Date(mobIn+'T12:00:00').getTime()
+                            const me=new Date(mobOut+'T12:00:00').getTime()
+                            dayCount=Math.max(1,Math.round((me-ms)/86400000)+1)
+                          }
+                          return <tr key={r.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={{...TD,fontWeight:600}}>{r.name}</td>
+                            <td style={{...TD,color:'var(--text3)'}}>{r.role}</td>
+                            <td style={TD}>{fmtDate(mobIn)}</td>
+                            <td style={TD}>{fmtDate(mobOut)}</td>
+                            <td style={TDR}>{dayCount}</td>
+                            <td style={TDR}>{pb?pb.totalHours.toFixed(0)+'h':'—'}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(pb?.totalCost??0)}</td>
+                          </tr>
+                        })}
+                        <tr style={{background:'var(--bg2)',fontWeight:700}}>
+                          <td colSpan={5} style={TD}>Subtotal — Labour forecast</td>
+                          <td style={TDR}>{(bucket?.labour.hours??0).toFixed(0)}h</td>
+                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(bucket?.labour.cost??0)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {equipPlanned>0&&(
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                      <span>📋 FORECAST — Equipment full contract value</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(equipPlanned)}</span>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead><tr>{['Type','Item','Start','End','Days','Contract value'].map(h=><th key={h} style={{...TH,textAlign:['Days','Contract value'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {hireActuals.map(h=>{
+                          let d:string|number='—'
+                          if(h.start_date&&h.end_date){
+                            const ms=new Date(h.start_date+'T12:00:00').getTime()
+                            const me=new Date(h.end_date+'T12:00:00').getTime()
+                            d=Math.max(1,Math.round((me-ms)/86400000)+1)
+                          }
+                          return <tr key={h.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{h.hire_type} hire</span></td>
+                            <td style={TD}>{h.name}</td>
+                            <td style={TD}>{fmtDate(h.start_date)}</td>
+                            <td style={TD}>{fmtDate(h.end_date)}</td>
+                            <td style={TDR}>{d}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(h.hire_cost||0)}</td>
+                          </tr>
+                        })}
+                        {carActuals.map(c=>{
+                          let d:string|number='—'
+                          if(c.start_date&&c.end_date){
+                            const ms=new Date(c.start_date+'T12:00:00').getTime()
+                            const me=new Date(c.end_date+'T12:00:00').getTime()
+                            d=Math.max(1,Math.round((me-ms)/86400000)+1)
+                          }
+                          return <tr key={c.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>car</span></td>
+                            <td style={TD}>{c.label}</td>
+                            <td style={TD}>{fmtDate(c.start_date)}</td>
+                            <td style={TD}>{fmtDate(c.end_date)}</td>
+                            <td style={TDR}>{d}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(c.total_cost||0)}</td>
+                          </tr>
+                        })}
+                        {accomActuals.map(a=>{
+                          let n:string|number='—'
+                          if(a.check_in&&a.check_out){
+                            const ms=new Date(a.check_in+'T12:00:00').getTime()
+                            const me=new Date(a.check_out+'T12:00:00').getTime()
+                            n=Math.max(1,Math.round((me-ms)/86400000))
+                          }
+                          return <tr key={a.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>accom</span></td>
+                            <td style={TD}>{a.property}{a.room?` — ${a.room}`:''}</td>
+                            <td style={TD}>{fmtDate(a.check_in)}</td>
+                            <td style={TD}>{fmtDate(a.check_out)}</td>
+                            <td style={TDR}>{n}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(a.total_cost||0)}</td>
+                          </tr>
+                        })}
+                        <tr style={{background:'var(--bg2)',fontWeight:700}}>
+                          <td colSpan={5} style={TD}>Subtotal — Equipment forecast</td>
+                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(equipPlanned)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Total planned (engine) */}
+                {planned>0&&(
+                  <div style={{padding:'8px 14px',background:'var(--bg2)',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'12px',fontWeight:700,border:'1px solid var(--border)'}}>
+                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST (engine planned cost)</span>
+                    <span style={{fontFamily:'var(--mono)',color:'#d97706',fontSize:'14px'}}>{fmtFull(planned)}</span>
+                  </div>
+                )}
+
+                {/* ═══ ACTUALS TO DATE ═══ */}
+                {labActuals.length>0&&(
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'#d1fae5',color:'#065f46',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                      <span>✓ ACTUALS — Labour timesheets · {labActuals.length} {labActuals.length===1?'entry':'entries'}</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(labActTotal)}</span>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead><tr>{['Date','Person','Role','Hours','Labour','Allow','Total'].map(h=><th key={h} style={{...TH,textAlign:['Hours','Labour','Allow','Total'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {labActuals.sort((a,b)=>a.work_date.localeCompare(b.work_date)||a.person_name.localeCompare(b.person_name)).map((r,i)=>(
+                          <tr key={i} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={{...TD,fontFamily:'var(--mono)',fontSize:'11px',color:'var(--text3)'}}>{new Date(r.work_date+'T12:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</td>
+                            <td style={TD}>{r.person_name}</td>
+                            <td style={{...TD,color:'var(--text3)'}}>{r.role}</td>
+                            <td style={TDR}>{(r.allocated_hours||0).toFixed(2)}h</td>
+                            <td style={TDR}>{fmtFull(r.cost_labour||0)}</td>
+                            <td style={TDR}>{r.cost_allowances>0?fmtFull(r.cost_allowances):'—'}</td>
+                            <td style={{...TDR,fontWeight:600}}>{fmtFull((r.cost_labour||0)+(r.cost_allowances||0))}</td>
+                          </tr>
+                        ))}
+                        <tr style={{background:'var(--bg2)',fontWeight:700}}>
+                          <td colSpan={3} style={TD}>Subtotal — Labour actuals</td>
+                          <td style={TDR}>{labActuals.reduce((s,r)=>s+(r.allocated_hours||0),0).toFixed(2)}h</td>
+                          <td style={TDR}>{fmtFull(labActuals.reduce((s,r)=>s+(r.cost_labour||0),0))}</td>
+                          <td style={TDR}>{fmtFull(labActuals.reduce((s,r)=>s+(r.cost_allowances||0),0))}</td>
+                          <td style={{...TDR,color:'var(--green)'}}>{fmtFull(labActTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {equipActTotal>0&&(
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'#d1fae5',color:'#065f46',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                      <span>✓ ACTUALS — Equipment (prorated to today)</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(equipActTotal)}</span>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead><tr>{['Type','Item','Start','End','Contract','To-date'].map(h=><th key={h} style={{...TH,textAlign:['Contract','To-date'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {hireActuals.filter(h=>h.actualToDate>0).map(h=>(
+                          <tr key={h.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{h.hire_type} hire</span></td>
+                            <td style={TD}>{h.name}</td>
+                            <td style={TD}>{fmtDate(h.start_date)}</td>
+                            <td style={TD}>{fmtDate(h.end_date)}</td>
+                            <td style={TDR}>{fmtFull(h.hire_cost||0)}</td>
+                            <td style={{...TDR,color:'var(--green)',fontWeight:600}}>{fmtFull(h.actualToDate)}</td>
+                          </tr>
+                        ))}
+                        {carActuals.filter(c=>c.actualToDate>0).map(c=>(
+                          <tr key={c.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>car</span></td>
+                            <td style={TD}>{c.label}</td>
+                            <td style={TD}>{fmtDate(c.start_date)}</td>
+                            <td style={TD}>{fmtDate(c.end_date)}</td>
+                            <td style={TDR}>{fmtFull(c.total_cost||0)}</td>
+                            <td style={{...TDR,color:'var(--green)',fontWeight:600}}>{fmtFull(c.actualToDate)}</td>
+                          </tr>
+                        ))}
+                        {accomActuals.filter(a=>a.actualToDate>0).map(a=>(
+                          <tr key={a.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>accom</span></td>
+                            <td style={TD}>{a.property}{a.room?` — ${a.room}`:''}</td>
+                            <td style={TD}>{fmtDate(a.check_in)}</td>
+                            <td style={TD}>{fmtDate(a.check_out)}</td>
+                            <td style={TDR}>{fmtFull(a.total_cost||0)}</td>
+                            <td style={{...TDR,color:'var(--green)',fontWeight:600}}>{fmtFull(a.actualToDate)}</td>
+                          </tr>
+                        ))}
+                        <tr style={{background:'var(--bg2)',fontWeight:700}}>
+                          <td colSpan={5} style={TD}>Subtotal — Equipment actuals</td>
+                          <td style={{...TDR,color:'var(--green)'}}>{fmtFull(equipActTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {poInvoices.length>0&&(
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'#d1fae5',color:'#065f46',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                      <span>✓ ACTUALS — Invoiced · {poInvoices.length} invoice{poInvoices.length===1?'':'s'}</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(invoiced)}</span>
+                    </div>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead><tr>{['Reference','Date','Status','Amount'].map(h=><th key={h} style={{...TH,textAlign:h==='Amount'?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {poInvoices.map((inv,i)=>{
+                          const ia=inv as Invoice & {invoice_ref?:string;invoice_date?:string}
+                          return <tr key={inv.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}>{ia.invoice_ref||`Invoice ${i+1}`}</td>
+                            <td style={TD}>{fmtDate(ia.invoice_date)}</td>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'2px 6px',borderRadius:'10px',background:inv.status==='approved'?'#d1fae5':'#fef3c7',color:inv.status==='approved'?'#065f46':'#92400e',fontWeight:600}}>{inv.status}</span></td>
+                            <td style={{...TDR,fontWeight:600,color:'var(--green)'}}>{fmtFull(inv.amount||0)}</td>
+                          </tr>
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Total actuals */}
+                {totalActuals>0&&(
+                  <div style={{padding:'8px 14px',background:'var(--bg2)',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'12px',fontWeight:700,border:'1px solid var(--border)'}}>
+                    <span style={{color:'#065f46'}}>✓ TOTAL ACTUALS TO DATE</span>
+                    <span style={{fontFamily:'var(--mono)',color:'var(--green)',fontSize:'14px'}}>{fmtFull(totalActuals)}</span>
+                  </div>
+                )}
+              </div>
+            })()}
           </div>
         </div>
 
