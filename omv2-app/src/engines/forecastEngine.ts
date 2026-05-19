@@ -53,6 +53,7 @@ export interface ForecastData {
   byDay: Record<string, DayBucket>
   byPo:  Record<string, PoBucket>   // keyed by po_id; 'unlinked' for anything with no PO
   byWbs: Record<string, number>     // base-currency plan total per WBS code (matches sum-of-byDay)
+  byWbsFuture: Record<string, number> // same as byWbs but only for days >= today (EAC forward forecast)
   days: string[]
   totalCost: number
   totalSell: number
@@ -194,6 +195,9 @@ export function buildForecast(
   const byDay: Record<string, DayBucket> = {}
   const byPo:  Record<string, PoBucket>  = {}
   const byWbs: Record<string, number>    = {}
+  const byWbsFuture: Record<string, number> = {}
+  // Today's date string — costs on days >= today feed byWbsFuture (EAC forward forecast)
+  const todayStr = new Date().toISOString().slice(0, 10)
   const holidays = new Set(publicHolidays.map(h => h.date))
   const eurRateForWbs = fxRates.find(f => f.code === 'EUR')?.rate || 1
   const posById: Record<string, PurchaseOrder> = {}
@@ -221,6 +225,12 @@ export function buildForecast(
   function addToWbs(wbs: string, cost: number) {
     if (!wbs || !cost) return
     byWbs[wbs] = (byWbs[wbs] || 0) + cost
+  }
+
+  // Only accumulates for days >= today — used as the forward EAC forecast.
+  function addToWbsFuture(wbs: string, cost: number, day: string) {
+    if (!wbs || !cost || day < todayStr) return
+    byWbsFuture[wbs] = (byWbsFuture[wbs] || 0) + cost
   }
 
   function ensurePo(poId: string): PoBucket {
@@ -341,6 +351,7 @@ export function buildForecast(
           (r as Resource & { linked_po_id?: string | null }).linked_po_id,
         )
         addToWbs(wbsForRes, wbsCostBase)
+        addToWbsFuture(wbsForRes, wbsCostBase, d)
 
         // ── PO accumulation — cost rates only (not sell) ──
         const poKey = (r as Resource & { linked_po_id?: string | null }).linked_po_id || 'unlinked'
@@ -430,6 +441,14 @@ export function buildForecast(
         const day = ensure(d)
         day[catKey].cost += perDayCost
         day[catKey].sell += perDaySell
+        addToWbsFuture(
+          resolveItemWbs(
+            (item as HireItem & { wbs?: string }).wbs,
+            (item as HireItem & { linked_po_id?: string | null }).linked_po_id,
+          ),
+          perDayCost,
+          d,
+        )
       }
       // ── byWbs — item.wbs with linked PO fallback ──
       addToWbs(
@@ -474,6 +493,14 @@ export function buildForecast(
       const day = ensure(d)
       day.cars.cost += perDayCost
       day.cars.sell += perDaySell
+      addToWbsFuture(
+        resolveItemWbs(
+          (c as Car & { wbs?: string }).wbs,
+          (c as Car & { linked_po_id?: string | null }).linked_po_id,
+        ),
+        perDayCost,
+        d,
+      )
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -516,6 +543,14 @@ export function buildForecast(
       const day = ensure(d)
       day.accom.cost += perNightCost
       day.accom.sell += perNightSell
+      addToWbsFuture(
+        resolveItemWbs(
+          (a as Accommodation & { wbs?: string }).wbs,
+          (a as Accommodation & { linked_po_id?: string | null }).linked_po_id,
+        ),
+        perNightCost,
+        d,
+      )
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -563,6 +598,7 @@ export function buildForecast(
     day.expenses.cost += cost
     day.expenses.sell += sell
     addToWbs((e as Expense & { wbs?: string }).wbs || '', cost)
+    addToWbsFuture((e as Expense & { wbs?: string }).wbs || '', cost, eDate)
   }
 
   // ── Flights — Walk-Away Module 1 Steps 3 + 4d ──
@@ -637,6 +673,11 @@ export function buildForecast(
           resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
           legCostAud,
         )
+        addToWbsFuture(
+          resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
+          legCostAud,
+          bookDate,
+        )
       }
       continue   // done with this resource — don't run path 2
     }
@@ -663,6 +704,16 @@ export function buildForecast(
     addToWbs(
       resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
       perFlightAud * 2,
+    )
+    addToWbsFuture(
+      resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
+      perFlightAud,
+      outboundDate,
+    )
+    addToWbsFuture(
+      resolveItemWbs(r.wbs, (r as Resource & { linked_po_id?: string | null }).linked_po_id),
+      perFlightAud,
+      returnDate,
     )
   }
 
@@ -714,8 +765,9 @@ export function buildForecast(
           if (!days.length) continue
           const perDayCost = (calc.cost * factor) / days.length
           const perDaySell = (calc.sell * factor) / days.length
-          for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
-          addToWbs((sp as { wbs?: string }).wbs || tcTopWbs, calc.cost * factor * eurRateForWbs)
+          const toolingWbs = (sp as { wbs?: string }).wbs || tcTopWbs
+          for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell; addToWbsFuture(toolingWbs, perDayCost * eurRateForWbs, d) }
+          addToWbs(toolingWbs, calc.cost * factor * eurRateForWbs)
         }
       } else if (tc.charge_start && tc.charge_end) {
         const calc = calcRentalCost(replVal, {
@@ -727,7 +779,7 @@ export function buildForecast(
           if (days.length) {
             const perDayCost = calc.cost / days.length
             const perDaySell = calc.sell / days.length
-            for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
+            for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell; addToWbsFuture(tcTopWbs, perDayCost * eurRateForWbs, d) }
             addToWbs(tcTopWbs, calc.cost * eurRateForWbs)
           }
         }
@@ -739,7 +791,7 @@ export function buildForecast(
       if (!days.length) continue
       const perDayCost = (tc.cost_eur || 0) / days.length
       const perDaySell = (tc.sell_eur || 0) / days.length
-      for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell }
+      for (const d of days) { const day = ensure(d); day.tooling.cost += perDayCost; day.tooling.sell += perDaySell; addToWbsFuture(tcTopWbs, perDayCost * eurRateForWbs, d) }
       addToWbs(tcTopWbs, (tc.cost_eur || 0) * eurRateForWbs)
     }
 
@@ -892,6 +944,7 @@ export function buildForecast(
           ensure(day).subcon.cost += dayCost
           ensure(day).subcon.sell += dayCost
           addToWbs(rWbs, dayCost)
+          addToWbsFuture(rWbs, dayCost, day)
         }
       }
       continue
@@ -914,13 +967,20 @@ export function buildForecast(
     if (!spreadDays.length) continue
     const dailyRate = remaining / spreadDays.length
 
+    const standalonePOWbs = lineItemsForByWbs.length > 0 && totalLineValue > 0
+      ? null  // will be handled per-line below
+      : resolvePoWbsLocal(po)
+
     let poDayCostTotal = 0
+    let poDayCostFuture = 0
     for (const day of spreadDays) {
       const invAmt = invoicedOnDay(po.id, day)
       const dayCost = invAmt > 0 ? invAmt : dailyRate
       ensure(day).subcon.cost += dayCost
       ensure(day).subcon.sell += dayCost
       poDayCostTotal += dayCost
+      if (day >= todayStr) poDayCostFuture += dayCost
+      if (standalonePOWbs) addToWbsFuture(standalonePOWbs, dayCost, day)
     }
 
     // ── byWbs — split poDayCostTotal across PO line items proportional to line.value;
@@ -931,6 +991,7 @@ export function buildForecast(
       for (const line of lineItemsForByWbs) {
         const share = (Number(line.value) || 0) / totalLineValue
         addToWbs(line.wbs || resolvePoWbsLocal(po), poDayCostTotal * share)
+        addToWbsFuture(line.wbs || resolvePoWbsLocal(po), poDayCostFuture * share, todayStr)
       }
     } else {
       addToWbs(resolvePoWbsLocal(po), poDayCostTotal)
@@ -974,7 +1035,7 @@ export function buildForecast(
     totalCost += aud
   }
 
-  return { byDay, byPo, byWbs, days, totalCost, totalSell, accomWarnings }
+  return { byDay, byPo, byWbs, byWbsFuture, days, totalCost, totalSell, accomWarnings }
 }
 
 // Aggregate by week key (YYYY-WNN)

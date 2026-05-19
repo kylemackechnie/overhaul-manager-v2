@@ -218,17 +218,19 @@ export function MikaPanel() {
         (flightsR.data || []) as Flight[],
         (plannedR.data || []) as PlannedCost[],
       )
-      const planRolled: Record<string, number> = {}
-      for (const [code, val] of Object.entries(forecast.byWbs)) {
-        if (val) rollup(planRolled, code, val)
+      // futureRolled: forward-only forecast (days >= today) — this is the EAC forward component.
+      // Using byWbsFuture means: EAC = actuals (past timesheets) + committed + future engine calc,
+      // which is the correct formula. byWbs (full plan) is kept for Reconcile panel use only.
+      const futureRolled: Record<string, number> = {}
+      for (const [code, val] of Object.entries(forecast.byWbsFuture)) {
+        if (val) rollup(futureRolled, code, val)
       }
 
-      // ForecastTC = max(0, Plan − Actuals − Committed) per WBS row. By construction:
-      //   sum(Actuals) + sum(Committed) + sum(ForecastTC) ≤ sum(Plan) = Forecast page total.
-      // Equality holds except where a row is over-budget (Actuals + Committed > Plan);
-      // those rows cap at 0 and the variance column surfaces the overrun.
+      // ForecastTC = forward-only engine calculation (days >= today per WBS).
+      // EAC = Actuals (past timesheets) + PO Committed + ForecastTC (future engine).
+      // This means as timesheets arrive for past weeks, they replace the forecast for those
+      // weeks automatically — the engine never double-counts past dates in ForecastTC.
       const dbLines: MikaLine[] = rows.map(r => {
-        const plan = planRolled[r.wbs] || 0
         const actuals = actualsByWbs[r.wbs] || 0
         const committed = committedRolled[r.wbs] || 0
         return {
@@ -239,7 +241,7 @@ export function MikaPanel() {
           pm100: r.pm100 || 0,
           actuals,
           poCommitted: committed,
-          forecast: Math.max(0, plan - actuals - committed),
+          forecast: futureRolled[r.wbs] || 0,
         }
       })
       setMika(prev => prev ? { ...prev, lines: dbLines } : { projectNo:'', projectName:'', period:'', importedAt:'', lines: dbLines })
