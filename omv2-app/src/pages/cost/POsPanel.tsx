@@ -5,8 +5,9 @@ import { useAppStore } from '../../store/appStore'
 import { toast } from '../../components/ui/Toast'
 import { downloadCSV } from '../../lib/csv'
 import { uploadReceipt, deleteReceipt, getSignedUrl, fileIcon, fileName } from '../../lib/receiptStorage'
-import { buildForecast } from '../../engines/forecastEngine'
+import { buildForecast, weekKey, weekLabel } from '../../engines/forecastEngine'
 import { HelpButton } from '../../components/HelpButton'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts'
 import type { PoBucket } from '../../engines/forecastEngine'
 import type { PurchaseOrder, Resource, RateCard, HireItem, Car, Accommodation, Invoice, Project } from '../../types'
 
@@ -46,7 +47,7 @@ interface PoLine { id: string; description: string; wbs: string; value: number; 
 const mkLine = (): PoLine => ({ id: Math.random().toString(36).slice(2), description: '', wbs: '', value: 0, notes: '' })
 type PoForm = { po_number: string; internal_ref: string; vendor: string; description: string; status: string; currency: string; po_type: string; notes: string; effective_start: string; effective_end: string; raised_date: string; forecast_start: string; forecast_end: string; tce_item_id: string | null; lines: PoLine[] }
 const EMPTY_FORM: PoForm = { po_number: '', internal_ref: '', vendor: '', description: '', status: 'draft', currency: 'AUD', po_type: 'fixed', notes: '', effective_start: '', effective_end: '', forecast_start: '', forecast_end: '', tce_item_id: null, raised_date: '', lines: [mkLine()] }
-type DetailTab = 'overview' | 'labour' | 'equipment' | 'invoices' | 'eac'
+type DetailTab = 'overview' | 'labour' | 'equipment' | 'invoices' | 'eac' | 'fc-vs-act'
 interface ActualsRow { person_name: string; role: string; work_date: string; week_start: string; allocated_hours: number; cost_labour: number; cost_allowances: number; po_id?: string }
 
 export function POsPanel() {
@@ -409,9 +410,10 @@ export function POsPanel() {
             </div>
           )}
           <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginTop:'12px',paddingLeft:'16px',flexShrink:0}}>
-            {(['overview','labour','equipment','invoices','eac'] as DetailTab[]).map(t=>(
-              <button key={t} onClick={()=>setDetailTab(t)} style={{padding:'6px 14px',fontSize:'12px',fontWeight:detailTab===t?600:400,border:'none',background:'none',borderBottom:detailTab===t?'2px solid var(--accent)':'2px solid transparent',color:detailTab===t?'var(--accent)':'var(--text2)',cursor:'pointer',marginBottom:'-1px',textTransform:t==='eac'?'uppercase':'capitalize'}}>{t}</button>
-            ))}
+            {(['overview','labour','equipment','invoices','eac','fc-vs-act'] as DetailTab[]).map(t=>{
+              const label = t === 'eac' ? 'EAC' : t === 'fc-vs-act' ? 'Fc vs Act' : t.charAt(0).toUpperCase() + t.slice(1)
+              return <button key={t} onClick={()=>setDetailTab(t)} style={{padding:'6px 14px',fontSize:'12px',fontWeight:detailTab===t?600:400,border:'none',background:'none',borderBottom:detailTab===t?'2px solid var(--accent)':'2px solid transparent',color:detailTab===t?'var(--accent)':'var(--text2)',cursor:'pointer',marginBottom:'-1px'}}>{label}</button>
+            })}
           </div>
           <div style={{padding:'12px 16px',flex:1}}>
             {detailTab==='overview'&&(
@@ -900,6 +902,175 @@ export function POsPanel() {
                     <span style={{fontFamily:'var(--mono)',color:'var(--green)',fontSize:'14px'}}>{fmtFull(totalActuals)}</span>
                   </div>
                 )}
+              </div>
+            })()}
+            {detailTab==='fc-vs-act'&&(() => {
+              // Build per-week forecast and actuals for this PO.
+              // Forecast = linear proration of each linked item across its window
+              //   (resources × mob window, hire/cars/accom × their dates).
+              // Actuals  = real timesheet rows for labour, prorated to-date for equipment.
+              const weekMap: Record<string, { forecast: number; actuals: number }> = {}
+              const ensureWk = (wk: string) => {
+                if (!weekMap[wk]) weekMap[wk] = { forecast: 0, actuals: 0 }
+                return weekMap[wk]
+              }
+              const todayStr = new Date().toISOString().slice(0,10)
+              const todayWk = weekKey(todayStr)
+
+              // Helper: spread a totalCost linearly across [start,end] daily, contributing
+              // to both forecast (always) and actuals (only for days < today).
+              const spread = (start: string, end: string, totalCost: number, alsoActual: boolean) => {
+                if (!start || !totalCost) return
+                const sMs = new Date(start+'T12:00:00').getTime()
+                const eMs = new Date((end || start)+'T12:00:00').getTime()
+                const dayCount = Math.max(1, Math.round((eMs - sMs)/86400000) + 1)
+                const perDay = totalCost / dayCount
+                const d = new Date(start+'T12:00:00')
+                for (let i = 0; i < dayCount; i++) {
+                  const dStr = d.toISOString().slice(0,10)
+                  const bucket = ensureWk(weekKey(dStr))
+                  bucket.forecast += perDay
+                  if (alsoActual && dStr < todayStr) bucket.actuals += perDay
+                  d.setDate(d.getDate() + 1)
+                }
+              }
+
+              // ── FORECAST contributions ──
+              for (const p of bucket?.labour.people ?? []) {
+                spread(p.mobIn, p.mobOut || p.mobIn, p.totalCost, false)  // labour actuals come from timesheets
+              }
+              for (const h of hireActuals) {
+                if (h.start_date && h.hire_cost) spread(h.start_date, h.end_date || h.start_date, h.hire_cost, true)
+              }
+              for (const c of carActuals) {
+                if (c.start_date && c.total_cost) spread(c.start_date, c.end_date || c.start_date, c.total_cost, true)
+              }
+              for (const a of accomActuals) {
+                if (a.check_in && a.total_cost) spread(a.check_in, a.check_out || a.check_in, a.total_cost, true)
+              }
+
+              // ── LABOUR ACTUALS — real timesheet rows ──
+              for (const r of labActuals) {
+                if (!r.work_date) continue
+                const cost = (r.cost_labour||0) + (r.cost_allowances||0)
+                if (cost) ensureWk(weekKey(r.work_date)).actuals += cost
+              }
+
+              const weeks = Object.keys(weekMap).sort()
+              if (weeks.length === 0) {
+                return <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--text3)',fontSize:'12px'}}>
+                  <div style={{fontSize:'24px',marginBottom:'8px'}}>📈</div>
+                  <div>No forecast or actuals data for this PO yet. Link resources, equipment, or post timesheets to populate the chart.</div>
+                </div>
+              }
+
+              // Cumulative series + variance per week
+              let cumF = 0, cumA = 0
+              const rows = weeks.map((wk, i) => {
+                const w = weekMap[wk]
+                cumF += w.forecast
+                cumA += w.actuals
+                const isPast = wk <= todayWk
+                return {
+                  wk,
+                  weekNum: i + 1,
+                  label: weekLabel(wk),
+                  xLabel: wk.slice(5),  // short MM-DD for axis
+                  forecast: w.forecast,
+                  actuals: w.actuals,
+                  weekVariance: w.forecast - w.actuals,
+                  cumForecast: cumF,
+                  cumActuals: cumA,
+                  cumVariance: cumF - cumA,
+                  isPast,
+                  // For chart: null out actuals after today so the line stops cleanly
+                  chartActuals: isPast ? cumA : null,
+                }
+              })
+
+              const totalForecast = rows.reduce((s,r)=>s+r.forecast,0)
+              const totalActuals = rows.reduce((s,r)=>s+r.actuals,0)
+              const totalVariance = totalForecast - totalActuals
+              const todayRow = rows.find(r => r.wk === todayWk)
+
+              return <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+                {/* KPI strip */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px'}}>
+                  <div className="card" style={{padding:'10px 12px',borderTop:'3px solid #d97706'}}>
+                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Total Forecast</div>
+                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:'#d97706',marginTop:'2px'}}>{fmtFull(totalForecast)}</div>
+                  </div>
+                  <div className="card" style={{padding:'10px 12px',borderTop:'3px solid var(--green)'}}>
+                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Actuals to Date</div>
+                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:'var(--green)',marginTop:'2px'}}>{fmtFull(totalActuals)}</div>
+                  </div>
+                  <div className="card" style={{padding:'10px 12px',borderTop:`3px solid ${totalVariance < 0 ? 'var(--red)' : 'var(--accent)'}`}}>
+                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Variance (Fc − Act)</div>
+                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:totalVariance < 0 ? 'var(--red)' : 'var(--accent)',marginTop:'2px'}}>{(totalVariance>=0?'+':'')+fmtFull(totalVariance)}</div>
+                  </div>
+                </div>
+
+                {/* Chart */}
+                <div className="card" style={{padding:'12px'}}>
+                  <div style={{fontSize:'11px',fontWeight:600,marginBottom:'8px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span>Cumulative Forecast vs Actuals · {rows.length} weeks</span>
+                    <span style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>Actuals line ends at current week</span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={rows} margin={{top:8,right:16,left:8,bottom:4}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="xLabel" tick={{fontSize:10}} />
+                      <YAxis tickFormatter={(v: number) => fmt(v)} tick={{fontSize:10}} />
+                      <Tooltip
+                        formatter={(v: unknown) => v == null ? '—' : fmtFull(Number(v))}
+                        labelFormatter={(_, payload) => {
+                          const r = payload?.[0]?.payload as { label?: string } | undefined
+                          return r?.label ? `Week of ${r.label}` : ''
+                        }}
+                      />
+                      <Legend wrapperStyle={{fontSize:11}} />
+                      <Line type="monotone" dataKey="cumForecast" name="Forecast (cumulative)" stroke="#d97706" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="chartActuals" name="Actuals (cumulative)" stroke="#059669" strokeWidth={2} dot={false} connectNulls={false} />
+                      {todayRow && <ReferenceLine x={todayRow.xLabel} stroke="var(--amber)" strokeDasharray="4 4" label={{value:'Today',position:'insideTopRight',fontSize:10,fill:'var(--amber)'}} />}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Table */}
+                <div className="card" style={{padding:0,overflow:'hidden'}}>
+                  <div style={{padding:'8px 12px',background:'var(--bg2)',fontSize:'11px',fontWeight:600,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                    <span>Week-by-week breakdown</span>
+                    <span style={{color:'var(--text3)',fontWeight:400}}>Yellow row = current week</span>
+                  </div>
+                  <div style={{maxHeight:'400px',overflowY:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                      <thead style={{position:'sticky',top:0,background:'var(--bg2)',zIndex:1}}>
+                        <tr>{['Wk','Period','Forecast','Actuals','Variance','Cum. Var'].map(h=>(
+                          <th key={h} style={{...TH,textAlign:['Forecast','Actuals','Variance','Cum. Var'].includes(h)?'right':'left'}}>{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(r => (
+                          <tr key={r.wk} style={{borderBottom:'1px solid var(--border)',background:r.wk===todayWk?'#fffbeb':undefined}}>
+                            <td style={{...TD,fontFamily:'var(--mono)',fontSize:'11px',fontWeight:600,color:r.wk===todayWk?'#92400e':'var(--text)'}}>W{r.weekNum}{r.wk===todayWk?' ←':''}</td>
+                            <td style={{...TD,color:'var(--text3)'}}>{r.label}</td>
+                            <td style={TDR}>{r.forecast>0?fmt(r.forecast):'—'}</td>
+                            <td style={{...TDR,color:r.actuals>0?'var(--green)':'var(--text3)'}}>{r.actuals>0?fmt(r.actuals):'—'}</td>
+                            <td style={{...TDR,color:!r.isPast?'var(--text3)':r.weekVariance<0?'var(--red)':'var(--green)',fontWeight:r.isPast?600:400}}>{r.isPast?((r.weekVariance>=0?'+':'')+fmt(r.weekVariance)):'—'}</td>
+                            <td style={{...TDR,color:!r.isPast?'var(--text3)':r.cumVariance<0?'var(--red)':'var(--green)'}}>{r.isPast?((r.cumVariance>=0?'+':'')+fmt(r.cumVariance)):'—'}</td>
+                          </tr>
+                        ))}
+                        <tr style={{background:'var(--bg2)',fontWeight:700,position:'sticky',bottom:0}}>
+                          <td colSpan={2} style={TD}>Total</td>
+                          <td style={TDR}>{fmt(totalForecast)}</td>
+                          <td style={{...TDR,color:'var(--green)'}}>{fmt(totalActuals)}</td>
+                          <td style={{...TDR,color:totalVariance<0?'var(--red)':'var(--green)'}}>{(totalVariance>=0?'+':'')+fmt(totalVariance)}</td>
+                          <td style={TD}/>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             })()}
           </div>
