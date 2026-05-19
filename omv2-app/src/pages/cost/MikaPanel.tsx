@@ -819,25 +819,55 @@ export function MikaPanel() {
                       </thead>
                       <tbody>
                         {(() => {
-                          // Build WBS → PO lookup from PO line items
-                          const wbsToPo: Record<string, { po_number: string; vendor: string; description: string }> = {}
+                          // Build one row per (PO × line) for any line whose WBS sits
+                          // under the drilled-down WBS. Previous version keyed a
+                          // WBS→PO lookup map, which silently overwrote earlier POs
+                          // when two POs both had lines on the same WBS, and rendered
+                          // one row per WBS (collapsing multiple POs into one).
+                          //
+                          // Now: iterate every PO line, keep matches, render each
+                          // individually with its own value. Multiple POs on the
+                          // same WBS now show as separate rows that sum to the
+                          // committed total shown in the header.
+                          //
+                          // Limitation: line value shown here is the gross PO line
+                          // amount, not net-of-invoice. The header committed total
+                          // (from the PO commitments engine) DOES subtract invoiced
+                          // amounts, pro-rated across lines. As long as no PO on
+                          // this WBS has any invoiced portion the two match
+                          // exactly. Once they do diverge the drill rows can be
+                          // refined; for now the row count and PO identification
+                          // are what the user needs to see, and the totals tie out
+                          // for the pre-invoice common case.
+                          type PoLine = { wbs?: string; value?: number; description?: string }
+                          const rows: { wbs: string; po_number: string; vendor: string; description: string; value: number }[] = []
                           for (const po of poList) {
-                            const lines = ((po as unknown as { line_items?: { wbs?: string; description?: string }[] }).line_items || [])
+                            const poAny = po as unknown as { po_number?: string; id: string; vendor?: string; description?: string; status?: string; line_items?: PoLine[] }
+                            if (poAny.status === 'cancelled' || poAny.status === 'closed') continue
+                            const lines = poAny.line_items || []
                             for (const l of lines) {
-                              if (l.wbs) wbsToPo[l.wbs] = {
-                                po_number: po.po_number || po.id,
-                                vendor: po.vendor || '—',
-                                description: po.description || l.description || '',
-                              }
+                              if (!l.wbs) continue
+                              if (l.wbs !== wbs && !l.wbs.startsWith(wbs + '.')) continue
+                              const lineVal = Number(l.value) || 0
+                              if (lineVal <= 0) continue
+                              rows.push({
+                                wbs: l.wbs,
+                                po_number: poAny.po_number || poAny.id,
+                                vendor: poAny.vendor || '—',
+                                description: l.description || poAny.description || '',
+                                value: lineVal,
+                              })
                             }
                           }
-                          return committedRows.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([code, val]) => (
-                            <tr key={code} style={{ borderBottom: '1px solid var(--border)' }}>
-                              <td style={{ padding: '4px 8px', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{code}</td>
-                              <td style={{ padding: '4px 8px', color: 'var(--accent)', fontFamily: 'var(--mono)', fontSize: '10px', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.po_number || '—'}</td>
-                              <td style={{ padding: '4px 8px', color: 'var(--text2)', fontSize: '11px', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.vendor || '—'}</td>
-                              <td style={{ padding: '4px 8px', color: 'var(--text3)', fontSize: '11px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wbsToPo[code]?.description || '—'}</td>
-                              <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#f97316' }}>{fmtD(val)}</td>
+                          // Largest first
+                          rows.sort((a, b) => b.value - a.value)
+                          return rows.map((r, i) => (
+                            <tr key={`${r.po_number}-${r.wbs}-${i}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td style={{ padding: '4px 8px', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: '10px' }}>{r.wbs}</td>
+                              <td style={{ padding: '4px 8px', color: 'var(--accent)', fontFamily: 'var(--mono)', fontSize: '10px', whiteSpace: 'nowrap' }}>{r.po_number}</td>
+                              <td style={{ padding: '4px 8px', color: 'var(--text2)', fontSize: '11px', whiteSpace: 'nowrap' }}>{r.vendor}</td>
+                              <td style={{ padding: '4px 8px', color: 'var(--text3)', fontSize: '11px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.description}>{r.description || '—'}</td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 600, color: '#f97316' }}>{fmtD(r.value)}</td>
                             </tr>
                           ))
                         })()}
