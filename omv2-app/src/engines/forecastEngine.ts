@@ -243,8 +243,11 @@ export function buildForecast(
   }
 
   // Only accumulates for days >= forecastStartStr — used as the forward EAC forecast.
-  function addToWbsFuture(wbs: string, cost: number, day: string) {
-    if (!wbs || !cost || day < forecastStartStr) return
+  // gateOnCutoff=false for equipment: equipment past days are still committed (no invoice
+  // has actualised them), so they belong in byWbsFuture as forward forecast too.
+  function addToWbsFuture(wbs: string, cost: number, day: string, gateOnCutoff = true) {
+    if (!wbs || !cost) return
+    if (gateOnCutoff && day < forecastStartStr) return
     byWbsFuture[wbs] = (byWbsFuture[wbs] || 0) + cost
   }
 
@@ -461,6 +464,7 @@ export function buildForecast(
         const day = ensure(d)
         day[catKey].cost += perDayCost
         day[catKey].sell += perDaySell
+        // Equipment: all days committed (no invoice has actualised any of it).
         addToWbsFuture(
           resolveItemWbs(
             (item as HireItem & { wbs?: string }).wbs,
@@ -468,8 +472,9 @@ export function buildForecast(
           ),
           perDayCost,
           d,
+          false,
         )
-        if (d >= forecastStartStr) pb[catKey].futureCost += perDayCost
+        pb[catKey].futureCost += perDayCost
       }
       // ── byWbs — item.wbs with linked PO fallback ──
       addToWbs(
@@ -514,6 +519,7 @@ export function buildForecast(
       const day = ensure(d)
       day.cars.cost += perDayCost
       day.cars.sell += perDaySell
+      // Cars: all days committed (no invoice has actualised any of it).
       addToWbsFuture(
         resolveItemWbs(
           (c as Car & { wbs?: string }).wbs,
@@ -521,8 +527,9 @@ export function buildForecast(
         ),
         perDayCost,
         d,
+        false,
       )
-      if (d >= forecastStartStr) carPb.cars.futureCost += perDayCost
+      carPb.cars.futureCost += perDayCost
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -566,6 +573,7 @@ export function buildForecast(
       const day = ensure(d)
       day.accom.cost += perNightCost
       day.accom.sell += perNightSell
+      // Accom: all nights committed (no invoice has actualised any of it).
       addToWbsFuture(
         resolveItemWbs(
           (a as Accommodation & { wbs?: string }).wbs,
@@ -573,8 +581,9 @@ export function buildForecast(
         ),
         perNightCost,
         d,
+        false,
       )
-      if (d >= forecastStartStr) accomPb.accom.futureCost += perNightCost
+      accomPb.accom.futureCost += perNightCost
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(

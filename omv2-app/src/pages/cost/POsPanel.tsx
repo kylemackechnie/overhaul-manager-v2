@@ -652,21 +652,28 @@ export function POsPanel() {
               const labourFwdCostSubtotal = labourFwdRows.reduce((s,x)=>s+x.fwdCost,0)
               const labourFwdHoursSubtotal = labourFwdRows.reduce((s,x)=>s+x.fwdHours,0)
 
-              // Equipment forward — also use engine's per-PO future when item is on this PO
-              // (the row-level proration on hire_cost still equals the engine result here
-              // because hire/cars/accom cost is uniform-daily — but engine future is the
-              // source of truth).
+              // Equipment forward — equipment is fully committed until invoiced, so
+              // each row shows its full contract span (no forecastStart gating).
+              // Engine bucket.<cat>.futureCost now also equals full contract cost.
+              const fwdFull = (start?: string|null, end?: string|null) => {
+                if (!start) return { totalDays: 0, fwdDays: 0, fwdPct: 0, fwdFrom: '', isPartial: false }
+                const e = end || start
+                const sMs = new Date(start+'T12:00:00').getTime()
+                const eMs = new Date(e+'T12:00:00').getTime()
+                const totalDays = Math.max(1, Math.round((eMs-sMs)/86400000)+1)
+                return { totalDays, fwdDays: totalDays, fwdPct: 1, fwdFrom: start, isPartial: false }
+              }
               const hireFwdRows = hireActuals.map(h => {
-                const f = fwd(h.start_date, h.end_date)
-                return { h, ...f, fwdCost: (h.hire_cost || 0) * f.fwdPct }
+                const f = fwdFull(h.start_date, h.end_date)
+                return { h, ...f, fwdCost: h.hire_cost || 0 }
               }).filter(x => x.fwdDays > 0)
               const carFwdRows = carActuals.map(c => {
-                const f = fwd(c.start_date, c.end_date)
-                return { c, ...f, fwdCost: (c.total_cost || 0) * f.fwdPct }
+                const f = fwdFull(c.start_date, c.end_date)
+                return { c, ...f, fwdCost: c.total_cost || 0 }
               }).filter(x => x.fwdDays > 0)
               const accomFwdRows = accomActuals.map(a => {
-                const f = fwd(a.check_in, a.check_out)
-                return { a, ...f, fwdCost: (a.total_cost || 0) * f.fwdPct }
+                const f = fwdFull(a.check_in, a.check_out)
+                return { a, ...f, fwdCost: a.total_cost || 0 }
               }).filter(x => x.fwdDays > 0)
               // Reconcile equipment subtotal with engine future (uses engine if available)
               const equipFwdSubtotal = equipFutureFromEngine > 0
@@ -744,7 +751,7 @@ export function POsPanel() {
                 {(hireFwdRows.length>0||carFwdRows.length>0||accomFwdRows.length>0)&&(
                   <div className="card" style={{padding:0,overflow:'hidden'}}>
                     <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-                      <span>📋 FORECAST — Equipment remaining contract (forward from forecast start)</span>
+                      <span>📋 FORECAST — Equipment (full contract — committed until invoiced)</span>
                       <span style={{fontFamily:'var(--mono)'}}>{fmt(equipFwdSubtotal)}</span>
                     </div>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
