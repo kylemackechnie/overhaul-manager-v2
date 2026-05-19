@@ -988,25 +988,35 @@ export function POsPanel() {
                 }
               })
 
-              const totalForecast = rows.reduce((s,r)=>s+r.forecast,0)
-              const totalActuals = rows.reduce((s,r)=>s+r.actuals,0)
-              const totalVariance = totalForecast - totalActuals
+              // Per-week totals (used by chart and table). These describe the chart
+              // trajectory — they may differ slightly from the EAC build-up below
+              // because per-day proration in spread() vs prorateToDate.
+              const chartForecastTotal = rows.reduce((s,r)=>s+r.forecast,0)
+              const chartActualsTotal = rows.reduce((s,r)=>s+r.actuals,0)
+              const chartVariance = chartForecastTotal - chartActualsTotal
               const todayRow = rows.find(r => r.wk === todayWk)
 
+              // EAC build-up — matches the EAC tab and MIKA exactly so all three views agree.
+              const eqPlanned = (bucket?.dryHire.cost||0)+(bucket?.wetHire.cost||0)+(bucket?.localHire.cost||0)+(bucket?.cars.cost||0)+(bucket?.accom.cost||0)
+              const eacFwd = (bucket?.futureTotal != null && (bucket.labour.cost > 0 || eqPlanned > 0))
+                ? bucket.futureTotal
+                : Math.max(0, planned - totalActuals)
+              const eacValue = totalActuals + eacFwd
+
               return <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
-                {/* KPI strip */}
+                {/* KPI strip — mirrors the EAC tab build-up so all three views agree */}
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px'}}>
-                  <div className="card" style={{padding:'10px 12px',borderTop:'3px solid #d97706'}}>
-                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Total Forecast</div>
-                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:'#d97706',marginTop:'2px'}}>{fmtFull(totalForecast)}</div>
-                  </div>
                   <div className="card" style={{padding:'10px 12px',borderTop:'3px solid var(--green)'}}>
                     <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Actuals to Date</div>
                     <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:'var(--green)',marginTop:'2px'}}>{fmtFull(totalActuals)}</div>
                   </div>
-                  <div className="card" style={{padding:'10px 12px',borderTop:`3px solid ${totalVariance < 0 ? 'var(--red)' : 'var(--accent)'}`}}>
-                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Variance (Fc − Act)</div>
-                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:totalVariance < 0 ? 'var(--red)' : 'var(--accent)',marginTop:'2px'}}>{(totalVariance>=0?'+':'')+fmtFull(totalVariance)}</div>
+                  <div className="card" style={{padding:'10px 12px',borderTop:'3px solid #d97706'}}>
+                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>+ Forecast Forward</div>
+                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:'#d97706',marginTop:'2px'}}>{fmtFull(eacFwd)}</div>
+                  </div>
+                  <div className="card" style={{padding:'10px 12px',borderTop:'3px solid #7c3aed'}}>
+                    <div style={{fontSize:'10px',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>= EAC</div>
+                    <div style={{fontSize:'16px',fontWeight:700,fontFamily:'var(--mono)',color:'#7c3aed',marginTop:'2px'}}>{fmtFull(eacValue)}</div>
                   </div>
                 </div>
 
@@ -1014,7 +1024,7 @@ export function POsPanel() {
                 <div className="card" style={{padding:'12px'}}>
                   <div style={{fontSize:'11px',fontWeight:600,marginBottom:'8px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <span>Cumulative Forecast vs Actuals · {rows.length} weeks</span>
-                    <span style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>Actuals line ends at current week</span>
+                    <span style={{fontSize:'10px',color:'var(--text3)',fontWeight:400}}>Forecast = engine&apos;s full planned trajectory ({fmt(chartForecastTotal)}). Actuals stop at current week.</span>
                   </div>
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={rows} margin={{top:8,right:16,left:8,bottom:4}}>
@@ -1085,9 +1095,9 @@ export function POsPanel() {
                         ))}
                         <tr style={{background:'var(--bg2)',fontWeight:700,position:'sticky',bottom:0}}>
                           <td colSpan={2} style={TD}>Total</td>
-                          <td style={TDR}>{fmt(totalForecast)}</td>
-                          <td style={{...TDR,color:'var(--green)'}}>{fmt(totalActuals)}</td>
-                          <td style={{...TDR,color:totalVariance<0?'var(--red)':'var(--green)'}}>{(totalVariance>=0?'+':'')+fmt(totalVariance)}</td>
+                          <td style={TDR}>{fmt(chartForecastTotal)}</td>
+                          <td style={{...TDR,color:'var(--green)'}}>{fmt(chartActualsTotal)}</td>
+                          <td style={{...TDR,color:chartVariance<0?'var(--red)':'var(--green)'}}>{(chartVariance>=0?'+':'')+fmt(chartVariance)}</td>
                           <td style={TD}/>
                         </tr>
                       </tbody>
