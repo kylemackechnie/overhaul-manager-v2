@@ -98,6 +98,12 @@ export function ExpensesMobile() {
   const [category, setCategory]     = useState<string>('')
   const [date, setDate]             = useState(new Date().toISOString().slice(0, 10))
   const [amountIncGst, setAmountIncGst] = useState(0)  // primary entry — what's on the receipt
+  // Raw text state for the amount input. We can't store the user's keystrokes
+  // as a number because that round-trips through parseFloat and strips a
+  // trailing dot mid-type ('45.' → 45 → '45', so the next key replaces the
+  // dot instead of appending). The string is the source of truth while the
+  // user is editing; the number is derived for save/calc.
+  const [amountText, setAmountText] = useState('')
   const [notes, setNotes]           = useState('')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [pendingPreview, setPendingPreview] = useState<string | null>(null)
@@ -133,6 +139,7 @@ export function ExpensesMobile() {
     setCategory('')
     setDate(new Date().toISOString().slice(0, 10))
     setAmountIncGst(0)
+    setAmountText('')
     setNotes('')
     setPendingFile(null)
     if (pendingPreview) URL.revokeObjectURL(pendingPreview)
@@ -446,7 +453,14 @@ export function ExpensesMobile() {
                 forcing inputMode="numeric" which hides the decimal point on
                 iOS, so users couldn't enter cents. Stepper buttons aren't
                 useful for money anyway (nobody wants to tap +50 times for
-                a \$50 receipt). */}
+                a \$50 receipt).
+
+                The displayed value is the raw amountText string, not a
+                stringified number. Storing the user's keystrokes as a number
+                would round-trip through parseFloat and strip a trailing dot
+                mid-type ('45.' becomes 45 becomes '45'), so the next key
+                replaces the dot. The number state still exists (used for
+                save and the ex-GST preview) but it's derived from the text. */}
             <input
               type="text"
               inputMode="decimal"
@@ -454,12 +468,20 @@ export function ExpensesMobile() {
               className="mobile-form-input"
               style={{ fontSize: 24, fontWeight: 600, textAlign: 'center', padding: '12px 16px' }}
               placeholder="0.00"
-              value={amountIncGst === 0 ? '' : String(amountIncGst)}
+              value={amountText}
               onChange={e => {
                 // Accept comma as decimal separator (some users will type it
-                // by habit), strip anything that isn't digits or dot/comma.
-                const cleaned = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')
-                // Tolerate a trailing dot while the user is mid-type
+                // by habit), strip anything that isn't digits or dot/comma,
+                // collapse multiple dots to the first one.
+                let cleaned = e.target.value.replace(/[^0-9.,]/g, '').replace(/,/g, '.')
+                const firstDot = cleaned.indexOf('.')
+                if (firstDot !== -1) {
+                  cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '')
+                }
+                setAmountText(cleaned)
+                // Keep the numeric state in sync. parseFloat tolerates '45.'
+                // (returns 45) so the number is always usable for save/calc
+                // even when the text is mid-edit.
                 const n = parseFloat(cleaned)
                 setAmountIncGst(isNaN(n) ? 0 : n)
               }}
