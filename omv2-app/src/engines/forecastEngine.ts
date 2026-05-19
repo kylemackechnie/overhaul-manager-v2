@@ -56,10 +56,11 @@ export interface ForecastData {
   byDay: Record<string, DayBucket>
   byPo:  Record<string, PoBucket>   // keyed by po_id; 'unlinked' for anything with no PO
   byWbs: Record<string, number>     // base-currency plan total per WBS code (matches sum-of-byDay)
-  byWbsFuture: Record<string, number> // same as byWbs but only for days >= today (EAC forward forecast)
+  byWbsFuture: Record<string, number> // same as byWbs but only for days >= forecastStart (EAC forward forecast)
   days: string[]
   totalCost: number
   totalSell: number
+  forecastStart: string             // first date treated as "future" — day after actualsCutoff, else today
   accomWarnings: { property: string; room: string; person: string; personStart: string; personEnd: string; bookStart: string; bookEnd: string; outsideBefore: boolean; outsideAfter: boolean }[]
 }
 
@@ -193,14 +194,25 @@ export function buildForecast(
   invoices: Invoice[] = [],
   flights: Flight[] = [],
   plannedCosts: PlannedCost[] = [],
+  actualsCutoff: string | null = null,
 ): ForecastData {
 
   const byDay: Record<string, DayBucket> = {}
   const byPo:  Record<string, PoBucket>  = {}
   const byWbs: Record<string, number>    = {}
   const byWbsFuture: Record<string, number> = {}
-  // Today's date string — costs on days >= today feed byWbsFuture (EAC forward forecast)
+  // forecastStartStr: the first date the engine treats as "future" for EAC math.
+  // If actualsCutoff is provided (= max work_date in posted timesheets), the engine
+  // forecasts from the next day. This makes EAC = actuals + forecast tile cleanly
+  // regardless of how far ahead timesheets have been posted. Falls back to today
+  // when no cutoff is supplied.
   const todayStr = new Date().toISOString().slice(0, 10)
+  let forecastStartStr = todayStr
+  if (actualsCutoff) {
+    const c = new Date(actualsCutoff + 'T12:00:00')
+    c.setDate(c.getDate() + 1)
+    forecastStartStr = c.toISOString().slice(0, 10)
+  }
   const holidays = new Set(publicHolidays.map(h => h.date))
   const eurRateForWbs = fxRates.find(f => f.code === 'EUR')?.rate || 1
   const posById: Record<string, PurchaseOrder> = {}
@@ -230,9 +242,9 @@ export function buildForecast(
     byWbs[wbs] = (byWbs[wbs] || 0) + cost
   }
 
-  // Only accumulates for days >= today — used as the forward EAC forecast.
+  // Only accumulates for days >= forecastStartStr — used as the forward EAC forecast.
   function addToWbsFuture(wbs: string, cost: number, day: string) {
-    if (!wbs || !cost || day < todayStr) return
+    if (!wbs || !cost || day < forecastStartStr) return
     byWbsFuture[wbs] = (byWbsFuture[wbs] || 0) + cost
   }
 
@@ -362,7 +374,7 @@ export function buildForecast(
         const pb = ensurePo(poKey)
         pb.labour.cost += labCost
         pb.labour.hours += hours
-        if (d >= todayStr) {
+        if (d >= forecastStartStr) {
           pb.labour.futureCost += labCost
           pb.labour.futureHours += hours
         }
@@ -390,7 +402,7 @@ export function buildForecast(
         }
         a.totalCost += c
         a.totalHours += h
-        if (d >= todayStr) { a.futureCost += c; a.futureHours += h }
+        if (d >= forecastStartStr) { a.futureCost += c; a.futureHours += h }
         return a
       }, { totalCost: 0, totalHours: 0, futureCost: 0, futureHours: 0 })
       poBucket.labour.people.push({
@@ -457,7 +469,7 @@ export function buildForecast(
           perDayCost,
           d,
         )
-        if (d >= todayStr) pb[catKey].futureCost += perDayCost
+        if (d >= forecastStartStr) pb[catKey].futureCost += perDayCost
       }
       // ── byWbs — item.wbs with linked PO fallback ──
       addToWbs(
@@ -510,7 +522,7 @@ export function buildForecast(
         perDayCost,
         d,
       )
-      if (d >= todayStr) carPb.cars.futureCost += perDayCost
+      if (d >= forecastStartStr) carPb.cars.futureCost += perDayCost
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -562,7 +574,7 @@ export function buildForecast(
         perNightCost,
         d,
       )
-      if (d >= todayStr) accomPb.accom.futureCost += perNightCost
+      if (d >= forecastStartStr) accomPb.accom.futureCost += perNightCost
     }
     // ── byWbs — item.wbs with linked PO fallback ──
     addToWbs(
@@ -996,14 +1008,14 @@ export function buildForecast(
       ensure(day).subcon.cost += dayCost
       ensure(day).subcon.sell += dayCost
       poDayCostTotal += dayCost
-      if (day >= todayStr) poDayCostFuture += dayCost
+      if (day >= forecastStartStr) poDayCostFuture += dayCost
       if (standalonePOWbs) addToWbsFuture(standalonePOWbs, dayCost, day)
     }
     if (lineItemsForByWbs.length > 0 && totalLineValue > 0) {
       for (const line of lineItemsForByWbs) {
         const share = (Number(line.value) || 0) / totalLineValue
         addToWbs(line.wbs || resolvePoWbsLocal(po), poDayCostTotal * share)
-        addToWbsFuture(line.wbs || resolvePoWbsLocal(po), poDayCostFuture * share, todayStr)
+        addToWbsFuture(line.wbs || resolvePoWbsLocal(po), poDayCostFuture * share, forecastStartStr)
       }
     } else {
       addToWbs(resolvePoWbsLocal(po), poDayCostTotal)
@@ -1048,7 +1060,7 @@ export function buildForecast(
     totalCost += aud
   }
 
-  return { byDay, byPo, byWbs, byWbsFuture, days, totalCost, totalSell, accomWarnings }
+  return { byDay, byPo, byWbs, byWbsFuture, days, totalCost, totalSell, forecastStart: forecastStartStr, accomWarnings }
 }
 
 // Aggregate by week key (YYYY-WNN)

@@ -167,12 +167,22 @@ export function ReconcilePanel() {
       const fxRates = (activeProject.currency_rates as { code: string; rate: number }[]) || []
       const eurRate = fxRates.find(r => r.code === 'EUR')?.rate || 1
 
+      // Cutoff = latest posted timesheet work_date — keeps EAC reconciliation
+      // consistent with MIKA when timesheets are posted ahead of today.
+      const costLinesRaw = (costLinesR.data || []) as { work_date?: string }[]
+      const actualsCutoff = costLinesRaw.reduce<string | null>((max, l) => {
+        const wd = l.work_date
+        if (!wd) return max
+        return (!max || wd > max) ? wd : max
+      }, null)
+
       // ── 1. Run buildForecast (Forecast page) ────────────────────────────
       const forecast = buildForecast(
         resources, rateCards, backOffice, hireItems, cars, accom, toolingAll,
         stdHours, publicHolidays,
         activeProject.start_date, activeProject.end_date,
         fxRates, expenses, 0, tvs, depts, pos, invoices, flights, plannedCosts,
+        actualsCutoff,
       )
       const fcBreakdown = computeForecastBreakdown(forecast, eurRate)
 

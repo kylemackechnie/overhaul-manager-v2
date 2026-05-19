@@ -195,6 +195,16 @@ export function MikaPanel() {
       const fxRates = (activeProject?.currency_rates as { code: string; rate: number }[]) || []
       const publicHolidays = ((holsR.data || []) as {date:string}[])
 
+      // Cutoff = latest posted timesheet work_date. The engine forecasts from the
+      // next day, so EAC = actuals + byWbsFuture tile cleanly even if timesheets
+      // are posted ahead of today (whole-week posting).
+      const costLinesRaw = (costLinesR.data || []) as { work_date?: string }[]
+      const actualsCutoff = costLinesRaw.reduce<string | null>((max, l) => {
+        const wd = l.work_date
+        if (!wd) return max
+        return (!max || wd > max) ? wd : max
+      }, null)
+
       // Run the SAME engine the Forecast page uses — its byWbs map is the
       // authoritative per-WBS plan total. Sums to the Forecast page total.
       const forecast = buildForecast(
@@ -217,6 +227,7 @@ export function MikaPanel() {
         invoiceList,
         (flightsR.data || []) as Flight[],
         (plannedR.data || []) as PlannedCost[],
+        actualsCutoff,
       )
       // futureRolled: forward-only forecast (days >= today) — this is the EAC forward component.
       // Using byWbsFuture means: EAC = actuals (past timesheets) + committed + future engine calc,

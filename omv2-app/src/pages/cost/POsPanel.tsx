@@ -120,8 +120,11 @@ export function POsPanel() {
     const ph = proj as Project & { std_hours?: { day: Record<string,number>; night: Record<string,number> } }
     const stdHours = ph?.std_hours || { day: { mon:10,tue:10,wed:10,thu:10,fri:10,sat:10,sun:0 }, night: {} }
     const ps = proj as Project & { start_date?: string; end_date?: string }
-    return buildForecast(resources, rateCards, [], hireItems, cars, accom, [], stdHours, holidays, ps?.start_date || null, ps?.end_date || null, [], [], 0, [], [])
-  }, [resources, rateCards, hireItems, cars, accom, holidays, activeProject])
+    // Cutoff = latest posted timesheet date. Forecast picks up from the day after.
+    // Avoids double-counting when timesheets are posted ahead of today (whole-week posting).
+    const actualsCutoff = actuals.length ? actuals.reduce((max, a) => a.work_date > max ? a.work_date : max, '') || null : null
+    return buildForecast(resources, rateCards, [], hireItems, cars, accom, [], stdHours, holidays, ps?.start_date || null, ps?.end_date || null, [], [], 0, [], [], [], [], [], [], actualsCutoff)
+  }, [resources, rateCards, hireItems, cars, accom, holidays, activeProject, actuals])
 
   function poValue(po: PurchaseOrder): number {
     const lines = (po as PurchaseOrder & { line_items?: PoLine[] }).line_items || []
@@ -590,7 +593,7 @@ export function POsPanel() {
               const equipPlanned = (bucket?.dryHire.cost||0)+(bucket?.wetHire.cost||0)+(bucket?.localHire.cost||0)+(bucket?.cars.cost||0)+(bucket?.accom.cost||0)
               const equipActTotal = hireActTotal+carActTotal+accomActTotal
               const equipFutureFromEngine = (bucket?.dryHire.futureCost||0)+(bucket?.wetHire.futureCost||0)+(bucket?.localHire.futureCost||0)+(bucket?.cars.futureCost||0)+(bucket?.accom.futureCost||0)
-              // Use engine futureTotal (forward from today) as forecast forward — same
+              // Use engine futureTotal (forward from forecast start) as forecast forward — same
               // basis as MIKA byWbsFuture, so single-PO-on-WBS cases reconcile exactly.
               // Fallback for fixed-price POs with no engine bookings: planned - actuals.
               const fwdForecast = (bucket?.futureTotal != null && (bucket.labour.cost > 0 || equipPlanned > 0))
@@ -606,21 +609,24 @@ export function POsPanel() {
                 </div>
               }
 
-              // ── Forward-portion helper (still used for date display + equipment hours) ──
-              const todayStr = new Date().toISOString().slice(0,10)
-              const todayMs = new Date(todayStr+'T12:00:00').getTime()
+              // ── Forward-portion helper (uses engine's forecastStart, NOT today) ──
+              // forecastStart = day after the latest posted timesheet (or today if none).
+              // This keeps actuals + forecast tiling cleanly even when timesheets are
+              // posted ahead of today.
+              const fcStart = forecast?.forecastStart || new Date().toISOString().slice(0,10)
+              const fcStartMs = new Date(fcStart+'T12:00:00').getTime()
               const fwd = (start?: string|null, end?: string|null) => {
                 if (!start) return { totalDays: 0, fwdDays: 0, fwdPct: 0, fwdFrom: '', isPartial: false }
                 const e = end || start
                 const sMs = new Date(start+'T12:00:00').getTime()
                 const eMs = new Date(e+'T12:00:00').getTime()
                 const totalDays = Math.max(1, Math.round((eMs-sMs)/86400000)+1)
-                if (eMs < todayMs) return { totalDays, fwdDays: 0, fwdPct: 0, fwdFrom: e, isPartial: false }
-                const startsInFuture = sMs > todayMs
-                const fwdFromMs = startsInFuture ? sMs : todayMs
+                if (eMs < fcStartMs) return { totalDays, fwdDays: 0, fwdPct: 0, fwdFrom: e, isPartial: false }
+                const startsInFuture = sMs > fcStartMs
+                const fwdFromMs = startsInFuture ? sMs : fcStartMs
                 const fwdDays = Math.max(0, Math.round((eMs-fwdFromMs)/86400000)+1)
-                const fwdFrom = startsInFuture ? start : todayStr
-                return { totalDays, fwdDays, fwdPct: Math.min(1, fwdDays/totalDays), fwdFrom, isPartial: !startsInFuture && sMs < todayMs }
+                const fwdFrom = startsInFuture ? start : fcStart
+                return { totalDays, fwdDays, fwdPct: Math.min(1, fwdDays/totalDays), fwdFrom, isPartial: !startsInFuture && sMs < fcStartMs }
               }
 
               // Per-resource forward — use engine's futureCost directly (exact, not prorated)
@@ -683,18 +689,18 @@ export function POsPanel() {
                   </div>
                 </div>
 
-                {/* ═══ FORECAST (from today onwards) ═══ */}
+                {/* ═══ FORECAST (from forecast start onwards) ═══ */}
                 {(labourFwdRows.length>0||hireFwdRows.length>0||carFwdRows.length>0||accomFwdRows.length>0)&&(
                   <div style={{padding:'6px 12px',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:'6px',fontSize:'11px',color:'#92400e',display:'flex',alignItems:'center',gap:'8px'}}>
                     <span style={{fontSize:'13px'}}>📅</span>
-                    <span>Forecast shows the engine&apos;s remaining planned cost <strong>from today ({fmtDate(todayStr)})</strong> onwards. Days/hours/cost are prorated to exclude the past — actuals below capture work prior to today.</span>
+                    <span>Forecast starts <strong>{fmtDate(fcStart)}</strong> — the day after the latest posted timesheet. Actuals below cover everything up to that point, so the two tile cleanly with no double-counting.</span>
                   </div>
                 )}
 
                 {labourFwdRows.length>0&&(
                   <div className="card" style={{padding:0,overflow:'hidden'}}>
                     <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-                      <span>📋 FORECAST — Labour engine calc (forward from today) · {labourFwdRows.length} resource{labourFwdRows.length===1?'':'s'}</span>
+                      <span>📋 FORECAST — Labour engine calc (forward from forecast start) · {labourFwdRows.length} resource{labourFwdRows.length===1?'':'s'}</span>
                       <span style={{fontFamily:'var(--mono)'}}>{fmt(labourFwdCostSubtotal)}</span>
                     </div>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
@@ -704,7 +710,7 @@ export function POsPanel() {
                           <tr key={x.r.id} style={{borderBottom:'1px solid var(--border)'}}>
                             <td style={{...TD,fontWeight:600}}>{x.r.name}</td>
                             <td style={{...TD,color:'var(--text3)'}}>{x.r.role}</td>
-                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>FORECAST START</span>}</td>
                             <td style={TD}>{fmtDate(x.mobOut)}</td>
                             <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
                             <td style={TDR}>{x.fwdHours.toFixed(0)}h</td>
@@ -726,7 +732,7 @@ export function POsPanel() {
                 {(hireFwdRows.length>0||carFwdRows.length>0||accomFwdRows.length>0)&&(
                   <div className="card" style={{padding:0,overflow:'hidden'}}>
                     <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-                      <span>📋 FORECAST — Equipment remaining contract (forward from today)</span>
+                      <span>📋 FORECAST — Equipment remaining contract (forward from forecast start)</span>
                       <span style={{fontFamily:'var(--mono)'}}>{fmt(equipFwdSubtotal)}</span>
                     </div>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
@@ -736,7 +742,7 @@ export function POsPanel() {
                           <tr key={x.h.id} style={{borderBottom:'1px solid var(--border)'}}>
                             <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{x.h.hire_type} hire</span></td>
                             <td style={TD}>{x.h.name}</td>
-                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>FORECAST START</span>}</td>
                             <td style={TD}>{fmtDate(x.h.end_date)}</td>
                             <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
                             <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
@@ -747,7 +753,7 @@ export function POsPanel() {
                           <tr key={x.c.id} style={{borderBottom:'1px solid var(--border)'}}>
                             <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>car</span></td>
                             <td style={TD}>{x.c.label}</td>
-                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>FORECAST START</span>}</td>
                             <td style={TD}>{fmtDate(x.c.end_date)}</td>
                             <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
                             <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
@@ -758,7 +764,7 @@ export function POsPanel() {
                           <tr key={x.a.id} style={{borderBottom:'1px solid var(--border)'}}>
                             <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>accom</span></td>
                             <td style={TD}>{x.a.property}{x.a.room?` — ${x.a.room}`:''}</td>
-                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>FORECAST START</span>}</td>
                             <td style={TD}>{fmtDate(x.a.check_out)}</td>
                             <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
                             <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
@@ -778,7 +784,7 @@ export function POsPanel() {
                 {/* Total forecast forward */}
                 {totalFwdFromRows>0&&(
                   <div style={{padding:'8px 14px',background:'var(--bg2)',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'12px',fontWeight:700,border:'1px solid var(--border)'}}>
-                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST FORWARD (from today)</span>
+                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST FORWARD (from {fmtDate(fcStart)})</span>
                     <span style={{fontFamily:'var(--mono)',color:'#d97706',fontSize:'14px'}}>{fmtFull(totalFwdFromRows)}</span>
                   </div>
                 )}
