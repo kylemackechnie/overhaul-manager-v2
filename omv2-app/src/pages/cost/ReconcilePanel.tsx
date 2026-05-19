@@ -211,12 +211,12 @@ export function ReconcilePanel() {
       const mikaTopPrefixes = computeTopPrefixes(mikaRows)
       const byWbsBreakdown = computeByWbsBreakdown(forecast.byWbs, mikaTopPrefixes)
 
-      // MIKA EAC under the new model:
-      //   ForecastTC = max(0, Plan − Actuals − Committed) at project level
-      //   EAC        = Actuals + Committed + ForecastTC
-      const planTotal      = byWbsBreakdown.total
-      const forecastTCTotal = Math.max(0, planTotal - aggBreakdown.total - poBreakdown.total)
-      const mikaEac        = aggBreakdown.total + poBreakdown.total + forecastTCTotal
+      // ── 4. Forecast TC (forward-only, days >= today from byWbsFuture) ────────
+      // byWbsFuture is the engine's per-WBS cost for dates >= today.
+      // EAC = Actuals + ForecastTC (future only). Committed is informational only.
+      const byWbsFutureBreakdown = computeByWbsBreakdown(forecast.byWbsFuture, mikaTopPrefixes)
+      const forecastTCTotal = byWbsFutureBreakdown.total
+      const mikaEac        = aggBreakdown.total + forecastTCTotal
       const mikaEacVisible = mikaEac // no orphans relevant under new derivation
       const gap            = mikaEac - fcBreakdown.total
       const gapVisible     = gap

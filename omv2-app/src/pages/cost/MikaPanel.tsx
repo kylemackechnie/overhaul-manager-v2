@@ -630,7 +630,7 @@ export function MikaPanel() {
                   {filtered.map((l, i) => {
                     const vn = getVn(l.wbs)
                     const revisedBudget = l.pm100 + vn.approved
-                    const eac = l.actuals + l.poCommitted + l.forecast
+                    const eac = l.actuals + l.forecast
                     const variance = (revisedBudget || l.pm100) - eac
                     const pct = l.actuals && (revisedBudget || l.pm100) ? Math.round(l.actuals / (revisedBudget || l.pm100) * 100) : 0
                     const indent = '\u00a0'.repeat(Math.max(0, l.level - 1) * 3)
@@ -760,7 +760,7 @@ export function MikaPanel() {
         const committedTotal = committedRows.reduce((s, [, v]) => s + v, 0)
 
         const actualsTotal = matchingAgg.reduce((s, [, r]) => s + r.total, 0)
-        const eacTotal = actualsTotal + committedTotal + forecastTotal
+        const eacTotal = actualsTotal + forecastTotal
 
         const colTitle = { actuals: 'PTD Actuals', committed: 'PO Committed', forecast: 'Forecast TC', eac: 'EAC (Calc)' }[col]
 
