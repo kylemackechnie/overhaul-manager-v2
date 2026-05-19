@@ -600,6 +600,50 @@ export function POsPanel() {
                   <div>No EAC components yet. Link resources, hire items, cars, accommodation or invoices to see the breakdown.</div>
                 </div>
               }
+
+              // ── Forward-portion helper: prorate any item's planned cost from today ──
+              const todayStr = new Date().toISOString().slice(0,10)
+              const todayMs = new Date(todayStr+'T12:00:00').getTime()
+              const fwd = (start?: string|null, end?: string|null) => {
+                if (!start) return { totalDays: 0, fwdDays: 0, fwdPct: 0, fwdFrom: '', isPartial: false }
+                const e = end || start
+                const sMs = new Date(start+'T12:00:00').getTime()
+                const eMs = new Date(e+'T12:00:00').getTime()
+                const totalDays = Math.max(1, Math.round((eMs-sMs)/86400000)+1)
+                if (eMs < todayMs) return { totalDays, fwdDays: 0, fwdPct: 0, fwdFrom: e, isPartial: false }
+                const startsInFuture = sMs > todayMs
+                const fwdFromMs = startsInFuture ? sMs : todayMs
+                const fwdDays = Math.max(0, Math.round((eMs-fwdFromMs)/86400000)+1)
+                const fwdFrom = startsInFuture ? start : todayStr
+                return { totalDays, fwdDays, fwdPct: Math.min(1, fwdDays/totalDays), fwdFrom, isPartial: !startsInFuture && sMs < todayMs }
+              }
+
+              // Pre-compute forward rows so subtotals can be shown
+              const labourFwdRows = linkedResources.map(r => {
+                const pb = bucket?.labour.people.find(p => p.resourceId === r.id)
+                const mobIn = (r as Resource & {mob_in?:string}).mob_in
+                const mobOut = (r as Resource & {mob_out?:string}).mob_out
+                const f = fwd(mobIn, mobOut)
+                return { r, pb, mobIn, mobOut, ...f, fwdCost: (pb?.totalCost ?? 0) * f.fwdPct, fwdHours: (pb?.totalHours ?? 0) * f.fwdPct, plannedCost: pb?.totalCost ?? 0 }
+              }).filter(x => x.fwdDays > 0)
+              const labourFwdCostSubtotal = labourFwdRows.reduce((s,x)=>s+x.fwdCost,0)
+              const labourFwdHoursSubtotal = labourFwdRows.reduce((s,x)=>s+x.fwdHours,0)
+
+              const hireFwdRows = hireActuals.map(h => {
+                const f = fwd(h.start_date, h.end_date)
+                return { h, ...f, fwdCost: (h.hire_cost || 0) * f.fwdPct }
+              }).filter(x => x.fwdDays > 0)
+              const carFwdRows = carActuals.map(c => {
+                const f = fwd(c.start_date, c.end_date)
+                return { c, ...f, fwdCost: (c.total_cost || 0) * f.fwdPct }
+              }).filter(x => x.fwdDays > 0)
+              const accomFwdRows = accomActuals.map(a => {
+                const f = fwd(a.check_in, a.check_out)
+                return { a, ...f, fwdCost: (a.total_cost || 0) * f.fwdPct }
+              }).filter(x => x.fwdDays > 0)
+              const equipFwdSubtotal = hireFwdRows.reduce((s,x)=>s+x.fwdCost,0) + carFwdRows.reduce((s,x)=>s+x.fwdCost,0) + accomFwdRows.reduce((s,x)=>s+x.fwdCost,0)
+              const totalFwdFromRows = labourFwdCostSubtotal + equipFwdSubtotal
+
               return <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
                 {/* EAC build-up summary */}
                 <div className="card" style={{padding:'10px 14px'}}>
@@ -627,117 +671,103 @@ export function POsPanel() {
                   </div>
                 </div>
 
-                {/* ═══ FORECAST (engine calc) ═══ */}
-                {linkedResources.length>0&&(
+                {/* ═══ FORECAST (from today onwards) ═══ */}
+                {(labourFwdRows.length>0||hireFwdRows.length>0||carFwdRows.length>0||accomFwdRows.length>0)&&(
+                  <div style={{padding:'6px 12px',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:'6px',fontSize:'11px',color:'#92400e',display:'flex',alignItems:'center',gap:'8px'}}>
+                    <span style={{fontSize:'13px'}}>📅</span>
+                    <span>Forecast shows the engine&apos;s remaining planned cost <strong>from today ({fmtDate(todayStr)})</strong> onwards. Days/hours/cost are prorated to exclude the past — actuals below capture work prior to today.</span>
+                  </div>
+                )}
+
+                {labourFwdRows.length>0&&(
                   <div className="card" style={{padding:0,overflow:'hidden'}}>
                     <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-                      <span>📋 FORECAST — Labour engine calc · {linkedResources.length} resource{linkedResources.length===1?'':'s'}</span>
-                      <span style={{fontFamily:'var(--mono)'}}>{fmt(bucket?.labour.cost??0)}</span>
+                      <span>📋 FORECAST — Labour engine calc (forward from today) · {labourFwdRows.length} resource{labourFwdRows.length===1?'':'s'}</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(labourFwdCostSubtotal)}</span>
                     </div>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                      <thead><tr>{['Name','Role','Mob In','Mob Out','Days','Hours','Cost (planned)'].map(h=><th key={h} style={{...TH,textAlign:['Days','Hours','Cost (planned)'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <thead><tr>{['Name','Role','From','Mob Out','Fwd Days','Fwd Hours','Fwd Cost','Planned (full)'].map(h=><th key={h} style={{...TH,textAlign:['Fwd Days','Fwd Hours','Fwd Cost','Planned (full)'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
                       <tbody>
-                        {linkedResources.map(r=>{
-                          const pb=bucket?.labour.people.find(p=>p.resourceId===r.id)
-                          const mobIn=(r as Resource & {mob_in?:string}).mob_in
-                          const mobOut=(r as Resource & {mob_out?:string}).mob_out
-                          let dayCount:string|number='—'
-                          if(mobIn&&mobOut){
-                            const ms=new Date(mobIn+'T12:00:00').getTime()
-                            const me=new Date(mobOut+'T12:00:00').getTime()
-                            dayCount=Math.max(1,Math.round((me-ms)/86400000)+1)
-                          }
-                          return <tr key={r.id} style={{borderBottom:'1px solid var(--border)'}}>
-                            <td style={{...TD,fontWeight:600}}>{r.name}</td>
-                            <td style={{...TD,color:'var(--text3)'}}>{r.role}</td>
-                            <td style={TD}>{fmtDate(mobIn)}</td>
-                            <td style={TD}>{fmtDate(mobOut)}</td>
-                            <td style={TDR}>{dayCount}</td>
-                            <td style={TDR}>{pb?pb.totalHours.toFixed(0)+'h':'—'}</td>
-                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(pb?.totalCost??0)}</td>
+                        {labourFwdRows.map(x=>(
+                          <tr key={x.r.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={{...TD,fontWeight:600}}>{x.r.name}</td>
+                            <td style={{...TD,color:'var(--text3)'}}>{x.r.role}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.mobOut)}</td>
+                            <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
+                            <td style={TDR}>{x.fwdHours.toFixed(0)}h</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
+                            <td style={{...TDR,color:'var(--text3)',fontSize:'11px'}}>{fmt(x.plannedCost)}</td>
                           </tr>
-                        })}
+                        ))}
                         <tr style={{background:'var(--bg2)',fontWeight:700}}>
-                          <td colSpan={5} style={TD}>Subtotal — Labour forecast</td>
-                          <td style={TDR}>{(bucket?.labour.hours??0).toFixed(0)}h</td>
-                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(bucket?.labour.cost??0)}</td>
+                          <td colSpan={5} style={TD}>Subtotal — Labour forecast forward</td>
+                          <td style={TDR}>{labourFwdHoursSubtotal.toFixed(0)}h</td>
+                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(labourFwdCostSubtotal)}</td>
+                          <td style={{...TDR,color:'var(--text3)',fontSize:'11px'}}>{fmt(bucket?.labour.cost??0)}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
                 )}
 
-                {equipPlanned>0&&(
+                {(hireFwdRows.length>0||carFwdRows.length>0||accomFwdRows.length>0)&&(
                   <div className="card" style={{padding:0,overflow:'hidden'}}>
                     <div style={{padding:'8px 12px',background:'#fef3c7',color:'#92400e',fontSize:'11px',fontWeight:700,borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-                      <span>📋 FORECAST — Equipment full contract value</span>
-                      <span style={{fontFamily:'var(--mono)'}}>{fmt(equipPlanned)}</span>
+                      <span>📋 FORECAST — Equipment remaining contract (forward from today)</span>
+                      <span style={{fontFamily:'var(--mono)'}}>{fmt(equipFwdSubtotal)}</span>
                     </div>
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
-                      <thead><tr>{['Type','Item','Start','End','Days','Contract value'].map(h=><th key={h} style={{...TH,textAlign:['Days','Contract value'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
+                      <thead><tr>{['Type','Item','From','End','Fwd Days','Fwd Cost','Contract (full)'].map(h=><th key={h} style={{...TH,textAlign:['Fwd Days','Fwd Cost','Contract (full)'].includes(h)?'right':'left'}}>{h}</th>)}</tr></thead>
                       <tbody>
-                        {hireActuals.map(h=>{
-                          let d:string|number='—'
-                          if(h.start_date&&h.end_date){
-                            const ms=new Date(h.start_date+'T12:00:00').getTime()
-                            const me=new Date(h.end_date+'T12:00:00').getTime()
-                            d=Math.max(1,Math.round((me-ms)/86400000)+1)
-                          }
-                          return <tr key={h.id} style={{borderBottom:'1px solid var(--border)'}}>
-                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{h.hire_type} hire</span></td>
-                            <td style={TD}>{h.name}</td>
-                            <td style={TD}>{fmtDate(h.start_date)}</td>
-                            <td style={TD}>{fmtDate(h.end_date)}</td>
-                            <td style={TDR}>{d}</td>
-                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(h.hire_cost||0)}</td>
+                        {hireFwdRows.map(x=>(
+                          <tr key={x.h.id} style={{borderBottom:'1px solid var(--border)'}}>
+                            <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>{x.h.hire_type} hire</span></td>
+                            <td style={TD}>{x.h.name}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.h.end_date)}</td>
+                            <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
+                            <td style={{...TDR,color:'var(--text3)',fontSize:'11px'}}>{fmt(x.h.hire_cost||0)}</td>
                           </tr>
-                        })}
-                        {carActuals.map(c=>{
-                          let d:string|number='—'
-                          if(c.start_date&&c.end_date){
-                            const ms=new Date(c.start_date+'T12:00:00').getTime()
-                            const me=new Date(c.end_date+'T12:00:00').getTime()
-                            d=Math.max(1,Math.round((me-ms)/86400000)+1)
-                          }
-                          return <tr key={c.id} style={{borderBottom:'1px solid var(--border)'}}>
+                        ))}
+                        {carFwdRows.map(x=>(
+                          <tr key={x.c.id} style={{borderBottom:'1px solid var(--border)'}}>
                             <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>car</span></td>
-                            <td style={TD}>{c.label}</td>
-                            <td style={TD}>{fmtDate(c.start_date)}</td>
-                            <td style={TD}>{fmtDate(c.end_date)}</td>
-                            <td style={TDR}>{d}</td>
-                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(c.total_cost||0)}</td>
+                            <td style={TD}>{x.c.label}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.c.end_date)}</td>
+                            <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
+                            <td style={{...TDR,color:'var(--text3)',fontSize:'11px'}}>{fmt(x.c.total_cost||0)}</td>
                           </tr>
-                        })}
-                        {accomActuals.map(a=>{
-                          let n:string|number='—'
-                          if(a.check_in&&a.check_out){
-                            const ms=new Date(a.check_in+'T12:00:00').getTime()
-                            const me=new Date(a.check_out+'T12:00:00').getTime()
-                            n=Math.max(1,Math.round((me-ms)/86400000))
-                          }
-                          return <tr key={a.id} style={{borderBottom:'1px solid var(--border)'}}>
+                        ))}
+                        {accomFwdRows.map(x=>(
+                          <tr key={x.a.id} style={{borderBottom:'1px solid var(--border)'}}>
                             <td style={TD}><span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'var(--bg2)'}}>accom</span></td>
-                            <td style={TD}>{a.property}{a.room?` — ${a.room}`:''}</td>
-                            <td style={TD}>{fmtDate(a.check_in)}</td>
-                            <td style={TD}>{fmtDate(a.check_out)}</td>
-                            <td style={TDR}>{n}</td>
-                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(a.total_cost||0)}</td>
+                            <td style={TD}>{x.a.property}{x.a.room?` — ${x.a.room}`:''}</td>
+                            <td style={TD}>{fmtDate(x.fwdFrom)}{x.isPartial&&<span style={{fontSize:'9px',color:'#92400e',marginLeft:'4px',padding:'1px 4px',background:'#fef3c7',borderRadius:'3px',fontWeight:600}}>TODAY</span>}</td>
+                            <td style={TD}>{fmtDate(x.a.check_out)}</td>
+                            <td style={TDR}>{x.fwdDays}{x.isPartial&&<span style={{fontSize:'10px',color:'var(--text3)'}}> /{x.totalDays}</span>}</td>
+                            <td style={{...TDR,fontWeight:600,color:'#d97706'}}>{fmtFull(x.fwdCost)}</td>
+                            <td style={{...TDR,color:'var(--text3)',fontSize:'11px'}}>{fmt(x.a.total_cost||0)}</td>
                           </tr>
-                        })}
+                        ))}
                         <tr style={{background:'var(--bg2)',fontWeight:700}}>
-                          <td colSpan={5} style={TD}>Subtotal — Equipment forecast</td>
-                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(equipPlanned)}</td>
+                          <td colSpan={5} style={TD}>Subtotal — Equipment forecast forward</td>
+                          <td style={{...TDR,color:'#d97706'}}>{fmtFull(equipFwdSubtotal)}</td>
+                          <td style={{...TDR,color:'var(--text3)',fontSize:'11px'}}>{fmt(equipPlanned)}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
                 )}
 
-                {/* Total planned (engine) */}
-                {planned>0&&(
+                {/* Total forecast forward */}
+                {totalFwdFromRows>0&&(
                   <div style={{padding:'8px 14px',background:'var(--bg2)',borderRadius:'6px',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:'12px',fontWeight:700,border:'1px solid var(--border)'}}>
-                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST (engine planned cost)</span>
-                    <span style={{fontFamily:'var(--mono)',color:'#d97706',fontSize:'14px'}}>{fmtFull(planned)}</span>
+                    <span style={{color:'#92400e'}}>📋 TOTAL FORECAST FORWARD (from today)</span>
+                    <span style={{fontFamily:'var(--mono)',color:'#d97706',fontSize:'14px'}}>{fmtFull(totalFwdFromRows)}</span>
                   </div>
                 )}
 
