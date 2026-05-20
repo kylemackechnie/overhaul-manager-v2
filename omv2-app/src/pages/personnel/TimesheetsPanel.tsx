@@ -416,7 +416,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const [bulkAddModal, setBulkAddModal] = useState(false)
   const [tceAllocModal, setTceAllocModal] = useState<{personId:string;date:string;hours:number;name:string}|null>(null)
   const [tceAllocRows, setTceAllocRows] = useState<{key:string;label:string;hours:number;payCode?:string}[]>([])
-  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null}[]>([])
+  const [tceLines, setTceLines] = useState<{item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null;is_variation_line?:boolean}[]>([])
   // Approved variations available as scope options in the daily allocation
   // modal. Only approved status — draft/submitted variations aren't
   // customer-committed yet and shouldn't accumulate labour cost.
@@ -435,8 +435,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       supabase.from('work_orders').select('id,wo_number,description').eq('project_id', activeProject.id).neq('status','cancelled').order('wo_number')
         .then(r => setWorkOrders((r.data||[]) as {id:string;wo_number:string;description:string}[]))
       // Always load TCE lines when project has them — needed for allocation modal regardless of scope_tracking
-      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source,line_type,unit_type').eq('project_id', activeProject.id).order('sort_order').order('item_id')
-        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null}[]))
+      supabase.from('nrg_tce_lines').select('item_id,description,work_order,source,line_type,unit_type,is_variation_line').eq('project_id', activeProject.id).order('sort_order').order('item_id')
+        .then(r => setTceLines((r.data||[]) as {item_id:string;description:string;work_order:string|null;source:string;line_type:string|null;unit_type:string|null;is_variation_line?:boolean}[]))
 
       // Approved variations + their primary WBS (first non-empty line WBS).
       // One dropdown entry per variation header; multi-line variations on a
@@ -889,6 +889,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   }
   function getTceOptions(): {key:string; label:string}[] {
     const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id)
+    // Variation TCE lines are tagged any of three ways depending on how they
+    // were created: source='variation' (manual via NrgTcePanel), or
+    // line_type='Variation' and/or is_variation_line=true (auto-created when
+    // a variation picks "Create new TCE line for this VN" in VariationsPanel).
+    // The three flags don't always travel together, so we tolerate any.
+    const isVariationLine = (l: {source: string; line_type: string|null; is_variation_line?: boolean}) =>
+      l.source === 'variation' || l.line_type === 'Variation' || !!l.is_variation_line
     const opts: {key:string;label:string}[] = []
 
     // Tier 1: Skilled labour with WO — grouped by WO (exclude fixed unit types)
@@ -909,17 +916,42 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
       opts.push({ key: `tce:${l.item_id}`, label: `[SL] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
     })
 
-    // Tier 3: Overhead lines (not WO-tracked, allocate by item_id; exclude fixed unit types)
-    tceLines.filter(l => l.source === 'overhead' && !isGroupHeader(l.item_id) && !isFixedUnit(l)).forEach(l => {
+    // Tier 3: Overhead lines (not WO-tracked, allocate by item_id; exclude
+    // fixed unit types AND variation lines — those go to Tier 3.5 below).
+    tceLines.filter(l => l.source === 'overhead' && !isGroupHeader(l.item_id) && !isFixedUnit(l) && !isVariationLine(l)).forEach(l => {
       opts.push({ key: `tce:${l.item_id}`, label: `[OH] ${l.item_id} — ${l.description?.slice(0,50)||''}` })
     })
 
-    // Tier 4: Approved variations — one entry per variation header. Variation
-    // labour goes into timesheet_cost_lines with variation_id set, so it can be
-    // separated from parent-scope labour at report time even when the variation
-    // shares a tce_link or wo_ref with the original scope. The key is
-    // 'vn:<id>' so it survives renumbering / retitling.
-    approvedVariations.forEach(v => {
+    // Tier 3.5: Variation TCE lines — surface them by their item_id and
+    // description rather than by variation number. Where a variation links to
+    // this line via tce_link, route through the same `vn:<variationId>` key
+    // that Tier 4 uses, so the writer stamps variation_id on the cost line
+    // and reports can separate variation labour from parent-scope labour.
+    // If no variation links to the line (orphan), fall back to tce:<item_id>
+    // — the line is still allocatable, just without variation_id stamping.
+    const variationByLink: Record<string, typeof approvedVariations[number]> = {}
+    for (const v of approvedVariations) if (v.tce_link) variationByLink[v.tce_link] = v
+    const linkedVariationIds = new Set<string>()
+    tceLines
+      .filter(l => isVariationLine(l) && !isGroupHeader(l.item_id) && !isFixedUnit(l))
+      .sort((a,b) => naturalSortItemId(a.item_id, b.item_id))
+      .forEach(l => {
+        const v = l.item_id ? variationByLink[l.item_id] : undefined
+        const desc = l.description?.slice(0,50) || ''
+        if (v) {
+          opts.push({ key: `vn:${v.id}`, label: `[VN-TCE] ${l.item_id} — ${desc}` })
+          linkedVariationIds.add(v.id)
+        } else {
+          opts.push({ key: `tce:${l.item_id}`, label: `[VN-TCE] ${l.item_id} — ${desc}` })
+        }
+      })
+
+    // Tier 4: Approved variations that don't have their own TCE line — one
+    // entry per variation header. The `vn:<id>` key produces an alloc with
+    // variation_id stamped (see save handler below). Variations already
+    // surfaced in Tier 3.5 are excluded to avoid two dropdown entries for
+    // the same logical scope.
+    approvedVariations.filter(v => !linkedVariationIds.has(v.id)).forEach(v => {
       const title = (v.title || '').slice(0, 50)
       opts.push({ key: `vn:${v.id}`, label: `[VN] ${v.number} — ${title}` })
     })
@@ -933,6 +965,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   // Renders <optgroup> sections matching TCE register order (skilled → overhead).
   // Excludes group-header rows, Fixed Price line_type, and Fixed Hours/Fixed Price unit types.
   function renderAllowanceTceOptions(excludeSkilled = false) {
+    // Same variation-tagging tolerance as getTceOptions — see comment there
+    const isVariationLine = (l: {source: string; line_type: string|null; is_variation_line?: boolean}) =>
+      l.source === 'variation' || l.line_type === 'Variation' || !!l.is_variation_line
     const skilled = tceLines.filter(l =>
       l.item_id &&
       l.source === 'skilled' &&
@@ -943,6 +978,14 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     const overhead = tceLines.filter(l =>
       l.item_id &&
       l.source === 'overhead' &&
+      !isGroupHeader(l.item_id, l.line_type) &&
+      l.line_type !== 'Fixed Price' &&
+      !isFixedUnit(l) &&
+      !isVariationLine(l)
+    ).sort((a,b) => naturalSortItemId(a.item_id, b.item_id))
+    const variations = tceLines.filter(l =>
+      l.item_id &&
+      isVariationLine(l) &&
       !isGroupHeader(l.item_id, l.line_type) &&
       l.line_type !== 'Fixed Price' &&
       !isFixedUnit(l)
@@ -959,6 +1002,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         {overhead.length > 0 && (
           <optgroup label="Overhead">
             {overhead.map(l => (
+              <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>
+            ))}
+          </optgroup>
+        )}
+        {variations.length > 0 && (
+          <optgroup label="Variations">
+            {variations.map(l => (
               <option key={l.item_id} value={l.item_id}>{l.item_id} — {l.description}</option>
             ))}
           </optgroup>
