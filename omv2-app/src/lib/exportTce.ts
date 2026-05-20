@@ -33,7 +33,7 @@
 
 import JSZip from 'jszip'
 import { supabase } from './supabase'
-import { addDays } from './dates'
+import { addDays, naturalSortItemId } from './dates'
 import type { NrgTceLine } from '../types'
 import { fetchTceExpenses } from './tceExpenses'
 
@@ -208,6 +208,14 @@ export async function exportTceAll(
   lines: NrgTceLine[],
   orderedWeeks: string[],
 ) {
+  // Defensive natural sort on item_id. Callers fetch with SQL `order('item_id')`
+  // which is lexicographic — '0.10' lands before '0.2', '1.10' lands between
+  // '1.1' and '1.2'. Sort here once on dotted-segment-numeric so the export
+  // is correct regardless of how the caller ordered the lines. Group headers
+  // (3-segment IDs like '2.02.7') naturally sort before their leaves
+  // ('2.02.7.6') because shorter segment lists yield 0 for missing positions.
+  lines = [...lines].sort((a, b) => naturalSortItemId(a.item_id, b.item_id))
+
   const [clRes, varRes, nrgInvRes, supInvRes, templateResp] = await Promise.all([
     supabase.from('timesheet_cost_lines')
       .select('tce_item_id,week_ending,allocated_hours,sell_labour,sell_labour_eur,sell_allowances')
