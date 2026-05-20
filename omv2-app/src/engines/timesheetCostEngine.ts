@@ -462,9 +462,21 @@ export async function writeTimesheetCostLines(
 // ─── UI-side per-person totals ────────────────────────────────────────────
 // calcPersonTotals matches the writer's day logic: same splitHours, same
 // allowance rules, same mealBreakAdj. Used by TimesheetsPanel to display
-// running totals as the user edits, and by HRDashboardPanel for header
-// figures. Returns native rate-card currency for sell/cost (EUR for SE AG,
-// AUD elsewhere) — no FX conversion. Allowances are always in AUD.
+// running totals as the user edits.
+//
+// Returns labour and allowance components SEPARATELY, never summed together.
+// Reason: SE AG labour is native EUR (no FX) while LAHA/FSA/Meal/Camp/Travel
+// allowances are always AUD. Adding them would produce a mixed-currency total
+// that has no real meaning. Call sites must combine them currency-aware:
+//   - non-SEAG: labourSell + allowanceSell (both AUD)
+//   - SEAG: keep separate, or convert labour EUR → AUD via project FX first.
+//
+// Output:
+//   hours          total hours (incl. mealBreakAdj effective hours)
+//   labourSell     native rate-card currency (EUR for SE AG, AUD otherwise)
+//   labourCost     native rate-card currency
+//   allowanceSell  always AUD
+//   allowanceCost  always AUD
 
 interface CrewMemberLite {
   days?: Record<string, unknown>
@@ -474,7 +486,7 @@ interface CrewMemberLite {
 type RegimeCfg = { wdNT?: number; wdT15?: number; satT15?: number; nightNT?: number; restNT?: number } | null | undefined
 
 export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
-  let hours = 0, labourSell = 0, labourCost = 0, allowances = 0, allowCost = 0
+  let hours = 0, labourSell = 0, labourCost = 0, allowanceSell = 0, allowanceCost = 0
   const rates = rc?.rates as { cost: Record<string,number>; sell: Record<string,number> } | null
   const cr = rates?.cost || {}; const sr = rates?.sell || {}
   const rcX = (rc || {}) as unknown as Record<string, unknown>
@@ -502,17 +514,18 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
 
     // Allowances apply on every day entry (rest days included), matching the
     // writer's behaviour from the dedicated-allowance-row commit.
+    // All allowance values are AUD regardless of the rate card's labour currency.
     if (isMgmt) {
-      if (day.fsa)       { allowances += fsaSell;  allowCost += fsaCost }
-      else if (day.camp) { allowances += campSell; allowCost += campCost }
-      else if (day.laha) { allowances += fsaSell;  allowCost += fsaCost }
+      if (day.fsa)       { allowanceSell += fsaSell;  allowanceCost += fsaCost }
+      else if (day.camp) { allowanceSell += campSell; allowanceCost += campCost }
+      else if (day.laha) { allowanceSell += fsaSell;  allowanceCost += fsaCost }
     } else {
-      if (day.laha) { allowances += lahaSell; allowCost += lahaCost }
-      if (day.meal) { allowances += mealSell; allowCost += mealCost }
+      if (day.laha) { allowanceSell += lahaSell; allowanceCost += lahaCost }
+      if (day.meal) { allowanceSell += mealSell; allowanceCost += mealCost }
     }
-    // Travel: hours-based, applies for all categories
+    // Travel: hours-based, applies for all categories (AUD)
     const h0 = day.hours || 0
-    if (day.travel && h0 > 0) { allowances += h0 * travelSellRate; allowCost += h0 * travelCostRate }
+    if (day.travel && h0 > 0) { allowanceSell += h0 * travelSellRate; allowanceCost += h0 * travelCostRate }
 
     const workH = day.hours || 0
     const travelH = day.travel_hours || 0
@@ -556,8 +569,7 @@ export function calcPersonTotals(member: CrewMemberLite, rc: RateCard | null) {
     }
   })
 
-  // sell/cost = labour + allowances (combined total, matching HTML)
-  const sell = labourSell + allowances
-  const cost = labourCost + allowCost
-  return { hours, sell, cost, allowances, labourSell }
+  // Labour is in native rate-card currency. Allowances are always AUD.
+  // Callers must combine them currency-aware (see header comment above).
+  return { hours, labourSell, labourCost, allowanceSell, allowanceCost }
 }

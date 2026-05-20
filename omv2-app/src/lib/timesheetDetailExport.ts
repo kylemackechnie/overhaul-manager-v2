@@ -207,10 +207,19 @@ export function exportTimesheetDetail(
   week: WeeklyTimesheet,
   projectName: string,
   rateCards: RateCard[],
+  eurToAud: number = 1,
 ): void {
   const dayLabels = weekDates(week.week_start)
   const dayLabelRow = dayLabels.map(d => d.label)
   const cards = rcByRole(rateCards)
+  // For SE AG weeks, labour hourly rates are EUR while allowances stay AUD.
+  // We label the labour columns with the source currency and convert to AUD
+  // at the project rate for the headline totals.
+  const isSeag = week.type === 'seag'
+  const labCcy = isSeag ? 'EUR' : 'AUD'
+  // For non-SEAG, the FX is a no-op (eurToAud=1), so the same logic produces
+  // unchanged numbers and clean AUD totals.
+  const fx = isSeag ? eurToAud : 1
   const typeLabel =
     week.type === 'mgmt'   ? 'Management' :
     week.type === 'seag'   ? 'SE AG'       :
@@ -245,17 +254,24 @@ export function exportTimesheetDetail(
     })
 
     const totalHrs   = dayCalcs.reduce((s, d) => s + (d?.calc.effH || 0), 0)
-    const totalSell  = dayCalcs.reduce((s, d) => s + (d ? d.calc.sellN + d.calc.sellT15 + d.calc.sellD + d.calc.allowanceSell : 0), 0)
-    const totalCost  = dayCalcs.reduce((s, d) => s + (d ? d.calc.costN + d.calc.costT15 + d.calc.costD + d.calc.allowanceCost : 0), 0)
-    const totalAllow = dayCalcs.reduce((s, d) => s + (d?.calc.allowanceSell || 0), 0)
-    const totalAllowCost = dayCalcs.reduce((s, d) => s + (d?.calc.allowanceCost || 0), 0)
+    // Labour in native currency (EUR for SEAG, AUD otherwise)
+    const totalLabourSell = dayCalcs.reduce((s, d) => s + (d ? d.calc.sellN + d.calc.sellT15 + d.calc.sellD : 0), 0)
+    const totalLabourCost = dayCalcs.reduce((s, d) => s + (d ? d.calc.costN + d.calc.costT15 + d.calc.costD : 0), 0)
+    // Allowances always AUD
+    const totalAllow      = dayCalcs.reduce((s, d) => s + (d?.calc.allowanceSell || 0), 0)
+    const totalAllowCost  = dayCalcs.reduce((s, d) => s + (d?.calc.allowanceCost || 0), 0)
+    // Headline totals in AUD: labour × FX + allowance
+    const totalSellAud = totalLabourSell * fx + totalAllow
+    const totalCostAud = totalLabourCost * fx + totalAllowCost
 
     // Per-day hours (effH) for the summary block — empty cell if no entry
     const dayHours = dayCalcs.map(d => d ? d.calc.effH : '')
 
     return {
       member: m, rc, isMgmt, dayCalcs, dayHours,
-      totalHrs, totalSell, totalCost, totalAllow, totalAllowCost,
+      totalHrs,
+      totalLabourSell, totalLabourCost, totalAllow, totalAllowCost,
+      totalSellAud, totalCostAud,
     }
   })
 
@@ -270,10 +286,20 @@ export function exportTimesheetDetail(
     '', '', '', '', '', '', '', '',
     `Status: ${week.status}`,
   ])
+  if (isSeag) {
+    aoa.push([`Labour rates: EUR · Allowances: AUD · FX applied: 1 EUR = ${fx.toFixed(4)} AUD`])
+  }
   aoa.push([])
 
   // Summary block — exactly matches the screenshot's top section
-  aoa.push(['Name', 'Role', 'WBS', ...dayLabelRow, 'Total Hours', 'Total Sell', 'Total Allowance', 'Total Cost'])
+  aoa.push([
+    'Name', 'Role', 'WBS', ...dayLabelRow,
+    'Total Hours',
+    isSeag ? `Total Labour (${labCcy})` : 'Total Labour',
+    'Total Allowance (AUD)',
+    'Total Sell (AUD)',
+    'Total Cost (AUD)',
+  ])
   for (const r of personRows) {
     aoa.push([
       r.member.name,
@@ -281,9 +307,10 @@ export function exportTimesheetDetail(
       r.member.wbs || week.wbs || '',
       ...r.dayHours.map(h => typeof h === 'number' ? Number(h.toFixed(2)) : ''),
       Number(r.totalHrs.toFixed(2)),
-      fmtAud(r.totalSell),
+      fmtAud(r.totalLabourSell),
       fmtAud(r.totalAllow),
-      fmtAud(r.totalCost),
+      fmtAud(r.totalSellAud),
+      fmtAud(r.totalCostAud),
     ])
   }
   aoa.push([])
@@ -296,18 +323,19 @@ export function exportTimesheetDetail(
     aoa.push([
       '', '', 'Date',
       'N hrs', 'T1.5 hrs', 'D hrs',
-      '$ N',   '$ T1.5',   '$ D',
-      'LAHA $', 'Day Total $',
+      `N (${labCcy})`, `T1.5 (${labCcy})`, `D (${labCcy})`,
+      'LAHA (AUD)', 'Day Total (AUD)',
     ])
     for (const dc of r.dayCalcs) {
       if (!dc) continue
       const c = dc.calc
-      const dayTotal = c.sellN + c.sellT15 + c.sellD + c.allowanceSell
+      // Day total in AUD: labour × FX + allowance
+      const dayTotalAud = (c.sellN + c.sellT15 + c.sellD) * fx + c.allowanceSell
       aoa.push([
         '', '', dayLabels.find(d => d.iso === dc.iso)?.label || dc.iso,
         c.N || '', c.T15 || '', c.D || '',
         fmtAud(c.sellN), fmtAud(c.sellT15), fmtAud(c.sellD),
-        fmtAud(c.allowanceSell), fmtAud(dayTotal),
+        fmtAud(c.allowanceSell), fmtAud(dayTotalAud),
       ])
     }
     // Person totals
@@ -320,7 +348,7 @@ export function exportTimesheetDetail(
       fmtAud(r.dayCalcs.reduce((s, d) => s + (d?.calc.sellT15 || 0), 0)),
       fmtAud(r.dayCalcs.reduce((s, d) => s + (d?.calc.sellD   || 0), 0)),
       fmtAud(r.totalAllow),
-      fmtAud(r.totalSell),
+      fmtAud(r.totalSellAud),
     ])
     aoa.push([])
   }
@@ -330,8 +358,17 @@ export function exportTimesheetDetail(
   aoaCost.push([`Timesheet — ${typeLabel} (COST view)`])
   aoaCost.push([projectName])
   aoaCost.push([`Week starting ${dayLabels[0].label}`])
+  if (isSeag) {
+    aoaCost.push([`Labour rates: EUR · Allowances: AUD · FX applied: 1 EUR = ${fx.toFixed(4)} AUD`])
+  }
   aoaCost.push([])
-  aoaCost.push(['Name', 'Role', 'WBS', ...dayLabelRow, 'Total Hours', 'Total Cost', 'Total Allowance Cost'])
+  aoaCost.push([
+    'Name', 'Role', 'WBS', ...dayLabelRow,
+    'Total Hours',
+    isSeag ? `Total Labour Cost (${labCcy})` : 'Total Labour Cost',
+    'Total Allowance Cost (AUD)',
+    'Total Cost (AUD)',
+  ])
   for (const r of personRows) {
     aoaCost.push([
       r.member.name,
@@ -339,8 +376,9 @@ export function exportTimesheetDetail(
       r.member.wbs || week.wbs || '',
       ...r.dayHours.map(h => typeof h === 'number' ? Number(h.toFixed(2)) : ''),
       Number(r.totalHrs.toFixed(2)),
-      fmtAud(r.totalCost),
+      fmtAud(r.totalLabourCost),
       fmtAud(r.totalAllowCost),
+      fmtAud(r.totalCostAud),
     ])
   }
   aoaCost.push([])
@@ -349,18 +387,18 @@ export function exportTimesheetDetail(
     aoaCost.push([
       '', '', 'Date',
       'N hrs', 'T1.5 hrs', 'D hrs',
-      'Cost $ N', 'Cost $ T1.5', 'Cost $ D',
-      'LAHA Cost $', 'Day Total Cost $',
+      `Cost N (${labCcy})`, `Cost T1.5 (${labCcy})`, `Cost D (${labCcy})`,
+      'LAHA Cost (AUD)', 'Day Total Cost (AUD)',
     ])
     for (const dc of r.dayCalcs) {
       if (!dc) continue
       const c = dc.calc
-      const dayTotal = c.costN + c.costT15 + c.costD + c.allowanceCost
+      const dayTotalCostAud = (c.costN + c.costT15 + c.costD) * fx + c.allowanceCost
       aoaCost.push([
         '', '', dayLabels.find(d => d.iso === dc.iso)?.label || dc.iso,
         c.N || '', c.T15 || '', c.D || '',
         fmtAud(c.costN), fmtAud(c.costT15), fmtAud(c.costD),
-        fmtAud(c.allowanceCost), fmtAud(dayTotal),
+        fmtAud(c.allowanceCost), fmtAud(dayTotalCostAud),
       ])
     }
     aoaCost.push([
@@ -372,7 +410,7 @@ export function exportTimesheetDetail(
       fmtAud(r.dayCalcs.reduce((s, d) => s + (d?.calc.costT15 || 0), 0)),
       fmtAud(r.dayCalcs.reduce((s, d) => s + (d?.calc.costD   || 0), 0)),
       fmtAud(r.totalAllowCost),
-      fmtAud(r.totalCost),
+      fmtAud(r.totalCostAud),
     ])
     aoaCost.push([])
   }

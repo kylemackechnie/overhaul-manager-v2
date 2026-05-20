@@ -222,14 +222,24 @@ function printTimesheet(week: WeeklyTimesheet, projectName: string, rateCards: R
   if (win) { win.document.write(html); win.document.close() }
 }
 
-function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCards: RateCard[], regime: string) {
+function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCards: RateCard[], regime: string, eurToAud: number = 1) {
   const monday = new Date(week.week_start + 'T12:00:00')
   const days = Array.from({length:7}, (_,i) => { const d = new Date(monday); d.setDate(monday.getDate()+i); return d })
   const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
   const rcByRole: Record<string,RateCard> = {}
   rateCards.forEach(r => { rcByRole[r.role.toLowerCase()] = r })
   const fmtDate = (d: Date) => d.toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' })
-  const fmtMoney = (n: number) => n > 0 ? `$${n.toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '—'
+  // Currency-aware formatters. SEAG weeks: labour is EUR, allowance is AUD.
+  // The grand total is always rendered in AUD via project FX so the customer
+  // sees a clean single-currency total.
+  const isSeag = week.type === 'seag'
+  const fx = isSeag ? eurToAud : 1
+  const fmtLabour = (n: number) => n > 0
+    ? `${isSeag ? '€' : '$'}${n.toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 })}`
+    : '—'
+  const fmtAud = (n: number) => n > 0
+    ? `$${n.toLocaleString('en-AU', { minimumFractionDigits:2, maximumFractionDigits:2 })}`
+    : '—'
   const fmtHrs = (n: number) => n > 0 ? `${n.toFixed(2)}h` : '—'
   const endDate = new Date(monday); endDate.setDate(monday.getDate()+6)
   const genDate = new Date().toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' })
@@ -271,10 +281,11 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
       return { split:sp, sell:sellMap, hours:effH, totalSell, allowances }
     })
 
-    const weekTotalHrs  = dayBreaks.reduce((s,d) => s+d.hours, 0)
-    const weekTotalSell = dayBreaks.reduce((s,d) => s+d.totalSell, 0)
-    const weekAllowances = dayBreaks.reduce((s,d) => s+d.allowances.reduce((a,al) => a+al.sell, 0), 0)
-    const weekGrandTotal = weekTotalSell + weekAllowances
+    const weekTotalHrs       = dayBreaks.reduce((s,d) => s+d.hours, 0)
+    const weekTotalLabour    = dayBreaks.reduce((s,d) => s+d.totalSell, 0)        // native (EUR for SEAG)
+    const weekAllowancesAud  = dayBreaks.reduce((s,d) => s+d.allowances.reduce((a,al) => a+al.sell, 0), 0)
+    // Grand total always in AUD: labour × FX + allowance (already AUD)
+    const weekGrandTotalAud  = weekTotalLabour * fx + weekAllowancesAud
 
     const rateRows = RATE_TYPES.map(rt => {
       const weekHrs  = dayBreaks.reduce((s,d) => s+(d.split[rt.key]||0), 0)
@@ -282,24 +293,25 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
       if (!weekHrs) return ''
       const cells = dayBreaks.map(d => {
         const h = d.split[rt.key]||0, sv = d.sell[rt.key]||0
-        return h ? `<td style="${CELL}"><span style="font-weight:600">${fmtHrs(h)}</span><br/><span style="font-size:9px;color:#555">${fmtMoney(sv)}</span></td>`
+        return h ? `<td style="${CELL}"><span style="font-weight:600">${fmtHrs(h)}</span><br/><span style="font-size:9px;color:#555">${fmtLabour(sv)}</span></td>`
                  : `<td style="${CELL}color:#ccc">—</td>`
       }).join('')
-      return `<tr><td style="${CELL_L}color:${rt.color};font-weight:500">${rt.label}</td>${cells}<td style="${CELL}font-weight:700">${fmtHrs(weekHrs)}<br/><span style="font-size:9px;color:#374151">${fmtMoney(weekSell)}</span></td></tr>`
+      return `<tr><td style="${CELL_L}color:${rt.color};font-weight:500">${rt.label}</td>${cells}<td style="${CELL}font-weight:700">${fmtHrs(weekHrs)}<br/><span style="font-size:9px;color:#374151">${fmtLabour(weekSell)}</span></td></tr>`
     }).filter(Boolean).join('')
 
-    const hrsRow = `<tr style="background:#f8fafc"><td style="${CELL_L}font-weight:600">Hours Total</td>${dayBreaks.map(d => d.hours ? `<td style="${CELL}font-weight:700">${fmtHrs(d.hours)}<br/><span style="font-size:9px">${fmtMoney(d.totalSell)}</span></td>` : `<td style="${CELL}color:#ccc">—</td>`).join('')}<td style="${CELL}font-weight:700">${fmtHrs(weekTotalHrs)}<br/><span style="font-size:9px">${fmtMoney(weekTotalSell)}</span></td></tr>`
+    const hrsRow = `<tr style="background:#f8fafc"><td style="${CELL_L}font-weight:600">Hours Total${isSeag ? ' (labour EUR)' : ''}</td>${dayBreaks.map(d => d.hours ? `<td style="${CELL}font-weight:700">${fmtHrs(d.hours)}<br/><span style="font-size:9px">${fmtLabour(d.totalSell)}</span></td>` : `<td style="${CELL}color:#ccc">—</td>`).join('')}<td style="${CELL}font-weight:700">${fmtHrs(weekTotalHrs)}<br/><span style="font-size:9px">${fmtLabour(weekTotalLabour)}</span></td></tr>`
 
-    const allowRow = weekAllowances > 0 ? `<tr><td style="${CELL_L}color:#6b7280">Allowances</td>${dayBreaks.map(d => d.allowances.length ? `<td style="${CELL}font-size:10px">${d.allowances.map(a => `${a.label} ${fmtMoney(a.sell)}`).join('<br/>')}</td>` : `<td style="${CELL}color:#ccc">—</td>`).join('')}<td style="${CELL}color:#6b7280">${fmtMoney(weekAllowances)}</td></tr>` : ''
+    const allowRow = weekAllowancesAud > 0 ? `<tr><td style="${CELL_L}color:#6b7280">Allowances (AUD)</td>${dayBreaks.map(d => d.allowances.length ? `<td style="${CELL}font-size:10px">${d.allowances.map(a => `${a.label} ${fmtAud(a.sell)}`).join('<br/>')}</td>` : `<td style="${CELL}color:#ccc">—</td>`).join('')}<td style="${CELL}color:#6b7280">${fmtAud(weekAllowancesAud)}</td></tr>` : ''
 
-    const totRow = `<tr style="background:#f1f5f9"><td style="${CELL_L}font-weight:700;text-transform:uppercase;font-size:10px">TOTAL</td>${dayBreaks.map(d => { const t = d.totalSell + d.allowances.reduce((s,a)=>s+a.sell,0); return t>0?`<td style="${CELL}color:#6b7280;font-size:11px">A$${t.toFixed(2)}</td>`:`<td style="${CELL}color:#ccc">—</td>` }).join('')}<td style="${CELL}font-weight:700;font-size:12px">A$${weekGrandTotal.toFixed(2)}</td></tr>`
+    // Per-day combined total: labour (native × FX if SEAG) + allowance (AUD)
+    const totRow = `<tr style="background:#f1f5f9"><td style="${CELL_L}font-weight:700;text-transform:uppercase;font-size:10px">TOTAL (AUD)</td>${dayBreaks.map(d => { const labAud = d.totalSell * fx; const allowAud = d.allowances.reduce((s,a)=>s+a.sell,0); const t = labAud + allowAud; return t>0?`<td style="${CELL}color:#6b7280;font-size:11px">${fmtAud(t)}</td>`:`<td style="${CELL}color:#ccc">—</td>` }).join('')}<td style="${CELL}font-weight:700;font-size:12px">${fmtAud(weekGrandTotalAud)}</td></tr>`
 
     const dayHdrs = days.map((d,i) => `<th style="${HDR}">${dayLabels[i]}<br/><span style="font-weight:400">${d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'})}</span></th>`).join('')
 
     return `<div style="margin-bottom:32px;page-break-inside:avoid">
       <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:8px">
         <div><span style="font-size:15px;font-weight:700">${m.name}</span><span style="font-size:12px;color:#6b7280;margin-left:8px">${m.role}</span></div>
-        <div style="font-size:14px;font-weight:700;color:#059669">A$${weekGrandTotal.toFixed(2)} total</div>
+        <div style="font-size:14px;font-weight:700;color:#059669">${fmtAud(weekGrandTotalAud)} total (AUD)</div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:11px">
         <thead><tr><th style="${HDR_L}width:140px">Rate Type</th>${dayHdrs}<th style="${HDR}width:90px">Week Total</th></tr></thead>
@@ -307,12 +319,13 @@ function printCostBreakdown(week: WeeklyTimesheet, projectName: string, rateCard
       </table></div>`
   }).filter(Boolean).join('')
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Trades Cost Breakdown — ${week.week_start}</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cost Breakdown — ${week.week_start}</title>
   <style>body{font-family:-apple-system,Arial,sans-serif;font-size:11px;padding:28px;color:#111;max-width:1200px;margin:0 auto}@media print{@page{size:A3 landscape;margin:10mm}button{display:none!important}body{padding:10px;max-width:none}}</style>
   </head><body>
   <button onclick="window.print()" style="position:fixed;top:12px;right:12px;padding:6px 16px;background:#0f766e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🖨 Print</button>
-  <h1 style="font-size:20px;font-weight:800;margin:0 0 4px">Trades Timesheet — Customer Cost Breakdown</h1>
-  <div style="font-size:11px;color:#6b7280;margin-bottom:28px">${projectName} · Week of ${week.week_start} · ${regime||'Under 12hrs'} · Generated ${genDate}</div>
+  <h1 style="font-size:20px;font-weight:800;margin:0 0 4px">Timesheet — Customer Cost Breakdown</h1>
+  <div style="font-size:11px;color:#6b7280;margin-bottom:${isSeag ? '8px' : '28px'}">${projectName} · Week of ${week.week_start} · ${regime||'Under 12hrs'} · Generated ${genDate}</div>
+  ${isSeag ? `<div style="font-size:11px;color:#6b7280;margin-bottom:28px;font-style:italic">Labour rates: EUR · Allowances: AUD · FX applied: 1 EUR = ${fx.toFixed(4)} AUD</div>` : ''}
   ${personBlocks}
   <div style="margin-top:24px;font-size:9px;color:#999;border-top:1px solid #e2e8f0;padding-top:8px">Generated by Overhaul Manager · ${new Date().toLocaleString('en-AU')} · CONFIDENTIAL</div>
   <script>setTimeout(()=>window.print(),600)<\/script></body></html>`
@@ -1128,22 +1141,38 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
   const days = activeWeek ? weekDays(activeWeek.week_start) : []
   const inCrew = new Set(activeWeek?.crew.map(m => m.personId) || [])
-  // For SE AG weeks, rates are natively EUR — display with € symbol
+  // For SE AG weeks, rates are natively EUR — display with € symbol; allowances always AUD.
   const isSeagWeek = type === 'seag'
   const eurToAud = getEurToBase(activeProject)
-  const fmt = (n: number) => {
-    if (!(n > 0)) return '—'
-    if (isSeagWeek) return '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    return '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  }
-  // AUD-equivalent display for SE AG (used in week list subtitle)
-  const fmtAudEquiv = (n: number) => n > 0 ? ' ≈$' + (n * eurToAud).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
 
   function weekTotals(s: WeeklyTimesheet) {
-    let hours = 0, sell = 0, cost = 0
-    s.crew.forEach(m => { const t = calcPersonTotals(m, getRC(m.role)); hours += t.hours; sell += t.sell; cost += t.cost })
-    return { hours, sell, cost }
+    let hours = 0, labourSell = 0, labourCost = 0, allowanceSell = 0, allowanceCost = 0
+    s.crew.forEach(m => {
+      const t = calcPersonTotals(m, getRC(m.role))
+      hours += t.hours
+      labourSell    += t.labourSell
+      labourCost    += t.labourCost
+      allowanceSell += t.allowanceSell
+      allowanceCost += t.allowanceCost
+    })
+    return { hours, labourSell, labourCost, allowanceSell, allowanceCost }
   }
+
+  // ── Currency-aware display helpers ─────────────────────────────────────
+  // SEAG: labour is native EUR, allowances are AUD. Don't sum them as a
+  // single currency. For a single headline number, convert labour EUR → AUD
+  // at the project FX rate and add the AUD allowance.
+  // Non-SEAG: everything is AUD; labour + allowance is a clean sum.
+  const headlineSellAud = (t: { labourSell: number; allowanceSell: number }) =>
+    isSeagWeek ? (t.labourSell * eurToAud) + t.allowanceSell
+               : t.labourSell + t.allowanceSell
+  const headlineCostAud = (t: { labourCost: number; allowanceCost: number }) =>
+    isSeagWeek ? (t.labourCost * eurToAud) + t.allowanceCost
+               : t.labourCost + t.allowanceCost
+  const fmtAud = (n: number) =>
+    n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
+  const fmtEur = (n: number) =>
+    n > 0 ? '€' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 
 
   function exportTimesheetCSV() {
@@ -1153,6 +1182,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
     ]
     activeWeek.crew.forEach(m => {
       const t = calcPersonTotals(m, getRC(m.role))
+      // CSV export rolls labour + allowance into a single "Total Sell" column.
+      // For SEAG this would mix EUR + AUD — convert labour to AUD first.
+      const totalSellAud = headlineSellAud(t)
       rows.push([
         m.name, m.role, m.wbs,
         ...days.map(d => {
@@ -1160,7 +1192,7 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           return (de?.hours as number) || 0
         }),
         t.hours.toFixed(2),
-        t.sell.toFixed(2),
+        totalSellAud.toFixed(2),
       ])
     })
     const csv = rows.map(r => r.map(c => String(c).includes(',') ? `"${c}"` : c).join(',')).join('\n')
@@ -1218,20 +1250,32 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           {(() => {
             const totals = sheets.reduce((acc, s) => {
               const t = weekTotals(s)
-              return { hours: acc.hours + t.hours, sell: acc.sell + t.sell, cost: acc.cost + t.cost }
-            }, { hours: 0, sell: 0, cost: 0 })
+              return {
+                hours: acc.hours + t.hours,
+                labourSell:    acc.labourSell    + t.labourSell,
+                allowanceSell: acc.allowanceSell + t.allowanceSell,
+              }
+            }, { hours: 0, labourSell: 0, allowanceSell: 0 })
             const approved = sheets.filter(s => s.status === 'approved').length
+            // Headline AUD total: labour (× FX if SEAG) + allowance (already AUD)
+            const sellAud = headlineSellAud(totals)
+            const headlineLabel = isSeagWeek ? 'Total Sell (AUD)' : 'Total Sell'
+            // For SEAG, show the underlying native-currency labour as a secondary line
+            const headlineSub = isSeagWeek && totals.labourSell > 0
+              ? `${fmtEur(totals.labourSell)} EUR labour + ${fmtAud(totals.allowanceSell)} allow`
+              : null
             return (
               <div data-tour="timesheets-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px', marginBottom: '14px' }}>
                 {[
-                  { label: 'Weeks', value: sheets.length, color: TYPE_COLOR[type] },
-                  { label: 'Approved', value: `${approved}/${sheets.length}`, color: 'var(--green)' },
-                  { label: 'Total Hours', value: totals.hours.toFixed(2) + 'h', color: TYPE_COLOR[type] },
-                  { label: isSeagWeek ? 'Total Sell (EUR)' : 'Total Sell', value: totals.sell > 0 ? fmt(totals.sell) : '—', color: 'var(--green)' },
+                  { label: 'Weeks', value: String(sheets.length), color: TYPE_COLOR[type], sub: null as string | null },
+                  { label: 'Approved', value: `${approved}/${sheets.length}`, color: 'var(--green)', sub: null },
+                  { label: 'Total Hours', value: totals.hours.toFixed(2) + 'h', color: TYPE_COLOR[type], sub: null },
+                  { label: headlineLabel, value: sellAud > 0 ? fmtAud(sellAud) : '—', color: 'var(--green)', sub: headlineSub },
                 ].map(t => (
                   <div key={t.label} className="card" style={{ padding: '12px', borderTop: `3px solid ${t.color}` }}>
                     <div style={{ fontSize: '16px', fontWeight: 700, fontFamily: 'var(--mono)', color: t.color }}>{t.value}</div>
                     <div style={{ fontSize: '11px', marginTop: '3px' }}>{t.label}</div>
+                    {t.sub && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)', marginTop: '2px' }}>{t.sub}</div>}
                   </div>
                 ))}
               </div>
@@ -1240,7 +1284,9 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
           <div data-tour="timesheets-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {sheets.map(s => {
               const sc = STATUS_COLORS[s.status] || STATUS_COLORS.draft
-              const { hours, sell, cost } = weekTotals(s)
+              const t = weekTotals(s)
+              const sellAud = headlineSellAud(t)
+              const costAud = headlineCostAud(t)
               const endD = new Date(s.week_start + 'T12:00:00'); endD.setDate(endD.getDate() + 6)
               return (
                 <div key={s.id} className="card" style={{ borderLeft: `3px solid ${TYPE_COLOR[type]}`, cursor: 'pointer' }} onClick={() => setActiveWeek(applyPHOverrides(s, holidays, resources))}>
@@ -1251,15 +1297,17 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{s.crew.length} people{s.notes ? ` · ${s.notes}` : ''}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type] }}>{hours.toFixed(1)}h</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Total hours</div></div>
-                    {sell > 0 && <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmt(sell)}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Sell (EUR)' : 'Sell value'}</div>
-                      {isSeagWeek && eurToAud > 1 && <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{fmtAudEquiv(sell)} AUD</div>}
+                    <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type] }}>{t.hours.toFixed(1)}h</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Total hours</div></div>
+                    {sellAud > 0 && <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmtAud(sellAud)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Sell (AUD)' : 'Sell value'}</div>
+                      {isSeagWeek && t.labourSell > 0 && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{fmtEur(t.labourSell)} EUR labour</div>}
+                      {isSeagWeek && t.allowanceSell > 0 && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>+ {fmtAud(t.allowanceSell)} AUD allow</div>}
                     </div>}
-                    {cost > 0 && cost !== sell && <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{fmt(cost)}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Cost (EUR)' : 'Cost'}</div>
+                    {costAud > 0 && costAud !== sellAud && <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{fmtAud(costAud)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Cost (AUD)' : 'Cost'}</div>
+                      {isSeagWeek && t.labourCost > 0 && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{fmtEur(t.labourCost)} EUR labour</div>}
                     </div>}
                     <span className="badge" style={sc}>{s.status}</span>
                     <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
@@ -1427,7 +1475,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', border: '1px solid var(--border)', minWidth: '960px' }}>No people on sheet yet — use the dropdown below to add crew.</div>
           ) : activeWeek.crew.map(member => {
             const rc = getRC(member.role)
-            const { hours, sell, cost, allowances } = calcPersonTotals(member, rc)
+            const t = calcPersonTotals(member, rc)
+            const { hours, labourSell, labourCost, allowanceSell, allowanceCost } = t
+            const sellAud = headlineSellAud(t)
+            const costAud = headlineCostAud(t)
             return (
               <div key={member.personId} style={{ border: '1px solid var(--border)', borderTop: 'none', minWidth: '960px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '180px repeat(7, minmax(100px,1fr)) 120px', gap: '1px', background: 'var(--border)' }}>
@@ -1827,10 +1878,23 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   {/* Totals cell */}
                   <div style={{ background: 'var(--bg2)', padding: '8px', textAlign: 'right' }}>
                     <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type], fontSize: '13px' }}>{hours.toFixed(1)}h</div>
-                    {sell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)', marginTop: '2px' }}>{fmt(sell)}{isSeagWeek && <span style={{ fontSize: '9px', color: 'var(--text3)', marginLeft: '2px' }}>EUR</span>}</div>}
-                    {isSeagWeek && sell > 0 && eurToAud > 1 && <div style={{ fontFamily: 'var(--mono)', fontSize: '9px', color: 'var(--text3)' }}>{fmtAudEquiv(sell)} AUD</div>}
-                    {allowances > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>incl. {fmt(allowances)} allow</div>}
-                    {cost > 0 && cost !== sell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(cost)}{isSeagWeek && <span style={{ fontSize: '9px', marginLeft: '2px' }}>EUR</span>}</div>}
+                    {isSeagWeek ? (
+                      // SEAG: show labour in EUR (native) and allowance in AUD, plus combined AUD total
+                      <>
+                        {labourSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)', marginTop: '2px' }}>{fmtEur(labourSell)} <span style={{ fontSize: '9px', color: 'var(--text3)' }}>EUR labour</span></div>}
+                        {labourSell > 0 && eurToAud > 1 && <div style={{ fontFamily: 'var(--mono)', fontSize: '9px', color: 'var(--text3)' }}>≈{fmtAud(labourSell * eurToAud)} AUD</div>}
+                        {allowanceSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>+ {fmtAud(allowanceSell)} AUD allow</div>}
+                        {sellAud > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text2)', fontWeight: 600 }}>= {fmtAud(sellAud)} AUD total</div>}
+                        {labourCost > 0 && labourCost !== labourSell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmtEur(labourCost)} EUR{allowanceCost > 0 && ` + ${fmtAud(allowanceCost)} AUD`}</div>}
+                      </>
+                    ) : (
+                      // Non-SEAG: everything AUD, simple sum
+                      <>
+                        {sellAud > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)', marginTop: '2px' }}>{fmtAud(sellAud)}</div>}
+                        {allowanceSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>incl. {fmtAud(allowanceSell)} allow</div>}
+                        {costAud > 0 && costAud !== sellAud && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmtAud(costAud)}</div>}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1839,9 +1903,19 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
 
           {/* Footer totals */}
           {activeWeek.crew.length > 0 && (() => {
-            let tHrs = 0, tSell = 0, tCost = 0
-            activeWeek.crew.forEach(m => { const t = calcPersonTotals(m, getRC(m.role)); tHrs += t.hours; tSell += t.sell; tCost += t.cost })
-            const margin = tSell > 0 ? ((tSell - tCost) / tSell * 100).toFixed(2) : null
+            let tHrs = 0, tLabSell = 0, tLabCost = 0, tAllowSell = 0, tAllowCost = 0
+            activeWeek.crew.forEach(m => {
+              const t = calcPersonTotals(m, getRC(m.role))
+              tHrs       += t.hours
+              tLabSell   += t.labourSell
+              tLabCost   += t.labourCost
+              tAllowSell += t.allowanceSell
+              tAllowCost += t.allowanceCost
+            })
+            const totals = { labourSell: tLabSell, labourCost: tLabCost, allowanceSell: tAllowSell, allowanceCost: tAllowCost }
+            const tSellAud = headlineSellAud(totals)
+            const tCostAud = headlineCostAud(totals)
+            const margin = tSellAud > 0 ? ((tSellAud - tCostAud) / tSellAud * 100).toFixed(2) : null
             return (
               <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px', background: 'var(--bg3)', border: '1px solid var(--border)', borderTop: '2px solid var(--border2)', borderRadius: '0 0 6px 6px', padding: '8px 10px', minWidth: '960px' }}>
                 <div style={{ fontWeight: 700, fontSize: '12px' }}>Week Total — {activeWeek.crew.length} people</div>
@@ -1850,9 +1924,21 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type] }}>{tHrs.toFixed(1)}h</div>
-                  {tSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)' }}>{fmt(tSell)}{isSeagWeek && <span style={{ fontSize: '9px', color: 'var(--text3)', marginLeft: '2px' }}>EUR</span>}</div>}
-                  {isSeagWeek && tSell > 0 && eurToAud > 1 && <div style={{ fontFamily: 'var(--mono)', fontSize: '9px', color: 'var(--text3)' }}>{fmtAudEquiv(tSell)} AUD</div>}
-                  {tCost > 0 && tCost !== tSell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmt(tCost)}{isSeagWeek && <span style={{ fontSize: '9px', marginLeft: '2px' }}>EUR</span>}</div>}
+                  {isSeagWeek ? (
+                    <>
+                      {tLabSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)' }}>{fmtEur(tLabSell)} <span style={{ fontSize: '9px', color: 'var(--text3)' }}>EUR labour</span></div>}
+                      {tLabSell > 0 && eurToAud > 1 && <div style={{ fontFamily: 'var(--mono)', fontSize: '9px', color: 'var(--text3)' }}>≈{fmtAud(tLabSell * eurToAud)} AUD</div>}
+                      {tAllowSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>+ {fmtAud(tAllowSell)} AUD allow</div>}
+                      {tSellAud > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text2)', fontWeight: 600 }}>= {fmtAud(tSellAud)} AUD total</div>}
+                      {tLabCost > 0 && tLabCost !== tLabSell && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmtEur(tLabCost)} EUR{tAllowCost > 0 && ` + ${fmtAud(tAllowCost)} AUD`}</div>}
+                    </>
+                  ) : (
+                    <>
+                      {tSellAud > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--green)' }}>{fmtAud(tSellAud)}</div>}
+                      {tAllowSell > 0 && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>incl. {fmtAud(tAllowSell)} allow</div>}
+                      {tCostAud > 0 && tCostAud !== tSellAud && <div style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text3)' }}>cost {fmtAud(tCostAud)}</div>}
+                    </>
+                  )}
                 </div>
               </div>
             )
@@ -1868,8 +1954,8 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
               {resources.filter(r => !inCrew.has(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role ? ` — ${r.role}` : ''}</option>)}
             </select>
             <button className="btn btn-sm" onClick={() => printTimesheet(activeWeek, activeProject?.name||'', rateCards, holidays)}>🖨 Print</button>
-            <button className="btn btn-sm" onClick={() => printCostBreakdown(activeWeek, activeProject?.name||'', rateCards, activeWeek.regime||'')}>💰 Cost Breakdown</button>
-            <button className="btn btn-sm" onClick={() => exportTimesheetDetail(activeWeek, activeProject?.name||'', rateCards)} title="Download an Excel report with per-person daily detail (hours by shift bucket, allowances, sell + cost)">📊 Excel Report</button>
+            <button className="btn btn-sm" onClick={() => printCostBreakdown(activeWeek, activeProject?.name||'', rateCards, activeWeek.regime||'', eurToAud)}>💰 Cost Breakdown</button>
+            <button className="btn btn-sm" onClick={() => exportTimesheetDetail(activeWeek, activeProject?.name||'', rateCards, eurToAud)} title="Download an Excel report with per-person daily detail (hours by shift bucket, allowances, sell + cost)">📊 Excel Report</button>
             <span style={{ fontSize: '11px', color: 'var(--text3)', padding: '0 4px' }}>● Auto-saving</span>
           </div>
         </div>
