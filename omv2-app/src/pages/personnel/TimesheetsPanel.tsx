@@ -2273,9 +2273,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                         ))}
                       </optgroup>
                     )}
-                    {getTceOptions().filter(o => o.key.startsWith('vn:')).length > 0 && (
+                    {/* Variations: catches both [VN] headers AND [VN-TCE] lines.
+                        Key can be vn:<id> (linked) or tce:<item_id> (orphan
+                        variation line), so we match on label prefix not key
+                        prefix to make sure orphans surface too. */}
+                    {getTceOptions().filter(o => o.label.startsWith('[VN]') || o.label.startsWith('[VN-TCE]')).length > 0 && (
                       <optgroup label="Variations (Approved)">
-                        {getTceOptions().filter(o => o.key.startsWith('vn:')).map(o => (
+                        {getTceOptions().filter(o => o.label.startsWith('[VN]') || o.label.startsWith('[VN-TCE]')).map(o => (
                           <option key={o.key} value={o.key}>{o.label}</option>
                         ))}
                       </optgroup>
