@@ -148,7 +148,16 @@ export async function writeTimesheetCostLines(
     // sell_labour stores AUD (project-rate conversion) for internal cost tracking.
     // sell_labour_eur stores the raw EUR amount for seag rows, used with
     // invoice.eur_spot_rate at invoicing time. Non-seag rows always get 0.
-    const labourFx = isEurCard && project ? fxRate(project, rcCurrency) : 1
+    //
+    // FX priority for EUR cards: timesheet.fx_rate override → project default.
+    // The per-timesheet override exists so spot rates can change week-to-week
+    // without rewriting the project default.
+    const tsFxOverride = (timesheet as unknown as { fx_rate?: number | null }).fx_rate
+    const labourFx = isEurCard
+      ? (tsFxOverride != null && !isNaN(Number(tsFxOverride))
+          ? Number(tsFxOverride)
+          : (project ? fxRate(project, rcCurrency) : 1))
+      : 1
 
     // WBS resolution — same priority the HTML uses:
     //   1. crew[i].wbs (per-member override on this week)

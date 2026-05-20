@@ -386,6 +386,10 @@ export interface WeeklyTimesheet {
   allowances_tce_default?: string
   scope_tracking?: 'none' | 'work_orders' | 'nrg_tce'
   cost_method?: 'standard' | 'nrg_tce'
+  /** Per-week EUR→AUD spot rate override. Only meaningful for type='seag'.
+   *  NULL falls back to the project's default fx_rate at read time. Used by
+   *  the writer (cost_labour / sell_labour AUD), editor display, and exports. */
+  fx_rate?: number | null
   created_at: string
   updated_at: string
 }

@@ -648,11 +648,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   }
 
   async function saveWeek(week: WeeklyTimesheet) {
+    const fxOverride = (week as WeeklyTimesheet & { fx_rate?: number | null }).fx_rate
     const { error } = await supabase.from('weekly_timesheets').update({
       crew: week.crew, regime: week.regime, status: week.status, wbs: week.wbs, notes: week.notes,
       scope_tracking: (week as WeeklyTimesheet & { scope_tracking?: string }).scope_tracking || 'none',
       allowances_tce_default: (week as WeeklyTimesheet & { allowances_tce_default?: string }).allowances_tce_default || '',
       travel_tce_default: (week as WeeklyTimesheet & { travel_tce_default?: string }).travel_tce_default || '',
+      fx_rate: fxOverride != null && Number(fxOverride) > 0 ? Number(fxOverride) : null,
     }).eq('id', week.id)
     if (error) { toast(error.message, 'error'); return }
     // Write wo_actuals rows for reporting
@@ -1193,7 +1195,16 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   const inCrew = new Set(activeWeek?.crew.map(m => m.personId) || [])
   // For SE AG weeks, rates are natively EUR — display with € symbol; allowances always AUD.
   const isSeagWeek = type === 'seag'
-  const eurToAud = getEurToBase(activeProject)
+  // FX resolution: each timesheet can override the project default (so spot
+  // rates can change week-to-week). NULL/missing override falls back to
+  // project default. Aggregations across multiple weeks must apply each
+  // timesheet's own rate before summing — see the KPI tile below.
+  const projectEurToAud = getEurToBase(activeProject)
+  const resolveFx = (ts: WeeklyTimesheet | null | undefined): number => {
+    const o = ts ? (ts as unknown as { fx_rate?: number | null }).fx_rate : null
+    return o != null && !isNaN(Number(o)) && Number(o) > 0 ? Number(o) : projectEurToAud
+  }
+  const eurToAud = resolveFx(activeWeek)
 
   function weekTotals(s: WeeklyTimesheet) {
     let hours = 0, labourSell = 0, labourCost = 0, allowanceSell = 0, allowanceCost = 0
@@ -1211,13 +1222,13 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
   // ── Currency-aware display helpers ─────────────────────────────────────
   // SEAG: labour is native EUR, allowances are AUD. Don't sum them as a
   // single currency. For a single headline number, convert labour EUR → AUD
-  // at the project FX rate and add the AUD allowance.
+  // at the FX rate (defaults to the active week's, override per call site).
   // Non-SEAG: everything is AUD; labour + allowance is a clean sum.
-  const headlineSellAud = (t: { labourSell: number; allowanceSell: number }) =>
-    isSeagWeek ? (t.labourSell * eurToAud) + t.allowanceSell
+  const headlineSellAud = (t: { labourSell: number; allowanceSell: number }, fx: number = eurToAud) =>
+    isSeagWeek ? (t.labourSell * fx) + t.allowanceSell
                : t.labourSell + t.allowanceSell
-  const headlineCostAud = (t: { labourCost: number; allowanceCost: number }) =>
-    isSeagWeek ? (t.labourCost * eurToAud) + t.allowanceCost
+  const headlineCostAud = (t: { labourCost: number; allowanceCost: number }, fx: number = eurToAud) =>
+    isSeagWeek ? (t.labourCost * fx) + t.allowanceCost
                : t.labourCost + t.allowanceCost
   const fmtAud = (n: number) =>
     n > 0 ? '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
@@ -1298,17 +1309,25 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
         ) : (
           <>
           {(() => {
+            // Each timesheet may have its own FX override, so we apply each
+            // week's own rate to its labour before summing. The labour EUR
+            // total is unambiguous (just sum), but the AUD aggregate only
+            // makes sense when each week's labour is converted at its own
+            // spot rate.
             const totals = sheets.reduce((acc, s) => {
               const t = weekTotals(s)
+              const fx = resolveFx(s)
               return {
-                hours: acc.hours + t.hours,
+                hours:         acc.hours + t.hours,
                 labourSell:    acc.labourSell    + t.labourSell,
                 allowanceSell: acc.allowanceSell + t.allowanceSell,
+                labourSellAud: acc.labourSellAud + t.labourSell * (isSeagWeek ? fx : 1),
               }
-            }, { hours: 0, labourSell: 0, allowanceSell: 0 })
+            }, { hours: 0, labourSell: 0, allowanceSell: 0, labourSellAud: 0 })
             const approved = sheets.filter(s => s.status === 'approved').length
-            // Headline AUD total: labour (× FX if SEAG) + allowance (already AUD)
-            const sellAud = headlineSellAud(totals)
+            // Headline AUD total: per-week-FX-converted labour + allowance.
+            // For non-SEAG, labourSellAud === labourSell so the same expression works.
+            const sellAud = totals.labourSellAud + totals.allowanceSell
             const headlineLabel = isSeagWeek ? 'Total Sell (AUD)' : 'Total Sell'
             // For SEAG, show the underlying native-currency labour as a secondary line
             const headlineSub = isSeagWeek && totals.labourSell > 0
@@ -1335,8 +1354,11 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
             {sheets.map(s => {
               const sc = STATUS_COLORS[s.status] || STATUS_COLORS.draft
               const t = weekTotals(s)
-              const sellAud = headlineSellAud(t)
-              const costAud = headlineCostAud(t)
+              const wkFx = resolveFx(s)
+              const wkFxOverride = (s as unknown as { fx_rate?: number | null }).fx_rate
+              const hasFxOverride = wkFxOverride != null && Number(wkFxOverride) > 0
+              const sellAud = headlineSellAud(t, wkFx)
+              const costAud = headlineCostAud(t, wkFx)
               const endD = new Date(s.week_start + 'T12:00:00'); endD.setDate(endD.getDate() + 6)
               return (
                 <div key={s.id} className="card" style={{ borderLeft: `3px solid ${TYPE_COLOR[type]}`, cursor: 'pointer' }} onClick={() => setActiveWeek(applyPHOverrides(s, holidays, resources))}>
@@ -1350,7 +1372,10 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                     <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: TYPE_COLOR[type] }}>{t.hours.toFixed(1)}h</div><div style={{ fontSize: '11px', color: 'var(--text3)' }}>Total hours</div></div>
                     {sellAud > 0 && <div style={{ textAlign: 'right' }}>
                       <div style={{ fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--green)' }}>{fmtAud(sellAud)}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{isSeagWeek ? 'Sell (AUD)' : 'Sell value'}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
+                        {isSeagWeek ? 'Sell (AUD)' : 'Sell value'}
+                        {isSeagWeek && hasFxOverride && <span style={{ marginLeft: '4px', fontSize: '9px', color: '#9333ea', fontWeight: 600 }} title={`FX override: 1 EUR = ${wkFx.toFixed(4)} AUD`}>FX*</span>}
+                      </div>
                       {isSeagWeek && t.labourSell > 0 && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{fmtEur(t.labourSell)} EUR labour</div>}
                       {isSeagWeek && t.allowanceSell > 0 && <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>+ {fmtAud(t.allowanceSell)} AUD allow</div>}
                     </div>}
@@ -1429,6 +1454,48 @@ export function TimesheetsPanel({ type }: { type: TsType }) {
                   <option value="work_orders">Work Orders</option>
                   {isTce && tceLines.length > 0 && <option value="nrg_tce">NRG TCE</option>}
                 </select>
+                {/* SEAG-only: per-week FX override. NULL falls back to project
+                    default. Writer (cost_labour / sell_labour AUD), editor
+                    display, and exports all use this rate. */}
+                {isSeagWeek && (() => {
+                  const fxOverride = (activeWeek as WeeklyTimesheet & { fx_rate?: number | null }).fx_rate
+                  const hasOverride = fxOverride != null && Number(fxOverride) > 0
+                  return (
+                    <>
+                      <span style={{ fontSize: '11px', color: 'var(--text3)' }} title="EUR→AUD spot rate for this week. Leave blank to use project default.">FX Rate:</span>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        className="input"
+                        style={{
+                          width: '90px',
+                          fontSize: '12px',
+                          padding: '3px 6px',
+                          fontFamily: 'var(--mono)',
+                          textAlign: 'right',
+                          border: `1px solid ${hasOverride ? '#9333ea' : 'var(--border2)'}`,
+                          background: hasOverride ? 'rgba(147,51,234,0.06)' : undefined,
+                          color: hasOverride ? '#9333ea' : 'var(--text)',
+                          fontWeight: hasOverride ? 600 : 400,
+                        }}
+                        placeholder={projectEurToAud.toFixed(4)}
+                        value={fxOverride != null ? String(fxOverride) : ''}
+                        onChange={e => {
+                          const v = e.target.value.trim()
+                          const n = v === '' ? null : parseFloat(v)
+                          setActiveWeek({ ...activeWeek, fx_rate: (n != null && !isNaN(n) && n > 0) ? n : null } as WeeklyTimesheet)
+                        }}
+                        title={hasOverride
+                          ? `Override: 1 EUR = ${Number(fxOverride).toFixed(4)} AUD. Clear to use project default (${projectEurToAud.toFixed(4)}).`
+                          : `Using project default 1 EUR = ${projectEurToAud.toFixed(4)} AUD. Enter a value to override for this week only.`}
+                      />
+                      <span style={{ fontSize: '10px', color: hasOverride ? '#9333ea' : 'var(--text3)', fontFamily: 'var(--mono)' }}>
+                        {hasOverride ? `1 EUR = ${Number(fxOverride).toFixed(4)} AUD ✎` : `default ${projectEurToAud.toFixed(4)}`}
+                      </span>
+                    </>
+                  )
+                })()}
                 {/* Allowance TCE default — only shown when scope is nrg_tce. Per-person
                     overrides set on each crew row take precedence over this default. */}
                 {scopeMode === 'nrg_tce' && tceLines.length > 0 && (
