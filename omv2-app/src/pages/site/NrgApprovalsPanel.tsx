@@ -23,6 +23,7 @@ interface SentRow {
   contract: string
   date: string
   hours: number
+  tceItemId: string | null
 }
 
 interface ApprovalRow {
@@ -56,7 +57,7 @@ interface DayEntry  { dayType: string; shiftType: string; hours: number; nrgWoAl
 interface CrewMember { personId: string; name: string; role: string; days: Record<string, DayEntry> }
 interface Timesheet  { id: string; week_start: string; scope_tracking: string; regime: string; crew: CrewMember[] }
 interface PersonMeta { id: string; full_name: string; first_name: string | null; last_name: string | null; nrg_employee_number: string | null }
-interface TceLine    { item_id: string | null; work_order: string; contract_scope: string }
+interface TceLine    { item_id: string | null; work_order: string; contract_scope: string; description: string }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -118,17 +119,19 @@ function buildSentRows(
         for (const alloc of allocs) {
           if (alloc.hours <= 0) continue
           const payCode = alloc.payCode || getPayCode(day.dayType)
-          let contract = '', woTask = ''
+          let contract = '', woTask = '', tceItemId: string | null = null
           if (alloc.tceItemId && tceByItemId[alloc.tceItemId]) {
-            contract = tceByItemId[alloc.tceItemId].contract_scope
-            woTask   = tceByItemId[alloc.tceItemId].work_order
+            contract  = tceByItemId[alloc.tceItemId].contract_scope
+            woTask    = tceByItemId[alloc.tceItemId].work_order
+            tceItemId = alloc.tceItemId
           } else if (alloc.wo && tceByWo[alloc.wo]) {
-            contract = tceByWo[alloc.wo].contract_scope
-            woTask   = alloc.wo
+            contract  = tceByWo[alloc.wo].contract_scope
+            woTask    = alloc.wo
+            tceItemId = tceByWo[alloc.wo].item_id
           } else if (alloc.wo) {
             woTask = alloc.wo
           }
-          rows.push({ name: fullName, empNo, payCode, woTask, contract, date: dateStr, hours: alloc.hours })
+          rows.push({ name: fullName, empNo, payCode, woTask, contract, date: dateStr, hours: alloc.hours, tceItemId })
         }
       }
     }
@@ -239,7 +242,7 @@ export function NrgApprovalsPanel() {
     const [tsRes, tceRes] = await Promise.all([
       supabase.from('weekly_timesheets').select('id,week_start,scope_tracking,regime,crew')
         .eq('project_id', pid).eq('scope_tracking', 'nrg_tce').order('week_start', { ascending: false }),
-      supabase.from('nrg_tce_lines').select('id,item_id,work_order,contract_scope,source')
+      supabase.from('nrg_tce_lines').select('id,item_id,work_order,contract_scope,source,description')
         .eq('project_id', pid),
     ])
     const tsList = (tsRes.data || []) as Timesheet[]
@@ -422,10 +425,11 @@ export function NrgApprovalsPanel() {
 
         {/* Table */}
         <div className="card" style={{ padding: 0, overflow: 'auto', flex: 1 }}>
-          <table style={{ fontSize: 12, minWidth: 1050, tableLayout: 'fixed' }}>
+          <table style={{ fontSize: 12, minWidth: 1280, tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 {([['Status',80],['Name',140],['Emp #',55],['Date',100],['WO / Task',130],
+                   ['TCE Item',90],['TCE Description',180],
                    ['Pay Code',72],['Hrs Sent',72],['Hrs Approved',84],['Δ Hrs',60],
                    ['Rate',60],['Total ex GST',105],['SIE Code',100],['NRG Status',90]] as [string,number][]).map(([label, w]) => (
                   <th key={label} style={{ width: w, padding: '7px 10px', textAlign: ['Hrs Sent','Hrs Approved','Δ Hrs','Rate','Total ex GST'].includes(label) ? 'right' : 'left', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 10 }}>
@@ -445,6 +449,13 @@ export function NrgApprovalsPanel() {
                 const wo      = r.sent?.woTask || r.appr?.woTask || ''
                 const empNo   = r.sent?.empNo  || r.appr?.empNo  || ''
                 const pc      = r.sent?.payCode || ''
+                // Resolve TCE item: prefer the sent row's tceItemId (most reliable),
+                // fall back to looking up the WO in tceByWo (covers approved-only rows
+                // where there's no sent row but we still know the WO).
+                const tceItemId = r.sent?.tceItemId || (wo && tceByWo[wo]?.item_id) || ''
+                const tceDesc   = tceItemId && tceByItemId[tceItemId]?.description
+                  || (wo && tceByWo[wo]?.description)
+                  || ''
                 return (
                   <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '6px 10px' }}>
@@ -456,6 +467,8 @@ export function NrgApprovalsPanel() {
                     <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{empNo}</td>
                     <td style={{ padding: '6px 10px' }}>{fmtDate(date)}</td>
                     <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.appr?.woTitle || wo}>{wo || '—'}</td>
+                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: tceItemId ? 'var(--text2)' : 'var(--text3)' }}>{tceItemId || '—'}</td>
+                    <td style={{ padding: '6px 10px', fontSize: 11, color: tceDesc ? 'var(--text2)' : 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tceDesc || ''}>{tceDesc || '—'}</td>
                     <td style={{ padding: '6px 10px' }}>
                       {pc && <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)', padding: '1px 5px', borderRadius: 3,
                         background: pc === 'DT1.0' ? '#dbeafe' : pc === 'DT1.5' ? '#fef3c7' : pc === 'DT2.0' ? '#fce7f3' : '#f0fdf4',
@@ -478,7 +491,7 @@ export function NrgApprovalsPanel() {
                 )
               })}
               {displayed.length === 0 && (
-                <tr><td colSpan={13} style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>No rows match current filter.</td></tr>
+                <tr><td colSpan={15} style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>No rows match current filter.</td></tr>
               )}
             </tbody>
           </table>

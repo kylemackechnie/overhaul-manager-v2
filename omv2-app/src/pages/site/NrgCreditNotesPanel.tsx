@@ -101,11 +101,16 @@ export function NrgCreditNotesPanel() {
     const linesHTML = cn.source_lines.map((l, i) => {
       const ch = cn.credit_type !== 'reallocate' ? hoursForLine(i) : l.hours
       const pc = PAY_CODE_STYLE[l.payCode] || { bg: '#f3f4f6', color: '#374151' }
+      // TCE Item: when scopeType is 'tce', scopeKey IS the TCE item_id.
+      // When scopeType is 'wo', there's no direct TCE item on the line (would
+      // need a TCE lookup) — leave blank rather than show a misleading value.
+      const tceItemId = l.scopeType === 'tce' ? l.scopeKey : ''
       return `<tr>
         <td style="padding:4px 8px;border:1px solid #e2e8f0">${l.personName}</td>
         <td style="padding:4px 8px;border:1px solid #e2e8f0">${fmtDate(l.date)}</td>
         <td style="padding:4px 8px;border:1px solid #e2e8f0"><span style="background:${pc.bg};color:${pc.color};padding:1px 5px;border-radius:3px;font-weight:700;font-family:monospace;font-size:9px">${l.payCode}</span></td>
-        <td style="padding:4px 8px;border:1px solid #e2e8f0;font-family:monospace;font-size:9px">${l.woTask || l.scopeKey || '—'}</td>
+        <td style="padding:4px 8px;border:1px solid #e2e8f0;font-family:monospace;font-size:9px">${l.woTask || (l.scopeType === 'wo' ? l.scopeKey : '') || '—'}</td>
+        <td style="padding:4px 8px;border:1px solid #e2e8f0;font-family:monospace;font-size:9px">${tceItemId || '—'}</td>
         <td style="padding:4px 8px;border:1px solid #e2e8f0;max-width:180px">${l.description || '—'}</td>
         <td style="padding:4px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${l.hours}</td>
         <td style="padding:4px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace;font-weight:700;color:#dc2626">${ch}</td>
@@ -166,12 +171,12 @@ export function NrgCreditNotesPanel() {
       <h3 style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#475569;margin:0 0 8px">Credited Lines</h3>
       <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:4px">
         <thead><tr>
-          <th>Person</th><th>Date</th><th>Pay Code</th><th>WO / Task</th><th>Description</th>
+          <th>Person</th><th>Date</th><th>Pay Code</th><th>WO / Task</th><th>TCE Item</th><th>Description</th>
           <th style="text-align:right">Original Hrs</th><th style="text-align:right">Credited Hrs</th>
         </tr></thead>
         <tbody>${linesHTML}</tbody>
         <tfoot><tr style="background:#f8fafc;font-weight:700">
-          <td colspan="5" style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-size:10px">Total</td>
+          <td colspan="6" style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-size:10px">Total</td>
           <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace">${cn.source_lines.reduce((s, l) => s + l.hours, 0).toFixed(2)}</td>
           <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-family:monospace;color:#dc2626">${totalCreditHours.toFixed(2)}</td>
         </tfoot>

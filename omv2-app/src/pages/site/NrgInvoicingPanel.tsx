@@ -414,10 +414,23 @@ export function NrgInvoicingPanel() {
                   </tr>,
                   ...scopes.map(cs => {
                     const rowTotal = sortedInvoices.reduce((s,inv)=>s+effectiveAmount(inv,cs),0)
+                    // Build tooltip listing the TCE lines that roll up into this scope.
+                    // Group headers excluded (3-segment IDs like 2.02.7 — they're parents,
+                    // not allocatable lines). Native title attribute gives a multi-line
+                    // browser tooltip without needing a custom popover component.
+                    const isGroupHeader = (id: string|null) => !!id && /^\d+\.\d+\.\d+$/.test(id||'')
+                    const scopeLines = tceLines
+                      .filter(l => l.contract_scope === cs && !isGroupHeader(l.item_id))
+                      .sort((a,b) => (a.item_id||'').localeCompare(b.item_id||''))
+                    const tooltipText = scopeLines.length === 0
+                      ? `${cs}\n(no TCE lines)`
+                      : `${cs}\n\nRolls up ${scopeLines.length} TCE line${scopeLines.length===1?'':'s'}:\n` +
+                        scopeLines.map(l => `  ${l.item_id||'—'}  ${l.description||''}`).join('\n')
                     return (
                       <tr key={cs} style={{borderBottom:'1px solid var(--border)'}}>
-                        <td style={{padding:'6px 12px',paddingLeft:'24px'}}>
+                        <td style={{padding:'6px 12px',paddingLeft:'24px',cursor:'help'}} title={tooltipText}>
                           <span style={{background:'#ede9fe',color:'#6b21a8',padding:'1px 6px',borderRadius:'3px',fontFamily:'var(--mono)',fontSize:'11px'}}>{cs}</span>
+                          {scopeLines.length > 0 && <span style={{fontSize:'9px',color:'var(--text3)',marginLeft:'6px'}}>({scopeLines.length} line{scopeLines.length===1?'':'s'})</span>}
                         </td>
                         {sortedInvoices.map(inv => {
                           const amount = effectiveAmount(inv,cs)
