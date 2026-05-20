@@ -71,6 +71,7 @@ import { NrgOhfPanel } from './pages/site/NrgOhfPanel'
 import { NrgActualsPanel } from './pages/site/NrgActualsPanel'
 import { NrgKpiPanel } from './pages/site/NrgKpiPanel'
 import { NrgInvoicingPanel } from './pages/site/NrgInvoicingPanel'
+import { NrgWeeklyRegisterPanel } from './pages/site/NrgWeeklyRegisterPanel'
 import { NrgApprovalsPanel } from './pages/site/NrgApprovalsPanel'
 import { NrgScopeAllocationsPanel } from './pages/site/NrgScopeAllocationsPanel'
 import { NrgCreditNotesPanel } from './pages/site/NrgCreditNotesPanel'
@@ -558,6 +559,7 @@ function PanelRouter({ panel }: { panel: string }) {
     case 'nrg-ohf':               return <NrgOhfPanel />
     case 'nrg-actuals':           return <NrgActualsPanel />
     case 'nrg-invoicing':         return <NrgInvoicingPanel />
+    case 'nrg-weekly-register':   return <NrgWeeklyRegisterPanel />
     case 'nrg-kpi':               return <NrgKpiPanel />
     case 'nrg-approvals':         return <NrgApprovalsPanel />
       case 'nrg-scope-allocations': return <NrgScopeAllocationsPanel />

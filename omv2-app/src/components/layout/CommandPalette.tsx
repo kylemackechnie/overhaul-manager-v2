@@ -136,6 +136,7 @@ const NAV_PAGES: NavPage[] = [
   // NRG Module
   { icon: '📊', label: 'NRG Dashboard',            panel: 'nrg-dashboard',      module: 'NRG' },
   { icon: '📋', label: 'NRG TCE Register',         panel: 'nrg-tce',            module: 'NRG', keywords: 'total contract estimate' },
+  { icon: '📒', label: 'NRG Weekly Register',      panel: 'nrg-weekly-register',module: 'NRG', keywords: 'cost register line item drill detail tce weekly per band hourly' },
   { icon: '💵', label: 'NRG Actuals',              panel: 'nrg-actuals',        module: 'NRG' },
   { icon: '🧾', label: 'NRG Invoicing',            panel: 'nrg-invoicing',      module: 'NRG' },
   { icon: '✓', label: 'NRG Approvals',             panel: 'nrg-approvals',      module: 'NRG' },

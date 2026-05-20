@@ -198,6 +198,7 @@ const RIBBON_MODULES: RibbonTab[] = [
       { label: 'NRG Gladstone', buttons: [
         { icon: '📊', label: 'NRG Dashboard', panel: 'nrg-dashboard' },
         { icon: '📋', label: 'TCE Register', panel: 'nrg-tce' },
+        { icon: '📒', label: 'Weekly Register', panel: 'nrg-weekly-register' },
         { icon: '📈', label: 'OHF Forecast', panel: 'nrg-ohf' },
         { icon: '📊', label: 'Actuals', panel: 'nrg-actuals' },
         { icon: '🧾', label: 'Invoicing', panel: 'nrg-invoicing' },
