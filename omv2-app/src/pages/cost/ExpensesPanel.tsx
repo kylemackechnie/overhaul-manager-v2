@@ -508,13 +508,39 @@ function ExpensesPanelDesktop() {
       await Promise.all(toDownload.map(async e => {
         const week = weekStart(e.date!)
         const folder = `Week ${week} (${weekLabel(week)})`
-        for (const path of e.receipt_paths || []) {
+        const paths = e.receipt_paths || []
+        // Prefix used when the storage basename doesn't already encode the
+        // expense ref — falls back to a date+description slug for unref'd
+        // expenses (legacy).
+        const prefix = e.expense_ref
+          || `${e.date}_${(e.description||'receipt').slice(0,30).replace(/[^a-zA-Z0-9_-]/g,'_')}`
+        // Track used names within this expense to disambiguate collisions
+        // (rare — same uploaded basename twice — but possible after timestamp
+        // stripping in fileName()).
+        const usedNames = new Set<string>()
+        let idx = 0
+        for (const path of paths) {
+          idx += 1
           const { data, error } = await supabase.storage.from(RECEIPT_BUCKET).download(path)
           if (error || !data) continue
-          const name = fileName(path)
-          // prefix with expense ref or date+description to disambiguate files
-          const prefix = e.expense_ref || `${e.date}_${(e.description||'receipt').slice(0,30).replace(/[^a-zA-Z0-9_-]/g,'_')}`
-          zip.folder(folder)!.file(`${prefix}_${name}`, data)
+          const baseName = fileName(path)
+          // Avoid prepending the prefix when the uploaded basename already
+          // starts with the expense_ref — was causing "EXP-0001_Foo_Bar_
+          // EXP-0001_Foo_Bar.pdf" doubled-up filenames that customers couldn't
+          // import (filenames exceeded their max length).
+          let filename = baseName.toLowerCase().startsWith(prefix.toLowerCase())
+            ? baseName
+            : `${prefix}_${baseName}`
+          // Multi-receipt collision guard: append _2, _3 etc. before the .ext
+          // when the same basename has already been used for this expense.
+          if (usedNames.has(filename) && paths.length > 1) {
+            const dot = filename.lastIndexOf('.')
+            const stem = dot > 0 ? filename.slice(0, dot) : filename
+            const ext  = dot > 0 ? filename.slice(dot)   : ''
+            filename = `${stem}_${idx}${ext}`
+          }
+          usedNames.add(filename)
+          zip.folder(folder)!.file(filename, data)
         }
       }))
       const blob = await zip.generateAsync({ type: 'blob' })
