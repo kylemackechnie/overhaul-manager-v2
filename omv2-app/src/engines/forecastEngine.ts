@@ -989,45 +989,31 @@ export function buildForecast(
     // hire/car/accom spread loops above. Skip to avoid double counting.
     if (poHasBooking.has(po.id)) continue
 
-    // ── Case 3: standalone PO — spread across forecast_start/forecast_end ─────
+    // ── Case 3: standalone supply PO — lump remaining at forecastStartStr ──────
+    // These are procurement/supply POs (no labour resources, no hire/car/accom
+    // bookings). Prorating across a date range is meaningless — the vendor invoices
+    // on delivery, not on a schedule. Book the full uninvoiced remainder as a single
+    // forward cost on forecastStartStr so EAC is correct without any date spread.
     const remaining = Math.max(0, poValueAud - invoicedTotal)
     if (!remaining) continue
 
-    const spreadStart = po.forecast_start || po.raised_date
-    const spreadEnd   = po.forecast_end   || po.closed_date || projEnd
-    if (!spreadStart || !spreadEnd || spreadStart > spreadEnd) continue
-
-    const spreadDays = dateRangePO(spreadStart, spreadEnd)
-    if (!spreadDays.length) continue
-    const dailyRate = remaining / spreadDays.length
-
-    // ── byWbs line items — needed both for standalonePOWbs check and post-loop attribution
+    // ── byWbs line items
     const lineItemsForByWbs = ((po as unknown as { line_items?: unknown[] }).line_items || []) as { wbs?: string; value?: number }[]
     const totalLineValue = lineItemsForByWbs.reduce((s, l) => s + (Number(l.value) || 0), 0)
 
-    const standalonePOWbs = lineItemsForByWbs.length > 0 && totalLineValue > 0
-      ? null  // will be handled per-line below
-      : resolvePoWbsLocal(po)
+    // Pin to forecastStartStr for byDay (chart visibility) — single bucket
+    ensure(forecastStartStr).subcon.cost += remaining
+    ensure(forecastStartStr).subcon.sell += remaining
 
-    let poDayCostTotal = 0
-    let poDayCostFuture = 0
-    for (const day of spreadDays) {
-      const invAmt = invoicedOnDay(po.id, day)
-      const dayCost = invAmt > 0 ? invAmt : dailyRate
-      ensure(day).subcon.cost += dayCost
-      ensure(day).subcon.sell += dayCost
-      poDayCostTotal += dayCost
-      if (day >= forecastStartStr) poDayCostFuture += dayCost
-      if (standalonePOWbs) addToWbsFuture(standalonePOWbs, dayCost, day)
-    }
     if (lineItemsForByWbs.length > 0 && totalLineValue > 0) {
       for (const line of lineItemsForByWbs) {
         const share = (Number(line.value) || 0) / totalLineValue
-        addToWbs(line.wbs || resolvePoWbsLocal(po), poDayCostTotal * share)
-        addToWbsFuture(line.wbs || resolvePoWbsLocal(po), poDayCostFuture * share, forecastStartStr)
+        addToWbs(line.wbs || resolvePoWbsLocal(po), remaining * share)
+        addToWbsFuture(line.wbs || resolvePoWbsLocal(po), remaining * share, forecastStartStr)
       }
     } else {
-      addToWbs(resolvePoWbsLocal(po), poDayCostTotal)
+      addToWbs(resolvePoWbsLocal(po), remaining)
+      addToWbsFuture(resolvePoWbsLocal(po), remaining, forecastStartStr)
     }
   }
 
